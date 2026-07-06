@@ -41,6 +41,17 @@ cargo run --example minimal_postgres_editor
 CDITOR_POSTGRES_TIMEOUT_SECS=30 cargo run --example minimal_postgres_editor
 ```
 
+## 远端数据库
+
+远端服务器数据库建议通过 SSH tunnel 连接，见：`doc/remote-postgres.md`。
+
+常用启动方式：
+
+```sh
+CDITOR_DATABASE_URL=postgres://cditor:cditor@127.0.0.1:15433/cditor_test \
+  cargo run --example minimal_postgres_editor
+```
+
 ## 指定文档打开
 
 ```sh
