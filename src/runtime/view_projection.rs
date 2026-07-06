@@ -20,6 +20,12 @@ pub struct EditorViewProjection {
     pub debug: DebugOverlaySnapshot,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TableCellPosition {
+    pub row: usize,
+    pub col: usize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewBlockSnapshot {
     pub block_id: BlockId,
@@ -35,6 +41,7 @@ pub struct ViewBlockSnapshot {
     pub focused: bool,
     pub caret_offset: Option<usize>,
     pub marked_range: Option<std::ops::Range<usize>>,
+    pub focused_table_cell: Option<TableCellPosition>,
     pub pinned: bool,
     pub placeholder: bool,
 }

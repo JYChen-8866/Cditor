@@ -174,6 +174,7 @@ mod tests {
             focused: false,
             caret_offset: None,
             marked_range: None,
+            focused_table_cell: None,
             pinned: false,
             placeholder: false,
         }

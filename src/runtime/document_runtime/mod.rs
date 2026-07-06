@@ -67,7 +67,7 @@ use crate::storage::postgres::{
     PostgresStorageError, PostgresStorageResult,
 };
 
-use super::{EditorViewProjection, ViewBlockSnapshot};
+use super::{EditorViewProjection, TableCellPosition, ViewBlockSnapshot};
 
 fn input_trace_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
@@ -99,6 +99,7 @@ pub struct DocumentRuntime {
     list_projection_cache: ListProjectionCache,
     document_selection: Option<DocumentSelection>,
     focused_text_selection: Option<FocusedTextSelection>,
+    focused_table_cell: Option<FocusedTableCell>,
     undo_stacks: HashMap<BlockId, Vec<TextSnapshot>>,
     redo_stacks: HashMap<BlockId, Vec<TextSnapshot>>,
     structure_undo_stack: Vec<StructureMoveUndoStep>,
@@ -155,6 +156,14 @@ struct StructurePasteUndoStep {
     deleted_payloads: Vec<BlockPayloadRecord>,
     before_focus: Option<(BlockId, usize)>,
     after_focus: Option<(BlockId, usize)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FocusedTableCell {
+    block_id: BlockId,
+    row: usize,
+    col: usize,
+    offset: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -452,6 +461,7 @@ impl DocumentRuntime {
                         .filter(|editing| editing.block_id == *block_id)
                         .map(|editing| editing.caret_anchor.text_offset as usize),
                     marked_range,
+                    focused_table_cell: self.focused_table_cell_for_block(*block_id),
                     pinned: self
                         .editing
                         .as_ref()
@@ -4178,6 +4188,44 @@ mod tests {
         assert_eq!(runtime.index.structure_version, 2);
         assert_eq!(report.payloads_loaded, 1);
         assert_eq!(report.payloads_missing, 1);
+    }
+
+    #[test]
+    fn table_cell_focus_is_projected_without_ui_entity_state() {
+        let table = crate::core::rich_text::TablePayload {
+            rows: vec![crate::core::rich_text::TableRowPayload {
+                cells: vec![
+                    crate::core::rich_text::TableCellPayload {
+                        spans: vec![InlineSpan::plain("A")],
+                    },
+                    crate::core::rich_text::TableCellPayload {
+                        spans: vec![InlineSpan::plain("B")],
+                    },
+                ],
+            }],
+            header_rows: 1,
+            header_cols: 0,
+        };
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord {
+                block_id: 10,
+                content_version: 1,
+                kind: RichBlockKind::Table,
+                payload: BlockPayload::Table(table),
+            }],
+            720.0,
+        );
+
+        runtime.focus_table_cell(10, 0, 1).unwrap();
+        let projection = runtime.projection_for_window();
+
+        assert_eq!(runtime.focused_block_id(), Some(10));
+        assert_eq!(runtime.focused_table_cell_offset(), Some((10, 0, 1, 1)));
+        assert_eq!(
+            projection.blocks[0].focused_table_cell,
+            Some(TableCellPosition { row: 0, col: 1 })
+        );
     }
 
     async fn postgres_runtime_fixture(

@@ -90,7 +90,7 @@ pub use structure_edit_acceptance::{
     StructureEditAcceptanceConfig, StructureEditAcceptanceResult, StructureEditScenario,
     run_structure_edit_acceptance,
 };
-pub use view_projection::{EditorViewProjection, ViewBlockSnapshot};
+pub use view_projection::{EditorViewProjection, TableCellPosition, ViewBlockSnapshot};
 pub use worker_pool_policy::{
     WorkerDispatchBatch, WorkerEnqueueDecision, WorkerLane, WorkerPoolDebugOverlay,
     WorkerPoolPolicy, WorkerPoolScheduler, WorkerTask, WorkerTaskKind,

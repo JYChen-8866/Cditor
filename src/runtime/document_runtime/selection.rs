@@ -63,6 +63,7 @@ impl DocumentRuntime {
             editing.caret_anchor.text_offset = focus_offset as u64;
         }
         self.selected_block_ids.clear();
+        self.focused_table_cell = None;
         self.document_selection = Some(DocumentSelection {
             anchor: TextPosition::downstream(anchor_block_id, anchor_offset),
             focus: TextPosition::downstream(focus_block_id, focus_offset),
@@ -115,6 +116,7 @@ impl DocumentRuntime {
             return false;
         };
         let len = model.len();
+        self.focused_table_cell = None;
         self.focused_text_selection = Some(FocusedTextSelection {
             anchor: 0,
             focus: len,
@@ -173,6 +175,7 @@ impl DocumentRuntime {
     }
 
     pub fn select_all_visible_blocks(&mut self) -> bool {
+        self.focused_table_cell = None;
         self.selected_block_ids = self
             .visible_index
             .visible_block_ids
@@ -195,6 +198,7 @@ impl DocumentRuntime {
         };
         let start = anchor_index.min(focus_index);
         let end = anchor_index.max(focus_index);
+        self.focused_table_cell = None;
         self.selected_block_ids.clear();
         for index in start..=end {
             if let Some(block_id) = self.visible_index.id_at_visible_index(index) {

@@ -21,7 +21,14 @@ pub fn render_block_content(
     match &block.payload {
         BlockPayloadView::Loaded(payload) => {
             if let BlockPayload::Table(table) = &payload.payload {
-                return render_table_block(table, theme);
+                return render_table_block(
+                    block.block_id,
+                    table,
+                    theme,
+                    block.focused_table_cell,
+                    view.clone(),
+                    focus.clone(),
+                );
             }
             if let BlockPayload::Image(image) = &payload.payload {
                 return render_image_block(

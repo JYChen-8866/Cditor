@@ -429,6 +429,21 @@ impl CditorV2View {
         cx.notify();
     }
 
+    pub(crate) fn focus_table_cell_from_gui(
+        &mut self,
+        block_id: BlockId,
+        row: usize,
+        col: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        window.focus(&self.focus, cx);
+        if let CditorViewState::Ready(runtime) = &mut self.state {
+            let _ = runtime.focus_table_cell(block_id, row, col);
+        }
+        cx.notify();
+    }
+
     pub(crate) fn toggle_todo_from_gui(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
         if self.readonly {
             return;
@@ -856,6 +871,7 @@ mod tests {
             focused: false,
             caret_offset: None,
             marked_range: None,
+            focused_table_cell: None,
             pinned: false,
             placeholder: false,
         }

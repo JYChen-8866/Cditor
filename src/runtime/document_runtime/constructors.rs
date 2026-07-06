@@ -198,6 +198,7 @@ impl DocumentRuntime {
             list_projection_cache,
             document_selection: None,
             focused_text_selection: None,
+            focused_table_cell: None,
             undo_stacks: HashMap::new(),
             redo_stacks: HashMap::new(),
             structure_undo_stack: Vec::new(),
