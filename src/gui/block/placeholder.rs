@@ -1,19 +1,15 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, rgb};
 
 use crate::gui::GuiTheme;
+use crate::gui::block::skeleton::render_block_skeleton;
+use crate::runtime::ViewBlockSnapshot;
 
-pub fn render_placeholder(theme: GuiTheme) -> AnyElement {
-    div()
-        .text_color(rgb(theme.muted))
-        .child("Loading placeholder...")
-        .into_any_element()
+pub fn render_placeholder(block: &ViewBlockSnapshot, theme: GuiTheme) -> AnyElement {
+    render_block_skeleton(block, theme)
 }
 
-pub fn render_loading(theme: GuiTheme) -> AnyElement {
-    div()
-        .text_color(rgb(theme.muted))
-        .child("Loading...")
-        .into_any_element()
+pub fn render_loading(block: &ViewBlockSnapshot, theme: GuiTheme) -> AnyElement {
+    render_block_skeleton(block, theme)
 }
 
 pub fn render_error(message: &str) -> AnyElement {

@@ -45,8 +45,8 @@ pub fn render_block_content(
                 render_payload_text(payload, theme)
             }
         }
-        BlockPayloadView::Placeholder { .. } => render_placeholder(theme),
-        BlockPayloadView::Loading { .. } => render_loading(theme),
+        BlockPayloadView::Placeholder { .. } => render_placeholder(block, theme),
+        BlockPayloadView::Loading { .. } => render_loading(block, theme),
         BlockPayloadView::Error { message } => render_error(message),
     }
 }

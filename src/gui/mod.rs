@@ -9,6 +9,7 @@ pub mod overlay;
 pub mod persistence;
 pub mod rich_text;
 pub mod scroll;
+pub mod skeleton;
 pub mod text;
 pub mod theme;
 

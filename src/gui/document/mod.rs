@@ -1,6 +1,7 @@
 pub mod debug_header;
 pub mod document_editor_view;
-pub mod document_surface;
+mod document_surface;
+mod skeleton_window;
 
 pub use debug_header::DocumentDebugHeader;
 pub use document_editor_view::{DocumentBlockActionProjection, DocumentEditorView};

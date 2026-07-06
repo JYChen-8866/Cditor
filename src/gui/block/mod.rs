@@ -12,6 +12,7 @@ pub mod paragraph;
 pub mod placeholder;
 pub mod prefix;
 pub mod quote;
+pub mod skeleton;
 pub mod table;
 
 pub use block_content::render_block_content;

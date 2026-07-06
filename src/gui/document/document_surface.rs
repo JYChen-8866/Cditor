@@ -1,6 +1,7 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentBuilder, px, rgb};
 
 use crate::gui::GuiTheme;
+use crate::gui::document::skeleton_window::render_document_skeleton_window;
 
 pub const DEFAULT_DOCUMENT_PAGE_WIDTH_PX: f32 = 860.0;
 pub const DEFAULT_DOCUMENT_MIN_HEIGHT_PX: f32 = 640.0;
@@ -77,7 +78,7 @@ impl DocumentSurface {
                             .right_0()
                             .top(px((self.before_window_height - self.scroll_top) as f32))
                             .when_some(self.placeholder_window_height, |this, height| {
-                                this.child(div().h(px(height as f32)))
+                                this.child(render_document_skeleton_window(height, theme))
                             })
                             .children(block_elements),
                     )
