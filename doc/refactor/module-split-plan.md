@@ -166,6 +166,10 @@ src/storage/postgres/types/
 - [x] 拆 `src/core/edit/mod.rs`
 - [x] 拆 `src/gui/text/element.rs`
 - [x] 拆 `src/core/rich_text/markdown.rs`
+  - [x] 拆出 inline parser
+  - [x] 拆出 block shortcut/helper
+  - [x] 拆出 table parser/export helper
+  - [x] 拆出 plain markdown export
 - [x] 跑相关模块测试和 `cargo check`
 - [x] 提交：`Refactor remaining large modules`
 
@@ -189,3 +193,5 @@ src/storage/postgres/types/
 - 2026-07-06：继续 Phase 6：拆出 `core/edit` 的 `text_offsets`、`selection`、`transactions`、`undo` 子模块；验证 `cargo fmt && cargo test core::edit --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续 Phase 6：拆出 `core/rich_text/markdown/inline.rs`，将 inline markdown parser 从主文件移出；验证 `cargo fmt && cargo test core::rich_text::markdown --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：完成 Phase 6：拆出 `gui/text/element/platform.rs` 和 `gui/text/element/visual.rs`；验证 `cargo fmt && cargo test gui::text --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
+- 2026-07-06：继续细拆 `core/rich_text/markdown.rs`：拆出 `block.rs`、`table.rs`、`export.rs`，主文件保留 parse orchestration 和 public API；验证 `cargo fmt && cargo test core::rich_text::markdown --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
+- 2026-07-06：拆分后较完整自动化验证通过：`cargo fmt && cargo test runtime::document_runtime --lib && cargo test gui::app --lib && cargo test gui::text --lib && cargo test core::edit --lib && cargo test core::rich_text::markdown --lib && cargo test storage::postgres::types --lib && cargo check`。`cargo run --example minimal_postgres_editor` 可启动并收到滚轮事件；完整 IME/粘贴/图片拖拽仍需人工窗口验证。

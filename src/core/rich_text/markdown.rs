@@ -5,9 +5,18 @@ use super::{
 use crate::core::ids::{BlockId, DocumentId};
 use crate::core::rich_text::MARKDOWN_PARSE_STATS;
 
+mod block;
+mod export;
 mod inline;
+mod table;
 
+use block::{
+    block_kind_for_marker, looks_like_single_block_markdown, parse_callout_marker,
+    parse_fence_start, parse_heading, parse_numbered_item,
+};
+use export::block_to_plain_markdown;
 use inline::{parse_inline_markdown, parse_inline_markdown_extended};
+use table::{collect_table_candidate_region, is_table_candidate_line, parse_table_region};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ParsedMarkdownDocument {
@@ -442,217 +451,6 @@ fn push_markdown_list_block(
     let block_id = block.id;
     document.blocks.push(block.clone());
     list_stack.push((indent, block_id));
-}
-
-fn block_kind_for_marker(marker: &str) -> Option<RichBlockKind> {
-    match marker {
-        "#" => Some(RichBlockKind::Heading { level: 1 }),
-        "##" => Some(RichBlockKind::Heading { level: 2 }),
-        "###" => Some(RichBlockKind::Heading { level: 3 }),
-        "####" => Some(RichBlockKind::Heading { level: 4 }),
-        "#####" => Some(RichBlockKind::Heading { level: 5 }),
-        "######" => Some(RichBlockKind::Heading { level: 6 }),
-        "-" | "*" => Some(RichBlockKind::BulletedList),
-        "1." => Some(RichBlockKind::NumberedList),
-        "[ ]" => Some(RichBlockKind::Todo { checked: false }),
-        "[x]" | "[X]" => Some(RichBlockKind::Todo { checked: true }),
-        ">" => Some(RichBlockKind::Quote),
-        _ => None,
-    }
-}
-
-fn parse_callout_marker(line: &str) -> Option<CalloutVariant> {
-    match line.trim() {
-        "[!NOTE]" => Some(CalloutVariant::Note),
-        "[!TIP]" => Some(CalloutVariant::Tip),
-        "[!IMPORTANT]" => Some(CalloutVariant::Important),
-        "[!WARNING]" => Some(CalloutVariant::Warning),
-        "[!CAUTION]" => Some(CalloutVariant::Caution),
-        _ => None,
-    }
-}
-
-fn looks_like_single_block_markdown(line: &str) -> bool {
-    line == "---"
-        || line == "***"
-        || line == "___"
-        || parse_heading(line).is_some()
-        || line.starts_with("> ")
-        || line.starts_with("- [ ] ")
-        || line.starts_with("- [x] ")
-        || line.starts_with("- [X] ")
-        || line.starts_with("- ")
-        || line.starts_with("* ")
-        || parse_numbered_item(line).is_some()
-}
-
-fn parse_heading(line: &str) -> Option<(u8, &str)> {
-    let level = line.bytes().take_while(|byte| *byte == b'#').count();
-    if !(1..=6).contains(&level) {
-        return None;
-    }
-    let text = line[level..].strip_prefix(' ')?;
-    Some((level as u8, text))
-}
-
-fn parse_numbered_item(line: &str) -> Option<&str> {
-    let digits = line.bytes().take_while(u8::is_ascii_digit).count();
-    if digits == 0 {
-        return None;
-    }
-    line[digits..].strip_prefix(". ")
-}
-
-fn parse_fence_start(line: &str) -> Option<(Option<String>, &str)> {
-    let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("```")?;
-    let language = rest.trim();
-    Some(((!language.is_empty()).then(|| language.to_string()), ""))
-}
-
-fn is_table_candidate_line(line: &str) -> bool {
-    line.trim_start().starts_with('|')
-}
-
-fn collect_table_candidate_region(lines: &[&str], start: usize) -> usize {
-    let mut index = start + 1;
-    while index < lines.len() && is_table_candidate_line(lines[index]) {
-        index += 1;
-    }
-    index
-}
-
-fn parse_table_region(lines: &[&str]) -> Option<TablePayload> {
-    if lines.len() < 2 {
-        return None;
-    }
-    let header = split_table_cells(lines[0])?;
-    let alignment = split_table_cells(lines[1])?;
-    if header.is_empty() || alignment.len() != header.len() {
-        return None;
-    }
-    if !alignment.iter().all(|cell| is_alignment_cell(cell)) {
-        return None;
-    }
-
-    let mut rows = Vec::with_capacity(lines.len() - 1);
-    rows.push(table_row_from_cells(header));
-    for line in &lines[2..] {
-        let cells = split_table_cells(line)?;
-        if cells.len() != rows[0].cells.len() {
-            return None;
-        }
-        rows.push(table_row_from_cells(cells));
-    }
-    Some(TablePayload {
-        rows,
-        header_rows: 1,
-        header_cols: 0,
-    })
-}
-
-fn split_table_cells(line: &str) -> Option<Vec<String>> {
-    let trimmed = line.trim();
-    let without_left = trimmed.strip_prefix('|').unwrap_or(trimmed);
-    let without_edges = without_left.strip_suffix('|').unwrap_or(without_left);
-    let mut cells = Vec::new();
-    let mut cell = String::new();
-    let mut chars = without_edges.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\\' && chars.peek() == Some(&'|') {
-            cell.push('|');
-            let _ = chars.next();
-        } else if ch == '|' {
-            cells.push(cell.trim().to_owned());
-            cell.clear();
-        } else {
-            cell.push(ch);
-        }
-    }
-    cells.push(cell.trim().to_owned());
-    (!cells.is_empty()).then_some(cells)
-}
-
-fn is_alignment_cell(cell: &String) -> bool {
-    let trimmed = cell.trim();
-    let inner = trimmed.trim_matches(':');
-    !inner.is_empty() && inner.chars().all(|ch| ch == '-')
-}
-
-fn table_row_from_cells(cells: Vec<String>) -> TableRowPayload {
-    TableRowPayload {
-        cells: cells
-            .into_iter()
-            .map(|cell| TableCellPayload {
-                spans: parse_inline_markdown(&cell),
-            })
-            .collect(),
-    }
-}
-
-fn block_to_plain_markdown(block: &RichBlockRecord) -> String {
-    let text = block.payload.plain_text();
-    match &block.kind {
-        RichBlockKind::Heading { level } => format!("{} {}", "#".repeat(usize::from(*level)), text),
-        RichBlockKind::BulletedList => format!("- {text}"),
-        RichBlockKind::NumberedList => format!("1. {text}"),
-        RichBlockKind::Todo { checked } => {
-            format!("- [{}] {text}", if *checked { "x" } else { " " })
-        }
-        RichBlockKind::Quote => format!("> {text}"),
-        RichBlockKind::Callout { variant } => format!(
-            "> [{}]\n> {text}",
-            match variant {
-                CalloutVariant::Note => "!NOTE",
-                CalloutVariant::Tip => "!TIP",
-                CalloutVariant::Important => "!IMPORTANT",
-                CalloutVariant::Warning => "!WARNING",
-                CalloutVariant::Caution => "!CAUTION",
-                CalloutVariant::Info => "!NOTE",
-                CalloutVariant::Success => "!TIP",
-                CalloutVariant::Danger => "!WARNING",
-            }
-        ),
-        RichBlockKind::Code { language } => format!(
-            "```{}\n{}\n```",
-            language.as_deref().unwrap_or_default(),
-            text
-        ),
-        RichBlockKind::Separator | RichBlockKind::Divider => "---".to_owned(),
-        RichBlockKind::Table => table_to_plain_markdown(&block.payload).unwrap_or(text),
-        RichBlockKind::RawMarkdown => block.raw_fallback.clone().unwrap_or(text),
-        _ => text,
-    }
-}
-
-fn table_to_plain_markdown(payload: &BlockPayload) -> Option<String> {
-    let BlockPayload::Table(table) = payload else {
-        return None;
-    };
-    let first = table.rows.first()?;
-    let columns = first.cells.len();
-    if columns == 0 {
-        return None;
-    }
-    let mut lines = Vec::new();
-    for (row_index, row) in table.rows.iter().enumerate() {
-        let cells = row
-            .cells
-            .iter()
-            .map(|cell| {
-                escape_table_cell(&crate::core::rich_text::plain_text_from_spans(&cell.spans))
-            })
-            .collect::<Vec<_>>();
-        lines.push(format!("| {} |", cells.join(" | ")));
-        if row_index == 0 {
-            lines.push(format!("| {} |", vec!["---"; columns].join(" | ")));
-        }
-    }
-    Some(lines.join("\n"))
-}
-
-fn escape_table_cell(cell: &str) -> String {
-    cell.replace('|', "\\|")
 }
 
 #[cfg(test)]
