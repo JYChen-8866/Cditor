@@ -151,7 +151,7 @@ src/storage/postgres/types/
 - [x] 拆出 focus
 - [x] 拆出 selection
 - [x] 拆出 composition
-- [ ] 拆出 text_edit
+- [x] 拆出 text_edit
 - [ ] 拆出 markdown_paste
 - [ ] 拆出 structure_edit
 - [ ] 拆出 undo_redo
@@ -181,3 +181,4 @@ src/storage/postgres/types/
 - 2026-07-06：开始 Phase 5：拆出 `focus` 基础聚焦模块；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续 Phase 5：拆出 `selection` 基础文本/块选区模块；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续 Phase 5：拆出 `composition` IME 组合输入模块；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
+- 2026-07-06：继续 Phase 5：拆出 `text_edit` 文本输入、光标移动、退格/删除与 soft tab 相关逻辑；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
