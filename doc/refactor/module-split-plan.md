@@ -148,7 +148,7 @@ src/storage/postgres/types/
 
 ### Phase 5：拆 Runtime hot path
 
-- [ ] 拆出 focus
+- [x] 拆出 focus
 - [ ] 拆出 selection
 - [ ] 拆出 composition
 - [ ] 拆出 text_edit
@@ -178,3 +178,4 @@ src/storage/postgres/types/
 - 2026-07-06：开始 Phase 4：将 `document_runtime.rs` 转为目录模块，拆出 `media` 和 `layout_heights`；验证 `cargo test runtime::document_runtime --lib` 和 `cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续 Phase 4：拆出 `scroll` 和 `payload_window`；验证 `cargo test runtime::document_runtime --lib` 通过，115 passed / 3 ignored。
 - 2026-07-06：完成 Phase 4 剩余非 hot path：拆出 `constructors` 和 `store_loading`；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
+- 2026-07-06：开始 Phase 5：拆出 `focus` 基础聚焦模块；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
