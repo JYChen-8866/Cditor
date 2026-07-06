@@ -2,7 +2,6 @@ use gpui::prelude::FluentBuilder;
 use std::{
     collections::HashMap,
     ops::Range,
-    sync::OnceLock,
     time::{Duration, Instant},
 };
 
@@ -21,10 +20,13 @@ use crate::editor::scroll::{
     ScrollPhase, ScrollbarPolicy, ScrollbarVisualState,
 };
 use crate::gui::GuiTheme;
+use crate::gui::app::input_trace::trace_input;
+use crate::gui::app::interaction::geometry::{
+    FallbackViewportOrigin, ProjectedBlockRect, drop_target_for_document_y_from_rects,
+    parent_drop_target_from_rects, projected_block_rects_from_projection,
+};
+use crate::gui::app::interaction::image_resize::GuiImageResizeDrag;
 use crate::gui::block::BlockDragOverlaySnapshot;
-use crate::gui::block::chrome::{BLOCK_GUTTER_WIDTH_PX, BlockChromeStyle};
-use crate::gui::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
-use crate::gui::block::media::image_width_ratio_milli_for_width;
 use crate::gui::clipboard_assets::image_asset_from_clipboard_item;
 use crate::gui::document::{
     DocumentBlockActionProjection, DocumentDebugHeader, DocumentEditorView,
@@ -49,268 +51,37 @@ use crate::gui::text::{
 use crate::runtime::DocumentRuntime;
 use crate::storage::postgres::block_on_postgres;
 
-fn input_trace_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("CDITOR_TRACE_INPUT")
-            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
-            .unwrap_or(false)
-    })
-}
-
-fn trace_input(event: &str, details: impl std::fmt::Display) {
-    if input_trace_enabled() {
-        eprintln!("[cditor][input][gui][{event}] {details}");
-    }
-}
-
 pub struct CditorV2View {
-    state: CditorViewState,
-    focus: FocusHandle,
-    show_debug: bool,
-    readonly: bool,
-    save_status: EditorSaveStatus,
-    last_wheel_delta_y: f64,
-    scroll_accumulator: ScrollAccumulator,
-    text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
-    scrollbar_drag: Option<GuiScrollbarDrag>,
-    text_drag_selection: Option<GuiTextDragSelection>,
-    block_drag_selection: BlockDragSelectionController,
-    hovered_block_id: Option<BlockId>,
-    action_block_id: Option<BlockId>,
-    gutter_block_drag: Option<GutterBlockDragState>,
-    gutter_drag_auto_scroll_scheduled: bool,
-    image_resize_drag: Option<GuiImageResizeDrag>,
-    projected_block_rects: Vec<ProjectedBlockRect>,
-    postgres_persistence: PostgresPersistenceState,
-    autosave_interval: Duration,
+    pub(in crate::gui::app) state: CditorViewState,
+    pub(in crate::gui::app) focus: FocusHandle,
+    pub(in crate::gui::app) show_debug: bool,
+    pub(in crate::gui::app) readonly: bool,
+    pub(in crate::gui::app) save_status: EditorSaveStatus,
+    pub(in crate::gui::app) last_wheel_delta_y: f64,
+    pub(in crate::gui::app) scroll_accumulator: ScrollAccumulator,
+    pub(in crate::gui::app) text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
+    pub(in crate::gui::app) scrollbar_drag: Option<GuiScrollbarDrag>,
+    pub(in crate::gui::app) text_drag_selection: Option<GuiTextDragSelection>,
+    pub(in crate::gui::app) block_drag_selection: BlockDragSelectionController,
+    pub(in crate::gui::app) hovered_block_id: Option<BlockId>,
+    pub(in crate::gui::app) action_block_id: Option<BlockId>,
+    pub(in crate::gui::app) gutter_block_drag: Option<GutterBlockDragState>,
+    pub(in crate::gui::app) gutter_drag_auto_scroll_scheduled: bool,
+    pub(in crate::gui::app) image_resize_drag: Option<GuiImageResizeDrag>,
+    pub(in crate::gui::app) projected_block_rects: Vec<ProjectedBlockRect>,
+    pub(in crate::gui::app) postgres_persistence: PostgresPersistenceState,
+    pub(in crate::gui::app) autosave_interval: Duration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct GuiScrollbarDrag {
-    pointer_y_offset_in_thumb: f64,
+pub(in crate::gui::app) struct GuiScrollbarDrag {
+    pub(in crate::gui::app) pointer_y_offset_in_thumb: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct GuiTextDragSelection {
-    anchor_block_id: BlockId,
-    anchor_offset: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct GuiImageResizeDrag {
-    block_id: BlockId,
-    start_pointer_x: f32,
-    start_width_px: f32,
-    current_width_px: f32,
-    max_width_px: f32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct FallbackViewportOrigin {
-    x: f64,
-    y: f64,
-}
-
-struct ProjectedBlockRect {
-    block_id: BlockId,
-    visible_index: usize,
-    depth: usize,
-    document_top: f64,
-    document_bottom: f64,
-    indent_px: f32,
-    text_origin_x_in_block_px: f64,
-    text_origin_y_in_block_px: f64,
-    text_width_px: f64,
-    supports_children: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ParentDropTarget {
-    parent_id: BlockId,
-    sibling_index: usize,
-}
-
-fn source_depth_for_rects(rects: &[ProjectedBlockRect], block_id: BlockId) -> Option<usize> {
-    rects
-        .iter()
-        .find(|rect| rect.block_id == block_id)
-        .map(|rect| rect.depth)
-}
-
-fn projected_subtree_end(
-    rects: &[ProjectedBlockRect],
-    source_visible_index: usize,
-    source_depth: usize,
-) -> usize {
-    rects
-        .iter()
-        .filter(|rect| rect.visible_index > source_visible_index)
-        .find(|rect| rect.depth <= source_depth)
-        .map(|rect| rect.visible_index)
-        .unwrap_or_else(|| {
-            rects
-                .last()
-                .map(|rect| rect.visible_index + 1)
-                .unwrap_or(source_visible_index + 1)
-        })
-}
-
-fn parent_drop_target_from_rects(
-    rects: &[ProjectedBlockRect],
-    source_block_id: BlockId,
-    target: BlockDropTarget,
-) -> Option<ParentDropTarget> {
-    let source = rects.iter().find(|rect| rect.block_id == source_block_id)?;
-    let source_subtree_end = projected_subtree_end(rects, source.visible_index, source.depth);
-    let target_position = target
-        .insert_before_block_id
-        .and_then(|block_id| rects.iter().position(|rect| rect.block_id == block_id))
-        .unwrap_or(rects.len());
-    let parent = rects.iter().take(target_position).rev().find(|rect| {
-        !(rect.visible_index >= source.visible_index && rect.visible_index < source_subtree_end)
-            && rect.supports_children
-    })?;
-    Some(ParentDropTarget {
-        parent_id: parent.block_id,
-        sibling_index: sibling_index_for_parent_drop_target(rects, parent, target_position),
-    })
-}
-
-fn sibling_index_for_parent_drop_target(
-    rects: &[ProjectedBlockRect],
-    parent: &ProjectedBlockRect,
-    target_position: usize,
-) -> usize {
-    let mut sibling_index = 0;
-    for rect in rects
-        .iter()
-        .skip_while(|rect| rect.block_id != parent.block_id)
-        .skip(1)
-    {
-        if rect.depth <= parent.depth {
-            return usize::MAX;
-        }
-        if rect.depth == parent.depth + 1 {
-            if rects
-                .get(target_position)
-                .is_some_and(|target| target.block_id == rect.block_id)
-            {
-                return sibling_index;
-            }
-            sibling_index += 1;
-        }
-    }
-    usize::MAX
-}
-
-fn drop_target_for_document_y_from_rects(
-    rects: &[ProjectedBlockRect],
-    source_block_id: BlockId,
-    document_y: f64,
-) -> Option<BlockDropTarget> {
-    let source = rects.iter().find(|rect| rect.block_id == source_block_id)?;
-    let source_depth = source_depth_for_rects(rects, source_block_id)?;
-    let source_subtree_end = projected_subtree_end(rects, source.visible_index, source_depth);
-    let mut last_target = None;
-    for rect in rects {
-        if rect.visible_index >= source.visible_index && rect.visible_index < source_subtree_end {
-            continue;
-        }
-        let midpoint = rect.document_top + (rect.document_bottom - rect.document_top) / 2.0;
-        if document_y < midpoint {
-            return Some(BlockDropTarget {
-                insert_before_block_id: Some(rect.block_id),
-                target_visible_index: rect.visible_index,
-            });
-        }
-        last_target = Some(BlockDropTarget {
-            insert_before_block_id: None,
-            target_visible_index: rect.visible_index + 1,
-        });
-    }
-    last_target
-}
-
-fn projected_block_rects_from_projection(
-    projection: &crate::runtime::EditorViewProjection,
-) -> Vec<ProjectedBlockRect> {
-    let mut top = projection.before_window_height;
-    projection
-        .blocks
-        .iter()
-        .map(|block| {
-            let height = block.layout.effective_height();
-            let text_metrics = fallback_text_metrics_for_block(block, GuiTheme::light());
-            let rect = ProjectedBlockRect {
-                block_id: block.block_id,
-                visible_index: block.visible_index,
-                depth: block.chrome.list_info.depth,
-                document_top: top,
-                document_bottom: top + height,
-                indent_px: block.chrome.list_info.depth as f32
-                    * crate::gui::block::chrome::BLOCK_INDENT_STEP_PX,
-                text_origin_x_in_block_px: text_metrics.origin_x_in_block_px,
-                text_origin_y_in_block_px: text_metrics.origin_y_in_block_px,
-                text_width_px: text_metrics.width_px,
-                supports_children: crate::core::block::supports_list_children(&block.kind),
-            };
-            top += height;
-            rect
-        })
-        .collect()
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct FallbackTextMetrics {
-    origin_x_in_block_px: f64,
-    origin_y_in_block_px: f64,
-    width_px: f64,
-}
-
-fn fallback_text_metrics_for_block(
-    block: &crate::runtime::ViewBlockSnapshot,
-    theme: GuiTheme,
-) -> FallbackTextMetrics {
-    let chrome = BlockChromeStyle::from_snapshot(block, theme);
-    let border_left = if chrome.quote_bar.is_some() { 4.0 } else { 1.0 };
-    let code_x = if matches!(
-        block.kind,
-        crate::core::rich_text::RichBlockKind::Code { .. }
-    ) {
-        f64::from(V1_CODE_CONTENT_PADDING_X_PX)
-    } else {
-        0.0
-    };
-    let code_y = if matches!(
-        block.kind,
-        crate::core::rich_text::RichBlockKind::Code { .. }
-    ) {
-        f64::from(V1_CODE_CONTENT_PADDING_TOP_PX)
-    } else {
-        0.0
-    };
-    let origin_x = 8.0
-        + f64::from(chrome.indent_px)
-        + f64::from(BLOCK_GUTTER_WIDTH_PX)
-        + 8.0
-        + border_left
-        + f64::from(chrome.content_padding_left_px)
-        + f64::from(chrome.prefix_width_px)
-        + code_x;
-    let origin_y = 4.0 + 1.0 + f64::from(chrome.content_padding_y_px) + code_y;
-    let width = (f64::from(crate::gui::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX)
-        - origin_x
-        - 8.0
-        - 1.0
-        - f64::from(chrome.content_padding_right_px)
-        - code_x)
-        .max(1.0);
-    FallbackTextMetrics {
-        origin_x_in_block_px: origin_x,
-        origin_y_in_block_px: origin_y,
-        width_px: width,
-    }
+pub(in crate::gui::app) struct GuiTextDragSelection {
+    pub(in crate::gui::app) anchor_block_id: BlockId,
+    pub(in crate::gui::app) anchor_offset: usize,
 }
 
 const GUI_SCROLLBAR_WIDTH_PX: f32 = 10.0;
@@ -558,81 +329,6 @@ impl CditorV2View {
                     .ok()
             })
             .unwrap_or(false)
-    }
-
-    pub(crate) fn start_image_resize_from_gui(
-        &mut self,
-        block_id: BlockId,
-        current_width_px: f32,
-        max_width_px: f32,
-        position: Point<Pixels>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.readonly {
-            return;
-        }
-        window.focus(&self.focus, cx);
-        self.text_drag_selection = None;
-        self.block_drag_selection = BlockDragSelectionController::default();
-        self.gutter_block_drag = None;
-        self.scrollbar_drag = None;
-        self.hovered_block_id = Some(block_id);
-        self.action_block_id = Some(block_id);
-        self.image_resize_drag = Some(GuiImageResizeDrag {
-            block_id,
-            start_pointer_x: f32::from(position.x),
-            start_width_px: current_width_px,
-            current_width_px: current_width_px.clamp(max_width_px * 0.2, max_width_px),
-            max_width_px,
-        });
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            runtime.focus_block(block_id);
-        }
-        cx.notify();
-    }
-
-    fn image_resize_preview(&self) -> Option<(BlockId, f32)> {
-        self.image_resize_drag
-            .map(|drag| (drag.block_id, drag.current_width_px))
-    }
-
-    fn update_image_resize_drag(
-        &mut self,
-        position: Point<Pixels>,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let Some(mut drag) = self.image_resize_drag else {
-            return false;
-        };
-        let dx = f32::from(position.x) - drag.start_pointer_x;
-        let next_width =
-            (drag.start_width_px + dx).clamp(drag.max_width_px * 0.2, drag.max_width_px);
-        if (next_width - drag.current_width_px).abs() < 0.5 {
-            return true;
-        }
-        drag.current_width_px = next_width;
-        self.image_resize_drag = Some(drag);
-        cx.notify();
-        true
-    }
-
-    fn commit_image_resize_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.image_resize_drag.take() else {
-            return false;
-        };
-        let ratio = image_width_ratio_milli_for_width(drag.current_width_px, drag.max_width_px);
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            match runtime.update_image_display_width_ratio(drag.block_id, ratio) {
-                Ok(true) => self.mark_dirty(cx),
-                Ok(false) => {}
-                Err(error) => {
-                    self.save_status = EditorSaveStatus::Failed(error);
-                }
-            }
-        }
-        cx.notify();
-        true
     }
 
     pub(crate) fn update_text_layout_cache(&mut self, cache: RichTextPlatformLayout) -> bool {
@@ -1978,6 +1674,10 @@ fn scroll_phase_from_touch(phase: gpui::TouchPhase) -> ScrollPhase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gui::app::interaction::geometry::{
+        ParentDropTarget, fallback_text_metrics_for_block,
+    };
+    use crate::gui::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
 
     #[test]
     fn save_status_for_mode_respects_readonly() {

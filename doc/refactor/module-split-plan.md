@@ -1,0 +1,174 @@
+# CDitor V2 模块拆分计划
+
+> 目标：降低巨石文件复杂度，同时不破坏 V2 大文档架构：Runtime 是真相，UI 只消费 projection，Postgres 异步保存，Input/IME hot path 不同步等待存储或重型 layout。
+
+## 当前问题
+
+当前顶层目录 `api / core / editor / runtime / gui / storage` 基本合理，但少数文件职责过大：
+
+| 文件 | 问题 | 优先级 |
+| --- | --- | --- |
+| `src/runtime/document_runtime.rs` | 运行时真相层所有逻辑混在一起：加载、编辑、结构、paste、layout、scroll、undo、projection、测试 | 高 |
+| `src/gui/app/cditor_v2_view.rs` | View 同时承担 render、IME、键盘、鼠标、滚动条、块拖拽、图片 resize、Postgres 保存状态 | 高 |
+| `src/core/edit/mod.rs` | selection / transaction / undo / inline mark 混在一起 | 中 |
+| `src/storage/postgres/types.rs` | DB DTO、serde 映射、ID 转换、transaction 编解码混在一起 | 中 |
+| `src/core/rich_text/markdown.rs` | markdown block/inline/table/list 解析混在一起 | 中 |
+| `src/gui/text/element.rs` | GPUI text element、paint、hit-test、caret/selection 绘制混在一起 | 中 |
+
+## 拆分原则
+
+1. 先拆低风险纯 helper，再拆事件处理，再拆 runtime hot path。
+2. 每次拆分不改行为，只移动代码和调整可见性。
+3. 每完成一组必须运行：
+   ```sh
+   cargo fmt
+   cargo check
+   ```
+4. 涉及 runtime 后必须运行：
+   ```sh
+   cargo test runtime::document_runtime --lib
+   ```
+5. 涉及 GUI input / IME 后必须运行：
+   ```sh
+   cargo test gui::app --lib
+   cargo check
+   ```
+6. 拆分完成后分阶段提交，避免大范围重构难以回滚。
+
+## 目标目录结构
+
+### GUI App
+
+```text
+src/gui/app/
+  mod.rs
+  cditor_v2_view.rs          # 临时保留主文件，逐步瘦身
+  input_trace.rs             # GUI input trace helper
+  state.rs                   # CditorViewState，后续拆
+  render.rs                  # Render impl，后续拆
+  persistence.rs             # save/autosave glue，后续拆
+  input/
+    mod.rs
+    keyboard.rs
+    ime.rs
+    mouse.rs
+    text_drag.rs
+  interaction/
+    mod.rs
+    geometry.rs
+    gutter_drag.rs
+    image_resize.rs
+    scrollbar.rs
+```
+
+### Runtime
+
+```text
+src/runtime/document_runtime/
+  mod.rs
+  state.rs
+  constructors.rs
+  store_loading.rs
+  focus.rs
+  payload_window.rs
+  projection.rs
+  layout_heights.rs
+  scroll.rs
+  text_edit.rs
+  composition.rs
+  selection.rs
+  markdown_paste.rs
+  structure_edit.rs
+  media.rs
+  undo_redo.rs
+  helpers.rs
+```
+
+### Postgres Types
+
+```text
+src/storage/postgres/types/
+  mod.rs
+  ids.rs
+  attrs.rs
+  payload.rs
+  inline.rs
+  transactions.rs
+  index_snapshot.rs
+  block_kind.rs
+```
+
+## 任务清单
+
+### Phase 0：基线
+
+- [x] 初始化/确认 Git 工作树
+- [x] 忽略运行时粘贴素材目录 `minimal-editor-assets/`
+- [x] 提交拆分前基线：`41f76f1 Initial CDitor V2 baseline`
+
+### Phase 1：拆 `src/gui/app/cditor_v2_view.rs` 低风险模块
+
+- [x] 拆出 `src/gui/app/input_trace.rs`
+- [x] 拆出 `src/gui/app/interaction/geometry.rs`
+- [x] 拆出 `src/gui/app/interaction/image_resize.rs`
+- [x] 跑 `cargo fmt`
+- [x] 跑 `cargo check`
+- [ ] 提交：`Refactor gui app low-risk interaction modules`
+
+### Phase 2：继续拆 GUI interaction
+
+- [ ] 拆出 `src/gui/app/interaction/scrollbar.rs`
+- [ ] 拆出 `src/gui/app/interaction/gutter_drag.rs`
+- [ ] 跑 `cargo fmt`
+- [ ] 跑 `cargo check`
+- [ ] 提交：`Refactor gui app drag and scrollbar modules`
+
+### Phase 3：拆 GUI input
+
+- [ ] 拆出 `src/gui/app/input/keyboard.rs`
+- [ ] 拆出 `src/gui/app/input/mouse.rs`
+- [ ] 拆出 `src/gui/app/input/text_drag.rs`
+- [ ] 拆出 `src/gui/app/input/ime.rs`
+- [ ] 跑 `cargo test gui::app --lib`
+- [ ] 跑 `cargo check`
+- [ ] 提交：`Refactor gui app input modules`
+
+### Phase 4：拆 Runtime 非 hot path
+
+- [ ] 把 `src/runtime/document_runtime.rs` 转为目录模块 `src/runtime/document_runtime/mod.rs`
+- [ ] 拆出 constructors / store_loading
+- [ ] 拆出 payload_window
+- [ ] 拆出 layout_heights
+- [ ] 拆出 scroll
+- [ ] 拆出 media
+- [ ] 跑 `cargo test runtime::document_runtime --lib`
+- [ ] 跑 `cargo check`
+- [ ] 提交：`Refactor runtime non-hot-path modules`
+
+### Phase 5：拆 Runtime hot path
+
+- [ ] 拆出 focus
+- [ ] 拆出 selection
+- [ ] 拆出 composition
+- [ ] 拆出 text_edit
+- [ ] 拆出 markdown_paste
+- [ ] 拆出 structure_edit
+- [ ] 拆出 undo_redo
+- [ ] 跑 `cargo test runtime::document_runtime --lib`
+- [ ] 跑 `cargo check`
+- [ ] 手动验证 minimal editor 输入/IME/粘贴/图片/滚动
+- [ ] 提交：`Refactor runtime editing modules`
+
+### Phase 6：拆其他大文件
+
+- [ ] 拆 `src/storage/postgres/types.rs`
+- [ ] 拆 `src/core/edit/mod.rs`
+- [ ] 拆 `src/gui/text/element.rs`
+- [ ] 拆 `src/core/rich_text/markdown.rs`
+- [ ] 跑相关模块测试和 `cargo check`
+- [ ] 提交：`Refactor remaining large modules`
+
+## 当前执行记录
+
+- 2026-07-06：创建本计划文档，准备开始 Phase 1。
+- 2026-07-06：完成 Phase 1 第一组：拆出 `input_trace`、`interaction/geometry`、`interaction/image_resize`；验证 `cargo fmt && cargo test gui::app --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
