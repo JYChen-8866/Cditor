@@ -162,7 +162,7 @@ src/storage/postgres/types/
 
 ### Phase 6：拆其他大文件
 
-- [ ] 拆 `src/storage/postgres/types.rs`
+- [x] 拆 `src/storage/postgres/types.rs`
 - [ ] 拆 `src/core/edit/mod.rs`
 - [ ] 拆 `src/gui/text/element.rs`
 - [ ] 拆 `src/core/rich_text/markdown.rs`
@@ -185,3 +185,4 @@ src/storage/postgres/types/
 - 2026-07-06：继续 Phase 5：拆出 `markdown_paste` Markdown 粘贴、Markdown shortcut 和 imported block 插入逻辑；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续 Phase 5：拆出 `undo_redo` 文本/结构 undo redo、snapshot restore 与结构 move transaction queue；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：完成 Phase 5：拆出 `structure_edit` 结构编辑、块移动、enter split、todo、inline mark、跨块删除与结构 transaction glue；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
+- 2026-07-06：开始 Phase 6：将 `src/storage/postgres/types.rs` 转为目录模块，拆出 `ids`、`rows`、`attrs`、`payload`、`transactions`、`block_kind`；验证 `cargo fmt && cargo test storage::postgres::types --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
