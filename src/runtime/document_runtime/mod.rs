@@ -3808,21 +3808,41 @@ mod tests {
 
     #[test]
     fn shift_enter_inserts_soft_line_break_in_focused_block() {
-        let mut runtime = DocumentRuntime::demo();
-        runtime.focus_block(3);
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                "first line",
+            )],
+            720.0,
+        );
+        runtime.focus_block(1);
+        let before_height = runtime.projection().blocks[0].layout.effective_height();
+        let before_total_height = runtime.height_index.total_height();
 
         runtime.insert_soft_line_break().unwrap();
 
         let projection = runtime.projection();
-        let block = projection
-            .blocks
-            .iter()
-            .find(|block| block.block_id == 3)
-            .unwrap();
+        let block = &projection.blocks[0];
         let BlockPayloadView::Loaded(payload) = &block.payload else {
             panic!("payload should be loaded");
         };
         assert!(payload.plain_text().ends_with('\n'));
+        assert!(
+            block.layout.effective_height() > before_height,
+            "soft line break should grow block height: {} <= {before_height}",
+            block.layout.effective_height()
+        );
+        assert!(runtime.height_index.total_height() > before_total_height);
+        assert_eq!(
+            runtime.page_layout.total_height(),
+            runtime.height_index.total_height()
+        );
+        assert_eq!(
+            runtime.scroll.model_total_height,
+            runtime.height_index.total_height()
+        );
     }
 
     #[test]

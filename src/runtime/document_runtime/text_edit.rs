@@ -373,7 +373,9 @@ impl DocumentRuntime {
     }
 
     pub fn insert_soft_line_break(&mut self) -> Result<(), String> {
-        self.insert_char('\n')
+        self.insert_char('\n')?;
+        let _ = self.refresh_focused_text_block_height()?;
+        Ok(())
     }
 
     pub(super) fn refresh_focused_text_block_height(&mut self) -> Result<bool, String> {
