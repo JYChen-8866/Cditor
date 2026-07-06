@@ -6,27 +6,29 @@ use std::{
 };
 
 use gpui::{
-    AnyElement, App, AppContext, Bounds, ClipboardItem, Context, EntityInputHandler, FocusHandle,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, Size,
-    Styled, UTF16Selection, Window, div, px, rgb, rgba,
+    AppContext, Bounds, ClipboardItem, Context, EntityInputHandler, FocusHandle,
+    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, Size, Styled,
+    UTF16Selection, Window, div, px, rgb,
 };
 
-use crate::core::block::{BlockDropTarget, DragPoint, GutterBlockDragState};
+use crate::core::block::GutterBlockDragState;
 use crate::core::ids::BlockId;
 use crate::core::rich_text::InlineMark;
 use crate::editor::scroll::{
     HeightCorrectionPriority, ScrollAccumulator, ScrollDeltaMode, ScrollDevice, ScrollInput,
-    ScrollPhase, ScrollbarPolicy, ScrollbarVisualState,
+    ScrollPhase,
 };
 use crate::gui::GuiTheme;
 use crate::gui::app::input_trace::trace_input;
 use crate::gui::app::interaction::geometry::{
-    FallbackViewportOrigin, ProjectedBlockRect, drop_target_for_document_y_from_rects,
-    parent_drop_target_from_rects, projected_block_rects_from_projection,
+    FallbackViewportOrigin, ProjectedBlockRect, projected_block_rects_from_projection,
 };
 use crate::gui::app::interaction::image_resize::GuiImageResizeDrag;
-use crate::gui::block::BlockDragOverlaySnapshot;
+use crate::gui::app::interaction::scrollbar::{
+    GuiScrollbarDrag, render_scrollbar, scrollbar_policy,
+};
+
 use crate::gui::clipboard_assets::image_asset_from_clipboard_item;
 use crate::gui::document::{
     DocumentBlockActionProjection, DocumentDebugHeader, DocumentEditorView,
@@ -73,39 +75,10 @@ pub struct CditorV2View {
     pub(in crate::gui::app) autosave_interval: Duration,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(in crate::gui::app) struct GuiScrollbarDrag {
-    pub(in crate::gui::app) pointer_y_offset_in_thumb: f64,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::gui::app) struct GuiTextDragSelection {
     pub(in crate::gui::app) anchor_block_id: BlockId,
     pub(in crate::gui::app) anchor_offset: usize,
-}
-
-const GUI_SCROLLBAR_WIDTH_PX: f32 = 10.0;
-const GUI_SCROLLBAR_RIGHT_PX: f32 = 8.0;
-const GUTTER_DRAG_AUTO_SCROLL_EDGE_PX: f64 = 40.0;
-const GUTTER_DRAG_AUTO_SCROLL_MAX_STEP_PX: f64 = 24.0;
-const GUTTER_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
-
-fn gutter_drag_auto_scroll_delta(pointer_y: f64, viewport_height: f64) -> f64 {
-    if viewport_height <= GUTTER_DRAG_AUTO_SCROLL_EDGE_PX * 2.0 {
-        return 0.0;
-    }
-    if pointer_y < GUTTER_DRAG_AUTO_SCROLL_EDGE_PX {
-        -((GUTTER_DRAG_AUTO_SCROLL_EDGE_PX - pointer_y) / GUTTER_DRAG_AUTO_SCROLL_EDGE_PX)
-            .clamp(0.0, 1.0)
-            * GUTTER_DRAG_AUTO_SCROLL_MAX_STEP_PX
-    } else if pointer_y > viewport_height - GUTTER_DRAG_AUTO_SCROLL_EDGE_PX {
-        ((pointer_y - (viewport_height - GUTTER_DRAG_AUTO_SCROLL_EDGE_PX))
-            / GUTTER_DRAG_AUTO_SCROLL_EDGE_PX)
-            .clamp(0.0, 1.0)
-            * GUTTER_DRAG_AUTO_SCROLL_MAX_STEP_PX
-    } else {
-        0.0
-    }
 }
 
 pub enum CditorViewState {
@@ -424,14 +397,14 @@ impl CditorV2View {
         cx.notify();
     }
 
-    fn ready_runtime(&mut self) -> Option<&mut DocumentRuntime> {
+    pub(in crate::gui::app) fn ready_runtime(&mut self) -> Option<&mut DocumentRuntime> {
         match &mut self.state {
             CditorViewState::Ready(runtime) => Some(runtime),
             CditorViewState::Loading { .. } | CditorViewState::LoadFailed { .. } => None,
         }
     }
 
-    fn ready_runtime_ref(&self) -> Option<&DocumentRuntime> {
+    pub(in crate::gui::app) fn ready_runtime_ref(&self) -> Option<&DocumentRuntime> {
         match &self.state {
             CditorViewState::Ready(runtime) => Some(runtime),
             CditorViewState::Loading { .. } | CditorViewState::LoadFailed { .. } => None,
@@ -505,210 +478,6 @@ impl CditorV2View {
         if hover_changed || selection_changed {
             cx.notify();
         }
-    }
-
-    pub(crate) fn gutter_mouse_down_from_gui(
-        &mut self,
-        block_id: BlockId,
-        position: Point<Pixels>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        window.focus(&self.focus, cx);
-        self.hovered_block_id = Some(block_id);
-        self.action_block_id = Some(block_id);
-        self.text_drag_selection = None;
-        self.block_drag_selection = BlockDragSelectionController::default();
-        self.gutter_block_drag = Some(GutterBlockDragState::new(
-            block_id,
-            DragPoint::new(f32::from(position.x), f32::from(position.y)),
-        ));
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            runtime.focus_block(block_id);
-        }
-        cx.notify();
-    }
-
-    fn update_gutter_block_drag(
-        &mut self,
-        position: Point<Pixels>,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let Some(mut drag) = self.gutter_block_drag else {
-            return false;
-        };
-        let point = DragPoint::new(f32::from(position.x), f32::from(position.y));
-        let threshold_changed = drag.update_position(point);
-        let auto_scrolled = if drag.exceeded_threshold {
-            self.apply_gutter_drag_auto_scroll(f64::from(position.y))
-        } else {
-            false
-        };
-        self.gutter_block_drag = Some(drag);
-        let target_changed = self.refresh_gutter_block_drag_target();
-        if self.should_continue_gutter_drag_auto_scroll() {
-            self.schedule_gutter_drag_auto_scroll_tick(cx);
-        }
-        if threshold_changed || target_changed || auto_scrolled {
-            cx.notify();
-        }
-        true
-    }
-
-    fn refresh_gutter_block_drag_target(&mut self) -> bool {
-        let Some(mut drag) = self.gutter_block_drag else {
-            return false;
-        };
-        let pointer_document_y = f64::from(drag.current_position.y)
-            + self
-                .ready_runtime_ref()
-                .map(|runtime| runtime.scroll.global_scroll_top)
-                .unwrap_or(0.0);
-        let target = drag
-            .exceeded_threshold
-            .then(|| self.drop_target_for_document_y(drag.block_id, pointer_document_y))
-            .flatten();
-        let target_changed = drag.target != target;
-        drag.target = target;
-        self.gutter_block_drag = Some(drag);
-        target_changed
-    }
-
-    fn should_continue_gutter_drag_auto_scroll(&self) -> bool {
-        let Some(drag) = self.gutter_block_drag else {
-            return false;
-        };
-        if !drag.exceeded_threshold {
-            return false;
-        }
-        let Some(runtime) = self.ready_runtime_ref() else {
-            return false;
-        };
-        gutter_drag_auto_scroll_delta(
-            f64::from(drag.current_position.y),
-            runtime.scroll.viewport_height,
-        )
-        .abs()
-            >= f64::EPSILON
-    }
-
-    fn schedule_gutter_drag_auto_scroll_tick(&mut self, cx: &mut Context<Self>) {
-        if self.gutter_drag_auto_scroll_scheduled {
-            return;
-        }
-        self.gutter_drag_auto_scroll_scheduled = true;
-        let tick = cx.background_spawn(async move {
-            std::thread::sleep(Duration::from_millis(GUTTER_DRAG_AUTO_SCROLL_TICK_MS));
-        });
-        cx.spawn(async move |view, cx| {
-            let _ = tick.await;
-            let _ = view.update(cx, |view, cx| {
-                view.gutter_drag_auto_scroll_scheduled = false;
-                let changed = view.tick_gutter_drag_auto_scroll();
-                if changed {
-                    cx.notify();
-                }
-                if view.should_continue_gutter_drag_auto_scroll() {
-                    view.schedule_gutter_drag_auto_scroll_tick(cx);
-                }
-            });
-        })
-        .detach();
-    }
-
-    fn tick_gutter_drag_auto_scroll(&mut self) -> bool {
-        let Some(drag) = self.gutter_block_drag else {
-            return false;
-        };
-        if !drag.exceeded_threshold {
-            return false;
-        }
-        let auto_scrolled = self.apply_gutter_drag_auto_scroll(f64::from(drag.current_position.y));
-        let target_changed = self.refresh_gutter_block_drag_target();
-        auto_scrolled || target_changed
-    }
-
-    fn apply_gutter_drag_auto_scroll(&mut self, pointer_y: f64) -> bool {
-        let CditorViewState::Ready(runtime) = &mut self.state else {
-            return false;
-        };
-        let delta = gutter_drag_auto_scroll_delta(pointer_y, runtime.scroll.viewport_height);
-        if delta.abs() < f64::EPSILON {
-            return false;
-        }
-        let before = runtime.scroll.global_scroll_top;
-        runtime.scroll_by_delta(delta).is_ok() && runtime.scroll.global_scroll_top != before
-    }
-
-    fn commit_gutter_block_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.gutter_block_drag.take() else {
-            self.gutter_drag_auto_scroll_scheduled = false;
-            return false;
-        };
-        self.gutter_drag_auto_scroll_scheduled = false;
-        let Some(target) = drag.target.filter(|_| drag.exceeded_threshold) else {
-            cx.notify();
-            return true;
-        };
-        let horizontal_delta = drag.current_position.x - drag.start_position.x;
-        let parent_target = (horizontal_delta >= crate::gui::block::chrome::BLOCK_INDENT_STEP_PX)
-            .then(|| {
-                parent_drop_target_from_rects(&self.projected_block_rects, drag.block_id, target)
-            })
-            .flatten();
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let moved = if let Some(parent_target) = parent_target {
-                runtime
-                    .move_block_subtree_to_parent(
-                        drag.block_id,
-                        Some(parent_target.parent_id),
-                        parent_target.sibling_index,
-                    )
-                    .unwrap_or(false)
-            } else {
-                runtime
-                    .move_block_subtree_before(drag.block_id, target.insert_before_block_id)
-                    .unwrap_or(false)
-            };
-            if moved {
-                self.mark_dirty(cx);
-            }
-        }
-        cx.notify();
-        true
-    }
-
-    fn drop_target_for_document_y(
-        &self,
-        source_block_id: BlockId,
-        document_y: f64,
-    ) -> Option<BlockDropTarget> {
-        drop_target_for_document_y_from_rects(
-            &self.projected_block_rects,
-            source_block_id,
-            document_y,
-        )
-    }
-
-    fn block_drag_overlay_snapshot(&self) -> Option<BlockDragOverlaySnapshot> {
-        let drag = self.gutter_block_drag?;
-        let target = drag.target.filter(|_| drag.exceeded_threshold)?;
-        let (y_px, indent_px) = match target.insert_before_block_id {
-            Some(block_id) => self
-                .projected_block_rects
-                .iter()
-                .find(|rect| rect.block_id == block_id)
-                .map(|rect| (rect.document_top as f32, rect.indent_px))?,
-            None => self
-                .projected_block_rects
-                .last()
-                .map(|rect| (rect.document_bottom as f32, rect.indent_px))?,
-        };
-        Some(BlockDragOverlaySnapshot {
-            y_px,
-            indent_px,
-            visible: true,
-        })
     }
 
     fn current_text_layout_cache(
@@ -884,36 +653,6 @@ impl CditorV2View {
         }
     }
 
-    fn on_scrollbar_mouse_down(
-        &mut self,
-        event: &MouseDownEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let CditorViewState::Ready(runtime) = &mut self.state else {
-            return;
-        };
-        let policy = scrollbar_policy(runtime);
-        let visual = runtime.begin_scrollbar_drag(policy);
-        if !visual.enabled {
-            return;
-        }
-        let pointer_y = f64::from(event.position.y);
-        let inside_thumb =
-            visual.thumb_top <= pointer_y && pointer_y <= visual.thumb_top + visual.thumb_height;
-        let pointer_y_offset_in_thumb = if inside_thumb {
-            (pointer_y - visual.thumb_top).clamp(0.0, visual.thumb_height)
-        } else {
-            visual.thumb_height / 2.0
-        };
-        self.scrollbar_drag = Some(GuiScrollbarDrag {
-            pointer_y_offset_in_thumb,
-        });
-        let _ = runtime.drag_scrollbar_to_thumb_top(policy, pointer_y - pointer_y_offset_in_thumb);
-        cx.stop_propagation();
-        cx.notify();
-    }
-
     fn on_scrollbar_mouse_move(
         &mut self,
         event: &MouseMoveEvent,
@@ -975,17 +714,6 @@ impl CditorV2View {
         self.finish_gui_scrollbar_drag(cx);
         self.finish_text_drag_selection();
         self.finish_block_drag_selection();
-    }
-
-    fn finish_gui_scrollbar_drag(&mut self, cx: &mut Context<Self>) {
-        if self.scrollbar_drag.take().is_none() {
-            return;
-        }
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.finish_scrollbar_drag();
-        }
-        cx.stop_propagation();
-        cx.notify();
     }
 
     fn finish_block_drag_selection(&mut self) {
@@ -1539,46 +1267,6 @@ impl Render for CditorV2View {
     }
 }
 
-fn scrollbar_policy(runtime: &DocumentRuntime) -> ScrollbarPolicy {
-    ScrollbarPolicy {
-        track_height: runtime.scroll.viewport_height.max(1.0),
-        min_thumb_height: 24.0,
-        local_list_state_scrollbar_enabled: false,
-    }
-}
-
-fn render_scrollbar(
-    visual: ScrollbarVisualState,
-    dragging: bool,
-    on_mouse_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> AnyElement {
-    if !visual.enabled {
-        return div().into_any_element();
-    }
-
-    let thumb_color = if dragging { 0x0969daaa } else { 0x8c959f88 };
-    div()
-        .absolute()
-        .top_0()
-        .right(px(GUI_SCROLLBAR_RIGHT_PX))
-        .w(px(GUI_SCROLLBAR_WIDTH_PX))
-        .h(px(visual.track_height as f32))
-        .rounded(px(GUI_SCROLLBAR_WIDTH_PX / 2.0))
-        .bg(rgba(0x8c959f22))
-        .on_mouse_down(MouseButton::Left, on_mouse_down)
-        .child(
-            div()
-                .absolute()
-                .top(px(visual.thumb_top as f32))
-                .left(px(0.0))
-                .right(px(0.0))
-                .h(px(visual.thumb_height as f32))
-                .rounded(px(GUI_SCROLLBAR_WIDTH_PX / 2.0))
-                .bg(rgba(thumb_color)),
-        )
-        .into_any_element()
-}
-
 fn platform_selected_text_range(runtime: &DocumentRuntime) -> Option<UTF16Selection> {
     let (_block_id, text) = runtime.focused_text_for_platform_input()?;
     if let Some(selection) = runtime.active_composition_selected_range() {
@@ -1674,9 +1362,12 @@ fn scroll_phase_from_touch(phase: gpui::TouchPhase) -> ScrollPhase {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::block::BlockDropTarget;
     use crate::gui::app::interaction::geometry::{
-        ParentDropTarget, fallback_text_metrics_for_block,
+        ParentDropTarget, drop_target_for_document_y_from_rects, fallback_text_metrics_for_block,
+        parent_drop_target_from_rects,
     };
+    use crate::gui::app::interaction::gutter_drag::gutter_drag_auto_scroll_delta;
     use crate::gui::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
 
     #[test]
