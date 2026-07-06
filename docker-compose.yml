@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: cditor-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cditor
+      POSTGRES_PASSWORD: cditor
+      POSTGRES_DB: cditor_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - cditor_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cditor -d cditor_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command:
+      [
+        "postgres",
+        "-c", "shared_buffers=256MB",
+        "-c", "work_mem=16MB",
+        "-c", "maintenance_work_mem=128MB",
+        "-c", "wal_compression=on",
+        "-c", "max_connections=100"
+      ]
+
+  postgres_test:
+    image: postgres:16
+    container_name: cditor-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cditor
+      POSTGRES_PASSWORD: cditor
+      POSTGRES_DB: cditor_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - cditor_postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cditor -d cditor_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  cditor_postgres_data:
+  cditor_postgres_test_data:
