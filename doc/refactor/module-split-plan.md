@@ -153,12 +153,12 @@ src/storage/postgres/types/
 - [x] 拆出 composition
 - [x] 拆出 text_edit
 - [x] 拆出 markdown_paste
-- [ ] 拆出 structure_edit
+- [x] 拆出 structure_edit
 - [x] 拆出 undo_redo
-- [ ] 跑 `cargo test runtime::document_runtime --lib`
-- [ ] 跑 `cargo check`
+- [x] 跑 `cargo test runtime::document_runtime --lib`
+- [x] 跑 `cargo check`
 - [ ] 手动验证 minimal editor 输入/IME/粘贴/图片/滚动
-- [ ] 提交：`Refactor runtime editing modules`
+- [x] 提交：`Refactor runtime editing modules`
 
 ### Phase 6：拆其他大文件
 
@@ -184,3 +184,4 @@ src/storage/postgres/types/
 - 2026-07-06：继续 Phase 5：拆出 `text_edit` 文本输入、光标移动、退格/删除与 soft tab 相关逻辑；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续 Phase 5：拆出 `markdown_paste` Markdown 粘贴、Markdown shortcut 和 imported block 插入逻辑；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续 Phase 5：拆出 `undo_redo` 文本/结构 undo redo、snapshot restore 与结构 move transaction queue；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
+- 2026-07-06：完成 Phase 5：拆出 `structure_edit` 结构编辑、块移动、enter split、todo、inline mark、跨块删除与结构 transaction glue；验证 `cargo fmt && cargo test runtime::document_runtime --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
