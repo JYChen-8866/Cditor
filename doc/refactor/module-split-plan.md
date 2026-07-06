@@ -164,10 +164,10 @@ src/storage/postgres/types/
 
 - [x] 拆 `src/storage/postgres/types.rs`
 - [x] 拆 `src/core/edit/mod.rs`
-- [ ] 拆 `src/gui/text/element.rs`
+- [x] 拆 `src/gui/text/element.rs`
 - [x] 拆 `src/core/rich_text/markdown.rs`
-- [ ] 跑相关模块测试和 `cargo check`
-- [ ] 提交：`Refactor remaining large modules`
+- [x] 跑相关模块测试和 `cargo check`
+- [x] 提交：`Refactor remaining large modules`
 
 ## 当前执行记录
 
@@ -188,3 +188,4 @@ src/storage/postgres/types/
 - 2026-07-06：开始 Phase 6：将 `src/storage/postgres/types.rs` 转为目录模块，拆出 `ids`、`rows`、`attrs`、`payload`、`transactions`、`block_kind`；验证 `cargo fmt && cargo test storage::postgres::types --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续 Phase 6：拆出 `core/edit` 的 `text_offsets`、`selection`、`transactions`、`undo` 子模块；验证 `cargo fmt && cargo test core::edit --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续 Phase 6：拆出 `core/rich_text/markdown/inline.rs`，将 inline markdown parser 从主文件移出；验证 `cargo fmt && cargo test core::rich_text::markdown --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
+- 2026-07-06：完成 Phase 6：拆出 `gui/text/element/platform.rs` 和 `gui/text/element/visual.rs`；验证 `cargo fmt && cargo test gui::text --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
