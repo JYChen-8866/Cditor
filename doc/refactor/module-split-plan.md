@@ -165,6 +165,7 @@ src/storage/postgres/types/
 - [x] 拆 `src/storage/postgres/types.rs`
 - [x] 拆 `src/core/edit/mod.rs`
 - [x] 拆 `src/gui/text/element.rs`
+- [x] 拆 `src/gui/app/cditor_v2_view.rs` render orchestration
 - [x] 拆 `src/core/rich_text/markdown.rs`
   - [x] 拆出 inline parser
   - [x] 拆出 block shortcut/helper
@@ -195,3 +196,4 @@ src/storage/postgres/types/
 - 2026-07-06：完成 Phase 6：拆出 `gui/text/element/platform.rs` 和 `gui/text/element/visual.rs`；验证 `cargo fmt && cargo test gui::text --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：继续细拆 `core/rich_text/markdown.rs`：拆出 `block.rs`、`table.rs`、`export.rs`，主文件保留 parse orchestration 和 public API；验证 `cargo fmt && cargo test core::rich_text::markdown --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：拆分后较完整自动化验证通过：`cargo fmt && cargo test runtime::document_runtime --lib && cargo test gui::app --lib && cargo test gui::text --lib && cargo test core::edit --lib && cargo test core::rich_text::markdown --lib && cargo test storage::postgres::types --lib && cargo check`。`cargo run --example minimal_postgres_editor` 可启动并收到滚轮事件；完整 IME/粘贴/图片拖拽仍需人工窗口验证。
+- 2026-07-06：继续拆 `gui/app/cditor_v2_view.rs`：迁出 `Render for CditorV2View` 到 `gui/app/render.rs`，主 view 文件保留状态、构造、持久化和 GUI helper；验证 `cargo fmt && cargo test gui::app --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
