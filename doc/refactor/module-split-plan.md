@@ -135,15 +135,15 @@ src/storage/postgres/types/
 
 ### Phase 4：拆 Runtime 非 hot path
 
-- [ ] 把 `src/runtime/document_runtime.rs` 转为目录模块 `src/runtime/document_runtime/mod.rs`
+- [x] 把 `src/runtime/document_runtime.rs` 转为目录模块 `src/runtime/document_runtime/mod.rs`
 - [ ] 拆出 constructors / store_loading
 - [ ] 拆出 payload_window
-- [ ] 拆出 layout_heights
+- [x] 拆出 layout_heights
 - [ ] 拆出 scroll
-- [ ] 拆出 media
-- [ ] 跑 `cargo test runtime::document_runtime --lib`
-- [ ] 跑 `cargo check`
-- [ ] 提交：`Refactor runtime non-hot-path modules`
+- [x] 拆出 media
+- [x] 跑 `cargo test runtime::document_runtime --lib`
+- [x] 跑 `cargo check`
+- [x] 提交：`Refactor runtime media and layout height modules`
 
 ### Phase 5：拆 Runtime hot path
 
@@ -174,3 +174,4 @@ src/storage/postgres/types/
 - 2026-07-06：完成 Phase 1 第一组：拆出 `input_trace`、`interaction/geometry`、`interaction/image_resize`；验证 `cargo fmt && cargo test gui::app --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：完成 Phase 2 代码拆分：拆出 `interaction/scrollbar`、`interaction/gutter_drag`；验证 `cargo fmt && cargo test gui::app --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
 - 2026-07-06：完成 Phase 3：拆出 `input/keyboard`、`input/mouse`、`input/text_drag`、`input/ime`；验证 `cargo fmt && cargo test gui::app --lib && cargo check` 通过，仅保留原有 crate 命名 warning。
+- 2026-07-06：开始 Phase 4：将 `document_runtime.rs` 转为目录模块，拆出 `media` 和 `layout_heights`；验证 `cargo test runtime::document_runtime --lib` 和 `cargo check` 通过，仅保留原有 crate 命名 warning。
