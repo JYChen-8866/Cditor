@@ -2,4 +2,5 @@
 set -euo pipefail
 
 echo "Starting CDitor V2 minimal editor..."
-cargo run --example minimal_cditor_editor
+export CDITOR_TRACE_TABLE="${CDITOR_TRACE_TABLE:-0}"
+cargo run -p cditor-app

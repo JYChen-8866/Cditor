@@ -3,21 +3,6 @@
 version = 4
 
 [[package]]
-name = "CDitor-V2"
-version = "0.1.0"
-dependencies = [
- "gpui",
- "gpui_platform",
- "image",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "unicode-segmentation",
-]
-
-[[package]]
 name = "accesskit"
 version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -888,6 +873,74 @@ dependencies = [
  "jobserver",
  "libc",
  "shlex 2.0.1",
+]
+
+[[package]]
+name = "cditor-app"
+version = "0.1.0"
+dependencies = [
+ "cditor-core",
+ "cditor-editor",
+ "cditor-runtime",
+ "cditor-storage",
+ "cditor-storage-postgres",
+ "gpui",
+ "gpui_platform",
+ "image",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "cditor-core"
+version = "0.1.0"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "cditor-editor"
+version = "0.1.0"
+dependencies = [
+ "cditor-core",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "cditor-runtime"
+version = "0.1.0"
+dependencies = [
+ "cditor-core",
+ "cditor-editor",
+ "cditor-storage",
+ "cditor-storage-postgres",
+ "reqwest",
+ "sqlx",
+ "tokio",
+]
+
+[[package]]
+name = "cditor-storage"
+version = "0.1.0"
+dependencies = [
+ "cditor-core",
+]
+
+[[package]]
+name = "cditor-storage-postgres"
+version = "0.1.0"
+dependencies = [
+ "cditor-core",
+ "cditor-storage",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

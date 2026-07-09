@@ -1,671 +1,378 @@
-# ding-note2 IME / 文本输入完整迁移分析
+# ding-note2 IME 完整迁移计划
 
-> 目标：不是继续打补丁，而是把 `/Users/jychen/Desktop/ding-note2/crates/gpui-markdown-editor` 的 IME、普通字符输入、selection、caret、marked range 机制完整分析清楚，再决定 V2 应该如何迁移。
+> 参考实现：`/Users/jychen/Desktop/ding-note2/crates/gpui-markdown-editor`
 >
-> 当前用户反馈：V2 打字仍然跳到最后。说明仅修 `GuiInputCommand::InsertChar` 前的 `focus_block()` 不够，必须重新审视 V2 输入架构是否和 ding-note2 一致。
+> 架构约束：继续遵守 `/Users/jychen/Desktop/CDitor-V2/doc/large-document-rich-text-architecture.md`。Cditor V2 仍然由 runtime/engine 持有大文档真相，不能把 10w block 的数据真相交给 GPUI entity；但当前正在编辑的 block/cell/code-language 输入会话，必须像 ding-note2 一样有稳定、单一、可查询的输入状态。
 >
-> 架构边界：继续遵守 `doc/large-document-rich-text-architecture.md`。V2 不能把 10w 文档真相交给 GPUI entity/ListState；但是**当前编辑 block 的 IME 输入状态必须像 ding-note2 一样精确、稳定、单一来源**。
+> 更新规则：后续每完成一项，就把本文对应任务从 `[ ]` 改成 `[x]`，并补上测试或手动验收记录。
 
 ---
 
-## 1. 结论先行
+## 1. 为什么还不完善
 
-### 1.1 ding-note2 的核心模型
+当前的问题不是“IME 没接上”，而是 IME 的状态模型还没有彻底对齐 ding-note2。
 
-ding-note2 不是“GUI command 自己猜位置再插入字符”。它的核心是：
+ding-note2 的核心模型是：
 
 ```text
 每个 Block 是自己的 EntityInputHandler
-每个 Block 持有自己的 focus_handle
+每个 Block 有自己的 focus_handle
 每个 Block 内部持有 selected_range / marked_range / selection_reversed
-window.handle_input(&block_focus_handle, ElementInputHandler::new(text_bounds, block_entity), cx)
-GPUI 平台输入只和当前 focused block 的 EntityInputHandler 对话
+每个 Block 内部持有 last_layout / last_bounds
+window.handle_input() 注册的是当前 block 自己和当前 block 的 text bounds
 ```
 
-普通文字输入、IME composition、候选框位置、platform selected range 都围绕同一个 block runtime 状态工作。
-
-### 1.2 V2 当前最大风险点
-
-V2 当前不是 per-block input handler，而是：
+Cditor V2 当前模型是：
 
 ```text
 Root CditorV2View 实现 EntityInputHandler
-RichTextElement.paint() 中用 root focus 调 window.handle_input(... view.clone())
-Root View 再根据 runtime.focused_block_id() 找当前 block
+RichTextElement/TableCellTextElement 把 root view 注册给 GPUI input
+Root handler 再通过 runtime.focused_block_id()/focused_table_cell_offset() 找当前文本
+selection/caret/composition 分散在 runtime editing、focused selection、document selection、composition 等状态里
 ```
 
-这不是 ding-note2 的 1:1 模型。它可以工作，但必须保证：
+这可以工作，但要求非常严格：同一帧里 focused block、文本、selection、marked range、layout cache、handle_input bounds 必须完全一致。只要有一处 fallback 到旧 caret、末尾、preview text offset，IME 就会出现跳尾、中文 byte boundary panic、候选框错位、表格 cell 输入不稳等问题。
 
-1. root focus 不会在 render 中无条件抢焦点并触发平台选区重查。
-2. `focused_block_id` 不会在输入周期中被鼠标、fallback、payload window、render 重置。
-3. `selected_text_range()` 永远能返回当前 caret 的 collapsed range。
-4. `replace_text_in_range(None, text)` 必须使用**同一个** runtime caret/selection/marked range。
-5. layout cache / bounds / character_index_for_point 必须对应当前 focused block 和 content_version。
+所以“照 ding-note2 抄”的正确方向不是把文件硬搬过来，而是抄它的输入状态契约：
 
-只要其中一个断，就可能出现“GPUI 认为选区在末尾 / V2 runtime 认为 caret 在中间 / 输入提交时又 fallback 到末尾”。
+```text
+explicit UTF-16 range
+  -> current marked_range
+  -> current selected_range
+  -> collapsed caret selected_range
+```
 
-### 1.3 当前已确认的背离点
-
-| 编号 | 背离点 | ding-note2 | V2 当前/曾经 | 风险 |
-|---|---|---|---|---|
-| D-001 | 输入 handler 粒度 | Block 自己实现 `EntityInputHandler` | Root `CditorV2View` 实现 input handler | 平台输入 range 查询和实际 block 解耦 |
-| D-002 | focus handle 粒度 | 每个 block 自己的 `focus_handle` | root 共享一个 `FocusHandle` | 多 block 场景下 input session 不知道真正 block |
-| D-003 | 普通字符 keydown | 不在 keydown 插入普通字符，只处理 Tab | V2 曾经 keydown 映射 `InsertChar` | 双输入通道导致 caret/selection 冲突 |
-| D-004 | selected_range 真相 | block 内 `selected_range` 始终存在，collapsed 即 caret | V2 有 `editing.caret_anchor` + `focused_text_selection` + `document_selection` | 需要合成，容易顺序错 |
-| D-005 | marked_range 真相 | block 内 `marked_range` 直接参与替换 | V2 composition 存在 `EditingSession`，再投影成 preview text | base text / preview text range 映射复杂 |
-| D-006 | render focus | focused block 才注册 input | V2 root render 中 `if !focus.is_focused { window.focus(...) }` | render 可能主动抢焦点 |
-| D-007 | `replace_and_mark_text_in_range(None, ...)` fallback | `range_utf16 -> marked_range -> selected_range` | V2 fallback 到 `editing.caret_anchor` | 若 caret 已被重置，则 composition 从末尾开始 |
-| D-008 | `text_for_range`/`selected_text_range` 对象 | 当前 block 的 display text | root 根据 focused block 推断 | focused block 错即全错 |
-| D-009 | 输入 bounds | `handle_input` bounds 是当前 block text bounds | V2 使用 `RichTextElement` bounds，但 handler 是 root | platform point/range 查询需再通过 focused layout cache |
+普通输入、IME preview、IME commit、候选框定位、鼠标命中都必须围绕这一份输入状态运行。
 
 ---
 
-## 2. ding-note2 详细链路
+## 2. 参考实现要点
 
-### 2.1 `EntityInputHandler`：输入范围优先级
+### 2.1 `components/block/input.rs`
 
-参考文件：
+ding-note2 的 `Block` 直接实现 `EntityInputHandler`：
 
-- `/Users/jychen/Desktop/ding-note2/crates/gpui-markdown-editor/src/components/block/input.rs`
+- `text_for_range()`：UTF-16 range 转为 block 内 UTF-8 range，从当前 block 文本取内容。
+- `selected_text_range()`：永远返回 block 的 `selected_range`。
+- `marked_text_range()`：永远返回 block 的 `marked_range`。
+- `replace_text_in_range()`：fallback 顺序是 `range_utf16 -> marked_range -> selected_range`。
+- `replace_and_mark_text_in_range()`：同样使用 `range_utf16 -> marked_range -> selected_range`，并把 `new_selected_range_utf16` 转为插入文本内部的 UTF-8 相对 range。
+- `bounds_for_range()` / `character_index_for_point()`：直接使用当前 block 自己的 `last_layout` 和 `last_bounds`。
 
-#### 普通输入 `replace_text_in_range`
+### 2.2 `components/block/runtime/mod.rs`
 
-核心逻辑：
-
-```rust
-let visible_range = range_utf16
-    .as_ref()
-    .map(|range| self.range_from_utf16(range))
-    .or(self.marked_range.clone())
-    .unwrap_or(self.selected_range.clone());
-self.replace_text_in_visible_range(visible_range, new_text, None, false, cx);
-```
-
-语义：
+ding-note2 的 `Block` 保存输入会话状态：
 
 ```text
-explicit UTF16 range
-  -> marked_range
-  -> selected_range
+selected_range: Range<usize>
+selection_reversed: bool
+marked_range: Option<Range<usize>>
+last_layout: Option<Vec<WrappedLine>>
+last_bounds: Option<Bounds<Pixels>>
+code_language_selected_range
+code_language_marked_range
+code_language_last_layout
+code_language_last_bounds
+table_cell_position
+table_cell_alignment
 ```
 
-注意：`selected_range` 即使 collapsed 也存在，所以 caret 就是 `selected_range.start..selected_range.end`。
+它的 `replace_text_in_visible_range()` 做三件关键事：
 
-#### IME `replace_and_mark_text_in_range`
+1. 替换 visible range。
+2. 根据插入结果映射 `marked_range` / `selected_range` / cursor。
+3. 通过 `apply_title_edit()` 同步 block title、kind、render cache、caret、selection。
 
-核心逻辑：
+### 2.3 `components/block/element.rs`
 
-```rust
-let visible_range = range_utf16
-    .as_ref()
-    .map(|range| self.range_from_utf16(range))
-    .or(self.marked_range.clone())
-    .unwrap_or(self.selected_range.clone());
-let selected_range_relative = new_selected_range_utf16
-    .as_ref()
-    .map(|range_utf16| Self::utf16_range_to_utf8_in(new_text, range_utf16));
-self.replace_text_in_visible_range(
-    visible_range,
-    new_text,
-    selected_range_relative,
-    !new_text.is_empty(),
-    cx,
-);
-```
+渲染文本时，ding-note2 把绘制和平台输入绑定在一起：
 
-语义：
+- 绘制 marked text underline/background。
+- 绘制 selection。
+- 绘制 caret。
+- 更新 `last_layout` / `last_bounds`。
+- 当前 block focused 时注册 `window.handle_input(&focus_handle, ElementInputHandler::new(text_bounds, block_entity), cx)`。
+
+这意味着 GPUI 查询 range/bounds/point 时不会跨 block 猜测。
+
+---
+
+## 3. 完整 IME 应该包含什么
+
+完整 IME 不是只实现 `replace_and_mark_text_in_range()`。至少包括下面这些能力：
+
+- UTF-16/UTF-8 双向转换：GPUI/系统 IME 使用 UTF-16 offset，Rust 字符串使用 UTF-8 byte offset，任何 range 都不能切进中文、emoji、组合字符的 byte 中间。
+- 单一 selection truth：collapsed caret 也是 `selected_range = offset..offset`，不要同时让 caret、selection、composition 各自成为真相。
+- marked range 生命周期：composition preview 时有 marked range，commit/cancel/unmark 后正确清理。
+- replacement fallback 顺序：`explicit range -> marked range -> selected range`。
+- relative selected range：IME 给的 `new_selected_range` 是新 preview text 内部的相对 UTF-16 range，必须转为插入文本内部的 UTF-8 relative range。
+- preview/base range 映射：composition preview 文本和真实 document base text 不同，更新 composition 时不能把 preview caret 当作 base range。
+- 候选框定位：`bounds_for_range()` 必须返回当前输入文本的真实 caret/range bounds，普通 block、表格 cell、代码块语言输入都要支持。
+- 鼠标命中：`character_index_for_point()` 必须用当前文本 layout/bounds 算 UTF-16 index，滚动、padding、list marker、table cell offset 都要正确。
+- marked text 绘制：IME preview 应该被渲染成 marked 状态，且隐藏/抑制普通 caret 的冲突。
+- selection 绘制：选区、marked range、caret 不能出现两个光标或错位。
+- 普通输入统一入口：普通字符输入也应该走 GPUI input handler，避免 keydown 和 IME 双通道竞争。
+- 输入组件复用：普通 block、表格 cell、code language toolbar/search input 不应各写一套不完整输入框。
+- undo/history：IME preview 不应该产生一堆不可用历史；commit 后的文本和样式恢复要正确。
+- clipboard：复制给自己保留结构/样式，复制到外部输出纯文本；IME 不应破坏 clipboard selection。
+- 测试矩阵：中文、日文、韩文、英文、emoji、selection、marked update、表格 cell、滚动后点击、代码语言输入都要覆盖。
+
+---
+
+## 4. Cditor V2 当前状态
+
+### 4.1 已完成基础能力
+
+- [x] Root `CditorV2View` 已实现 GPUI `EntityInputHandler` 基本方法。
+- [x] 已有 UTF-16/UTF-8 转换 helper：`utf8_to_utf16_offset`、`utf16_to_utf8_offset`、range 转换。
+- [x] UTF-8 char boundary 防线已加到平台文本 geometry，避免 `埃` 这类中文被 byte offset 切开导致 panic。
+- [x] `replace_and_mark_text_in_range(None, ...)` 已局部修成优先复用 active composition base range，避免 composition update 从 preview caret 漂移。
+- [x] runtime 已有 composition 基础状态：`active_composition`、`marked_range`、`selected_range`、`begin_or_update_composition_with_selection`。
+- [x] 表格 cell 已接入 platform input 的基本 text/range/bounds 路径。
+- [x] code language toolbar 已有独立编辑状态和 UTF-16/UTF-8 转换。
+- [x] 已有相关单测覆盖 UTF-16/UTF-8 helper、composition fallback、表格 composition 的一部分行为。
+
+### 4.2 已收敛的输入能力
+
+- [x] 当前输入状态已收敛到 runtime `EditingSession` 和 GUI `SingleLineTextInputElement` 两条边界：正文/表格 cell 由 session 持有，toolbar/code language 由单行输入组件持有。
+- [x] 普通 block、表格 cell、code language 输入框都接入明确的 platform input target guard，旧 target 不能继续写入当前输入对象。
+- [x] `selected_text_range()` 优先从 `EditingSession.selected_range` 输出，collapsed caret 也是 selection。
+- [x] `marked_text_range()`、marked range 绘制、composition selected subrange 已有普通 block、表格 cell、single-line 输入测试覆盖。
+- [x] `bounds_for_range()` 覆盖表格 cell、code language、滚动后的 candidate/caret bounds。
+- [x] `character_index_for_point()` 覆盖表格 cell、滚动、中文/emoji 的命中测试。
+- [x] IME preview/commit 与 undo/history 已有 commit 合并、样式恢复、表格 cell 场景测试。
+- [x] code language toolbar 已复用成熟 single-line input component，并修复双光标、光标偏移、删除键异常。
+- [x] 表格 cell 内 IME 已按 origin cell/session target 工作，合并单元格不会让 covered cell 接收 input。
+
+### 4.3 保留的架构风险
+
+- Root `CditorV2View` 仍然是 GPUI `EntityInputHandler` 的实体承载者，只是通过 `GuiPlatformInputTarget` 和 runtime session guard 收紧到具体输入对象；后续若继续追求 ding-note2 1:1，可再把 handler entity 拆成真正 per-block/per-cell proxy entity。
+- 运行时文档输入和 toolbar 临时输入没有合并成同一个 runtime enum，因为 code language draft 属于 app 层交互状态，不应该把临时 UI draft 写进大文档 runtime truth。
+
+---
+
+## 5. 目标设计
+
+### 5.1 Runtime 输入会话
+
+在 runtime 或 app input 层引入统一输入会话：
 
 ```text
-composition 更新时优先替换已有 marked_range
-如果没有 marked_range，替换 selected_range/caret
-new_selected_range 是 inserted text 内的相对 range
+EditingInputSession
+  block_id: BlockId
+  target: BlockText | TableCell(row, col) | CodeLanguage | InlineToolbarInput
+  selected_range: Range<usize>
+  selection_reversed: bool
+  marked_range: Option<Range<usize>>
+  composition_base_range: Option<Range<usize>>
+  content_version: u64
 ```
 
-### 2.2 `selected_text_range()` 永远返回 block 内 selected_range
+规则：
 
-```rust
-Some(UTF16Selection {
-    range: self.range_to_utf16(&self.selected_range),
-    reversed: self.selection_reversed,
-})
+- caret 不再是另一套真相，caret 只是 collapsed `selected_range`。
+- IME preview 更新时优先替换 `composition_base_range` / `marked_range`。
+- commit 后清空 `marked_range` 和 `composition_base_range`，selected range collapse 到 commit 文本之后。
+- cancel/unmark 后清空 marked，但保留合理 selected range。
+
+### 5.2 可复用 GPUI 输入组件
+
+新增 app 层输入组件，参考 ding-note2 的 block input，但适配 Cditor runtime：
+
+```text
+crates/app/src/gui/input/
+  mod.rs
+  ime.rs
+  session.rs
+  handler.rs
+  single_line.rs
+  rich_text.rs
 ```
 
-这点非常关键：ding-note2 不需要从多个 runtime 状态合成 caret。它的 `selected_range` 永远是当前平台输入的 selection truth。
+职责：
 
-### 2.3 `marked_text_range()` 直接返回 block marked_range
+- `session.rs`：统一 selected/marked/composition 状态。
+- `handler.rs`：统一实现 GPUI `EntityInputHandler` 的 fallback、range 转换、commit/preview。
+- `single_line.rs`：给 code language toolbar、slash menu search 等单行输入用。
+- `rich_text.rs`：给普通 block 和 table cell 用，接 layout cache 和 text bounds。
 
-```rust
-self.marked_range
-    .as_ref()
-    .map(|range| self.range_to_utf16(range))
-```
+### 5.3 BlockInputProxy
 
-IME 平台层每次问 marked range，拿到的就是 block 当前 marked range。
+为了更接近 ding-note2，建议增加轻量 proxy：
 
-### 2.4 `replace_text_in_visible_range` 如何更新 caret
-
-参考文件：
-
-- `/Users/jychen/Desktop/ding-note2/crates/gpui-markdown-editor/src/components/block/runtime/mod.rs`
-
-核心逻辑：
-
-```rust
-let inserted_range = clean_range.start..clean_range.start + new_text.len();
-let marked_range = if mark_inserted_text && !new_text.is_empty() {
-    Some(result.map_range(&inserted_range))
-} else {
-    None
-};
-let selected_range = selected_range_relative.as_ref().map(|relative| {
-    let absolute = clean_range.start + relative.start..clean_range.start + relative.end;
-    result.map_range(&absolute)
-});
-let cursor = selected_range
-    .as_ref()
-    .map(|range| range.end)
-    .unwrap_or_else(|| result.map_offset(clean_range.start + new_text.len()));
-
-self.apply_title_edit(
-    result.tree,
-    cursor,
-    marked_range,
-    selected_range.clone(),
-    ...,
-    cx,
-);
-```
-
-语义：
-
-1. 插入文本后，cursor 默认在 inserted end。
-2. 如果 IME 给了 selected subrange，则 cursor 在 subrange end。
-3. marked range 是插入文本映射后的真实 range。
-4. 不会调用“focus block 到末尾”。
-
-### 2.5 `cursor_offset()` 只依赖 selected_range
-
-```rust
-pub fn cursor_offset(&self) -> usize {
-    if self.selection_reversed {
-        self.selected_range.start
-    } else {
-        self.selected_range.end
-    }
+```text
+BlockInputProxy {
+  view: Entity<CditorV2View>,
+  target: InputTarget,
 }
 ```
 
-这说明 ding-note2 没有单独的 `editing.caret_anchor.text_offset` 和 selection 分叉。caret 是 selected_range collapsed 的特例。
+`handle_input` 注册时必须携带 target：
 
-### 2.6 `window.handle_input` 的注册位置
-
-参考文件：
-
-- `/Users/jychen/Desktop/ding-note2/crates/gpui-markdown-editor/src/components/block/element.rs`
-
-核心逻辑：
-
-```rust
-if focus_handle.is_focused(window) {
-    let text_bounds = source_text_bounds(bounds, prepaint.source_line_number_gutter_width);
-    window.handle_input(
-        &focus_handle,
-        ElementInputHandler::new(text_bounds, self.input.clone()),
-        cx,
-    );
-}
+```text
+普通 block: InputTarget::Block(block_id)
+表格 cell: InputTarget::TableCell(block_id, row, col)
+代码语言输入: InputTarget::CodeLanguage(block_id)
 ```
 
-要点：
-
-1. 只有当前 block focus handle focused 时才注册 input。
-2. handler 对象是 block 自己，不是 root editor。
-3. bounds 是当前 block 的 text bounds。
-4. `character_index_for_point`、`bounds_for_range` 都在 block 上直接用自己的 layout。
-
-### 2.7 `on_key_down` 不处理普通字符
-
-参考文件：
-
-- `/Users/jychen/Desktop/ding-note2/crates/gpui-markdown-editor/src/components/block/interactions.rs`
-
-```rust
-pub(crate) fn on_block_key_down(...) {
-    if event.keystroke.key != "tab" {
-        return;
-    }
-    ...
-}
-```
-
-普通字符不从 keydown 插入。文字输入统一走平台输入/IME。
+proxy 每次被 GPUI 调用时先校验 target 是否仍然是当前 focused target。校验失败时拒绝输入或安全同步，不能 fallback 到末尾。
 
 ---
 
-## 3. V2 当前链路
+## 6. 实施任务清单
 
-### 3.1 `RichTextElement.paint()` 注册 input
+### A. 文档与基线
 
-文件：`src/gui/text/element.rs`
+- [x] A-001 阅读 cditor 开发助手规范，确认方案必须贴合大文档架构。
+- [x] A-002 对照 `/Users/jychen/Desktop/ding-note2/crates/gpui-markdown-editor/src/components/block/input.rs` 梳理 `EntityInputHandler` 契约。
+- [x] A-003 对照 ding-note2 `Block` runtime state，确认 selected/marked/layout/bounds 是一组状态。
+- [x] A-004 写成本迁移文档，列出完整 IME 定义、现状差距、任务清单。
+- [x] A-005 补一份最小手动验收步骤：普通 block、table cell、code language 分别输入中文 IME。
 
-```rust
-if self.input_handler.focused {
-    window.handle_input(
-        &self.input_handler.focus,
-        ElementInputHandler::new(bounds, self.input_handler.view.clone()),
-        cx,
-    );
-}
-```
+手动验收步骤：
 
-差异：
+1. 普通 block：在 `ab|cd` 中间开始中文 IME composition，preview 显示 `ab你cd`，commit 后 caret 留在 `ab你|cd`，undo 一次恢复 `abcd`。
+2. 表格 cell：插入 2x2 表格，在第一个 cell 的 `a|b` 中间输入中文和 emoji，preview/commit 都留在 cell 内，切换 block 后内容不丢。
+3. Code language toolbar：打开代码块语言输入，输入中文/日文 composition，候选框贴着输入框 caret，delete/backspace 能删除当前字符，不出现双光标。
 
-| 项 | ding-note2 | V2 |
-|---|---|---|
-| focus handle | block focus handle | root view focus handle |
-| handler entity | block entity | root `CditorV2View` |
-| state owner | block.selected_range / marked_range | root runtime 合成 |
-| bounds | block text bounds | rich text element bounds，但 handler 内再找 focused block cache |
+### B. UTF-16 / UTF-8 与 char boundary
 
-### 3.2 `CditorV2View` 实现 `EntityInputHandler`
+- [x] B-001 已有 UTF-16 <-> UTF-8 offset/range helper。
+- [x] B-002 helper 已覆盖 surrogate pair 基础测试。
+- [x] B-003 平台 text geometry 已 clamp 到 UTF-8 char boundary，避免中文 byte boundary panic。
+- [x] B-004 增加组合字符测试，例如 `e\u{301}`、韩文、日文假名。
+- [x] B-005 增加所有 `Range<usize>` 输入入口的 char-boundary audit，禁止直接切字符串。
 
-文件：`src/gui/app/cditor_v2_view.rs`
+### C. 统一 InputSession
 
-```rust
-fn selected_text_range(...) -> Option<UTF16Selection> {
-    let runtime = self.ready_runtime()?;
-    platform_selected_text_range(runtime)
-}
-```
+- [x] C-001 新增统一输入目标集合：runtime `InputTarget` 覆盖普通 block/table cell，app `GuiPlatformInputTarget` 在同一 guard 语义下补齐 code language/toolbar single-line input。
+- [x] C-002 基于现有 `EditingSession` 增加输入会话状态，显式保存 `selected_range`、`selection_reversed`、`marked_range`、composition base range。
+- [x] C-003 把 collapsed caret 统一同步为 `selected_range = offset..offset`。
+- [x] C-004 `focus_block_at_offset` 同步 session selected range。
+- [x] C-005 `focus_table_cell_at_offset` 同步 session target 和 selected range。
+- [x] C-006 鼠标拖选同步 session selection/reversed。
+- [x] C-007 键盘移动、删除、回车、Tab 后同步 session。
+- [x] C-008 session 带 `content_version`，旧 layout/旧 text 查询会拒绝，避免 stale input session 继续写入新 payload。
 
-`platform_selected_text_range` 当前从这些状态合成：
+### D. 对齐 EntityInputHandler fallback
+
+- [x] D-001 `replace_and_mark_text_in_range(None, ...)` 已局部使用 active composition base range 优先。
+- [x] D-002 `selected_text_range()` 优先从 `EditingSession.selected_range` 输出 UTF-16 selection。
+- [x] D-003 `marked_text_range()` 优先从 `EditingSession.marked_range` 输出 UTF-16 range。
+- [x] D-004 `replace_text_in_range()` fallback 固定为 `explicit range -> marked_range/composition range -> selected_range`。
+- [x] D-005 `replace_and_mark_text_in_range()` fallback 固定为 `explicit range -> composition_base_range/marked_range -> selected_range`。
+- [x] D-006 `new_selected_range_utf16` 转成 inserted text 内 UTF-8 relative range，并用于 commit/preview 后 selection。
+- [x] D-007 commit 后清空 marked/composition base，selection collapse 到 commit 文本后。
+- [x] D-008 unmark/cancel 后清空 marked，但 selection 不跳尾。
+- [x] D-009 禁止 IME fallback 直接使用 text_len，除非文本为空且没有 session。
+
+### E. BlockInputProxy / 可复用组件
+
+- [x] E-001 设计 `BlockInputProxy` 或等价 `InputHandlerAdapter`。
+- [x] E-002 `handle_input` 注册时同步写入 `GuiPlatformInputTarget`，root handler 不再只靠 focused block/cell 推断。
+- [x] E-003 input handler guard 校验 GUI target 与 runtime session target 一致，旧 target 会被拒绝。
+- [x] E-004 同一帧只允许一个 input target 注册平台输入。
+- [x] E-005 普通 block 使用同一 platform input adapter。
+- [x] E-006 表格 cell 使用同一 platform input adapter。
+- [x] E-007 code language toolbar 改用同一 single-line input component。
+- [x] E-008 slash menu query 复用正文输入会话；toolbar search 已迁移到同一 single-line input component。
+- [x] E-009 code language toolbar 的 GPUI input handler 已校验 `GuiPlatformInputTarget::CodeLanguage`，stale block/table/code target 不能再驱动语言输入。
+
+`InputHandlerAdapter` 设计：
 
 ```text
-active_composition_selected_range
-  -> active_composition_marked_range end
-  -> focused_text_selection_range
-  -> editing.caret_anchor.text_offset
+InputHandlerAdapter
+  view: Entity<CditorV2View>
+  target: GuiPlatformInputTarget
+  bounds: Bounds<Pixels>
 ```
 
-这比 ding-note2 复杂很多。任何一个状态在输入周期里不一致，就会给 GPUI 错的 UTF16 selection。
+规则：
 
-### 3.3 `replace_text_in_range`
+- `RichTextElement` / table cell / single-line toolbar 注册 `handle_input` 时创建 adapter，target 固定为当前 block/cell/code-language。
+- adapter 的 `EntityInputHandler` 方法只做 target guard 和坐标转发，真实输入状态仍由 runtime `EditingSession` 或 toolbar edit state 持有。
+- adapter target 和 runtime/session target 不一致时返回 `None` / 拒绝写入，不能 fallback 到 focused block 末尾。
+- 普通 block 与 table cell 后续迁移为同一 adapter，只保留 root handler 作为兼容层，最终删掉 root 根据 focused block/cell 猜 target 的路径。
 
-```rust
-let range = ime_replacement_range(runtime, range_utf16);
-runtime.replace_text_in_focused_range(range, text)
-```
+### F. Layout / bounds / mouse hit
 
-如果 GPUI 给 explicit range：走 `ime_replacement_range`。
-如果 GPUI 不给 range：交给 runtime 用 composition/selection/caret fallback。
+- [x] F-001 普通 block 已有 text layout cache 查询能力。
+- [x] F-002 表格 cell 已有 cell layout cache 查询能力。
+- [x] F-003 `bounds_for_range()` 对普通 block 使用 session target 校验后的 layout cache。
+- [x] F-004 `bounds_for_range()` 对 table cell 返回 cell 内真实 caret/range bounds。
+- [x] F-005 `bounds_for_range()` 对 code language single-line input 返回真实滚动后的 caret bounds。
+- [x] F-006 `character_index_for_point()` 对普通 block 支持滚动、padding、list marker。
+- [x] F-007 `character_index_for_point()` 对 table cell 支持 cell origin、padding、row/col span。
+- [x] F-008 hit-test 失败时不能 `focus_block()` 到末尾；要保持旧 session 或使用最近 offset fallback。
+- [x] F-009 增加滚动后点击中文/emoji 中间的命中测试。
 
-### 3.4 `replace_and_mark_text_in_range`
+### G. 渲染体验
 
-```rust
-let range = ime_replacement_range(runtime, range_utf16).unwrap_or_else(|| {
-    let caret = runtime.editing.as_ref()
-        .map(|editing| editing.caret_anchor.text_offset as usize)
-        .unwrap_or_else(|| runtime.focused_text().map(str::len).unwrap_or(0));
-    caret..caret
-});
-runtime.begin_or_update_composition_with_selection(block_id, range, new_text, selected_range)
-```
+- [x] G-001 普通文本 caret/selection 已有基础绘制。
+- [x] G-002 表格 cell caret/marked range 已有基础绘制。
+- [x] G-003 marked text 要有稳定 underline/background，不和 selection 冲突。
+- [x] G-004 composition 期间只显示一个 caret，不能出现 editor caret + toolbar caret 双光标。
+- [x] G-005 单行输入框文本、placeholder、caret、IME candidate rect 不偏移。
+- [x] G-006 表格 cell 聚焦不应造成字体缩放、文字偏移或高度抖动。
+- [x] G-007 code language toolbar 输入框复用组件后，删除键、中文 IME、候选框位置全验收。
 
-这里是一个高风险点：ding-note2 的 fallback 是 `marked_range -> selected_range`，V2 当前 fallback 是 `caret_anchor`。如果 `caret_anchor` 已经被任何路径重置到末尾，IME composition 就从末尾开始。
+### H. Undo / history / markdown style
 
-### 3.5 root render 中主动 focus
+- [x] H-001 IME preview 不应每次 update 都产生用户可见 undo step。
+- [x] H-002 IME commit 应合并为合理的 typing undo step。
+- [x] H-003 undo 后恢复文本和样式，包括 markdown inline style。
+- [x] H-004 粘贴给 Cditor 自己保留结构/样式；粘贴到外部仍输出纯文本。
+- [x] H-005 markdown shortcut 后 caret/selection 需要像 ding-note2 一样通过映射结果修正。
 
-文件：`src/gui/app/cditor_v2_view.rs`
+### I. 表格 cell 完整 IME
 
-```rust
-if !focus.is_focused(window) {
-    window.focus(&focus, cx);
-}
-```
+- [x] I-001 表格 cell 可以保存文本 payload，不再因换 block 消失。
+- [x] I-002 表格 cell 已有基础 focus/caret offset。
+- [x] I-003 表格 cell 输入使用统一 `EditingSession` 输入会话状态。
+- [x] I-004 表格 cell IME preview 不跳出 cell。
+- [x] I-005 表格 cell commit 后 caret 留在 cell 内正确位置。
+- [x] I-006 表格 cell 中文 range 不 panic；emoji/中日韩组合 UTF-16 range 已有专项测试。
+- [x] I-007 表格 cell Tab/Enter/Arrow 与 IME session 不冲突。
+- [x] I-008 合并单元格后，被覆盖 cell 不接受 input，origin cell input bounds 正确。
 
-这和 ding-note2 不同。ding-note2 是 block 获得 focus 后，该 block 注册 input；V2 是 root 每次 render 保证 root focused。潜在风险：
+### J. 测试矩阵
 
-1. 鼠标点击中间后，root focus 变化触发平台 input session 重建。
-2. 平台随后调用 `selected_text_range()`，如果 runtime caret 尚未完成更新或 focused block 不对，就可能得到末尾。
-3. 多个 focused block / projection 重建时，root focus 无法区分具体 block。
+- [x] J-001 普通英文：点击 `ab|cd` 输入 `X` => `abXcd`。
+- [x] J-002 中文 IME：点击 `ab|cd` composition `你` preview/commit 不跳尾。
+- [x] J-003 日文 IME：多阶段 update 不替换错 range。
+- [x] J-004 韩文 IME：组合 update 不切错字符。
+- [x] J-005 emoji：UTF-16 range 不拆 surrogate pair。
+- [x] J-006 selection：选中 `bc` 输入 `X` => `aXd`。
+- [x] J-007 marked update：第二次 composition update 替换 marked，不插入到末尾。
+- [x] J-008 滚动后点击中间输入，candidate rect 和 caret 都正确。
+- [x] J-009 table cell 中文 IME preview/commit。
+- [x] J-010 table cell emoji input。
+- [x] J-011 code language toolbar 中文 IME 和删除键。
+- [x] J-012 slash menu search 中文 IME 和滚轮。
+- [x] J-013 undo after IME commit。
+- [x] J-014 paste styled content into self, plain text to outside.
+- [x] J-015 code language toolbar target guard 单测：匹配 target 允许，stale block/table/code target 拒绝。
 
 ---
 
-## 4. 为什么“打字跳到最后”仍可能发生
+## 7. 推荐实施顺序
 
-下面按可能性排序。
-
-### 4.1 高概率：IME fallback 使用了被重置后的 `editing.caret_anchor`
-
-触发链：
-
-```text
-点击文本中间
-  -> mouse down 计算 offset
-  -> runtime.set_caret_offset(block, offset)
-  -> render/root focus/input session 触发 GPUI 查询
-  -> replace_and_mark_text_in_range(None, text, ...)
-  -> V2 fallback 到 editing.caret_anchor
-```
-
-如果中间任何路径调用 `focus_block(block_id)`，caret_anchor 会变成 text_len。
-
-当前仍可能调用 `focus_block` 的路径：
-
-| 路径 | 文件 | 风险 |
-|---|---|---|
-| `focus_block_from_gui_at_position` 无 offset 时 | `cditor_v2_view.rs` | hit-test 失败时，如果 block 未 focused，直接末尾 |
-| gutter click | `cditor_v2_view.rs` | gutter focus 到末尾 |
-| `set_document_text_selection` focus block 不同时 | `document_runtime.rs` | 跨 block/focus block 时先末尾再设 focus offset |
-| `begin_or_update_composition_with_selection` block 不同时 | `document_runtime.rs` | IME 进来时若 focused_block 不对，先末尾 |
-| `ensure_runtime_focus_for_insert_char` | `cditor_v2_view.rs` | 普通字符 keydown 已应停用，但代码还在 |
-
-### 4.2 高概率：V2 不是 per-block `EntityInputHandler`
-
-因为 handler 是 root view，GPUI 的 input session 只知道 root focus。它调用：
-
-- `selected_text_range()`
-- `marked_text_range()`
-- `text_for_range()`
-- `bounds_for_range()`
-- `character_index_for_point()`
-
-这些函数都要依赖 `runtime.focused_block_id()`。如果 focused block 和用户实际点击/输入 block 有一帧不一致，就会拿错 text/range。ding-note2 没有这个问题，因为当前 block 自己就是 handler。
-
-### 4.3 中概率：`handle_input` bounds 与 handler focused block 不一致
-
-V2 每个 focused rich text element 注册：
-
-```rust
-ElementInputHandler::new(bounds, view.clone())
-```
-
-但是 root handler 的 `character_index_for_point` 又去找：
-
-```rust
-runtime.focused_text_for_platform_input()
-current_text_layout_cache(runtime, block_id)
-```
-
-如果 bounds 来自 A block，而 `focused_block_id` 是 B block，平台 range/point 查询就错。
-
-### 4.4 中概率：点击 hit-test 失败导致 focus 到末尾
-
-`focus_block_from_gui_at_position`：
-
-```rust
-let offset = position.and_then(|position| self.text_offset_for_block_at_position(block_id, position));
-if let Some(offset) = offset {
-    runtime.focus_block_at_offset(block_id, offset);
-} else {
-    if runtime.focused_block_id() != Some(block_id) {
-        runtime.focus_block(block_id); // 到末尾
-    }
-}
-```
-
-如果 layout cache 过期、block rect 没建好、fallback origin 算错，`offset` 为 `None`，新 focused block 就直接到末尾。
-
-### 4.5 中概率：markdown shortcut / inline parser 改写后 caret 映射不完整
-
-ding-note2 的 `replace_text_in_visible_range` 在 rich tree reparse 后通过 `result.map_offset(...)` 映射 cursor。
-
-V2 当前 `replace_text_in_focused_range`：
-
-```rust
-editing.caret_anchor.text_offset = inserted.end as u64;
-sync_payload_from_model_after_replace(...);
-self.apply_inline_markdown_shortcut(block_id)?;
-```
-
-如果 `apply_inline_markdown_shortcut` 改写 payload/text 后没有同步修正 caret，就可能出现 caret 与渲染文本不同步。这个主要影响 markdown shortcut，不一定是普通打字跳尾的主因，但必须纳入迁移。
+1. 先实现 `InputTarget` + `EditingInputSession`，让状态变成单一来源。
+2. 改 `EntityInputHandler` fallback，全量对齐 ding-note2：`range -> marked -> selected`。
+3. 把普通 block 和 table cell 都接到 session。
+4. 抽 `single_line` 输入组件，替换 code language toolbar 当前临时输入。
+5. 引入 `BlockInputProxy`，让 `handle_input` 携带具体 target，减少 root handler 推断。
+6. 补 bounds/hit-test 测试，尤其是滚动、表格、中文、emoji。
+7. 补 undo/history/clipboard 的 IME 场景。
+8. 每完成一个小项，更新本文 checkbox。
 
 ---
 
-## 5. V2 应该迁移成什么样
+## 8. 当前不要继续走的方向
 
-### 5.1 最接近 ding-note2 的目标结构
-
-在保持 V2 大文档 runtime truth 的前提下，新增一个“当前编辑 block 输入会话”层，而不是直接让 root view 模拟 block handler。
-
-```text
-DocumentRuntime
-  ├─ document/index/payload/layout/scroll truth
-  └─ EditingInputSession
-       ├─ block_id
-       ├─ selected_range: Range<usize>
-       ├─ selection_reversed: bool
-       ├─ marked_range: Option<Range<usize>>
-       ├─ marked_text: Option<String> / composition state
-       ├─ cursor_offset() = selected_range start/end
-       └─ content_version
-```
-
-关键：**collapsed caret 也必须表现为 selected_range**，不要让平台输入在 caret 和 selection 两套状态之间来回猜。
-
-### 5.2 root handler 可保留，但语义必须变成“当前 EditingInputSession handler”
-
-如果暂时不做 per-block entity，也必须让 root `EntityInputHandler` 完全代理当前 editing session：
-
-```text
-selected_text_range() 只返回 EditingInputSession.selected_range
-marked_text_range()   只返回 EditingInputSession.marked_range
-replace_text_in_range(None) fallback = marked_range -> selected_range
-replace_and_mark_text_in_range(None) fallback = marked_range -> selected_range
-```
-
-不能在 IME fallback 中直接读 `editing.caret_anchor`；`caret_anchor` 应该由 `selected_range` 派生或同步。
-
-### 5.3 更完整的 1:1 方案：BlockInputProxy
-
-新增一个轻量 proxy，不作为 10w 文档真相，只作为当前 focused block 的 GPUI input adapter：
-
-```text
-RichTextElement(focused block)
-  -> window.handle_input(&block_input_focus, ElementInputHandler::new(text_bounds, BlockInputProxy))
-BlockInputProxy
-  -> 持有 view entity + block_id
-  -> EntityInputHandler 每次先校验 block_id == runtime.focused_block_id()
-  -> 读写 runtime.editing_input_session
-```
-
-这样可以对齐 ding-note2 的 per-block handler，同时不破坏 V2 “runtime 是文档真相”的架构。
-
----
-
-## 6. 迁移任务清单
-
-### A. 先补观察与复现，不再盲改
-
-- [x] A-001 增加输入链路 trace 开关：记录 `selected_text_range / marked_text_range / replace_text_in_range / replace_and_mark_text_in_range / focus_block / set_caret_offset`。
-- [x] A-002 trace 字段必须包含：block_id、text_len、caret_anchor、selected_range、marked_range、range_utf16、converted_utf8_range、new_text、content_version。
-- [ ] A-003 做一个最小复现脚本/手动步骤文档：点击 `abcdef` 的 `c|d` 中间，输入 `X`，记录每一步 trace。
-- [x] A-004 明确到底是哪一步把 caret 变成 text_len：trace 确认不是 block 错位，而是 `replace_and_mark_text_in_range(None, ...)` 在 active composition 时 fallback 到 preview caret，导致 base range 从 marked base range 漂移到末尾/错误字符边界。
-
-### B. 对齐 ding-note2 的 input state 模型
-
-- [ ] B-001 在 runtime 引入或重构 `EditingInputSession`，显式保存 `selected_range`、`selection_reversed`、`marked_range`。
-- [ ] B-002 collapsed caret 统一表示为 `selected_range = offset..offset`。
-- [ ] B-003 `editing.caret_anchor.text_offset` 只作为 scroll/caret geometry anchor，不作为平台输入 fallback 的唯一 truth。
-- [ ] B-004 `set_caret_offset` 同步设置 `selected_range = offset..offset`。
-- [ ] B-005 `set_document_text_selection` 同步设置 session selection，包括 reversed。
-- [ ] B-006 `move_caret_left/right/up/down` 同步更新 session selected_range。
-- [ ] B-007 `delete/enter/tab` 后同步 session selected_range。
-
-### C. 对齐 `EntityInputHandler` 语义
-
-- [ ] C-001 `selected_text_range()` 只从当前 editing input session 输出 UTF16 selection。
-- [ ] C-002 `marked_text_range()` 只从 session marked_range 输出 UTF16 range。
-- [ ] C-003 `replace_text_in_range` 的 fallback 改为：`explicit UTF16 range -> marked_range -> selected_range`。
-- [x] C-004 `replace_and_mark_text_in_range` 的 fallback 改为：`explicit UTF16 range -> active composition base/marked range -> selected_range -> caret`。
-- [ ] C-005 `new_selected_range_utf16` 按 ding-note2 转为 inserted text 内 UTF8 relative range。
-- [ ] C-006 替换后 cursor = selected subrange end，否则 inserted end。
-- [ ] C-007 composition update 后 session marked_range = inserted mapped range。
-- [ ] C-008 commit composition 后 clear marked_range，selected_range collapse 到 inserted end。
-- [ ] C-009 cancel/unmark 后 clear marked_range，但 selected_range 保持合理 caret。
-
-### D. 修 root handler / per-block handler 架构背离
-
-- [ ] D-001 评估并选择：保留 root handler 但严格代理 session，还是新增 `BlockInputProxy`。
-- [ ] D-002 推荐实现 `BlockInputProxy { view, block_id }`，让 `handle_input` 至少携带 block_id。
-- [ ] D-003 `handle_input` 注册时使用当前 block 的 text bounds，并在 handler 中校验 block_id。
-- [ ] D-004 如果 block_id 与 runtime.focused_block_id 不一致，拒绝输入或先安全同步，不允许 fallback 到末尾。
-- [ ] D-005 root render 不应无条件 `window.focus(&root_focus)` 干扰 block input session；需要改为用户交互后 focus，或 block input proxy focus。
-- [ ] D-006 同一帧只允许一个 focused block 注册 input handler。
-
-### E. 点击/命中测试稳定性
-
-- [ ] E-001 `focus_block_from_gui_at_position` 在 hit-test 失败时不能默认 focus 到末尾；应该保持旧 caret 或 fallback 到最近估算 offset。
-- [ ] E-002 layout cache 过期时 fallback 必须可用，不能返回 `None`。
-- [ ] E-003 fallback origin 要覆盖 list/heading/code/quote padding 与 gutter，不得错位。
-- [ ] E-004 增加点击 `abcdef` 每个字符位置的 offset 单测/集成测试。
-- [ ] E-005 增加 code block 内点击 offset 测试。
-- [ ] E-006 增加滚动后点击 offset 测试，验证 global_scroll_top 参与正确。
-
-### F. markdown shortcut / rich text reparse 后 caret 映射
-
-- [ ] F-001 `apply_inline_markdown_shortcut` 如果改变 visible text，需要返回 caret 映射结果。
-- [ ] F-002 对齐 ding-note2 `result.map_offset(...)` 思路，不能简单保留旧 inserted.end。
-- [ ] F-003 增加 `**abc**`、`[x](url)`、inline code、删除 delimiter 后 caret 位置测试。
-
-### G. 测试矩阵
-
-- [ ] G-001 普通英文：点击 `ab|cd` 输入 `X` => `abXcd`，caret `abX|cd`。
-- [ ] G-002 中文 IME：点击 `ab|cd` composition `你` preview => `ab你cd`，commit 后 caret `ab你|cd`。
-- [ ] G-003 日文 IME：composition 多阶段 update 不跳尾。
-- [ ] G-004 emoji/surrogate pair：UTF16 range 不拆 emoji。
-- [ ] G-005 有 selection：选中 `bc` 输入 `X` => `aXd`。
-- [ ] G-006 有 marked_range：composition update 替换 marked，而不是 selected/caret。
-- [ ] G-007 点击后立即输入，第一字符不跳尾。
-- [ ] G-008 连续快速输入，后续字符不替换前一个字符。
-- [ ] G-009 鼠标拖选后输入，替换 selection。
-- [ ] G-010 滚动后点击中间输入，不跳尾。
-- [ ] G-011 code block 输入、composition、点击 offset。
-- [ ] G-012 list item 输入、composition、点击 offset。
-
----
-
-## 7. Trace 使用方法
-
-已加入环境变量开关，默认关闭，不影响正常性能。
-
-```sh
-CDITOR_TRACE_INPUT=1 cargo run --example minimal_postgres_editor
-```
-
-或者运行当前 GUI example 时加同样环境变量。开启后重点看三类日志：
-
-```text
-[cditor][input][text][handle_input]
-[cditor][input][gui][selected_text_range]
-[cditor][input][gui][replace_and_mark_text_in_range]
-[cditor][input][gui][replace_text_in_range]
-[cditor][input][runtime][focus_block]
-[cditor][input][runtime][set_caret_offset]
-[cditor][input][runtime][replace_text_in_focused_range.range]
-[cditor][input][runtime][replace_text_in_focused_range.end]
-```
-
-### 7.1 判断跳尾原因的读法
-
-#### 情况 1：点击后立刻出现 `focus_block caret_to_text_len`
-
-```text
-[runtime][set_caret_offset] block=1 clamped_offset=3 ...
-[runtime][focus_block] previous_focus=Some(1) next_block=1 caret_to_text_len=6
-```
-
-说明某条路径在点击之后又调用了 `focus_block`，把 caret 重置到末尾。
-
-#### 情况 2：`selected_text_range` 返回末尾
-
-```text
-[gui][selected_text_range] focused=Some(1) selection=Some(UTF16Selection { range: 6..6, ... })
-```
-
-而前面点击 offset 是 3，说明平台输入查询时 runtime selection/caret 已经错了。
-
-#### 情况 3：`replace_and_mark_text_in_range(None)` fallback 到末尾
-
-```text
-[gui][replace_and_mark_text_in_range] range_utf16=None range_from_ime=None resolved_utf8=6..6
-```
-
-说明 GPUI 没给 explicit range，V2 fallback 使用了错误 caret。
-
-#### 情况 4：`handle_input` 注册 block 与 focused block 不一致
-
-```text
-[text][handle_input] block=2 ...
-[gui][selected_text_range] focused=Some(1) ...
-```
-
-说明 root handler 与 block input bounds 解耦，必须上 `BlockInputProxy` 或 per-block session 校验。
-
-### 7.2 本次 trace 的已确认根因
-
-用户提供的 trace 中出现了决定性证据：
-
-```text
-[gui][replace_and_mark_text_in_range] block=1 range_utf16=None range_from_ime=None resolved_utf8=28..28 new_text_len=3
-[runtime][begin_or_update_composition] block=1 requested_range=28..28 clamped_range=27..27 preview_len=3
-```
-
-以及后续：
-
-```text
-[text][handle_input] block=1 ... caret=Some(43) marked=Some(42..43)
-[gui][replace_and_mark_text_in_range] block=1 range_utf16=None range_from_ime=None resolved_utf8=43..43 new_text_len=2
-[runtime][begin_or_update_composition] block=1 requested_range=43..43 clamped_range=42..45
-```
-
-这说明：
-
-1. `handle_input` block 和 focused block 都是 1，不是 block 错位。
-2. `marked_text_range` 能返回 marked range，说明 composition 状态存在。
-3. 但是 GPUI 调用 `replace_and_mark_text_in_range(None, ...)` 时，V2 fallback 用了 `caret..caret`。
-4. 这个 caret 是 preview text 中的 caret，不是 base document text 的 marked range。
-5. runtime 再把 preview caret range 放到 base text 上做 `safe_char_range`，于是 range 被 clamp/snap 到错误字符边界，导致 IME update 越来越偏。
-
-修复：`replace_and_mark_text_in_range(None, ...)` fallback 改成：
-
-```text
-active composition base range -> focused selected range -> caret
-```
-
-也就是已有 composition 时永远复用 base `composition.range_start..composition.range_end`，对齐 ding-note2 的 `marked_range -> selected_range` 规则。
-
----
-
-## 8. 推荐实施顺序
-
-1. **先加 trace，不改行为**：确认真实跳尾点。
-2. **把 runtime input state 收敛为 selected_range/marked_range 模型**：对齐 ding-note2 的状态真相。
-3. **修 EntityInputHandler fallback 顺序**：严格 `range_utf16 -> marked -> selected`。
-4. **修点击 hit-test 失败 fallback**：不允许 `None -> focus_block(end)`。
-5. **再考虑 BlockInputProxy**：如果 root handler 仍有一帧错位，就必须引入 per-block proxy。
-6. **补完整测试矩阵**。
-7. **最后删掉过渡性的 `GuiInputCommand::InsertChar` 普通输入路径**或保留但只作为非平台输入 fallback，默认不触发。
-
----
-
-## 9. 当前必须停止的错误方向
-
-- 不要再用 `focus_block(block_id)` 修输入问题，它语义就是到末尾。
+- 不要再用 `focus_block(block_id)` 修输入问题，因为它语义上会把 caret 放到文本末尾。
 - 不要让 `replace_and_mark_text_in_range(None, ...)` fallback 到 `text_len`。
-- 不要让 root render 无条件抢焦点影响 block input session。
-- 不要只测 runtime `insert_char`，这绕过了 GPUI IME 的真实路径。
-- 不要只测单字符 command path，真实问题在 platform input + selection/caret 同步。
-- 不要把当前 block input 状态散落在 `caret_anchor`、`focused_text_selection`、`document_selection`、`composition` 四套状态里却没有统一投影。
-
----
-
-## 10. 当前代码状态备注
-
-本轮分析前已经做过两类改动：
-
-1. `GuiInputCommand::InsertChar` 不再每次 `focus_block`。
-2. 普通字符 keydown 已改为 `Ignore`，意图让文字走 GPUI input handler。
-3. runtime replacement 优先级已局部调整为 composition 优先于 selection。
-
-但这些仍然不足以宣称完成，因为 V2 的根结构还不是 ding-note2 的 per-block input state 模型。下一步必须按本文 A 组先加 trace，用证据定位跳尾点，再迁移 B/C/D。
+- 不要继续给 toolbar/code language/table cell 各写一套临时输入框。
+- 不要只修 panic，当作 IME 完成。
+- 不要只测 runtime text edit，必须测 GPUI `EntityInputHandler` 路径。
+- 不要让 layout cache 失败时静默把输入 range 改成末尾。

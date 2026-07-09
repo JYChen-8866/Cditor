@@ -1,0 +1,13 @@
+[package]
+name = "cditor-storage-postgres"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+cditor-core = { path = "../core" }
+cditor-storage = { path = "../store" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+uuid = { version = "1", features = ["v4", "serde"] }
