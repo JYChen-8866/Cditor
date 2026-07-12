@@ -1,13 +1,13 @@
 use cditor_core::block::BlockDropTarget;
 
 use crate::gui::block::chrome::BLOCK_GUTTER_WIDTH_PX;
-use crate::gui::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX;
+use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 
 const GUTTER_DRAG_AUTO_SCROLL_EDGE_PX: f64 = 40.0;
 const GUTTER_DRAG_AUTO_SCROLL_MAX_STEP_PX: f64 = 24.0;
 pub(in crate::gui::app) const GUTTER_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
 const GUTTER_DRAG_GUIDELINE_CONTENT_START_BASE_PX: f32 = 8.0 + BLOCK_GUTTER_WIDTH_PX + 8.0;
-const GUTTER_DRAG_GUIDELINE_CONTENT_END_PX: f32 = DEFAULT_DOCUMENT_PAGE_WIDTH_PX - 8.0;
+const GUTTER_DRAG_GUIDELINE_CONTENT_END_PX: f32 = DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0;
 
 pub(in crate::gui::app) fn gutter_drag_guideline_y_px(
     _rects: &[super::geometry::ProjectedBlockRect],
@@ -86,7 +86,7 @@ mod tests {
             indent_px: 0.0,
             text_origin_x_in_block_px: 0.0,
             text_origin_y_in_block_px: 0.0,
-            text_width_px: 860.0,
+            text_width_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX.into(),
             supports_children: false,
         }
     }
@@ -125,7 +125,7 @@ mod tests {
         );
         assert_eq!(
             gutter_drag_guideline_end_x_px(),
-            DEFAULT_DOCUMENT_PAGE_WIDTH_PX - 8.0
+            DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0
         );
         assert!(
             gutter_drag_guideline_end_x_px()

@@ -2,8 +2,17 @@ use crate::layout::{HeightConfidence, HeightEstimate};
 use crate::rich_text::{BlockPayload, RichBlockKind, plain_text_from_spans};
 
 pub const DEFAULT_LAYOUT_WIDTH_PX: f64 = 812.0;
+pub const COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX: f64 = 16.0;
+pub const TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX: f64 = 14.0;
+pub const NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX: f64 = 36.0;
+pub const NOTION_TABLE_CELL_PADDING_Y_PX: f64 = 7.0;
+pub const NOTION_TABLE_CELL_LINE_HEIGHT_PX: f64 = 14.0 * 1.45;
 
 pub const BLOCK_SHELL_PADDING_Y_PX: f64 = 4.0;
+pub const NOTION_BODY_LINE_HEIGHT_PX: f64 = 24.0;
+pub const NOTION_HEADING_1_LINE_HEIGHT_PX: f64 = 39.0;
+pub const NOTION_HEADING_2_LINE_HEIGHT_PX: f64 = 32.0;
+pub const NOTION_HEADING_3_LINE_HEIGHT_PX: f64 = 26.0;
 pub const V1_CODE_TEXT_LINE_HEIGHT_PX: f64 = 24.0;
 pub const V1_CODE_BASE_HEIGHT_PX: f64 = 48.0;
 pub const V1_CODE_INNER_MIN_HEIGHT_PX: f64 = 92.0;
@@ -29,28 +38,28 @@ impl TextBlockChromeMetrics {
 pub fn text_block_chrome_metrics_for_kind(kind: &RichBlockKind) -> TextBlockChromeMetrics {
     match kind {
         RichBlockKind::Heading { level: 1 } => TextBlockChromeMetrics {
-            content_min_height: 48.0,
-            content_padding_y: 10.0,
+            content_min_height: NOTION_HEADING_1_LINE_HEIGHT_PX,
+            content_padding_y: 0.0,
             extra_inner_chrome_y: 0.0,
         },
         RichBlockKind::Heading { level: 2 } => TextBlockChromeMetrics {
-            content_min_height: 42.0,
-            content_padding_y: 8.0,
+            content_min_height: NOTION_HEADING_2_LINE_HEIGHT_PX,
+            content_padding_y: 0.0,
             extra_inner_chrome_y: 0.0,
         },
         RichBlockKind::Heading { level: 3 } => TextBlockChromeMetrics {
-            content_min_height: 36.0,
-            content_padding_y: 6.0,
+            content_min_height: NOTION_HEADING_3_LINE_HEIGHT_PX,
+            content_padding_y: 0.0,
             extra_inner_chrome_y: 0.0,
         },
         RichBlockKind::Heading { .. } => TextBlockChromeMetrics {
-            content_min_height: 32.0,
-            content_padding_y: 4.0,
+            content_min_height: NOTION_HEADING_3_LINE_HEIGHT_PX,
+            content_padding_y: 0.0,
             extra_inner_chrome_y: 0.0,
         },
         RichBlockKind::Callout { .. } => TextBlockChromeMetrics {
-            content_min_height: 44.0,
-            content_padding_y: 10.0,
+            content_min_height: 48.0,
+            content_padding_y: 12.0,
             extra_inner_chrome_y: 0.0,
         },
         RichBlockKind::Code { .. } => TextBlockChromeMetrics {
@@ -60,8 +69,8 @@ pub fn text_block_chrome_metrics_for_kind(kind: &RichBlockKind) -> TextBlockChro
             extra_inner_chrome_y: 0.0,
         },
         _ => TextBlockChromeMetrics {
-            content_min_height: 28.0,
-            content_padding_y: 4.0,
+            content_min_height: NOTION_BODY_LINE_HEIGHT_PX,
+            content_padding_y: 0.0,
             extra_inner_chrome_y: 0.0,
         },
     }
@@ -130,45 +139,49 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
     match kind {
         RichBlockKind::Paragraph => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            22.0,
+            NOTION_BODY_LINE_HEIGHT_PX,
             9.0,
         )),
         RichBlockKind::Heading { level: 1 } => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            36.0,
+            NOTION_HEADING_1_LINE_HEIGHT_PX,
             16.0,
         )),
         RichBlockKind::Heading { level: 2 } => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            32.0,
+            NOTION_HEADING_2_LINE_HEIGHT_PX,
             14.0,
         )),
         RichBlockKind::Heading { .. } => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            28.0,
+            NOTION_HEADING_3_LINE_HEIGHT_PX,
             12.0,
         )),
         RichBlockKind::Quote => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            22.0,
+            NOTION_BODY_LINE_HEIGHT_PX,
             9.0,
         )),
         RichBlockKind::Callout { .. } => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            22.0,
+            NOTION_BODY_LINE_HEIGHT_PX,
             9.0,
         )),
         RichBlockKind::Todo { .. } => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            22.0,
+            NOTION_BODY_LINE_HEIGHT_PX,
             9.0,
         )),
-        RichBlockKind::BulletedList | RichBlockKind::NumberedList => BlockHeightRule::TextLike(
-            text_metrics(text_block_chrome_metrics_for_kind(kind), 22.0, 9.0),
-        ),
+        RichBlockKind::BulletedList | RichBlockKind::NumberedList => {
+            BlockHeightRule::TextLike(text_metrics(
+                text_block_chrome_metrics_for_kind(kind),
+                NOTION_BODY_LINE_HEIGHT_PX,
+                9.0,
+            ))
+        }
         RichBlockKind::Toggle => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            22.0,
+            NOTION_BODY_LINE_HEIGHT_PX,
             9.0,
         )),
         RichBlockKind::Code { .. } => BlockHeightRule::TextLike(
@@ -189,8 +202,12 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
             max_error_hint: 96.0,
         },
         RichBlockKind::Html => BlockHeightRule::TextLike(
-            text_metrics(text_block_chrome_metrics_for_kind(kind), 22.0, 9.0)
-                .with_max_height(640.0),
+            text_metrics(
+                text_block_chrome_metrics_for_kind(kind),
+                NOTION_BODY_LINE_HEIGHT_PX,
+                9.0,
+            )
+            .with_max_height(640.0),
         ),
         RichBlockKind::Table => BlockHeightRule::Table,
         RichBlockKind::Image => BlockHeightRule::Media,
@@ -208,7 +225,7 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
             estimated_height: 160.0,
             max_error_hint: 80.0,
         },
-        RichBlockKind::Divider | RichBlockKind::Separator => BlockHeightRule::Fixed(16.0),
+        RichBlockKind::Divider | RichBlockKind::Separator => BlockHeightRule::Fixed(32.0),
         RichBlockKind::FootnoteDefinition => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
             20.0,
@@ -216,12 +233,12 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
         )),
         RichBlockKind::Comment => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            22.0,
+            NOTION_BODY_LINE_HEIGHT_PX,
             9.0,
         )),
         RichBlockKind::RawMarkdown => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
-            22.0,
+            NOTION_BODY_LINE_HEIGHT_PX,
             9.0,
         )),
         RichBlockKind::Database => BlockHeightRule::Database,
@@ -281,7 +298,13 @@ pub fn estimate_kind_fallback_height(kind: &RichBlockKind) -> HeightEstimate {
             HeightConfidence::Predictive,
             max_error_hint,
         ),
-        BlockHeightRule::Table => HeightEstimate::new(148.0, HeightConfidence::Predictive, 72.0),
+        BlockHeightRule::Table => HeightEstimate::new(
+            3.0 * NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX
+                + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX
+                + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX,
+            HeightConfidence::Predictive,
+            72.0,
+        ),
         BlockHeightRule::Media => HeightEstimate::new(
             IMAGE_BLOCK_ESTIMATED_HEIGHT_PX,
             HeightConfidence::Predictive,
@@ -422,7 +445,9 @@ fn estimate_table_height(payload: &BlockPayload) -> HeightEstimate {
         BlockPayload::Table(table) => table.rows.len().max(1),
         _ => 3,
     };
-    let height = (rows as f64 * 36.0 + 24.0).max(120.0);
+    let height = rows as f64 * NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX
+        + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX
+        + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;
     HeightEstimate::new(height, HeightConfidence::Predictive, 72.0)
 }
 
@@ -432,20 +457,20 @@ mod tests {
     use crate::rich_text::{BlockPayload, InlineSpan};
 
     #[test]
-    fn text_block_chrome_metrics_match_v1_shell_contract() {
+    fn text_block_chrome_metrics_match_notion_shell_contract() {
         let paragraph = text_block_chrome_metrics_for_kind(&RichBlockKind::Paragraph);
-        assert_eq!(paragraph.content_min_height, 28.0);
-        assert_eq!(paragraph.content_padding_y, 4.0);
-        assert_eq!(paragraph.outer_min_height(), 36.0);
-        assert_eq!(paragraph.outer_chrome_y(), 16.0);
+        assert_eq!(paragraph.content_min_height, 24.0);
+        assert_eq!(paragraph.content_padding_y, 0.0);
+        assert_eq!(paragraph.outer_min_height(), 32.0);
+        assert_eq!(paragraph.outer_chrome_y(), 8.0);
 
         let callout = text_block_chrome_metrics_for_kind(&RichBlockKind::Callout {
             variant: crate::rich_text::CalloutVariant::Note,
         });
-        assert_eq!(callout.content_min_height, 44.0);
-        assert_eq!(callout.content_padding_y, 10.0);
-        assert_eq!(callout.outer_min_height(), 52.0);
-        assert_eq!(callout.outer_chrome_y(), 28.0);
+        assert_eq!(callout.content_min_height, 48.0);
+        assert_eq!(callout.content_padding_y, 12.0);
+        assert_eq!(callout.outer_min_height(), 56.0);
+        assert_eq!(callout.outer_chrome_y(), 32.0);
 
         let code = text_block_chrome_metrics_for_kind(&RichBlockKind::Code { language: None });
         assert_eq!(code.content_min_height, 92.0);
@@ -466,7 +491,7 @@ mod tests {
             RichBlockKind::Quote,
         ] {
             let estimate = estimate_text_payload_height(&kind, "item", DEFAULT_LAYOUT_WIDTH_PX);
-            assert_eq!(estimate.height, 38.0);
+            assert_eq!(estimate.height, 32.0);
         }
     }
 
@@ -491,14 +516,14 @@ mod tests {
     fn multiline_list_todo_quote_callout_and_code_have_non_overlapping_outer_heights() {
         let three_lines = "a\nb\nc";
         let cases = [
-            (RichBlockKind::BulletedList, 82.0),
-            (RichBlockKind::Todo { checked: false }, 82.0),
-            (RichBlockKind::Quote, 82.0),
+            (RichBlockKind::BulletedList, 80.0),
+            (RichBlockKind::Todo { checked: false }, 80.0),
+            (RichBlockKind::Quote, 80.0),
             (
                 RichBlockKind::Callout {
                     variant: crate::rich_text::CalloutVariant::Warning,
                 },
-                94.0,
+                104.0,
             ),
             (RichBlockKind::Code { language: None }, 128.0),
         ];
@@ -506,11 +531,7 @@ mod tests {
         for (kind, minimum_height) in cases {
             let estimate =
                 estimate_text_payload_height(&kind, three_lines, DEFAULT_LAYOUT_WIDTH_PX);
-            assert!(
-                estimate.height >= minimum_height,
-                "{kind:?} estimated too short: {} < {minimum_height}",
-                estimate.height
-            );
+            assert_eq!(estimate.height, minimum_height, "{kind:?}");
         }
     }
 
@@ -524,21 +545,46 @@ mod tests {
             DEFAULT_LAYOUT_WIDTH_PX,
         );
 
-        assert!(estimate.height > 36.0);
+        assert!(estimate.height > 32.0);
     }
 
     #[test]
     fn fixed_and_stable_kinds_have_non_zero_heights() {
         assert_eq!(
             estimate_kind_fallback_height(&RichBlockKind::Divider).height,
-            16.0
+            32.0
         );
         assert!(estimate_kind_fallback_height(&RichBlockKind::Whiteboard).height >= 240.0);
         assert!(estimate_kind_fallback_height(&RichBlockKind::Database).height >= 160.0);
     }
 
     #[test]
+    fn table_height_includes_rendered_shell_and_scrollbar_chrome() {
+        let payload = BlockPayload::Table(crate::rich_text::TablePayload {
+            rows: vec![crate::rich_text::TableRowPayload {
+                cells: vec![crate::rich_text::TableCellPayload::plain("cell")],
+                height: Default::default(),
+            }],
+            ..Default::default()
+        });
+        let estimate =
+            estimate_block_height(&RichBlockKind::Table, &payload, DEFAULT_LAYOUT_WIDTH_PX);
+
+        assert_eq!(
+            estimate.height,
+            NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX
+                + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX
+                + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX
+        );
+    }
+
+    #[test]
     fn measured_text_inner_height_uses_same_kind_chrome_and_minimums() {
+        assert_eq!(text_line_height_for_kind(&RichBlockKind::Paragraph), 24.0);
+        assert_eq!(
+            normalize_text_inner_measured_height(&RichBlockKind::Paragraph, 24.0).height,
+            32.0
+        );
         assert_eq!(
             text_line_height_for_kind(&RichBlockKind::Code { language: None }),
             24.0
@@ -550,7 +596,23 @@ mod tests {
         );
         assert_eq!(
             normalize_text_inner_measured_height(&RichBlockKind::Divider, 200.0).height,
-            16.0
+            32.0
+        );
+    }
+
+    #[test]
+    fn notion_heading_line_heights_are_shared_with_layout() {
+        assert_eq!(
+            text_line_height_for_kind(&RichBlockKind::Heading { level: 1 }),
+            39.0
+        );
+        assert_eq!(
+            text_line_height_for_kind(&RichBlockKind::Heading { level: 2 }),
+            32.0
+        );
+        assert_eq!(
+            text_line_height_for_kind(&RichBlockKind::Heading { level: 3 }),
+            26.0
         );
     }
 }

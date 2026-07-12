@@ -385,4 +385,7 @@ mod tests {
         );
         assert!(manager.pinned_blocks().contains(&block_base));
     }
+
+    // P-007: 保存后重新打开，表格结构一致
+    mod table;
 }

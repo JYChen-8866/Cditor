@@ -1,4 +1,4 @@
-# CDitor V2 Skeleton Loading 方案
+# Cditor Skeleton Loading 方案
 
 ## 背景
 
@@ -7,7 +7,7 @@ PostgreSQL / 网络后端加载 payload window 时存在真实延迟。当前占
 1. 单个 block payload 未加载时只显示 `Loading placeholder...` 文本，和编辑器真实块形态差异较大。
 2. 整个 render window 还未覆盖 payload 时，`DocumentSurface` 只渲染一个空高度 spacer，用户看到空白页，容易误判为光标丢失或无法编辑。
 
-参考 Liora 的 `skeleton.rs`，CDitor 需要自己的 GPUI skeleton 组件，但不能直接依赖 Liora 的 theme / motion / Config。
+参考 Liora 的 `skeleton.rs`，Cditor 需要自己的 GPUI skeleton 组件，但不能直接依赖 Liora 的 theme / motion / Config。
 
 ## 目标
 

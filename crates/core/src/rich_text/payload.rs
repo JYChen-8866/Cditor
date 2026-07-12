@@ -1,9 +1,10 @@
 use crate::ids::BlockId;
 use crate::layout::StableBox;
+use serde::{Deserialize, Serialize};
 
 use super::{InlineSpan, RichBlockKind, TablePayload, plain_text_from_spans};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BlockPayloadRecord {
     pub block_id: BlockId,
     pub content_version: u64,
@@ -28,7 +29,7 @@ impl BlockPayloadRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BlockPayload {
     RichText {
         spans: Vec<InlineSpan>,
@@ -73,7 +74,7 @@ pub enum BlockPayloadView {
     Error { message: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ImagePayload {
     pub source: String,
     pub alt: String,
@@ -83,19 +84,19 @@ pub struct ImagePayload {
     pub display_width_ratio_milli: Option<u16>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct FilePayload {
     pub name: String,
     pub source: String,
     pub size_bytes: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct WhiteboardPayload {
     pub scene_json: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct EmbedPayload {
     pub url: String,
     pub title: String,

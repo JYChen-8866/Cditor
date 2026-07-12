@@ -1,0 +1,3 @@
+# Non-secret inline AI configuration. Keep API tokens in environment variables.
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-flash"

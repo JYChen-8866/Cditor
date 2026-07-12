@@ -6,11 +6,33 @@ use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::gui::block::table::{TableAxis, TableAxisSelection};
 use crate::gui::clipboard_assets::image_asset_from_clipboard_item;
 use crate::gui::image_preview::close_active_preview_if_escape_enabled;
-use crate::gui::input::{GuiInputCommand, RichClipboardItem, command_for_key_down};
+use crate::gui::input::{GuiInputCommand, command_for_key_down, is_empty_line_ai_shortcut};
 use crate::gui::text::RichTextPlatformLayout;
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::InlineMark;
+use cditor_core::rich_text::{
+    CditorClipboardEnvelope, ClipboardSelection, InlineMark, looks_like_markdown_paste,
+};
 use cditor_runtime::DocumentRuntime;
+
+fn trace_clipboard_markdown(event: &str, details: impl std::fmt::Display) {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let enabled = *ENABLED.get_or_init(|| {
+        std::env::var("CDITOR_TRACE_MARKDOWN")
+            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false)
+    });
+    if enabled {
+        eprintln!("[cditor][markdown][clipboard.{event}] {details}");
+    }
+}
+
+fn clipboard_trace_preview(text: &str) -> String {
+    text.chars()
+        .take(160)
+        .collect::<String>()
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
+}
 
 impl CditorV2View {
     pub(in crate::gui::app) fn on_key_down(
@@ -19,6 +41,36 @@ impl CditorV2View {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.apply_ai_prompt_key_from_gui(event, cx) {
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+        if is_empty_line_ai_shortcut(event) && self.invoke_empty_line_ai_from_gui(cx) {
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+        if self
+            .ready_runtime_ref()
+            .is_some_and(|runtime| runtime.ai_session_snapshot().is_some())
+        {
+            match event.keystroke.key.as_str() {
+                "tab" => {
+                    if self.accept_ai_preview_from_gui(cx) {
+                        cx.stop_propagation();
+                        return;
+                    }
+                }
+                "escape" => {
+                    if self.reject_ai_preview_from_gui(cx) {
+                        cx.stop_propagation();
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
         if self.handle_table_cell_key_down(event, cx) {
             cx.stop_propagation();
             cx.notify();
@@ -33,18 +85,49 @@ impl CditorV2View {
             cx.stop_propagation();
             return;
         }
+        if event.keystroke.key.as_str() == "escape" && self.dismiss_table_menu_from_gui(cx) {
+            cx.stop_propagation();
+            return;
+        }
         if event.keystroke.key.as_str() == "escape" && close_active_preview_if_escape_enabled(cx) {
             cx.stop_propagation();
             cx.notify();
             return;
         }
         let command = command_for_key_down(event);
+        if self.focused_mermaid_is_preview() {
+            if matches!(command, GuiInputCommand::HandleEnter) {
+                self.apply_input_command(GuiInputCommand::InsertParagraphAfterFocused, cx);
+                cx.stop_propagation();
+                cx.notify();
+                return;
+            }
+            if mermaid_preview_blocks_command(command) {
+                cx.stop_propagation();
+                return;
+            }
+        }
         if command.should_stop_propagation() {
             self.apply_input_command(command, cx);
             self.sync_slash_menu_from_runtime(cx);
             cx.stop_propagation();
             cx.notify();
         }
+    }
+
+    fn focused_mermaid_is_preview(&self) -> bool {
+        let Some(runtime) = self.ready_runtime_ref() else {
+            return false;
+        };
+        let Some(block_id) = runtime.focused_block_id() else {
+            return false;
+        };
+        !self.mermaid_source_blocks.contains(&block_id)
+            && runtime
+                .block_payload_record(block_id)
+                .is_some_and(|payload| {
+                    matches!(payload.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
+                })
     }
 
     fn handle_table_cell_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
@@ -131,7 +214,7 @@ impl CditorV2View {
             self.show_debug = !self.show_debug;
             return;
         }
-        if self.readonly {
+        if self.readonly && !matches!(command, GuiInputCommand::CopySelection) {
             return;
         }
         let should_scroll_focus = !matches!(
@@ -140,8 +223,7 @@ impl CditorV2View {
                 | GuiInputCommand::ToggleDebugOverlay
                 | GuiInputCommand::CopySelection
         );
-        let mut next_internal_clipboard = self.internal_clipboard.clone();
-        let selected_table_axis = self.selected_table_axis;
+        let selected_table_axis = self.projected_table_axis_selection();
         {
             let CditorViewState::Ready(runtime) = &mut self.state else {
                 return;
@@ -156,14 +238,26 @@ impl CditorV2View {
                         selected_table_axis_range(runtime, selected_table_axis)
                         && let Some(table) = runtime.table_clipboard_for_range(block_id, range)
                     {
-                        let system_text = table.markdown.clone();
-                        next_internal_clipboard = Some(RichClipboardItem::from_table(table));
-                        cx.write_to_clipboard(ClipboardItem::new_string(system_text));
+                        let (system_text, envelope) =
+                            crate::gui::input::clipboard::envelope_for_selection(
+                                Some(runtime.document_id),
+                                ClipboardSelection::Table { table: table.table },
+                            );
+                        cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
+                            system_text,
+                            &envelope,
+                        ));
+                    } else if let Some(selection) = runtime.clipboard_selection_snapshot() {
+                        let (system_text, envelope) =
+                            crate::gui::input::clipboard::envelope_for_selection(
+                                Some(runtime.document_id),
+                                selection,
+                            );
+                        cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
+                            system_text,
+                            &envelope,
+                        ));
                     } else if let Some(text) = runtime.selected_focused_text() {
-                        next_internal_clipboard = runtime
-                            .selected_focused_rich_text()
-                            .map(RichClipboardItem::from_rich)
-                            .or_else(|| Some(RichClipboardItem::plain_text(text.clone())));
                         cx.write_to_clipboard(ClipboardItem::new_string(text));
                     }
                 }
@@ -172,16 +266,32 @@ impl CditorV2View {
                         selected_table_axis_range(runtime, selected_table_axis)
                         && let Some(table) = runtime.table_clipboard_for_range(block_id, range)
                     {
-                        let system_text = table.markdown.clone();
-                        next_internal_clipboard = Some(RichClipboardItem::from_table(table));
-                        cx.write_to_clipboard(ClipboardItem::new_string(system_text));
-                    } else if let Some(text) = runtime.selected_focused_text() {
-                        next_internal_clipboard = runtime
-                            .selected_focused_rich_text()
-                            .map(RichClipboardItem::from_rich)
-                            .or_else(|| Some(RichClipboardItem::plain_text(text.clone())));
-                        cx.write_to_clipboard(ClipboardItem::new_string(text));
-                        let changed = if runtime.has_cross_block_text_selection() {
+                        let (system_text, envelope) =
+                            crate::gui::input::clipboard::envelope_for_selection(
+                                Some(runtime.document_id),
+                                ClipboardSelection::Table { table: table.table },
+                            );
+                        cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
+                            system_text,
+                            &envelope,
+                        ));
+                        if runtime.clear_table_range(block_id, range).unwrap_or(false) {
+                            self.mark_dirty(cx);
+                        }
+                    } else if let Some(selection) = runtime.clipboard_selection_snapshot() {
+                        let selected_blocks = runtime.has_selected_blocks();
+                        let (system_text, envelope) =
+                            crate::gui::input::clipboard::envelope_for_selection(
+                                Some(runtime.document_id),
+                                selection,
+                            );
+                        cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
+                            system_text,
+                            &envelope,
+                        ));
+                        let changed = if selected_blocks {
+                            runtime.delete_selected_block_selection().unwrap_or(false)
+                        } else if runtime.has_cross_block_text_selection() {
                             runtime.delete_document_selection().unwrap_or(false)
                         } else {
                             runtime
@@ -189,6 +299,14 @@ impl CditorV2View {
                                 .unwrap_or(false)
                         };
                         if changed {
+                            self.mark_dirty(cx);
+                        }
+                    } else if let Some(text) = runtime.selected_focused_text() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(text));
+                        if runtime
+                            .replace_text_in_focused_range(None, "")
+                            .unwrap_or(false)
+                        {
                             self.mark_dirty(cx);
                         }
                     }
@@ -200,11 +318,12 @@ impl CditorV2View {
                                 .insert_image_asset_after_focused(asset.payload)
                                 .is_ok()
                         } else if let Some(text) = item.text() {
-                            paste_text_from_clipboard(
-                                runtime,
-                                &text,
-                                next_internal_clipboard.as_ref(),
-                            )
+                            let metadata_selection = item.metadata().and_then(|json| {
+                                CditorClipboardEnvelope::decode_metadata(json, &text)
+                                    .ok()
+                                    .map(|envelope| envelope.selection)
+                            });
+                            paste_text_from_clipboard(runtime, &text, metadata_selection.as_ref())
                         } else {
                             false
                         };
@@ -333,11 +452,28 @@ impl CditorV2View {
                 }
             }
         }
-        self.internal_clipboard = next_internal_clipboard;
         if should_scroll_focus && let CditorViewState::Ready(runtime) = &mut self.state {
             let _ = runtime.scroll_focused_block_into_view();
         }
     }
+}
+
+fn mermaid_preview_blocks_command(command: GuiInputCommand) -> bool {
+    matches!(
+        command,
+        GuiInputCommand::SelectAllFocusedText
+            | GuiInputCommand::CutSelection
+            | GuiInputCommand::PasteClipboard
+            | GuiInputCommand::InsertSoftLineBreak
+            | GuiInputCommand::InsertSpaceOrMarkdownShortcut
+            | GuiInputCommand::DeleteBackward
+            | GuiInputCommand::DeleteForward
+            | GuiInputCommand::ToggleBold
+            | GuiInputCommand::ToggleItalic
+            | GuiInputCommand::ToggleUnderline
+            | GuiInputCommand::ToggleInlineCode
+            | GuiInputCommand::InsertChar(_)
+    )
 }
 
 fn selected_table_axis_range(
@@ -365,36 +501,66 @@ pub(in crate::gui::app) fn ensure_runtime_focus_for_insert_char(runtime: &mut Do
 fn paste_text_from_clipboard(
     runtime: &mut DocumentRuntime,
     text: &str,
-    internal_clipboard: Option<&RichClipboardItem>,
+    metadata_selection: Option<&ClipboardSelection>,
 ) -> bool {
-    let rich_text = internal_clipboard
-        .filter(|item| item.matches_system_text(text))
-        .and_then(|item| item.rich_text.as_ref());
-    let table = internal_clipboard
-        .filter(|item| item.matches_system_text(text))
-        .and_then(|item| item.table.as_ref());
-    if let Some(table) = table {
-        match runtime.paste_table_clipboard_at_focused_cell(table) {
-            Ok(true) => return true,
-            Ok(false) | Err(_) => {}
+    let markdown_detected = looks_like_markdown_paste(text);
+    trace_clipboard_markdown(
+        "received",
+        format_args!(
+            "bytes={} metadata={} detected={} focus={:?} preview=\"{}\"",
+            text.len(),
+            metadata_selection.is_some(),
+            markdown_detected,
+            runtime.focused_block_id(),
+            clipboard_trace_preview(text)
+        ),
+    );
+    if let Some(selection @ ClipboardSelection::Table { .. }) = metadata_selection {
+        match runtime.paste_clipboard_selection(selection) {
+            Ok(true) => {
+                trace_clipboard_markdown("result", "route=table_metadata changed=true");
+                return true;
+            }
+            Ok(false) => {}
+            Err(error) => trace_clipboard_markdown("metadata_error", format_args!("error={error}")),
         }
     }
     match runtime.paste_delimited_table_text_at_focused_cell(text) {
-        Ok(true) => return true,
-        Ok(false) | Err(_) => {}
+        Ok(true) => {
+            trace_clipboard_markdown("result", "route=table changed=true");
+            return true;
+        }
+        Ok(false) => {}
+        Err(error) => trace_clipboard_markdown("table_error", format_args!("error={error}")),
     }
-    if let Some(rich_text) = rich_text {
-        match runtime.replace_focused_range_with_rich_text_spans(&rich_text.spans) {
-            Ok(true) => return true,
-            Ok(false) | Err(_) => {}
+    if markdown_detected {
+        match runtime.insert_markdown_paste(text) {
+            Ok(true) => {
+                trace_clipboard_markdown("result", "route=markdown changed=true");
+                return true;
+            }
+            result => trace_clipboard_markdown(
+                "markdown_error",
+                format_args!("markdown_result={result:?}"),
+            ),
         }
     }
-    match runtime.insert_markdown_paste(text) {
-        Ok(true) => true,
-        Ok(false) | Err(_) => runtime
-            .replace_text_in_focused_range(None, text)
-            .unwrap_or(false),
+    if let Some(selection) = metadata_selection {
+        match runtime.paste_clipboard_selection(selection) {
+            Ok(true) => {
+                trace_clipboard_markdown("result", "route=rich_metadata changed=true");
+                return true;
+            }
+            Ok(false) => {}
+            Err(error) => trace_clipboard_markdown("metadata_error", format_args!("error={error}")),
+        }
     }
+    trace_clipboard_markdown("fallback", "route=plain_text");
+    let changed = runtime
+        .replace_text_in_focused_range(None, text)
+        .unwrap_or(false);
+    trace_clipboard_markdown("result", format_args!("route=plain_text changed={changed}"));
+    changed
 }
 
 fn move_caret_vertically_in_focused_block(
@@ -435,160 +601,5 @@ fn move_caret_vertically_in_focused_block(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use cditor_core::rich_text::{
-        BlockPayload, BlockPayloadRecord, InlineMark, InlineSpan, RichBlockKind, TableCellPayload,
-        TablePayload, TableRowPayload,
-    };
-    use cditor_runtime::RichTextSelectionSnapshot;
-
-    fn paragraph_runtime(text: &str) -> DocumentRuntime {
-        let mut runtime = DocumentRuntime::from_payloads(
-            1,
-            vec![BlockPayloadRecord::rich_text(
-                1,
-                RichBlockKind::Paragraph,
-                text,
-            )],
-            720.0,
-        );
-        runtime.focus_block_at_offset(1, text.len()).unwrap();
-        runtime
-    }
-
-    fn table_runtime(block_id: BlockId, rows: &[&[&str]]) -> DocumentRuntime {
-        let mut table = TablePayload {
-            rows: rows
-                .iter()
-                .map(|row| TableRowPayload {
-                    cells: row
-                        .iter()
-                        .map(|cell| TableCellPayload::plain(*cell))
-                        .collect(),
-                    height: Default::default(),
-                })
-                .collect(),
-            columns: Vec::new(),
-            header_rows: 0,
-            header_cols: 0,
-            header_style: Default::default(),
-        };
-        table.normalize();
-        DocumentRuntime::from_payloads(
-            1,
-            vec![BlockPayloadRecord {
-                block_id,
-                content_version: 1,
-                kind: RichBlockKind::Table,
-                payload: BlockPayload::Table(table),
-            }],
-            720.0,
-        )
-    }
-
-    #[test]
-    fn paste_text_from_clipboard_uses_internal_rich_snapshot_only_when_plain_text_matches() {
-        let mut runtime = paragraph_runtime("hello ");
-        let internal = RichClipboardItem::from_rich(RichTextSelectionSnapshot {
-            text: "bold".to_owned(),
-            spans: vec![InlineSpan {
-                text: "bold".to_owned(),
-                marks: vec![InlineMark::Bold],
-            }],
-        });
-
-        assert!(paste_text_from_clipboard(
-            &mut runtime,
-            "bold",
-            Some(&internal)
-        ));
-
-        let payload = runtime.payload_window.get(1).unwrap();
-        match &payload.payload {
-            BlockPayload::RichText { spans } => {
-                assert_eq!(payload.plain_text(), "hello bold");
-                assert!(
-                    spans
-                        .iter()
-                        .any(|span| span.text == "bold" && span.marks.contains(&InlineMark::Bold))
-                );
-            }
-            _ => panic!("expected rich text payload"),
-        }
-    }
-
-    #[test]
-    fn paste_text_from_clipboard_treats_mismatched_internal_snapshot_as_external_plain_text() {
-        let mut runtime = paragraph_runtime("hello ");
-        let internal = RichClipboardItem::from_rich(RichTextSelectionSnapshot {
-            text: "bold".to_owned(),
-            spans: vec![InlineSpan {
-                text: "bold".to_owned(),
-                marks: vec![InlineMark::Bold],
-            }],
-        });
-
-        assert!(paste_text_from_clipboard(
-            &mut runtime,
-            "plain",
-            Some(&internal)
-        ));
-
-        let payload = runtime.payload_window.get(1).unwrap();
-        match &payload.payload {
-            BlockPayload::RichText { spans } => {
-                assert_eq!(payload.plain_text(), "hello plain");
-                assert!(
-                    spans
-                        .iter()
-                        .all(|span| !span.marks.contains(&InlineMark::Bold))
-                );
-            }
-            _ => panic!("expected rich text payload"),
-        }
-    }
-
-    #[test]
-    fn paste_text_from_clipboard_uses_internal_table_snapshot_when_system_text_matches() {
-        let source = table_runtime(1, &[&["a", "b"], &["c", "d"]]);
-        let snapshot = source
-            .table_clipboard_for_whole_table(1)
-            .expect("table clipboard");
-        let internal = RichClipboardItem::from_table(snapshot.clone());
-        let mut target = table_runtime(2, &[&["x"]]);
-        target.focus_table_cell_at_offset(2, 0, 0, 0).unwrap();
-
-        assert!(paste_text_from_clipboard(
-            &mut target,
-            &snapshot.markdown,
-            Some(&internal)
-        ));
-
-        let payload = target.payload_window.get(2).unwrap();
-        let BlockPayload::Table(table) = &payload.payload else {
-            panic!("expected table payload");
-        };
-        assert_eq!(table.row_count(), 2);
-        assert_eq!(table.column_count(), 2);
-        assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("a"));
-        assert_eq!(table.cell_plain_text(1, 1).as_deref(), Some("d"));
-    }
-
-    #[test]
-    fn paste_text_from_clipboard_treats_external_tsv_as_table_range_when_cell_is_focused() {
-        let mut target = table_runtime(2, &[&["x"]]);
-        target.focus_table_cell_at_offset(2, 0, 0, 0).unwrap();
-
-        assert!(paste_text_from_clipboard(&mut target, "a\tb\nc\td", None));
-
-        let payload = target.payload_window.get(2).unwrap();
-        let BlockPayload::Table(table) = &payload.payload else {
-            panic!("expected table payload");
-        };
-        assert_eq!(table.row_count(), 2);
-        assert_eq!(table.column_count(), 2);
-        assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("a"));
-        assert_eq!(table.cell_plain_text(1, 1).as_deref(), Some("d"));
-    }
-}
+#[path = "keyboard_tests.rs"]
+mod tests;

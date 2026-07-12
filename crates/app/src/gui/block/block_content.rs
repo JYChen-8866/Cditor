@@ -1,12 +1,18 @@
-use gpui::{AnyElement, App, Entity, FocusHandle};
+use gpui::{
+    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div, px,
+};
 
 use crate::gui::app::CditorV2View;
 use crate::gui::block::media::render_image_block;
-use crate::gui::block::placeholder::{render_error, render_loading, render_placeholder};
+use crate::gui::block::placeholder::{
+    render_empty_ai_hint, render_error, render_loading, render_placeholder,
+};
 use crate::gui::block::table::render_table_block;
 use crate::gui::block::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
 };
+use crate::gui::block::{WhiteboardThumbnailCache, render_whiteboard_thumbnail};
+use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::gui::text::{RichTextElement, RichTextLayoutInput};
 use crate::gui::{GuiTheme, rich_text::render_payload_text};
 use cditor_core::edit::SelectionRange;
@@ -24,6 +30,8 @@ pub(crate) fn render_block_content(
     table_range_selection: Option<TableCellRangeSelection>,
     suppress_text_input: bool,
     table_selection: Option<TableAxisSelection>,
+    table_scroll_handle: Option<ScrollHandle>,
+    whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
 ) -> AnyElement {
     match &block.payload {
@@ -39,6 +47,7 @@ pub(crate) fn render_block_content(
                     table_range_selection,
                     table_resize_preview,
                     table_reorder_preview,
+                    table_scroll_handle,
                     view.clone(),
                     focus.clone(),
                 );
@@ -57,12 +66,27 @@ pub(crate) fn render_block_content(
                     cx,
                 );
             }
-            if let Some(input) = RichTextLayoutInput::from_snapshot(block, 860.0, 1, 1) {
-                let selection_range = match &block.selection_range {
-                    Some(SelectionRange::Partial(range)) => Some(range.clone()),
-                    _ => None,
+            if matches!(payload.payload, BlockPayload::Whiteboard(_)) {
+                return render_whiteboard_thumbnail(
+                    block.block_id,
+                    whiteboard_thumbnails,
+                    theme,
+                    view,
+                );
+            }
+            if let Some(input) = RichTextLayoutInput::from_snapshot(
+                block,
+                f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX),
+                1,
+                1,
+            ) {
+                let text_len = input.spans.iter().map(|span| span.text.len()).sum();
+                let selection_range = if block.selection_overlay {
+                    None
+                } else {
+                    text_selection_range(&block.selection_range, text_len)
                 };
-                RichTextElement::new(input, theme)
+                let text_element = RichTextElement::new(input, theme)
                     .with_caret(caret_for_text_input(
                         block.caret_offset,
                         suppress_text_input,
@@ -74,15 +98,47 @@ pub(crate) fn render_block_content(
                         focus,
                         text_input_active(block.focused, suppress_text_input),
                     )
-                    .render()
+                    .render();
+                if should_show_empty_ai_hint(block, suppress_text_input, text_len) {
+                    div()
+                        .relative()
+                        .w_full()
+                        .min_h(px(24.0))
+                        .child(text_element)
+                        .child(render_empty_ai_hint(theme))
+                        .into_any_element()
+                } else {
+                    text_element
+                }
             } else {
                 render_payload_text(payload, theme)
             }
         }
         BlockPayloadView::Placeholder { .. } => render_placeholder(block, theme),
         BlockPayloadView::Loading { .. } => render_loading(block, theme),
-        BlockPayloadView::Error { message } => render_error(message),
+        BlockPayloadView::Error { message } => render_error(message, theme),
     }
+}
+
+fn should_show_empty_ai_hint(
+    block: &ViewBlockSnapshot,
+    suppress_text_input: bool,
+    text_len: usize,
+) -> bool {
+    block.focused
+        && !suppress_text_input
+        && text_len == 0
+        && matches!(
+            block.kind,
+            cditor_core::rich_text::RichBlockKind::Paragraph
+                | cditor_core::rich_text::RichBlockKind::Heading { .. }
+                | cditor_core::rich_text::RichBlockKind::Quote
+                | cditor_core::rich_text::RichBlockKind::Todo { .. }
+                | cditor_core::rich_text::RichBlockKind::BulletedList
+                | cditor_core::rich_text::RichBlockKind::NumberedList
+                | cditor_core::rich_text::RichBlockKind::Toggle
+                | cditor_core::rich_text::RichBlockKind::Callout { .. }
+        )
 }
 
 fn text_input_active(block_focused: bool, suppress_text_input: bool) -> bool {
@@ -91,6 +147,17 @@ fn text_input_active(block_focused: bool, suppress_text_input: bool) -> bool {
 
 fn caret_for_text_input(caret_offset: Option<usize>, suppress_text_input: bool) -> Option<usize> {
     (!suppress_text_input).then_some(caret_offset).flatten()
+}
+
+fn text_selection_range(
+    selection: &Option<SelectionRange>,
+    text_len: usize,
+) -> Option<std::ops::Range<usize>> {
+    match selection {
+        Some(SelectionRange::Partial(range)) => Some(range.clone()),
+        Some(SelectionRange::Full) => Some(0..text_len),
+        None => None,
+    }
 }
 
 #[cfg(test)]
@@ -114,7 +181,35 @@ mod tests {
             })
             .unwrap();
 
-        assert!(RichTextLayoutInput::from_snapshot(block, 860.0, 1, 1).is_some());
+        assert!(
+            RichTextLayoutInput::from_snapshot(
+                block,
+                f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX),
+                1,
+                1,
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn ai_hint_only_appears_for_focused_empty_paragraphs() {
+        let runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![cditor_core::rich_text::BlockPayloadRecord::rich_text(
+                1,
+                cditor_core::rich_text::RichBlockKind::Paragraph,
+                "",
+            )],
+            720.0,
+        );
+        let mut block = runtime.projection_for_window().blocks[0].clone();
+        block.focused = true;
+        assert!(should_show_empty_ai_hint(&block, false, 0));
+        assert!(!should_show_empty_ai_hint(&block, false, 1));
+        assert!(!should_show_empty_ai_hint(&block, true, 0));
+        block.focused = false;
+        assert!(!should_show_empty_ai_hint(&block, false, 0));
     }
 
     #[test]
@@ -123,5 +218,18 @@ mod tests {
         assert!(!text_input_active(true, true));
         assert_eq!(caret_for_text_input(Some(3), false), Some(3));
         assert_eq!(caret_for_text_input(Some(3), true), None);
+    }
+
+    #[test]
+    fn full_document_text_fragment_selects_only_the_block_text_range() {
+        assert_eq!(
+            text_selection_range(&Some(SelectionRange::Full), 6),
+            Some(0..6)
+        );
+        assert_eq!(
+            text_selection_range(&Some(SelectionRange::Partial(2..4)), 6),
+            Some(2..4)
+        );
+        assert_eq!(text_selection_range(&None, 6), None);
     }
 }

@@ -381,6 +381,7 @@ fn fallback_snapshot(
         layout: cditor_core::layout::BlockLayoutMeta::new(1, 32.0),
         selected: false,
         selection_range: None,
+        selection_overlay: false,
         focused: false,
         caret_offset: None,
         marked_range: None,
@@ -406,7 +407,14 @@ fn fallback_text_metrics_include_list_prefix_and_indent() {
 
     let metrics = fallback_text_metrics_for_block(&list_block, GuiTheme::light());
 
-    assert!(metrics.origin_x_in_block_px >= 8.0 + 48.0 + 24.0 + 8.0 + 38.0);
+    assert!(
+        metrics.origin_x_in_block_px
+            >= 8.0
+                + 48.0
+                + 24.0
+                + 8.0
+                + f64::from(crate::gui::block::chrome::BLOCK_PREFIX_WIDTH_PX)
+    );
     assert!(metrics.width_px > 0.0);
 }
 

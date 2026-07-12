@@ -75,6 +75,40 @@ impl TextOffsetMap {
         &self.grapheme_boundaries
     }
 
+    pub fn floor_grapheme_boundary(&self, offset: InternalTextOffset) -> InternalTextOffset {
+        let offset = InternalTextOffset(offset.0.min(self.text_len));
+        match self.grapheme_boundaries.binary_search(&offset) {
+            Ok(index) => self.grapheme_boundaries[index],
+            Err(0) => InternalTextOffset(0),
+            Err(index) => self.grapheme_boundaries[index - 1],
+        }
+    }
+
+    pub fn ceil_grapheme_boundary(&self, offset: InternalTextOffset) -> InternalTextOffset {
+        let offset = InternalTextOffset(offset.0.min(self.text_len));
+        match self.grapheme_boundaries.binary_search(&offset) {
+            Ok(index) => self.grapheme_boundaries[index],
+            Err(index) => self
+                .grapheme_boundaries
+                .get(index)
+                .copied()
+                .unwrap_or(InternalTextOffset(self.text_len)),
+        }
+    }
+
+    pub fn normalize_internal_range(
+        &self,
+        range: Range<InternalTextOffset>,
+    ) -> Range<InternalTextOffset> {
+        if range.start == range.end {
+            let caret = self.floor_grapheme_boundary(range.start);
+            return caret..caret;
+        }
+        let start = self.floor_grapheme_boundary(range.start);
+        let end = self.ceil_grapheme_boundary(range.end).max(start);
+        start..end
+    }
+
     pub fn bidi_runs(&self) -> &[BidiRun] {
         &self.bidi_runs
     }

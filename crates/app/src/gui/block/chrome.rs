@@ -1,12 +1,19 @@
 use crate::gui::GuiTheme;
+use cditor_core::layout::block_metrics::{
+    NOTION_BODY_LINE_HEIGHT_PX, NOTION_HEADING_1_LINE_HEIGHT_PX, NOTION_HEADING_2_LINE_HEIGHT_PX,
+    NOTION_HEADING_3_LINE_HEIGHT_PX,
+};
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 
 pub const BLOCK_INDENT_STEP_PX: f32 = 24.0;
 pub const BLOCK_GUTTER_WIDTH_PX: f32 = 24.0;
-pub const BLOCK_GUTTER_HEIGHT_PX: f32 = 22.0;
-pub const BLOCK_PREFIX_WIDTH_PX: f32 = 38.0;
-pub const CALLOUT_PREFIX_WIDTH_PX: f32 = 34.0;
+pub const BLOCK_GUTTER_HEIGHT_PX: f32 = 24.0;
+pub const BLOCK_SHELL_OUTER_PADDING_X_PX: f32 = 8.0;
+pub const BLOCK_ROW_GAP_PX: f32 = 8.0;
+pub const BLOCK_PREFIX_WIDTH_PX: f32 = 24.0;
+pub const CALLOUT_PREFIX_WIDTH_PX: f32 = 32.0;
+pub const NOTION_QUOTE_CONTENT_GAP_PX: f32 = 14.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BlockChromeStyle {
@@ -73,6 +80,8 @@ impl KindChromeStyle {
             RichBlockKind::Quote => Self::quote(theme),
             RichBlockKind::Callout { .. } => Self::callout(theme),
             RichBlockKind::Code { .. } => Self::code(theme),
+            // Media and table geometry is consumed by their stable-box/overlay paths.
+            RichBlockKind::Image | RichBlockKind::Table => Self::legacy_complex(theme),
             _ => Self::paragraph(theme),
         }
     }
@@ -82,24 +91,23 @@ impl KindChromeStyle {
             background: theme.surface,
             border: theme.surface,
             text: theme.text,
-            padding_y_px: 4.0,
+            padding_y_px: 0.0,
             padding_left_px: 0.0,
             padding_right_px: 0.0,
-            min_height_px: 28.0,
-            radius_px: 6.0,
+            min_height_px: NOTION_BODY_LINE_HEIGHT_PX as f32,
+            radius_px: 0.0,
             quote_bar: None,
         }
     }
 
     fn heading(level: u8, theme: GuiTheme) -> Self {
-        let (padding_y_px, min_height_px) = match level {
-            1 => (10.0, 48.0),
-            2 => (8.0, 42.0),
-            3 => (6.0, 36.0),
-            _ => (4.0, 32.0),
+        let min_height_px = match level {
+            1 => NOTION_HEADING_1_LINE_HEIGHT_PX as f32,
+            2 => NOTION_HEADING_2_LINE_HEIGHT_PX as f32,
+            _ => NOTION_HEADING_3_LINE_HEIGHT_PX as f32,
         };
         Self {
-            padding_y_px,
+            padding_y_px: 0.0,
             min_height_px,
             ..Self::paragraph(theme)
         }
@@ -110,10 +118,10 @@ impl KindChromeStyle {
             background: theme.surface,
             border: theme.surface,
             text: theme.quote_text,
-            padding_y_px: 4.0,
-            padding_left_px: 8.0,
+            padding_y_px: 0.0,
+            padding_left_px: NOTION_QUOTE_CONTENT_GAP_PX,
             padding_right_px: 0.0,
-            min_height_px: 28.0,
+            min_height_px: NOTION_BODY_LINE_HEIGHT_PX as f32,
             radius_px: 0.0,
             quote_bar: Some(theme.quote_bar),
         }
@@ -124,11 +132,11 @@ impl KindChromeStyle {
             background: theme.callout_background,
             border: theme.callout_border,
             text: theme.text,
-            padding_y_px: 10.0,
-            padding_left_px: 10.0,
-            padding_right_px: 10.0,
-            min_height_px: 44.0,
-            radius_px: 8.0,
+            padding_y_px: 12.0,
+            padding_left_px: 12.0,
+            padding_right_px: 12.0,
+            min_height_px: 48.0,
+            radius_px: 3.0,
             quote_bar: None,
         }
     }
@@ -144,7 +152,21 @@ impl KindChromeStyle {
             padding_left_px: 0.0,
             padding_right_px: 0.0,
             min_height_px: 92.0,
-            radius_px: 8.0,
+            radius_px: 0.0,
+            quote_bar: None,
+        }
+    }
+
+    fn legacy_complex(theme: GuiTheme) -> Self {
+        Self {
+            background: theme.surface,
+            border: theme.surface,
+            text: theme.text,
+            padding_y_px: 4.0,
+            padding_left_px: 0.0,
+            padding_right_px: 0.0,
+            min_height_px: 28.0,
+            radius_px: 6.0,
             quote_bar: None,
         }
     }
@@ -171,6 +193,7 @@ mod tests {
             layout: cditor_core::layout::BlockLayoutMeta::new(1, 32.0),
             selected: false,
             selection_range: None,
+            selection_overlay: false,
             focused: false,
             caret_offset: None,
             marked_range: None,
@@ -198,7 +221,7 @@ mod tests {
 
         assert_eq!(style.indent_px, 48.0);
         assert_eq!(style.gutter_width_px, 24.0);
-        assert_eq!(style.prefix_width_px, 38.0);
+        assert_eq!(style.prefix_width_px, 24.0);
     }
 
     #[test]
@@ -227,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn v1_block_visual_colors_match_editor2_theme() {
+    fn notion_block_visual_colors_use_semantic_theme_tokens() {
         let theme = GuiTheme::light();
         let paragraph = BlockChromeStyle::from_snapshot(
             &block(RichBlockKind::Paragraph, BlockChromeSnapshot::plain()),
@@ -302,10 +325,13 @@ mod tests {
         let callout_style = BlockChromeStyle::from_snapshot(&callout, GuiTheme::light());
 
         assert_eq!(quote_style.quote_bar, Some(GuiTheme::light().quote_bar));
+        assert_eq!(quote_style.content_padding_left_px, 14.0);
         assert_eq!(
             callout_style.content_background,
             GuiTheme::light().callout_background
         );
-        assert_eq!(callout_style.content_radius_px, 8.0);
+        assert_eq!(callout_style.content_radius_px, 3.0);
+        assert_eq!(callout_style.content_padding_y_px, 12.0);
+        assert_eq!(callout_style.content_padding_left_px, 12.0);
     }
 }

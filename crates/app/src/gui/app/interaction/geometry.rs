@@ -1,6 +1,7 @@
 use crate::gui::GuiTheme;
 use crate::gui::block::chrome::{BLOCK_GUTTER_WIDTH_PX, BlockChromeStyle};
 use crate::gui::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use cditor_core::block::BlockDropTarget;
 use cditor_core::ids::BlockId;
 use cditor_runtime::{EditorViewProjection, ViewBlockSnapshot};
@@ -198,7 +199,7 @@ pub(in crate::gui::app) fn fallback_text_metrics_for_block(
         + f64::from(chrome.prefix_width_px)
         + code_x;
     let origin_y = 4.0 + 1.0 + f64::from(chrome.content_padding_y_px) + code_y;
-    let width = (f64::from(crate::gui::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX)
+    let width = (f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX)
         - origin_x
         - 8.0
         - 1.0

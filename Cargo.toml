@@ -1,9 +1,11 @@
 [workspace]
 members = [
+    "crates/ai",
     "crates/app",
     "crates/core",
+    "crates/ding-board",
     "crates/editor",
-    "crates/engine",
+    "crates/runtime",
     "crates/store",
     "crates/store-postgres",
 ]
@@ -11,4 +13,6 @@ default-members = ["crates/app"]
 resolver = "3"
 
 [workspace.package]
+version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-or-later"

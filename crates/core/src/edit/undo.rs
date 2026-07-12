@@ -187,6 +187,7 @@ impl UndoStack {
             }
             EditTransactionKind::CompositionCommit => Some(UndoGroupBoundary::CompositionCommit),
             EditTransactionKind::Paste => Some(UndoGroupBoundary::Paste),
+            EditTransactionKind::AiApply => Some(UndoGroupBoundary::ExplicitCommand),
             EditTransactionKind::DragDrop => Some(UndoGroupBoundary::DragDrop),
             EditTransactionKind::Format => Some(UndoGroupBoundary::Format),
             EditTransactionKind::ExplicitCommand => Some(UndoGroupBoundary::ExplicitCommand),

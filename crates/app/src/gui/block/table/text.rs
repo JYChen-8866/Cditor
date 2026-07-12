@@ -11,7 +11,8 @@ use crate::gui::GuiTheme;
 use crate::gui::app::{CditorV2View, GuiPlatformInputTarget};
 use crate::gui::input::platform_adapter::handle_registered_platform_input;
 use crate::gui::text::{
-    RichTextPlatformLayout, platform_cursor_bounds_for_offset, platform_range_segment_bounds,
+    RichTextPlatformLayout, normalized_text_range, platform_cursor_bounds_for_offset,
+    platform_range_segment_bounds,
 };
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::TableCellAlign;
@@ -28,6 +29,7 @@ pub(super) struct TableCellTextElement {
     active: bool,
     caret_offset: Option<usize>,
     marked_range: Option<Range<usize>>,
+    header: bool,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
@@ -50,6 +52,7 @@ impl TableCellTextElement {
         active: bool,
         caret_offset: Option<usize>,
         marked_range: Option<Range<usize>>,
+        header: bool,
         theme: GuiTheme,
         view: Entity<CditorV2View>,
         focus: FocusHandle,
@@ -63,6 +66,7 @@ impl TableCellTextElement {
             active,
             caret_offset,
             marked_range,
+            header,
             theme,
             view,
             focus,
@@ -111,9 +115,14 @@ impl Element for TableCellTextElement {
         let text_size = table_cell_text_size();
         let runs = table_cell_text_runs(
             &display_text,
-            self.marked_range.as_ref(),
+            if self.placeholder_visible() {
+                None
+            } else {
+                self.marked_range.as_ref()
+            },
             self.theme,
             self.placeholder_visible(),
+            self.header,
             window,
         );
         let mut style = Style::default();
@@ -196,16 +205,19 @@ impl Element for TableCellTextElement {
         } else {
             None
         };
-        let marked_backgrounds = self
-            .marked_range
-            .clone()
-            .map(|range| {
-                platform_range_segment_bounds(&lines, bounds, line_height, &self.text, range)
-                    .into_iter()
-                    .map(|segment| fill(segment, rgba(0x0969da1f)))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let marked_backgrounds = if self.placeholder_visible() {
+            Vec::new()
+        } else {
+            self.marked_range
+                .clone()
+                .map(|range| {
+                    platform_range_segment_bounds(&lines, bounds, line_height, &self.text, range)
+                        .into_iter()
+                        .map(|segment| fill(segment, rgba((self.theme.focused << 8) | 0x1f)))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
 
         TableCellTextPrepaintState {
             lines,
@@ -321,10 +333,11 @@ fn table_cell_text_runs(
     marked_range: Option<&Range<usize>>,
     theme: GuiTheme,
     placeholder: bool,
+    header: bool,
     window: &Window,
 ) -> Vec<TextRun> {
     let mut font = window.text_style().font();
-    font.weight = FontWeight::NORMAL;
+    font.weight = table_cell_font_weight(header);
     if text.is_empty() {
         return vec![TextRun {
             len: 0,
@@ -336,8 +349,30 @@ fn table_cell_text_runs(
         }];
     }
 
+    table_cell_text_run_segments(text, marked_range)
+        .into_iter()
+        .map(|(range, marked)| TextRun {
+            len: range.end - range.start,
+            font: font.clone(),
+            color: Hsla::from(rgb(if placeholder { theme.muted } else { theme.text })),
+            background_color: None,
+            underline: marked.then_some(UnderlineStyle {
+                color: Some(Hsla::from(rgb(theme.focused))),
+                thickness: px(1.0),
+                wavy: false,
+            }),
+            strikethrough: None,
+        })
+        .collect()
+}
+
+fn table_cell_text_run_segments(
+    text: &str,
+    marked_range: Option<&Range<usize>>,
+) -> Vec<(Range<usize>, bool)> {
+    let marked_range = marked_range.map(|range| normalized_text_range(text, range.clone()));
     let mut boundaries = vec![0, text.len()];
-    if let Some(range) = marked_range {
+    if let Some(range) = marked_range.as_ref() {
         boundaries.push(range.start.min(text.len()));
         boundaries.push(range.end.min(text.len()));
     }
@@ -349,23 +384,21 @@ fn table_cell_text_runs(
         .filter_map(|pair| {
             let start = pair[0];
             let end = pair[1];
+            let range = start..end;
             (start < end).then(|| {
-                let marked = table_cell_segment_is_marked(start..end, marked_range);
-                TextRun {
-                    len: end - start,
-                    font: font.clone(),
-                    color: Hsla::from(rgb(if placeholder { theme.muted } else { theme.text })),
-                    background_color: None,
-                    underline: marked.then_some(UnderlineStyle {
-                        color: Some(Hsla::from(rgb(theme.focused))),
-                        thickness: px(1.0),
-                        wavy: false,
-                    }),
-                    strikethrough: None,
-                }
+                let marked = table_cell_segment_is_marked(range.clone(), marked_range.as_ref());
+                (range, marked)
             })
         })
         .collect()
+}
+
+fn table_cell_font_weight(header: bool) -> FontWeight {
+    if header {
+        FontWeight::MEDIUM
+    } else {
+        FontWeight::NORMAL
+    }
 }
 
 fn table_cell_segment_is_marked(
@@ -378,7 +411,7 @@ fn table_cell_segment_is_marked(
 }
 
 fn table_cell_placeholder_visible(active: bool, text: &str) -> bool {
-    !active && text.is_empty()
+    active && text.is_empty()
 }
 
 #[cfg(test)]
@@ -397,9 +430,30 @@ mod tests {
     }
 
     #[test]
-    fn table_cell_placeholder_is_hidden_while_editing_empty_cell() {
-        assert!(table_cell_placeholder_visible(false, ""));
-        assert!(!table_cell_placeholder_visible(true, ""));
+    fn table_cell_placeholder_is_only_visible_while_editing_empty_cell() {
+        assert!(!table_cell_placeholder_visible(false, ""));
+        assert!(table_cell_placeholder_visible(true, ""));
         assert!(!table_cell_placeholder_visible(false, "cell"));
+    }
+
+    #[test]
+    fn table_header_uses_notion_medium_weight() {
+        assert_eq!(table_cell_font_weight(true), FontWeight::MEDIUM);
+        assert_eq!(table_cell_font_weight(false), FontWeight::NORMAL);
+    }
+
+    #[test]
+    fn table_cell_text_runs_never_split_cjk_for_invalid_marked_range() {
+        let text = "萨德";
+        let marked = 0..2;
+        let segments = table_cell_text_run_segments(text, Some(&marked));
+
+        assert_eq!(
+            segments,
+            vec![(0.."萨".len(), true), ("萨".len()..text.len(), false)]
+        );
+        assert!(segments.iter().all(|(range, _)| {
+            text.is_char_boundary(range.start) && text.is_char_boundary(range.end)
+        }));
     }
 }

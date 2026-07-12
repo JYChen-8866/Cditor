@@ -4,15 +4,15 @@ use std::time::Duration;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnimationExt, AnyElement, App, BoxShadow, Global, InteractiveElement, IntoElement, ObjectFit,
-    ParentElement, Pixels, RenderImage, Size, Styled, Window, div, px, size,
+    ParentElement, Pixels, RenderImage, Size, Styled, Window, div, px, rgb, size,
 };
 
 use crate::gui::image_loader::RasterImageElement;
 
 const PREVIEW_CLOSE_DURATION: Duration = Duration::from_millis(150);
-const PREVIEW_MAX_VIEWPORT_RATIO: f32 = 0.72;
-const PREVIEW_OVERLAY_OPACITY: f32 = 0.55;
-const PREVIEW_FRAME_RADIUS_PX: f32 = 12.0;
+const PREVIEW_MAX_VIEWPORT_RATIO: f32 = 0.88;
+const PREVIEW_OVERLAY_OPACITY: f32 = 0.72;
+const PREVIEW_FRAME_RADIUS_PX: f32 = 4.0;
 
 pub struct ActiveImagePreview {
     image: Option<Arc<RenderImage>>,
@@ -146,8 +146,6 @@ pub fn render_image_preview_overlay(window: &mut Window, cx: &mut App) -> Option
                         .w(preview_size.width)
                         .h(preview_size.height)
                         .rounded(px(PREVIEW_FRAME_RADIUS_PX))
-                        .border_1()
-                        .border_color(gpui::white().opacity(0.28))
                         .overflow_hidden()
                         .shadow(preview_image_frame_shadow())
                         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
@@ -158,7 +156,28 @@ pub fn render_image_preview_overlay(window: &mut Window, cx: &mut App) -> Option
                             ObjectFit::Contain,
                             px(PREVIEW_FRAME_RADIUS_PX),
                         )),
-                )),
+                ))
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(16.0))
+                        .right(px(16.0))
+                        .size(px(32.0))
+                        .rounded(px(4.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(rgb(0x252525))
+                        .text_color(rgb(0xffffff))
+                        .text_size(px(14.0))
+                        .cursor_pointer()
+                        .hover(|style| style.bg(rgb(0x454545)))
+                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                            close_active_preview(cx);
+                            cx.stop_propagation();
+                        })
+                        .child("X"),
+                ),
         )
         .into_any_element(),
     )
@@ -210,7 +229,9 @@ fn preview_image_box_size(
     let image_size = image.size(0);
     let image_width = i32::from(image_size.width).max(1) as f32;
     let image_height = i32::from(image_size.height).max(1) as f32;
-    let scale = (f32::from(max_width) / image_width).min(f32::from(max_height) / image_height);
+    let scale = (f32::from(max_width) / image_width)
+        .min(f32::from(max_height) / image_height)
+        .min(1.0);
 
     size(px(image_width * scale), px(image_height * scale))
 }
@@ -218,24 +239,17 @@ fn preview_image_box_size(
 fn preview_image_frame_shadow() -> Vec<BoxShadow> {
     vec![
         BoxShadow {
-            color: gpui::black().opacity(0.48),
-            offset: gpui::point(px(0.0), px(28.0)),
-            blur_radius: px(64.0),
-            spread_radius: px(4.0),
+            color: gpui::black().opacity(0.32),
+            offset: gpui::point(px(0.0), px(16.0)),
+            blur_radius: px(48.0),
+            spread_radius: px(0.0),
             inset: false,
         },
         BoxShadow {
-            color: gpui::black().opacity(0.34),
-            offset: gpui::point(px(0.0), px(10.0)),
-            blur_radius: px(24.0),
-            spread_radius: px(-2.0),
-            inset: false,
-        },
-        BoxShadow {
-            color: gpui::white().opacity(0.22),
-            offset: gpui::point(px(0.0), px(-2.0)),
+            color: gpui::black().opacity(0.18),
+            offset: gpui::point(px(0.0), px(2.0)),
             blur_radius: px(8.0),
-            spread_radius: px(-4.0),
+            spread_radius: px(0.0),
             inset: false,
         },
     ]
@@ -263,13 +277,20 @@ mod tests {
     }
 
     #[test]
-    fn preview_frame_shadow_keeps_3d_border_depth() {
+    fn preview_frame_shadow_uses_quiet_notion_elevation() {
         let shadow = preview_image_frame_shadow();
 
-        assert_eq!(shadow.len(), 3);
-        assert_eq!(shadow[0].offset.y, px(28.0));
-        assert_eq!(shadow[0].blur_radius, px(64.0));
-        assert_eq!(shadow[1].offset.y, px(10.0));
-        assert_eq!(shadow[2].offset.y, px(-2.0));
+        assert_eq!(shadow.len(), 2);
+        assert_eq!(shadow[0].offset.y, px(16.0));
+        assert_eq!(shadow[0].blur_radius, px(48.0));
+        assert_eq!(shadow[1].offset.y, px(2.0));
+    }
+
+    #[test]
+    fn preview_does_not_upscale_small_images() {
+        let small = test_render_image(120, 80);
+        let preview = preview_image_box_size(&small, px(600.0), px(600.0));
+
+        assert_eq!(preview, size(px(120.0), px(80.0)));
     }
 }

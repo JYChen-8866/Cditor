@@ -11,6 +11,10 @@ use cditor_core::rich_text::CalloutVariant;
 
 pub type TodoToggleHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 
+const NOTION_PREFIX_LINE_HEIGHT_PX: f32 = 24.0;
+const NOTION_CHECKBOX_SIZE_PX: f32 = 16.0;
+const NOTION_CHECKBOX_RADIUS_PX: f32 = 2.0;
+
 pub fn render_block_prefix(
     prefix: &BlockPrefixSnapshot,
     theme: GuiTheme,
@@ -21,22 +25,28 @@ pub fn render_block_prefix(
         BlockPrefixSnapshot::None => div().w(px(0.0)).flex_shrink_0().into_any_element(),
         BlockPrefixSnapshot::Bullet { depth } => div()
             .w(px(BLOCK_PREFIX_WIDTH_PX))
+            .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
             .flex_shrink_0()
             .flex()
+            .items_center()
             .justify_center()
-            .text_color(rgb(theme.prefix_text))
+            .text_color(rgb(theme.text))
             .child(bullet_marker_for_depth(*depth))
             .into_any_element(),
         BlockPrefixSnapshot::Number { ordinal } => div()
             .w(px(BLOCK_PREFIX_WIDTH_PX))
+            .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
             .flex_shrink_0()
             .flex()
-            .justify_center()
-            .text_color(rgb(theme.prefix_text))
+            .items_center()
+            .justify_end()
+            .pr(px(4.0))
+            .text_color(rgb(theme.text))
             .child(format!("{ordinal}."))
             .into_any_element(),
         BlockPrefixSnapshot::Todo { checked } => div()
             .w(px(BLOCK_PREFIX_WIDTH_PX))
+            .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
             .flex_shrink_0()
             .flex()
             .items_center()
@@ -52,27 +62,26 @@ pub fn render_block_prefix(
             .flex_shrink_0()
             .flex()
             .items_start()
-            .justify_center()
-            .pt(px(1.0))
+            .justify_start()
             .child(
                 div()
                     .size(px(24.0))
-                    .rounded(px(6.0))
-                    .bg(rgb(theme.callout_icon_background))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(15.0))
-                    .text_color(rgb(theme.muted))
+                    .text_size(px(18.0))
+                    .text_color(rgb(theme.text))
                     .child(callout_icon(*variant)),
             )
             .into_any_element(),
         BlockPrefixSnapshot::Toggle { collapsed } => div()
             .w(px(BLOCK_PREFIX_WIDTH_PX))
+            .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
             .flex_shrink_0()
             .flex()
+            .items_center()
             .justify_center()
-            .text_color(rgb(theme.prefix_text))
+            .text_color(rgb(theme.text))
             .child(if *collapsed { "▸" } else { "▾" })
             .into_any_element(),
     }
@@ -90,8 +99,8 @@ pub fn render_task_checkbox(checked: bool, theme: GuiTheme) -> AnyElement {
         theme.page
     };
     div()
-        .size(px(16.0))
-        .rounded(px(4.0))
+        .size(px(NOTION_CHECKBOX_SIZE_PX))
+        .rounded(px(NOTION_CHECKBOX_RADIUS_PX))
         .border_1()
         .border_color(rgb(border_color))
         .bg(rgb(background))
@@ -129,7 +138,10 @@ mod tests {
 
     #[test]
     fn prefix_width_constants_match_v1() {
-        assert_eq!(BLOCK_PREFIX_WIDTH_PX, 38.0);
-        assert_eq!(CALLOUT_PREFIX_WIDTH_PX, 34.0);
+        assert_eq!(BLOCK_PREFIX_WIDTH_PX, 24.0);
+        assert_eq!(CALLOUT_PREFIX_WIDTH_PX, 32.0);
+        assert_eq!(NOTION_PREFIX_LINE_HEIGHT_PX, 24.0);
+        assert_eq!(NOTION_CHECKBOX_SIZE_PX, 16.0);
+        assert_eq!(NOTION_CHECKBOX_RADIUS_PX, 2.0);
     }
 }

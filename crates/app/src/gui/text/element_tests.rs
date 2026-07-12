@@ -1,6 +1,12 @@
 use cditor_core::rich_text::{InlineMark, InlineSpan, RichBlockKind};
 
+use super::element::{
+    base_font_weight_for_kind, is_completed_todo, line_height_for_kind, render_visual_run_segments,
+    text_color_for_kind, text_size_for_kind,
+};
 use super::*;
+use crate::gui::theme::GuiTheme;
+use gpui::{FontWeight, px};
 
 #[test]
 fn rich_text_element_paints_spans() {
@@ -50,7 +56,7 @@ fn rich_text_element_candidate_rect_tracks_caret_geometry() {
 
     assert!(rect.x > 0.0);
     assert_eq!(rect.y, 0.0);
-    assert_eq!(rect.height, 22.0);
+    assert_eq!(rect.height, 24.0);
 }
 
 #[test]
@@ -76,7 +82,7 @@ fn rich_text_element_candidate_rect_tracks_multiline_table_cell_caret() {
         rect.y >= layout.lines[2].y,
         "candidate rect should move to current multiline caret row, rect={rect:?}"
     );
-    assert_eq!(rect.height, 22.0);
+    assert_eq!(rect.height, 24.0);
 }
 
 #[test]
@@ -143,4 +149,57 @@ fn rich_text_element_hit_test() {
 
     assert_eq!(element.hit_test(TextHitPoint { x: 0.0, y: 0.0 }), 0);
     assert_eq!(element.hit_test(TextHitPoint { x: 1_000.0, y: 0.0 }), 4);
+}
+
+#[test]
+fn notion_text_sizes_and_line_heights_are_stable() {
+    assert_eq!(text_size_for_kind(&RichBlockKind::Paragraph), px(16.0));
+    assert_eq!(
+        line_height_for_kind(&RichBlockKind::Paragraph, px(16.0)),
+        px(24.0)
+    );
+    assert_eq!(
+        text_size_for_kind(&RichBlockKind::Heading { level: 1 }),
+        px(30.0)
+    );
+    assert_eq!(
+        line_height_for_kind(&RichBlockKind::Heading { level: 1 }, px(30.0)),
+        px(39.0)
+    );
+    assert_eq!(
+        line_height_for_kind(&RichBlockKind::Heading { level: 2 }, px(24.0)),
+        px(32.0)
+    );
+    assert_eq!(
+        line_height_for_kind(&RichBlockKind::Heading { level: 3 }, px(20.0)),
+        px(26.0)
+    );
+    assert_eq!(
+        base_font_weight_for_kind(&RichBlockKind::Heading { level: 1 }, FontWeight::NORMAL),
+        FontWeight::SEMIBOLD
+    );
+    assert_eq!(
+        base_font_weight_for_kind(&RichBlockKind::Heading { level: 1 }, FontWeight::BOLD),
+        FontWeight::BOLD
+    );
+    assert_eq!(
+        text_size_for_kind(&RichBlockKind::FootnoteDefinition),
+        px(14.0)
+    );
+    assert_eq!(
+        line_height_for_kind(&RichBlockKind::FootnoteDefinition, px(14.0)),
+        px(20.0)
+    );
+}
+
+#[test]
+fn completed_todo_uses_muted_struck_text_style() {
+    let theme = GuiTheme::light();
+
+    assert!(is_completed_todo(&RichBlockKind::Todo { checked: true }));
+    assert!(!is_completed_todo(&RichBlockKind::Todo { checked: false }));
+    assert_eq!(
+        text_color_for_kind(&RichBlockKind::Todo { checked: true }, theme),
+        theme.muted,
+    );
 }

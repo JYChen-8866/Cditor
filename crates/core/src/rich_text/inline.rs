@@ -1,4 +1,6 @@
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct InlineSpan {
     pub text: String,
     pub marks: Vec<InlineMark>,
@@ -13,7 +15,7 @@ impl InlineSpan {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InlineMark {
     Bold,
     Italic,

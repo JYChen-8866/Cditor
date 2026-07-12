@@ -454,6 +454,7 @@ fn transaction_kind_to_sync_operation(
         cditor_core::edit::EditTransactionKind::Typing => "typing",
         cditor_core::edit::EditTransactionKind::CompositionCommit => "composition_commit",
         cditor_core::edit::EditTransactionKind::Paste => "paste",
+        cditor_core::edit::EditTransactionKind::AiApply => "ai_apply",
         cditor_core::edit::EditTransactionKind::DragDrop => "drag_drop",
         cditor_core::edit::EditTransactionKind::Format => "format",
         cditor_core::edit::EditTransactionKind::ExplicitCommand => "explicit_command",

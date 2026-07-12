@@ -1,19 +1,26 @@
 [package]
 name = "cditor-app"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 
 [lib]
 name = "cditor_app"
 
+[features]
+runtime-shaders = ["gpui_platform/runtime_shaders"]
+
 [dependencies]
+cditor-ai = { path = "../ai" }
 cditor-core = { path = "../core" }
+ding-board = { path = "../ding-board" }
 cditor-editor = { path = "../editor" }
-cditor-runtime = { path = "../engine" }
+cditor-runtime = { path = "../runtime" }
 cditor-storage = { path = "../store" }
 cditor-storage-postgres = { path = "../store-postgres" }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
+mermaid_render = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
@@ -22,4 +29,5 @@ image = "0.25.10"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 
 [dev-dependencies]
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["runtime_shaders"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

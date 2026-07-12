@@ -1,3 +1,12 @@
-/target
-.env
-/minimal-editor-assets
+/target/
+/.env
+/minimal-editor-assets/
+
+# macOS metadata
+.DS_Store
+
+# Local AI/editor tool state
+.sc/
+
+# The workspace root owns dependency resolution.
+/crates/*/Cargo.lock

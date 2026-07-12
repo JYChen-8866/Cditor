@@ -70,7 +70,7 @@ pub async fn ensure_large_mixed_demo_seeded(
     let document = DocumentRow {
         id: options.document_id,
         workspace_id,
-        title: format!("CDitor V2 PostgreSQL 10w mixed demo ({block_count} blocks)"),
+        title: format!("Cditor PostgreSQL 10w mixed demo ({block_count} blocks)"),
         structure_version,
         content_version: 1,
         layout_version: 0,

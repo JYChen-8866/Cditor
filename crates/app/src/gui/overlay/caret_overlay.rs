@@ -1,6 +1,7 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
 
 use crate::gui::GuiTheme;
+use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::gui::text::{RichTextElement, RichTextLayoutInput};
 use cditor_core::ids::BlockId;
 use cditor_runtime::{EditorViewProjection, ViewBlockSnapshot};
@@ -56,7 +57,12 @@ fn caret_rect_for_block(
     block_y: f64,
 ) -> Option<CaretOverlayRect> {
     let caret_offset = block.caret_offset?;
-    if let Some(input) = RichTextLayoutInput::from_snapshot(block, 860.0, 1, 1) {
+    if let Some(input) = RichTextLayoutInput::from_snapshot(
+        block,
+        f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX),
+        1,
+        1,
+    ) {
         let element = RichTextElement::new(input, theme).with_caret(Some(caret_offset));
         let rect = element.candidate_rect_for_caret()?;
         return Some(CaretOverlayRect {

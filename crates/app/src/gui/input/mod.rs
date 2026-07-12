@@ -1,3 +1,4 @@
+pub mod ai_prompt;
 pub mod clipboard;
 pub mod code_language;
 pub mod command;
@@ -7,14 +8,14 @@ pub mod mouse;
 pub mod platform_adapter;
 pub mod single_line;
 
-pub use clipboard::RichClipboardItem;
+pub use ai_prompt::{AiPromptKeyResult, AiPromptState, apply_ai_prompt_key};
 pub use code_language::{
     CODE_LANGUAGE_MAX_SUGGESTIONS, CODE_LANGUAGE_VISIBLE_SUGGESTIONS, CodeLanguageEditKeyResult,
     CodeLanguageEditState, CodeLanguageItem, CodeLanguagePopupPlacement, apply_code_language_key,
     is_code_language_text,
 };
 pub use command::GuiInputCommand;
-pub use keyboard::command_for_key_down;
+pub use keyboard::{command_for_key_down, is_empty_line_ai_shortcut};
 pub use mouse::{
     BlockDragSelectionController, begin_table_cell_range_selection_from_mouse,
     focus_block_from_mouse, focus_table_cell_from_mouse, gutter_mouse_down_from_mouse,

@@ -4,19 +4,28 @@ use std::{cell::RefCell, ops::Range, rc::Rc, sync::OnceLock};
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, Entity, FocusHandle, FontStyle,
     FontWeight, GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId, ParentElement,
-    Pixels, SharedString, Size, Style, Styled, TextAlign, TextRun, UnderlineStyle, Window,
-    WrappedLine as GpuiWrappedLine, div, fill, point, px, rgb, rgba,
+    Pixels, SharedString, Size, StrikethroughStyle, Style, Styled, TextAlign, TextRun,
+    UnderlineStyle, Window, WrappedLine as GpuiWrappedLine, div, fill, point, px, rgb,
 };
 
 use crate::gui::GuiTheme;
 use crate::gui::app::{CditorV2View, GuiPlatformInputTarget};
 use crate::gui::input::platform_adapter::handle_registered_platform_input;
+use crate::gui::rich_text::{
+    NOTION_INLINE_CODE_RADIUS_PX, NOTION_INLINE_CODE_TEXT_SIZE_PX, NOTION_MONO_FONT_FAMILY,
+    inline_mark_visual_style,
+};
+use cditor_core::layout::block_metrics::{
+    NOTION_BODY_LINE_HEIGHT_PX, NOTION_HEADING_1_LINE_HEIGHT_PX, NOTION_HEADING_2_LINE_HEIGHT_PX,
+    NOTION_HEADING_3_LINE_HEIGHT_PX,
+};
 use cditor_core::layout::normalize_text_inner_measured_height;
-use cditor_core::rich_text::{InlineMark, InlineSpan, RichBlockKind};
+use cditor_core::rich_text::{InlineSpan, RichBlockKind};
 use cditor_runtime::TableCellPosition;
 
 use super::platform::{
-    RichTextPlatformLayout, platform_cursor_bounds_for_offset, platform_range_segment_bounds,
+    RichTextPlatformLayout, normalized_text_range, platform_cursor_bounds_for_offset,
+    platform_range_segment_bounds,
 };
 use super::{RichTextLayoutInput, TextHitPoint, VisualRun, wrap_rich_text};
 
@@ -120,7 +129,7 @@ impl RichTextElement {
             .map(|offset| self.candidate_rect_for_offset(offset))
     }
 
-    fn plain_text(&self) -> String {
+    pub(super) fn plain_text(&self) -> String {
         self.input
             .spans
             .iter()
@@ -283,6 +292,9 @@ impl Element for RichTextGpuiElement {
                             total_size.height += size.height;
                             total_size.width = total_size.width.max(size.width);
                         }
+                        if lines.is_empty() {
+                            total_size.height = line_height;
+                        }
                         *shared_lines_clone.borrow_mut() = Some(lines);
                         total_size
                     }
@@ -327,7 +339,7 @@ impl Element for RichTextGpuiElement {
                 let text = plain_text_from_spans(&self.input.spans);
                 platform_range_segment_bounds(&lines, bounds, line_height, &text, range)
                     .into_iter()
-                    .map(|segment| fill(segment, rgba(0x0969da1f)))
+                    .map(|segment| fill(segment, rgb(self.theme.action_background)))
                     .collect()
             })
             .unwrap_or_default();
@@ -394,7 +406,7 @@ impl Element for RichTextGpuiElement {
                 &text,
                 selection_range,
             ) {
-                window.paint_quad(fill(segment, rgba(0x0969da33)));
+                window.paint_quad(fill(segment, rgb(self.theme.action_background)));
             }
         }
         for background in prepaint.marked_backgrounds.drain(..) {
@@ -447,8 +459,11 @@ fn platform_text_runs(
     window: &Window,
 ) -> Vec<TextRun> {
     let text = plain_text_from_spans(spans);
-    let base_font = window.text_style().font();
-    let base_color = Hsla::from(rgb(text_color_for_kind(kind, theme)));
+    let mut base_font = window.text_style().font();
+    base_font.weight = base_font_weight_for_kind(kind, base_font.weight);
+    let base_text_color = text_color_for_kind(kind, theme);
+    let base_color = Hsla::from(rgb(base_text_color));
+    let completed_todo = is_completed_todo(kind);
     if spans.is_empty() {
         return vec![TextRun {
             len: text.len(),
@@ -456,17 +471,21 @@ fn platform_text_runs(
             color: base_color,
             background_color: None,
             underline: None,
-            strikethrough: None,
+            strikethrough: completed_todo.then_some(StrikethroughStyle {
+                thickness: px(1.0),
+                color: Some(base_color),
+            }),
         }];
     }
 
     let span_ranges = span_ranges(spans);
+    let marked_range = marked_range.map(|range| normalized_text_range(&text, range.clone()));
     let mut boundaries = vec![0, text.len()];
     for (range, _) in &span_ranges {
         boundaries.push(range.start);
         boundaries.push(range.end);
     }
-    if let Some(marked_range) = marked_range {
+    if let Some(marked_range) = marked_range.as_ref() {
         boundaries.push(marked_range.start.min(text.len()));
         boundaries.push(marked_range.end.min(text.len()));
     }
@@ -489,31 +508,23 @@ fn platform_text_runs(
             .filter(|(range, _)| range.start <= start && start < range.end)
             .map(|(_, span)| span.marks.as_slice())
             .unwrap_or(&[]);
+        let visual_style = inline_mark_visual_style(marks, theme, base_text_color);
         let mut font = base_font.clone();
-        if marks.iter().any(|mark| matches!(mark, InlineMark::Bold))
-            && font.weight < FontWeight::BOLD
-        {
+        if visual_style.bold && font.weight < FontWeight::BOLD {
             font.weight = FontWeight::BOLD;
         }
-        if marks.iter().any(|mark| matches!(mark, InlineMark::Italic)) {
+        if visual_style.italic {
             font.style = FontStyle::Italic;
         }
-        let is_link = marks
-            .iter()
-            .any(|mark| matches!(mark, InlineMark::Link { .. }));
-        let color = if is_link {
-            Hsla::from(rgb(theme.focused))
-        } else {
-            base_color
-        };
+        if visual_style.code {
+            font.family = NOTION_MONO_FONT_FAMILY.into();
+        }
+        let color = Hsla::from(rgb(visual_style.text_color));
         let is_marked = marked_range
+            .as_ref()
             .map(|range| start < range.end && range.start < end)
             .unwrap_or(false);
-        let underline = (is_marked
-            || marks
-                .iter()
-                .any(|mark| matches!(mark, InlineMark::Underline | InlineMark::Link { .. })))
-        .then_some(UnderlineStyle {
+        let underline = (is_marked || visual_style.underline).then_some(UnderlineStyle {
             color: Some(color),
             thickness: px(1.0),
             wavy: false,
@@ -522,12 +533,14 @@ fn platform_text_runs(
             len: end - start,
             font,
             color,
-            background_color: marks
-                .iter()
-                .any(|mark| matches!(mark, InlineMark::Code))
-                .then_some(Hsla::from(rgb(theme.code_background))),
+            background_color: visual_style
+                .background_color
+                .map(|color| Hsla::from(rgb(color))),
             underline,
-            strikethrough: None,
+            strikethrough: (visual_style.strike || completed_todo).then_some(StrikethroughStyle {
+                thickness: px(1.0),
+                color: Some(color),
+            }),
         });
     }
     runs
@@ -549,32 +562,50 @@ fn span_ranges(spans: &[InlineSpan]) -> Vec<(Range<usize>, &InlineSpan)> {
         .collect()
 }
 
-fn text_size_for_kind(kind: &RichBlockKind) -> Pixels {
+pub(super) fn text_size_for_kind(kind: &RichBlockKind) -> Pixels {
     match kind {
-        RichBlockKind::Heading { level: 1 } => px(28.0),
+        RichBlockKind::Heading { level: 1 } => px(30.0),
         RichBlockKind::Heading { level: 2 } => px(24.0),
         RichBlockKind::Heading { .. } => px(20.0),
         RichBlockKind::Code { .. } => px(14.0),
+        RichBlockKind::FootnoteDefinition => px(14.0),
         _ => px(16.0),
     }
 }
 
-fn line_height_for_kind(kind: &RichBlockKind, text_size: Pixels) -> Pixels {
-    match kind {
-        RichBlockKind::Code { .. } => px(24.0),
-        _ => text_size * 1.25,
+pub(super) fn base_font_weight_for_kind(kind: &RichBlockKind, inherited: FontWeight) -> FontWeight {
+    if matches!(kind, RichBlockKind::Heading { .. }) && inherited < FontWeight::SEMIBOLD {
+        FontWeight::SEMIBOLD
+    } else {
+        inherited
     }
 }
 
-fn text_color_for_kind(kind: &RichBlockKind, theme: GuiTheme) -> u32 {
+pub(super) fn line_height_for_kind(kind: &RichBlockKind, _text_size: Pixels) -> Pixels {
+    match kind {
+        RichBlockKind::Code { .. } => px(24.0),
+        RichBlockKind::Heading { level: 1 } => px(NOTION_HEADING_1_LINE_HEIGHT_PX as f32),
+        RichBlockKind::Heading { level: 2 } => px(NOTION_HEADING_2_LINE_HEIGHT_PX as f32),
+        RichBlockKind::Heading { .. } => px(NOTION_HEADING_3_LINE_HEIGHT_PX as f32),
+        RichBlockKind::FootnoteDefinition => px(20.0),
+        _ => px(NOTION_BODY_LINE_HEIGHT_PX as f32),
+    }
+}
+
+pub(super) fn text_color_for_kind(kind: &RichBlockKind, theme: GuiTheme) -> u32 {
     match kind {
         RichBlockKind::Code { .. } => theme.code_text,
         RichBlockKind::Quote => theme.quote_text,
+        RichBlockKind::Todo { checked: true } => theme.muted,
         _ => theme.text,
     }
 }
 
-fn render_visual_run_segments(
+pub(super) fn is_completed_todo(kind: &RichBlockKind) -> bool {
+    matches!(kind, RichBlockKind::Todo { checked: true })
+}
+
+pub(super) fn render_visual_run_segments(
     text: &str,
     run: &VisualRun,
     theme: GuiTheme,
@@ -641,10 +672,10 @@ fn render_visual_run_segment(
     div()
         .when(run.mark_style.code, |this| {
             this.px_1()
-                .rounded(px(4.0))
-                .bg(rgb(theme.code_background))
-                .font_family("Menlo")
-                .text_size(px(13.0))
+                .rounded(px(NOTION_INLINE_CODE_RADIUS_PX))
+                .bg(rgb(theme.inline_code_background))
+                .font_family(NOTION_MONO_FONT_FAMILY)
+                .text_size(px(NOTION_INLINE_CODE_TEXT_SIZE_PX))
         })
         .when(run.mark_style.bold, |this| {
             this.font_weight(FontWeight::BOLD)
@@ -657,13 +688,11 @@ fn render_visual_run_segment(
         .when(run.mark_style.strike, |this| this.line_through())
         .text_color(rgb(if run.mark_style.link {
             theme.focused
+        } else if run.mark_style.code {
+            theme.inline_code_text
         } else {
             theme.text
         }))
         .child(SharedString::from(label))
         .into_any_element()
 }
-
-#[cfg(test)]
-#[path = "element_tests.rs"]
-mod element_tests;

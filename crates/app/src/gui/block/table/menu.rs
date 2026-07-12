@@ -1,10 +1,11 @@
-use cditor_core::rich_text::TableCellAlign;
+use cditor_core::rich_text::{TableCellAlign, TableCellMerge, TableRange};
+use cditor_runtime::TableViewState;
 
-use super::selection::{TableAxis, TableAxisSelection, TableCellRangeSelection};
+use super::selection::{TableAxis, TableAxisSelection};
 
 pub(crate) const TABLE_MENU_WIDTH_PX: f32 = 264.0;
 pub(crate) const TABLE_MENU_ROW_HEIGHT_PX: f32 = 32.0;
-pub(crate) const TABLE_MENU_MAX_VISIBLE_ROWS: usize = 8;
+pub(crate) const TABLE_MENU_MAX_VISIBLE_ROWS: usize = 10;
 pub(crate) const TABLE_MENU_VIEWPORT_MARGIN_PX: f32 = 8.0;
 pub(crate) const TABLE_MENU_GAP_PX: f32 = 8.0;
 
@@ -109,33 +110,6 @@ pub(crate) fn table_axis_menu_items(selection: TableAxisSelection) -> Vec<TableM
     items
 }
 
-pub(crate) fn table_range_menu_items(_selection: TableCellRangeSelection) -> Vec<TableMenuItem> {
-    vec![
-        table_menu_item(
-            TableMenuAction::Align(TableCellAlign::Left),
-            "Align left",
-            &["align"],
-        ),
-        table_menu_item(
-            TableMenuAction::Align(TableCellAlign::Center),
-            "Align center",
-            &["align"],
-        ),
-        table_menu_item(
-            TableMenuAction::Align(TableCellAlign::Right),
-            "Align right",
-            &["align"],
-        ),
-        table_menu_item(TableMenuAction::MergeCells, "Merge cells", &["merge"]),
-        table_menu_item(TableMenuAction::SplitCell, "Split cell", &["split"]),
-        table_menu_item(
-            TableMenuAction::BackgroundColor,
-            "Background color",
-            &["color", "fill"],
-        ),
-    ]
-}
-
 pub(crate) fn filter_table_menu_items(items: &[TableMenuItem], query: &str) -> Vec<TableMenuItem> {
     let query = query.trim().to_ascii_lowercase();
     if query.is_empty() {
@@ -154,9 +128,77 @@ pub(crate) fn filter_table_menu_items(items: &[TableMenuItem], query: &str) -> V
         .collect()
 }
 
-pub(crate) fn table_menu_action_enabled(action: TableMenuAction) -> bool {
-    let _ = action;
-    true
+pub(crate) fn table_menu_action_enabled(
+    action: TableMenuAction,
+    selection: TableAxisSelection,
+    table_view: &TableViewState,
+) -> bool {
+    let has_merges = table_view.table.rows.iter().any(|row| {
+        row.cells
+            .iter()
+            .any(|cell| !matches!(cell.merge, TableCellMerge::Unmerged))
+    });
+    match action {
+        TableMenuAction::InsertRowAbove
+        | TableMenuAction::InsertRowBelow
+        | TableMenuAction::DuplicateRow
+        | TableMenuAction::InsertColumnLeft
+        | TableMenuAction::InsertColumnRight
+        | TableMenuAction::DuplicateColumn => !has_merges,
+        TableMenuAction::DeleteRow => !has_merges && table_view.row_count > 1,
+        TableMenuAction::DeleteColumn => !has_merges && table_view.col_count > 1,
+        TableMenuAction::MergeCells => {
+            let range = table_axis_range(selection, table_view);
+            range.row_count().saturating_mul(range.col_count()) > 1
+                && table_range_is_unmerged(table_view, range)
+        }
+        TableMenuAction::SplitCell => {
+            let range = table_axis_range(selection, table_view);
+            let Some((origin_row, origin_col)) = table_view
+                .table
+                .cell_origin(range.start_row, range.start_col)
+            else {
+                return false;
+            };
+            table_view
+                .table
+                .rows
+                .get(origin_row)
+                .and_then(|row| row.cells.get(origin_col))
+                .is_some_and(|cell| matches!(cell.merge, TableCellMerge::Origin { .. }))
+        }
+        TableMenuAction::Align(_) | TableMenuAction::BackgroundColor => true,
+    }
+}
+
+fn table_axis_range(selection: TableAxisSelection, table_view: &TableViewState) -> TableRange {
+    match selection.axis {
+        TableAxis::Row => TableRange::normalized(
+            selection.index,
+            0,
+            selection.index,
+            table_view.col_count.saturating_sub(1),
+        ),
+        TableAxis::Column => TableRange::normalized(
+            0,
+            selection.index,
+            table_view.row_count.saturating_sub(1),
+            selection.index,
+        ),
+    }
+}
+
+fn table_range_is_unmerged(table_view: &TableViewState, range: TableRange) -> bool {
+    (range.start_row..=range.end_row).all(|row| {
+        (range.start_col..=range.end_col).all(|col| {
+            table_view
+                .table
+                .rows
+                .get(row)
+                .and_then(|row| row.cells.get(col))
+                .is_some_and(|cell| matches!(cell.merge, TableCellMerge::Unmerged))
+        })
+    })
 }
 
 pub(crate) fn table_menu_panel_height(item_count: usize) -> f32 {
@@ -212,6 +254,9 @@ fn table_menu_item(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cditor_core::rich_text::{
+        TableCellPayload, TableColumnPayload, TablePayload, TableRowPayload,
+    };
 
     #[test]
     fn table_axis_menu_items_include_axis_specific_and_shared_actions() {
@@ -282,5 +327,61 @@ mod tests {
         let flipped = table_menu_position(120.0, 610.0, 16.0, 10, 960.0, 640.0);
         assert!(flipped.placed_above);
         assert!(flipped.y < 610.0);
+    }
+
+    #[test]
+    fn merged_table_disables_unsupported_structure_actions_and_exposes_split() {
+        let mut table = TablePayload {
+            rows: vec![
+                TableRowPayload {
+                    cells: vec![TableCellPayload::plain("A"), TableCellPayload::plain("B")],
+                    height: Default::default(),
+                },
+                TableRowPayload {
+                    cells: vec![TableCellPayload::plain("C"), TableCellPayload::plain("D")],
+                    height: Default::default(),
+                },
+            ],
+            columns: vec![TableColumnPayload::default(), TableColumnPayload::default()],
+            ..TablePayload::default()
+        };
+        table
+            .merge_cells(TableRange::normalized(0, 0, 1, 1))
+            .unwrap();
+        let table_view = TableViewState {
+            table,
+            row_count: 2,
+            col_count: 2,
+            width_px: 240.0,
+            height_px: 72.0,
+            column_widths_px: vec![120.0, 120.0],
+            row_heights_px: vec![36.0, 36.0],
+            horizontal_scroll_offset_px: 0.0,
+            visible_cells: Vec::new(),
+            focused_cell: None,
+            focused_cell_offset: None,
+        };
+        let selection = TableAxisSelection::new(7, TableAxis::Row, 0);
+
+        assert!(!table_menu_action_enabled(
+            TableMenuAction::InsertRowBelow,
+            selection,
+            &table_view
+        ));
+        assert!(!table_menu_action_enabled(
+            TableMenuAction::DeleteColumn,
+            selection,
+            &table_view
+        ));
+        assert!(!table_menu_action_enabled(
+            TableMenuAction::MergeCells,
+            selection,
+            &table_view
+        ));
+        assert!(table_menu_action_enabled(
+            TableMenuAction::SplitCell,
+            selection,
+            &table_view
+        ));
     }
 }

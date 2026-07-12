@@ -97,13 +97,13 @@ cargo test
 唯一 warning：
 
 ```text
-crate `CDitor_V2` should have a snake case name
+crate `Cditor_V2` should have a snake case name
 ```
 
 原因是 `Cargo.toml` 中包名为：
 
 ```toml
-name = "CDitor-V2"
+name = "Cditor"
 ```
 
 该 warning 未处理，因为改包名可能影响 crate 名称与外部引用，除非明确决定迁移包名。

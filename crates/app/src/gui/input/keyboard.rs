@@ -2,6 +2,16 @@ use gpui::KeyDownEvent;
 
 use super::GuiInputCommand;
 
+pub fn is_empty_line_ai_shortcut(event: &KeyDownEvent) -> bool {
+    let modifiers = event.keystroke.modifiers;
+    event.keystroke.key == "space"
+        && !event.keystroke.is_ime_in_progress()
+        && !modifiers.platform
+        && !modifiers.control
+        && !modifiers.alt
+        && !modifiers.shift
+}
+
 pub fn command_for_key_down(event: &KeyDownEvent) -> GuiInputCommand {
     if event.keystroke.is_ime_in_progress() {
         return GuiInputCommand::Ignore;
@@ -95,6 +105,21 @@ mod tests {
             command_for_key_down(&event_for_key("tab", shift)),
             GuiInputCommand::OutdentBlock
         );
+    }
+
+    #[test]
+    fn empty_line_ai_shortcut_requires_unmodified_space() {
+        assert!(is_empty_line_ai_shortcut(&event_for_key(
+            "space",
+            gpui::Modifiers::default()
+        )));
+        let mut shift = gpui::Modifiers::default();
+        shift.shift = true;
+        assert!(!is_empty_line_ai_shortcut(&event_for_key("space", shift)));
+        assert!(!is_empty_line_ai_shortcut(&event_for_key(
+            "enter",
+            gpui::Modifiers::default()
+        )));
     }
 
     #[test]

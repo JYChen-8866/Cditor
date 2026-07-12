@@ -1,4 +1,7 @@
-use gpui::{AnyElement, App, Entity, FocusHandle, IntoElement, Styled, div, rgb};
+use gpui::{
+    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div,
+    px, rgb,
+};
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
@@ -10,6 +13,7 @@ use crate::gui::block::paragraph::render_paragraph;
 use crate::gui::block::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
 };
+use crate::gui::block::{MermaidRenderCache, WhiteboardThumbnailCache, render_mermaid_block};
 use crate::gui::input::{
     CodeLanguageEditState, focus_block_from_mouse, gutter_mouse_down_from_mouse,
     hover_block_from_mouse, toggle_todo_from_mouse,
@@ -41,6 +45,10 @@ impl BlockView {
         table_reorder_preview: Option<TableReorderPreview>,
         table_range_selection: Option<TableCellRangeSelection>,
         code_language_edit: Option<&CodeLanguageEditState>,
+        table_scroll_handle: Option<ScrollHandle>,
+        mermaid_renders: &MermaidRenderCache,
+        mermaid_show_source: bool,
+        whiteboard_thumbnails: &WhiteboardThumbnailCache,
         cx: &mut App,
     ) -> AnyElement {
         let theme = self.theme;
@@ -58,11 +66,17 @@ impl BlockView {
             table_reorder_preview,
             table_range_selection,
             code_language_edit,
+            table_scroll_handle,
+            mermaid_renders,
+            mermaid_show_source,
+            whiteboard_thumbnails,
             cx,
         );
         let focus_view = view.clone();
         let hover_view = view.clone();
+        let add_view = view.clone();
         let gutter_view = view.clone();
+        let delete_view = view.clone();
         let on_todo_toggle = matches!(
             block.chrome.prefix,
             cditor_core::block::BlockPrefixSnapshot::Todo { .. }
@@ -91,8 +105,20 @@ impl BlockView {
             Some(Box::new(move |event, _window, cx| {
                 hover_block_from_mouse(&hover_view, block_id, event, cx);
             })),
+            Some(Box::new(move |_event, window, cx| {
+                let _ = add_view.update(cx, |view, cx| {
+                    view.insert_paragraph_after_block_from_gui(block_id, window, cx);
+                });
+                cx.stop_propagation();
+            })),
             Some(Box::new(move |event, window, cx| {
                 gutter_mouse_down_from_mouse(&gutter_view, block_id, event, window, cx);
+                cx.stop_propagation();
+            })),
+            Some(Box::new(move |_event, _window, cx| {
+                let _ = delete_view.update(cx, |view, cx| {
+                    view.delete_block_from_gui(block_id, cx);
+                });
                 cx.stop_propagation();
             })),
             on_todo_toggle,
@@ -113,6 +139,10 @@ fn render_kind_content(
     table_reorder_preview: Option<TableReorderPreview>,
     table_range_selection: Option<TableCellRangeSelection>,
     code_language_edit: Option<&CodeLanguageEditState>,
+    table_scroll_handle: Option<ScrollHandle>,
+    mermaid_renders: &MermaidRenderCache,
+    mermaid_show_source: bool,
+    whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
 ) -> AnyElement {
     let content = render_block_content(
@@ -124,8 +154,11 @@ fn render_kind_content(
         table_resize_preview,
         table_reorder_preview,
         table_range_selection,
-        code_language_edit.is_some(),
+        code_language_edit.is_some()
+            || (matches!(block.kind, RichBlockKind::Mermaid) && !mermaid_show_source),
         table_axis_selection,
+        table_scroll_handle,
+        whiteboard_thumbnails,
         cx,
     );
     match block.kind {
@@ -148,10 +181,33 @@ fn render_kind_content(
             render_paragraph(content)
         }
         RichBlockKind::Table => content,
+        RichBlockKind::Math => div()
+            .w_full()
+            .text_center()
+            .text_size(px(20.0))
+            .child(content)
+            .into_any_element(),
+        RichBlockKind::Mermaid => render_mermaid_block(
+            block.block_id,
+            content,
+            mermaid_show_source,
+            mermaid_renders,
+            theme,
+            view,
+        ),
+        RichBlockKind::RawMarkdown => div()
+            .w_full()
+            .rounded(px(3.0))
+            .bg(rgb(theme.code_background))
+            .font_family("Menlo")
+            .text_size(px(13.0))
+            .child(content)
+            .into_any_element(),
         RichBlockKind::Divider | RichBlockKind::Separator => div()
-            .my_2()
-            .border_t_1()
-            .border_color(rgb(theme.border))
+            .w_full()
+            .my(px(11.0))
+            .h(px(1.0))
+            .bg(rgb(theme.border))
             .into_any_element(),
         _ => render_paragraph(content),
     }

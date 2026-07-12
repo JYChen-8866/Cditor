@@ -1,4 +1,4 @@
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
+use gpui::{AnyElement, FontWeight, IntoElement, ParentElement, Styled, div, px, rgb};
 
 use crate::gui::GuiTheme;
 
@@ -36,7 +36,7 @@ impl EditorSaveStatus {
 pub fn render_load_state(label: &EditorLoadStateLabel, theme: GuiTheme) -> AnyElement {
     let (title, detail, color) = match label {
         EditorLoadStateLabel::Loading(detail) => ("正在打开文档", detail.as_str(), theme.muted),
-        EditorLoadStateLabel::Failed(detail) => ("打开文档失败", detail.as_str(), 0xcf222e),
+        EditorLoadStateLabel::Failed(detail) => ("打开文档失败", detail.as_str(), theme.danger),
     };
     div()
         .w_full()
@@ -44,17 +44,15 @@ pub fn render_load_state(label: &EditorLoadStateLabel, theme: GuiTheme) -> AnyEl
         .flex()
         .items_center()
         .justify_center()
-        .bg(rgb(theme.surface))
+        .bg(rgb(theme.page))
         .child(
             div()
-                .p_6()
-                .rounded(px(12.0))
-                .border_1()
-                .border_color(rgb(theme.border))
-                .bg(rgb(theme.page))
+                .w(px(360.0))
+                .text_center()
                 .child(
                     div()
-                        .text_size(px(18.0))
+                        .text_size(px(15.0))
+                        .font_weight(FontWeight::SEMIBOLD)
                         .text_color(rgb(theme.text))
                         .child(title),
                 )
@@ -72,18 +70,15 @@ pub fn render_load_state(label: &EditorLoadStateLabel, theme: GuiTheme) -> AnyEl
 pub fn render_save_indicator(status: &EditorSaveStatus, theme: GuiTheme) -> AnyElement {
     let color = match status {
         EditorSaveStatus::Clean => theme.muted,
-        EditorSaveStatus::Dirty => 0x9a6700,
-        EditorSaveStatus::Saving => 0x0969da,
-        EditorSaveStatus::Failed(_) => 0xcf222e,
+        EditorSaveStatus::Dirty => 0xcb912f,
+        EditorSaveStatus::Saving => theme.focused,
+        EditorSaveStatus::Failed(_) => theme.danger,
         EditorSaveStatus::Readonly => theme.muted,
     };
 
     div()
-        .px_2()
+        .px_1()
         .py_1()
-        .rounded(px(8.0))
-        .border_1()
-        .border_color(rgb(theme.border))
         .text_size(px(12.0))
         .text_color(rgb(color))
         .child(status.label())

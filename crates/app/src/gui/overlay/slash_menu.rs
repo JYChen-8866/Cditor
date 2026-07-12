@@ -9,8 +9,11 @@ use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 
 pub const SLASH_MENU_VISIBLE_ITEMS: usize = 8;
-const SLASH_MENU_ROW_HEIGHT_PX: f32 = 34.0;
-const SLASH_MENU_WIDTH_PX: f32 = 260.0;
+const SLASH_MENU_ROW_HEIGHT_PX: f32 = 48.0;
+const SLASH_MENU_WIDTH_PX: f32 = 320.0;
+const SLASH_MENU_GROUP_HEIGHT_PX: f32 = 28.0;
+const SLASH_MENU_PANEL_PADDING_PX: f32 = 4.0;
+const SLASH_MENU_ICON_SIZE_PX: f32 = 36.0;
 const SLASH_MENU_VIEWPORT_MARGIN_PX: f32 = 8.0;
 const SLASH_MENU_ANCHOR_GAP_PX: f32 = 4.0;
 
@@ -27,9 +30,17 @@ pub struct SlashMenuState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlashMenuItem {
+    pub icon: &'static str,
     pub label: &'static str,
+    pub description: &'static str,
     pub keywords: &'static [&'static str],
     pub kind: RichBlockKind,
+    pub command: Option<SlashMenuCommand>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlashMenuCommand {
+    AskAi,
 }
 
 impl SlashMenuState {
@@ -101,61 +112,160 @@ impl SlashMenuState {
 
 pub fn slash_menu_items() -> Vec<SlashMenuItem> {
     vec![
-        item("Text", &["paragraph", "text"], RichBlockKind::Paragraph),
+        SlashMenuItem {
+            icon: "AI",
+            label: "Ask AI",
+            description: "Write, improve, translate, or transform text.",
+            keywords: &["ai", "write", "rewrite", "translate"],
+            kind: RichBlockKind::Paragraph,
+            command: Some(SlashMenuCommand::AskAi),
+        },
         item(
+            "T",
+            "Text",
+            "Just start writing with plain text.",
+            &["paragraph", "text"],
+            RichBlockKind::Paragraph,
+        ),
+        item(
+            "H1",
             "Heading 1",
+            "Big section heading.",
             &["h1", "heading"],
             RichBlockKind::Heading { level: 1 },
         ),
         item(
+            "H2",
             "Heading 2",
+            "Medium section heading.",
             &["h2", "heading"],
             RichBlockKind::Heading { level: 2 },
         ),
         item(
+            "H3",
             "Heading 3",
+            "Small section heading.",
             &["h3", "heading"],
             RichBlockKind::Heading { level: 3 },
         ),
         item(
+            "[]",
             "Todo",
+            "Track a task with a checkbox.",
             &["task", "checkbox"],
             RichBlockKind::Todo { checked: false },
         ),
         item(
+            "*",
             "Bulleted list",
+            "Create a simple bulleted list.",
             &["bullet", "ul", "list"],
             RichBlockKind::BulletedList,
         ),
         item(
+            "1.",
             "Numbered list",
+            "Create a list with numbering.",
             &["number", "ol", "list"],
             RichBlockKind::NumberedList,
         ),
-        item("Toggle", &["details"], RichBlockKind::Toggle),
-        item("Quote", &["blockquote"], RichBlockKind::Quote),
         item(
+            ">",
+            "Toggle",
+            "Hide content inside a toggle.",
+            &["details"],
+            RichBlockKind::Toggle,
+        ),
+        item(
+            "\"",
+            "Quote",
+            "Capture a quote.",
+            &["blockquote"],
+            RichBlockKind::Quote,
+        ),
+        item(
+            "!",
             "Callout",
+            "Make writing stand out.",
             &["note"],
             RichBlockKind::Callout {
                 variant: CalloutVariant::Note,
             },
         ),
         item(
+            "</>",
             "Code",
+            "Capture a code snippet.",
             &["code block"],
             RichBlockKind::Code { language: None },
         ),
-        item("Math", &["equation"], RichBlockKind::Math),
-        item("Mermaid", &["diagram"], RichBlockKind::Mermaid),
-        item("HTML", &["html"], RichBlockKind::Html),
-        item("Table", &["grid"], RichBlockKind::Table),
-        item("Divider", &["hr", "line"], RichBlockKind::Divider),
-        item("Separator", &["separator"], RichBlockKind::Separator),
-        item("Footnote", &["footnote"], RichBlockKind::FootnoteDefinition),
-        item("Comment", &["comment"], RichBlockKind::Comment),
         item(
+            "fx",
+            "Math",
+            "Write a block equation.",
+            &["equation"],
+            RichBlockKind::Math,
+        ),
+        item(
+            "M",
+            "Mermaid",
+            "Create a Mermaid diagram.",
+            &["diagram"],
+            RichBlockKind::Mermaid,
+        ),
+        item(
+            "<>",
+            "HTML",
+            "Embed an HTML snippet.",
+            &["html"],
+            RichBlockKind::Html,
+        ),
+        item(
+            "#",
+            "Table",
+            "Add a simple table.",
+            &["grid"],
+            RichBlockKind::Table,
+        ),
+        item(
+            "WB",
+            "Whiteboard",
+            "Sketch and arrange ideas on a canvas.",
+            &["board", "canvas", "draw", "diagram", "白板"],
+            RichBlockKind::Whiteboard,
+        ),
+        item(
+            "---",
+            "Divider",
+            "Visually divide blocks.",
+            &["hr", "line"],
+            RichBlockKind::Divider,
+        ),
+        item(
+            "|",
+            "Separator",
+            "Add a section separator.",
+            &["separator"],
+            RichBlockKind::Separator,
+        ),
+        item(
+            "fn",
+            "Footnote",
+            "Add a footnote definition.",
+            &["footnote"],
+            RichBlockKind::FootnoteDefinition,
+        ),
+        item(
+            "//",
+            "Comment",
+            "Add a comment block.",
+            &["comment"],
+            RichBlockKind::Comment,
+        ),
+        item(
+            "MD",
             "Raw Markdown",
+            "Keep text as raw Markdown.",
             &["markdown", "md"],
             RichBlockKind::RawMarkdown,
         ),
@@ -163,14 +273,19 @@ pub fn slash_menu_items() -> Vec<SlashMenuItem> {
 }
 
 fn item(
+    icon: &'static str,
     label: &'static str,
+    description: &'static str,
     keywords: &'static [&'static str],
     kind: RichBlockKind,
 ) -> SlashMenuItem {
     SlashMenuItem {
+        icon,
         label,
+        description,
         keywords,
         kind,
+        command: None,
     }
 }
 
@@ -223,10 +338,13 @@ pub fn render_slash_menu(
         .top(px(y))
         .w(px(SLASH_MENU_WIDTH_PX))
         .h(px(height))
-        .rounded(px(8.0))
+        .flex()
+        .flex_col()
+        .p(px(SLASH_MENU_PANEL_PADDING_PX))
+        .rounded(px(6.0))
         .border_1()
         .border_color(rgb(theme.border))
-        .bg(rgb(theme.code_toolbar_background))
+        .bg(rgb(theme.panel))
         .shadow_lg()
         .occlude()
         .overflow_hidden()
@@ -253,12 +371,13 @@ pub fn render_slash_menu(
                 }
                 cx.stop_propagation();
             }
-        });
+        })
+        .child(render_slash_menu_group_header(theme));
 
     if items.is_empty() {
         panel = panel.child(
             div()
-                .h_full()
+                .h(px(SLASH_MENU_ROW_HEIGHT_PX))
                 .flex()
                 .items_center()
                 .px(px(12.0))
@@ -295,7 +414,9 @@ pub fn render_slash_menu(
 }
 
 fn slash_menu_panel_height(total_items: usize) -> f32 {
-    total_items.min(SLASH_MENU_VISIBLE_ITEMS).max(1) as f32 * SLASH_MENU_ROW_HEIGHT_PX
+    SLASH_MENU_PANEL_PADDING_PX * 2.0
+        + SLASH_MENU_GROUP_HEIGHT_PX
+        + total_items.min(SLASH_MENU_VISIBLE_ITEMS).max(1) as f32 * SLASH_MENU_ROW_HEIGHT_PX
 }
 
 fn slash_menu_panel_position(
@@ -326,30 +447,45 @@ fn slash_menu_panel_position(
 }
 
 fn render_slash_scrollbar(theme: GuiTheme, total_items: usize, scroll_start: usize) -> AnyElement {
-    let track_height = slash_menu_panel_height(SLASH_MENU_VISIBLE_ITEMS) - 8.0;
     let visible = SLASH_MENU_VISIBLE_ITEMS.min(total_items);
+    let track_height = visible as f32 * SLASH_MENU_ROW_HEIGHT_PX - 8.0;
     let thumb_height = (track_height * visible as f32 / total_items as f32).max(24.0);
     let max_start = total_items.saturating_sub(visible).max(1);
     let max_top = (track_height - thumb_height).max(0.0);
-    let thumb_top = 4.0 + max_top * scroll_start.min(max_start) as f32 / max_start as f32;
+    let thumb_top = max_top * scroll_start.min(max_start) as f32 / max_start as f32;
 
     div()
         .absolute()
         .right(px(3.0))
-        .top(px(4.0))
+        .top(px(SLASH_MENU_PANEL_PADDING_PX
+            + SLASH_MENU_GROUP_HEIGHT_PX
+            + 4.0))
         .w(px(3.0))
         .h(px(track_height))
         .rounded(px(2.0))
-        .bg(rgb(theme.code_toolbar_border))
+        .bg(rgb(theme.border))
         .child(
             div()
                 .absolute()
-                .top(px(thumb_top - 4.0))
+                .top(px(thumb_top))
                 .w(px(3.0))
                 .h(px(thumb_height))
                 .rounded(px(2.0))
-                .bg(rgb(theme.muted)),
+                .bg(rgb(theme.scrollbar)),
         )
+        .into_any_element()
+}
+
+fn render_slash_menu_group_header(theme: GuiTheme) -> AnyElement {
+    div()
+        .flex_none()
+        .h(px(SLASH_MENU_GROUP_HEIGHT_PX))
+        .flex()
+        .items_center()
+        .px(px(8.0))
+        .text_size(px(11.0))
+        .text_color(rgb(theme.muted))
+        .child("Basic blocks")
         .into_any_element()
 }
 
@@ -361,21 +497,22 @@ fn render_slash_menu_row(
     view: Entity<CditorV2View>,
 ) -> AnyElement {
     let background = if selected {
-        theme.code_toolbar_hover
+        theme.hover_surface
     } else {
-        theme.code_toolbar_background
+        theme.panel
     };
     div()
         .flex()
         .flex_none()
         .items_center()
-        .justify_between()
         .w_full()
         .h(px(SLASH_MENU_ROW_HEIGHT_PX))
-        .px(px(12.0))
+        .gap(px(10.0))
+        .px(px(8.0))
+        .rounded(px(4.0))
         .bg(rgb(background))
         .cursor_pointer()
-        .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)).cursor_pointer())
+        .hover(move |style| style.bg(rgb(theme.hover_surface)).cursor_pointer())
         .on_mouse_move({
             let view = view.clone();
             move |_event, _window, cx| {
@@ -386,9 +523,39 @@ fn render_slash_menu_row(
         })
         .child(
             div()
-                .text_size(px(13.0))
+                .flex_none()
+                .w(px(SLASH_MENU_ICON_SIZE_PX))
+                .h(px(SLASH_MENU_ICON_SIZE_PX))
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(rgb(theme.border))
+                .bg(rgb(theme.panel))
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(12.0))
                 .text_color(rgb(theme.text))
-                .child(item.label),
+                .child(item.icon),
+        )
+        .child(
+            div()
+                .min_w(px(0.0))
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap(px(1.0))
+                .child(
+                    div()
+                        .text_size(px(14.0))
+                        .text_color(rgb(theme.text))
+                        .child(item.label),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(rgb(theme.muted))
+                        .child(item.description),
+                ),
         )
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             let _ = view.update(cx, |view, cx| {
@@ -452,20 +619,44 @@ mod tests {
                 .any(|item| item.kind == RichBlockKind::Code { language: None })
         );
         assert!(items.iter().any(|item| item.kind == RichBlockKind::Table));
+        assert!(
+            items
+                .iter()
+                .any(|item| item.kind == RichBlockKind::Whiteboard)
+        );
+        assert!(
+            items
+                .iter()
+                .all(|item| !item.icon.is_empty() && !item.description.is_empty())
+        );
+    }
+
+    #[test]
+    fn slash_menu_finds_whiteboard_by_canvas_keyword() {
+        let items = slash_menu_items();
+        let whiteboard = items
+            .iter()
+            .find(|item| item.kind == RichBlockKind::Whiteboard)
+            .expect("whiteboard slash item");
+
+        assert!(slash_item_matches(whiteboard, "whiteboard"));
+        assert!(slash_item_matches(whiteboard, "canvas"));
+        assert!(slash_item_matches(whiteboard, "draw"));
+        assert!(slash_item_matches(whiteboard, "白板"));
     }
 
     #[test]
     fn slash_scroll_delta_maps_to_rows() {
         assert_eq!(slash_scroll_delta_rows(0.5), 0);
         assert_eq!(slash_scroll_delta_rows(1.0), -1);
-        assert_eq!(slash_scroll_delta_rows(35.0), -2);
-        assert_eq!(slash_scroll_delta_rows(-35.0), 2);
+        assert_eq!(slash_scroll_delta_rows(49.0), -2);
+        assert_eq!(slash_scroll_delta_rows(-49.0), 2);
     }
 
     #[test]
     fn slash_menu_position_clamps_to_viewport_edges() {
         let (x, y) = slash_menu_panel_position(780.0, 40.0, 120.0, 800.0, 600.0);
-        assert_eq!(x, 532.0);
+        assert_eq!(x, 472.0);
         assert_eq!(y, 44.0);
     }
 
@@ -478,8 +669,16 @@ mod tests {
 
     #[test]
     fn slash_menu_panel_height_uses_visible_row_limit() {
-        assert_eq!(slash_menu_panel_height(0), 34.0);
-        assert_eq!(slash_menu_panel_height(3), 102.0);
-        assert_eq!(slash_menu_panel_height(20), 272.0);
+        assert_eq!(slash_menu_panel_height(0), 84.0);
+        assert_eq!(slash_menu_panel_height(3), 180.0);
+        assert_eq!(slash_menu_panel_height(20), 420.0);
+    }
+
+    #[test]
+    fn slash_menu_position_clamps_wider_notion_panel_in_narrow_viewport() {
+        let (x, y) = slash_menu_panel_position(300.0, 300.0, 420.0, 300.0, 600.0);
+
+        assert_eq!(x, SLASH_MENU_VIEWPORT_MARGIN_PX);
+        assert_eq!(y, SLASH_MENU_VIEWPORT_MARGIN_PX);
     }
 }

@@ -198,6 +198,7 @@ pub enum EditTransactionKind {
     Typing,
     CompositionCommit,
     Paste,
+    AiApply,
     DragDrop,
     Format,
     ExplicitCommand,

@@ -10,7 +10,10 @@ impl CditorV2View {
             self.gutter_drag_auto_scroll_scheduled = false;
             return false;
         };
-        clear_committed_gutter_action(&mut self.action_block_id, drag.block_id);
+        if drag.exceeded_threshold {
+            clear_committed_gutter_action(&mut self.action_block_id, drag.block_id);
+            self.gutter_toolbar_block_id = None;
+        }
         self.gutter_drag_auto_scroll_scheduled = false;
         let Some(target) = drag.target.filter(|_| drag.exceeded_threshold) else {
             cx.notify();

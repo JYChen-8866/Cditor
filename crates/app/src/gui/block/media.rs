@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
+use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, Entity, InteractiveElement, IntoElement, MouseButton, ObjectFit,
     ParentElement, RenderImage, Styled, div, px, rgb,
@@ -11,14 +12,16 @@ use crate::gui::app::CditorV2View;
 use crate::gui::image_loader::{RasterImageElement, load_render_image};
 use crate::gui::image_preview::open_image_preview;
 use cditor_core::ids::BlockId;
+use cditor_core::layout::COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX;
 use cditor_core::rich_text::ImagePayload;
 
 const NOTE_IMAGE_MAX_WIDTH_PX: f32 = 704.0;
 const DEFAULT_IMAGE_MAX_WIDTH_PX: f32 = 560.0;
 const MIN_IMAGE_WIDTH_RATIO_MILLI: u16 = 200;
 const MAX_IMAGE_WIDTH_RATIO_MILLI: u16 = 1000;
-const V1_IMAGE_RADIUS_PX: f32 = 8.0;
-const IMAGE_BLOCK_OUTER_CHROME_HEIGHT_PX: f32 = 16.0;
+const V1_IMAGE_RADIUS_PX: f32 = 3.0;
+const IMAGE_CAPTION_HEIGHT_PX: f32 = 26.0;
+const IMAGE_PLACEHOLDER_HEIGHT_PX: f32 = 220.0;
 const IMAGE_RESIZE_HANDLE_SIZE_PX: f32 = 24.0;
 const IMAGE_RESIZE_HANDLE_EDGE_GAP_PX: f32 = 4.0;
 const IMAGE_RESIZE_HANDLE_DOT_ROWS: [usize; 3] = [1, 2, 3];
@@ -38,7 +41,7 @@ pub fn render_image_block(
         display_image_size_px(render_image, image, image_resize_preview_width_px)
     });
     if let Some((_, height)) = display_size {
-        let measured_height = image_block_measured_height(height);
+        let measured_height = image_block_measured_height(height, !image.caption.trim().is_empty());
         schedule_rendered_media_height_report(
             view.clone(),
             block_id,
@@ -50,9 +53,7 @@ pub fn render_image_block(
 
     let mut card = div()
         .rounded(px(V1_IMAGE_RADIUS_PX))
-        .border_1()
-        .border_color(rgb(theme.border))
-        .bg(rgb(theme.surface))
+        .bg(rgb(theme.page))
         .overflow_hidden();
     if let Some((width, _)) = display_size {
         card = card.w(px(width));
@@ -72,7 +73,7 @@ pub fn render_image_block(
             .h(px(height))
             .group("image-resize")
             .cursor_pointer()
-            .hover(|s| s.border_color(rgb(theme.focused)).shadow_lg())
+            .hover(|s| s.opacity(0.96))
             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                 open_image_preview(preview_image.clone(), true, true, cx);
                 cx.stop_propagation();
@@ -94,11 +95,25 @@ pub fn render_image_block(
         render_image_placeholder(image, theme)
     });
 
+    let caption_width = display_size.map(|(width, _)| width);
     div()
         .w_full()
         .flex()
+        .flex_col()
+        .items_center()
         .justify_center()
         .child(card)
+        .when(!image.caption.trim().is_empty(), |this| {
+            this.child(
+                div()
+                    .mt(px(6.0))
+                    .when_some(caption_width, |caption, width| caption.w(px(width)))
+                    .text_center()
+                    .text_size(px(14.0))
+                    .text_color(rgb(theme.muted))
+                    .child(image.caption.clone()),
+            )
+        })
         .into_any_element()
 }
 
@@ -288,14 +303,24 @@ fn render_image_resize_grip_dot(theme: GuiTheme) -> AnyElement {
         .into_any_element()
 }
 
-fn image_block_measured_height(image_height_px: f32) -> f64 {
-    f64::from(image_height_px + IMAGE_BLOCK_OUTER_CHROME_HEIGHT_PX)
+fn image_block_measured_height(image_height_px: f32, has_caption: bool) -> f64 {
+    f64::from(
+        image_height_px
+            + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32
+            + if has_caption {
+                IMAGE_CAPTION_HEIGHT_PX
+            } else {
+                0.0
+            },
+    )
 }
 
 fn render_image_placeholder(image: &ImagePayload, theme: GuiTheme) -> AnyElement {
     div()
         .w_full()
-        .h_full()
+        .h(px(IMAGE_PLACEHOLDER_HEIGHT_PX))
+        .rounded(px(V1_IMAGE_RADIUS_PX))
+        .bg(rgb(theme.hover_surface))
         .flex()
         .items_center()
         .justify_center()
@@ -304,7 +329,7 @@ fn render_image_placeholder(image: &ImagePayload, theme: GuiTheme) -> AnyElement
         .child(if image.source.is_empty() {
             "Image".to_owned()
         } else {
-            format!("Image: {}", image.source)
+            "Loading image".to_owned()
         })
         .into_any_element()
 }
@@ -314,10 +339,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn image_block_measured_height_uses_displayed_image_height_without_footer() {
+    fn image_block_measured_height_includes_optional_caption() {
         assert_eq!(
-            image_block_measured_height(512.0),
-            f64::from(512.0 + IMAGE_BLOCK_OUTER_CHROME_HEIGHT_PX)
+            image_block_measured_height(512.0, false),
+            f64::from(512.0 + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32)
+        );
+        assert_eq!(
+            image_block_measured_height(512.0, true),
+            f64::from(
+                512.0 + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32 + IMAGE_CAPTION_HEIGHT_PX
+            )
         );
     }
 

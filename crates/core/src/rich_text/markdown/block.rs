@@ -8,16 +8,24 @@ pub(super) fn block_kind_for_marker(marker: &str) -> Option<RichBlockKind> {
         "####" => Some(RichBlockKind::Heading { level: 4 }),
         "#####" => Some(RichBlockKind::Heading { level: 5 }),
         "######" => Some(RichBlockKind::Heading { level: 6 }),
-        "-" | "*" => Some(RichBlockKind::BulletedList),
-        "1." => Some(RichBlockKind::NumberedList),
+        "-" | "*" | "+" => Some(RichBlockKind::BulletedList),
         "[ ]" | "- [ ]" => Some(RichBlockKind::Todo { checked: false }),
         "[x]" | "[X]" | "- [x]" | "- [X]" => Some(RichBlockKind::Todo { checked: true }),
         ">" => Some(RichBlockKind::Quote),
-        _ => None,
+        "---" | "***" | "___" => Some(RichBlockKind::Separator),
+        _ => marker
+            .strip_prefix("> ")
+            .and_then(parse_callout_marker)
+            .map(|variant| RichBlockKind::Callout { variant })
+            .or_else(|| {
+                let digits = marker.strip_suffix('.')?;
+                (!digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()))
+                    .then_some(RichBlockKind::NumberedList)
+            }),
     }
 }
 
-pub(super) fn parse_callout_marker(line: &str) -> Option<CalloutVariant> {
+pub fn parse_callout_marker(line: &str) -> Option<CalloutVariant> {
     match line.trim() {
         "[!NOTE]" => Some(CalloutVariant::Note),
         "[!TIP]" => Some(CalloutVariant::Tip),
@@ -39,6 +47,7 @@ pub(super) fn looks_like_single_block_markdown(line: &str) -> bool {
         || line.starts_with("- [X] ")
         || line.starts_with("- ")
         || line.starts_with("* ")
+        || line.starts_with("+ ")
         || parse_numbered_item(line).is_some()
 }
 

@@ -457,7 +457,7 @@ mod tests {
         let caret = layout.caret_rect_for_offset(&text, "你".len());
         assert_eq!(caret.y, 0.0);
         assert!(caret.x > 0.0);
-        assert_eq!(caret.height, 22.0);
+        assert_eq!(caret.height, 24.0);
 
         let mixed_caret = layout.caret_rect_for_offset(&text, "你好a".len());
         assert_eq!(mixed_caret.x, WIDE_CHAR_WIDTH * 2.0 + ASCII_CHAR_WIDTH);
@@ -471,8 +471,8 @@ mod tests {
         let layout = wrap_rich_text(&input);
 
         assert_eq!(layout.lines.len(), 1);
-        assert_eq!(layout.lines[0].height, 36.0);
-        assert_eq!(layout.height, 36.0);
+        assert_eq!(layout.lines[0].height, 39.0);
+        assert_eq!(layout.height, 39.0);
     }
 
     #[test]

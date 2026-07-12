@@ -7,12 +7,14 @@ use crate::rich_text::MARKDOWN_PARSE_STATS;
 
 mod block;
 mod export;
+
+pub use block::parse_callout_marker;
 mod inline;
 mod table;
 
 use block::{
-    block_kind_for_marker, looks_like_single_block_markdown, parse_callout_marker,
-    parse_fence_start, parse_heading, parse_numbered_item,
+    block_kind_for_marker, looks_like_single_block_markdown, parse_fence_start, parse_heading,
+    parse_numbered_item,
 };
 use export::block_to_plain_markdown;
 use inline::{parse_inline_markdown, parse_inline_markdown_extended};
@@ -53,6 +55,7 @@ pub fn parse_markdown_document(
     markdown: &str,
     options: MarkdownImportOptions,
 ) -> ParsedMarkdownDocument {
+    let markdown = unwrap_outer_markdown_fence(markdown);
     MARKDOWN_PARSE_STATS.record_full_parse(markdown.len());
     let mut parser = MarkdownParser::new(options);
     parser.parse_document(markdown)
@@ -63,6 +66,7 @@ pub fn import_markdown_block_incremental(
     markdown: &str,
     options: MarkdownImportOptions,
 ) -> Option<RichBlockRecord> {
+    let markdown = unwrap_outer_markdown_fence(markdown);
     let trimmed = markdown.trim();
     if trimmed.is_empty() {
         return None;
@@ -99,18 +103,49 @@ pub fn block_kind_shortcut(marker: &str) -> Option<RichBlockKind> {
 #[must_use]
 pub fn block_kind_shortcut_with_marker_len(text: &str) -> Option<(RichBlockKind, usize)> {
     const MARKERS: &[&str] = &[
-        "###### ", "##### ", "#### ", "### ", "## ", "# ", "- [ ] ", "- [x] ", "- [X] ", "[ ] ",
-        "[x] ", "[X] ", "1. ", "- ", "* ", "> ",
+        "> [!IMPORTANT] ",
+        "> [!WARNING] ",
+        "> [!CAUTION] ",
+        "> [!NOTE] ",
+        "> [!TIP] ",
+        "###### ",
+        "##### ",
+        "#### ",
+        "### ",
+        "## ",
+        "# ",
+        "- [ ] ",
+        "- [x] ",
+        "- [X] ",
+        "[ ] ",
+        "[x] ",
+        "[X] ",
+        "--- ",
+        "*** ",
+        "___ ",
+        "- ",
+        "* ",
+        "+ ",
+        "> ",
     ];
-    MARKERS.iter().find_map(|marker_with_space| {
-        text.strip_prefix(marker_with_space).map(|_| {
-            let marker = marker_with_space.trim_end();
-            (
-                block_kind_for_marker(marker).expect("known markdown marker"),
-                marker_with_space.len(),
-            )
+    MARKERS
+        .iter()
+        .find_map(|marker_with_space| {
+            text.strip_prefix(marker_with_space).map(|_| {
+                let marker = marker_with_space.trim_end();
+                (
+                    block_kind_for_marker(marker).expect("known markdown marker"),
+                    marker_with_space.len(),
+                )
+            })
         })
-    })
+        .or_else(|| {
+            let digit_count = text.bytes().take_while(u8::is_ascii_digit).count();
+            if digit_count == 0 || !text[digit_count..].starts_with(". ") {
+                return None;
+            }
+            Some((RichBlockKind::NumberedList, digit_count + 2))
+        })
 }
 
 #[must_use]
@@ -129,6 +164,7 @@ pub fn code_fence_shortcut(text: &str) -> Option<RichBlockKind> {
 
 #[must_use]
 pub fn looks_like_markdown_paste(text: &str) -> bool {
+    let text = unwrap_outer_markdown_fence(text);
     text.lines().any(|line| {
         let trimmed = line.trim_start();
         trimmed.starts_with("# ")
@@ -137,6 +173,7 @@ pub fn looks_like_markdown_paste(text: &str) -> bool {
             || trimmed.starts_with("> ")
             || trimmed.starts_with("- ")
             || trimmed.starts_with("* ")
+            || trimmed.starts_with("+ ")
             || trimmed.starts_with("- [ ] ")
             || trimmed.starts_with("- [x] ")
             || trimmed.starts_with("- [X] ")
@@ -147,7 +184,29 @@ pub fn looks_like_markdown_paste(text: &str) -> bool {
             || trimmed == "***"
             || trimmed == "___"
             || parse_numbered_item(trimmed).is_some()
+            || parse_inline_markdown_extended(trimmed).changed
     })
+}
+
+fn unwrap_outer_markdown_fence(markdown: &str) -> &str {
+    let trimmed = markdown.trim();
+    let Some((opening, rest)) = trimmed.split_once('\n') else {
+        return markdown;
+    };
+    let Some((body, closing)) = rest.rsplit_once('\n') else {
+        return markdown;
+    };
+    let opening = opening.trim();
+    let closing = closing.trim();
+    let markdown_fence = matches!(
+        opening.to_ascii_lowercase().as_str(),
+        "```markdown" | "```md" | "···markdown" | "···md"
+    );
+    if markdown_fence && matches!(closing, "```" | "···") {
+        body
+    } else {
+        markdown
+    }
 }
 
 #[must_use]
@@ -372,6 +431,7 @@ impl MarkdownParser {
         if let Some(text) = trimmed
             .strip_prefix("- ")
             .or_else(|| trimmed.strip_prefix("* "))
+            .or_else(|| trimmed.strip_prefix("+ "))
         {
             return Some((
                 indent,
@@ -454,153 +514,5 @@ fn push_markdown_list_block(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn records_markdown_parse_stats_like_v1() {
-        MARKDOWN_PARSE_STATS.reset();
-
-        let _ = parse_markdown_document("# Title", MarkdownImportOptions::default());
-        let _ = import_markdown_block_incremental("- item", MarkdownImportOptions::default());
-
-        let snapshot = MARKDOWN_PARSE_STATS.snapshot();
-        assert!(snapshot.full_parse_count >= 1);
-        assert!(snapshot.full_parse_chars >= "# Title".len() as u64);
-        assert!(snapshot.incremental_parse_count >= 1);
-        assert!(snapshot.incremental_parse_chars >= "- item".len() as u64);
-    }
-
-    #[test]
-    fn block_shortcuts_match_editor2_markers() {
-        assert_eq!(
-            block_kind_shortcut("#"),
-            Some(RichBlockKind::Heading { level: 1 })
-        );
-        assert_eq!(
-            block_kind_shortcut("[x]"),
-            Some(RichBlockKind::Todo { checked: true })
-        );
-        assert_eq!(
-            block_kind_shortcut("- [ ]"),
-            Some(RichBlockKind::Todo { checked: false })
-        );
-        assert_eq!(
-            block_kind_shortcut_with_marker_len("- [x] done"),
-            Some((RichBlockKind::Todo { checked: true }, 6))
-        );
-        assert_eq!(
-            block_kind_shortcut_with_marker_len("## title"),
-            Some((RichBlockKind::Heading { level: 2 }, 3))
-        );
-        assert_eq!(
-            code_fence_shortcut("```Rust"),
-            Some(RichBlockKind::Code {
-                language: Some("rust".to_owned())
-            })
-        );
-    }
-
-    #[test]
-    fn inline_shortcuts_parse_bold_code_and_link() {
-        let spans =
-            markdown_inline_shortcut_spans("hello **bold** and `code` plus [zed](https://zed.dev)")
-                .expect("inline markdown should parse");
-        assert!(
-            spans
-                .iter()
-                .any(|span| span.marks.contains(&InlineMark::Bold) && span.text == "bold")
-        );
-        assert!(
-            spans
-                .iter()
-                .any(|span| span.marks.contains(&InlineMark::Code) && span.text == "code")
-        );
-        assert!(spans.iter().any(|span| matches!(span.marks.as_slice(), [InlineMark::Link { href }] if href == "https://zed.dev")));
-    }
-
-    #[test]
-    fn parses_markdown_document_blocks_tables_and_code() {
-        let parsed = parse_markdown_document(
-            "# Title\n- item\n  - child\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n```rust\nfn main() {}\n```",
-            MarkdownImportOptions::default(),
-        );
-        assert!(matches!(
-            parsed.blocks[0].kind,
-            RichBlockKind::Heading { level: 1 }
-        ));
-        assert!(
-            parsed
-                .blocks
-                .iter()
-                .any(|block| matches!(block.kind, RichBlockKind::Table))
-        );
-        assert!(
-            parsed
-                .blocks
-                .iter()
-                .any(|block| matches!(block.kind, RichBlockKind::Code { .. }))
-        );
-        let child = parsed
-            .blocks
-            .iter()
-            .find(|block| block.depth == 1)
-            .expect("nested list child");
-        assert!(child.parent_id.is_some());
-    }
-
-    #[test]
-    fn export_plain_markdown_matches_v1_basic_boundary() {
-        let mut document = RichTextDocument::empty(1);
-        document.push_root_block(RichBlockRecord::heading(1, 2, "Title"));
-        document.push_root_block(RichBlockRecord::bulleted_list(2, "item"));
-        document.push_root_block(RichBlockRecord::todo(3, true, "done"));
-        document.push_root_block(RichBlockRecord::code_block(
-            4,
-            Some("rust".to_owned()),
-            "fn main() {}",
-        ));
-
-        assert_eq!(
-            export_plain_markdown(&document),
-            "## Title\n- item\n- [x] done\n```rust\nfn main() {}\n```"
-        );
-    }
-
-    #[test]
-    fn table_cells_support_escaped_pipe_like_v1() {
-        let parsed = parse_markdown_document(
-            "| A | B |\n|---|---|\n| left \\| right | ok |",
-            MarkdownImportOptions::default(),
-        );
-        let table = parsed
-            .blocks
-            .iter()
-            .find_map(|block| match &block.payload {
-                BlockPayload::Table(table) => Some(table),
-                _ => None,
-            })
-            .expect("table should parse");
-        assert_eq!(table.rows.len(), 2);
-        assert_eq!(table.rows[1].cells.len(), 2);
-        assert_eq!(
-            crate::rich_text::plain_text_from_spans(&table.rows[1].cells[0].spans),
-            "left | right"
-        );
-    }
-
-    #[test]
-    fn incremental_multiline_callout_is_supported() {
-        let block = import_markdown_block_incremental(
-            "> [!WARNING]\n> be careful",
-            MarkdownImportOptions::default(),
-        )
-        .expect("callout markdown should parse");
-        assert!(matches!(
-            block.kind,
-            RichBlockKind::Callout {
-                variant: CalloutVariant::Warning
-            }
-        ));
-    }
-}
+#[path = "tests.rs"]
+mod tests;

@@ -2,6 +2,8 @@ use std::time::{Duration, Instant};
 
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
 
+use crate::gui::GuiTheme;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuiToast {
     pub message: String,
@@ -23,7 +25,8 @@ impl GuiToast {
     }
 }
 
-pub fn render_toast(toast: &GuiToast) -> AnyElement {
+pub fn render_toast(toast: &GuiToast, theme: GuiTheme) -> AnyElement {
+    let (background, foreground) = toast_palette(theme);
     div()
         .absolute()
         .left_0()
@@ -33,16 +36,22 @@ pub fn render_toast(toast: &GuiToast) -> AnyElement {
         .justify_center()
         .child(
             div()
-                .rounded(px(7.0))
-                .bg(rgb(0x202124))
-                .text_color(rgb(0xffffff))
+                .min_h(px(32.0))
+                .max_w(px(420.0))
+                .rounded(px(4.0))
+                .bg(rgb(background))
+                .text_color(rgb(foreground))
                 .text_size(px(13.0))
-                .px(px(14.0))
-                .py(px(10.0))
-                .shadow_lg()
+                .px(px(12.0))
+                .py(px(8.0))
+                .shadow_sm()
                 .child(toast.message.clone()),
         )
         .into_any_element()
+}
+
+fn toast_palette(theme: GuiTheme) -> (u32, u32) {
+    (theme.text, theme.panel)
 }
 
 #[cfg(test)]
@@ -60,5 +69,12 @@ mod tests {
 
         assert!(toast.is_alive(created_at + Duration::from_secs(2)));
         assert!(!toast.is_alive(created_at + Duration::from_secs(3)));
+    }
+
+    #[test]
+    fn toast_uses_notion_theme_contrast() {
+        let theme = GuiTheme::light();
+
+        assert_eq!(toast_palette(theme), (theme.text, theme.panel));
     }
 }

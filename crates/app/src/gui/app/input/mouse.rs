@@ -53,6 +53,12 @@ impl CditorV2View {
             }
             return;
         }
+        if event.dragging() && self.table_hscroll_drag.is_some() {
+            if self.update_table_hscroll_drag(event.position, cx) {
+                cx.stop_propagation();
+            }
+            return;
+        }
         if event.dragging() && self.gutter_block_drag.is_some() {
             if self.update_gutter_block_drag(event.position, cx) {
                 cx.stop_propagation();
@@ -100,6 +106,9 @@ impl CditorV2View {
             cx.stop_propagation();
         }
         if self.commit_table_reorder_drag(cx) {
+            cx.stop_propagation();
+        }
+        if self.finish_table_hscroll_drag(cx) {
             cx.stop_propagation();
         }
         if self.commit_gutter_block_drag(cx) {

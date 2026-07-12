@@ -47,7 +47,7 @@ pub fn demo_payload_record(block_id: BlockId, index: usize) -> BlockPayloadRecor
 
 pub fn large_mixed_rich_text_document(document_id: DocumentId, count: usize) -> RichTextDocument {
     let mut document = RichTextDocument::empty(document_id);
-    document.metadata.title = Some(format!("CDitor V2 10w mixed syntax demo ({count} blocks)"));
+    document.metadata.title = Some(format!("Cditor 10w mixed syntax demo ({count} blocks)"));
     document.metadata.tags = vec![
         "large-document".to_owned(),
         "mixed-syntax".to_owned(),

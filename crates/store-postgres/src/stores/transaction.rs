@@ -399,6 +399,7 @@ fn transaction_kind_to_db(kind: EditTransactionKind) -> &'static str {
         EditTransactionKind::Typing => "typing",
         EditTransactionKind::CompositionCommit => "composition_commit",
         EditTransactionKind::Paste => "paste",
+        EditTransactionKind::AiApply => "ai_apply",
         EditTransactionKind::DragDrop => "drag_drop",
         EditTransactionKind::Format => "format",
         EditTransactionKind::ExplicitCommand => "explicit_command",

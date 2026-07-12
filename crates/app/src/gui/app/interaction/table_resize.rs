@@ -1,6 +1,7 @@
 use gpui::{Context, Pixels, Point, Window};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::gui::block::table::TableAxis;
 use crate::gui::input::BlockDragSelectionController;
 use crate::gui::persistence::EditorSaveStatus;
@@ -39,6 +40,12 @@ impl CditorV2View {
         self.clear_gutter_action();
         self.scrollbar_drag = None;
         self.image_resize_drag = None;
+        self.table_hscroll_drag = None;
+        self.table_interaction_mode = GuiTableInteractionMode::Resizing {
+            block_id,
+            axis,
+            index,
+        };
         self.hovered_block_id = Some(block_id);
         self.action_block_id = Some(block_id);
         self.table_resize_drag = Some(GuiTableResizeDrag {
@@ -77,6 +84,16 @@ impl CditorV2View {
         }
         drag.current_size_px = next_size;
         self.table_resize_drag = Some(drag);
+        // Apply the column width in real-time so the table re-renders during drag.
+        let size = TableTrackSize::Px(next_size.round().clamp(1.0, u16::MAX as f32) as u16);
+        if let CditorViewState::Ready(runtime) = &mut self.state {
+            match drag.axis {
+                TableAxis::Column => {
+                    let _ = runtime.set_table_column_width(drag.block_id, drag.index, size);
+                }
+                TableAxis::Row => {}
+            }
+        }
         cx.notify();
         true
     }
@@ -86,6 +103,10 @@ impl CditorV2View {
             return false;
         };
         clear_committed_table_resize_action(&mut self.action_block_id, drag.block_id);
+        if matches!(self.table_interaction_mode, GuiTableInteractionMode::Resizing { block_id, axis, index } if block_id == drag.block_id && axis == drag.axis && index == drag.index)
+        {
+            self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        }
         let size =
             TableTrackSize::Px(drag.current_size_px.round().clamp(1.0, u16::MAX as f32) as u16);
         if let CditorViewState::Ready(runtime) = &mut self.state {

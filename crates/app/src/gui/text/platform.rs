@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use cditor_core::edit::{InternalTextOffset, TextOffsetMap};
 use cditor_core::ids::BlockId;
 use cditor_runtime::TableCellPosition;
 use gpui::{Bounds, Pixels, Point, WrappedLine as GpuiWrappedLine, point, px, size};
@@ -19,6 +20,12 @@ pub(crate) fn platform_range_bounds(
     cache: &RichTextPlatformLayout,
     range: Range<usize>,
 ) -> Option<Bounds<Pixels>> {
+    if cache.text.is_empty() && cache.lines.is_empty() {
+        return Some(Bounds::new(
+            cache.bounds.origin,
+            size(px(1.0), cache.line_height),
+        ));
+    }
     let segments = platform_range_segment_bounds(
         &cache.lines,
         cache.bounds,
@@ -118,7 +125,7 @@ pub(crate) fn platform_range_segment_bounds(
         return Vec::new();
     }
     let ranges = hard_line_ranges(text);
-    let range = safe_char_range(text, range);
+    let range = normalized_text_range(text, range);
     let (start_line, start_offset) = line_index_for_offset(text, &ranges, range.start);
     let (end_line, end_offset) = line_index_for_offset(text, &ranges, range.end);
     let mut segments = Vec::new();
@@ -261,10 +268,11 @@ fn line_index_for_offset(text: &str, ranges: &[Range<usize>], offset: usize) -> 
     )
 }
 
-fn safe_char_range(text: &str, range: Range<usize>) -> Range<usize> {
-    let start = clamp_to_char_boundary(text, range.start.min(text.len()));
-    let end = clamp_to_char_boundary(text, range.end.min(text.len())).max(start);
-    start..end
+pub(crate) fn normalized_text_range(text: &str, range: Range<usize>) -> Range<usize> {
+    let offsets = TextOffsetMap::build(text);
+    let range = offsets
+        .normalize_internal_range(InternalTextOffset(range.start)..InternalTextOffset(range.end));
+    range.start.0..range.end.0
 }
 
 fn clamp_local_offset_to_char_boundary(text: &str, hard_start: usize, offset: usize) -> usize {
@@ -337,7 +345,8 @@ mod tests {
         assert_eq!(line_index_for_offset(text, &ranges, 1), (0, 0));
         assert_eq!(line_index_for_offset(text, &ranges, 2), (0, 0));
         assert_eq!(line_index_for_offset(text, &ranges, 3), (0, 3));
-        assert_eq!(safe_char_range(text, 1..4), 0..3);
+        assert_eq!(normalized_text_range(text, 1..4), 0..text.len());
+        assert_eq!(normalized_text_range(text, 2..2), 0..0);
         assert_eq!(clamp_local_offset_to_char_boundary(text, 0, 1), 0);
     }
 
@@ -355,6 +364,28 @@ mod tests {
         assert_eq!(
             platform_local_point_for_bounds(bounds, point(px(90.0), px(210.0))),
             point(px(-30.0), px(-30.0))
+        );
+    }
+
+    #[test]
+    fn empty_text_range_uses_the_stable_line_box_as_its_anchor() {
+        let cache = RichTextPlatformLayout {
+            block_id: 1,
+            content_version: 1,
+            text: String::new(),
+            lines: Vec::new(),
+            bounds: Bounds::new(point(px(120.0), px(240.0)), size(px(300.0), px(24.0))),
+            line_height: px(24.0),
+            measured_height: 24.0,
+            table_cell_position: None,
+        };
+
+        assert_eq!(
+            platform_range_bounds(&cache, 0..0),
+            Some(Bounds::new(
+                point(px(120.0), px(240.0)),
+                size(px(1.0), px(24.0))
+            ))
         );
     }
 }

@@ -1,4 +1,4 @@
--- CDitor V2 PostgreSQL initial schema.
+-- Cditor PostgreSQL initial schema.
 -- This schema is designed for 10w-block rich-text documents, async payload windows,
 -- cloud sync, server-side search, layout cache, and crash/retry recovery.
 

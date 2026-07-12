@@ -12,20 +12,20 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(Bounds {
                     origin: Point::default(),
                     size: Size {
-                        width: px(1120.0),
-                        height: px(780.0),
+                        width: px(1200.0),
+                        height: px(800.0),
                     },
                 })),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("CDitor V2".into()),
-                    appears_transparent: false,
+                    title: Some("Cditor".into()),
+                    appears_transparent: true,
                     ..Default::default()
                 }),
                 ..Default::default()
             },
             |_window, cx| cx.new(|cx| cditor_from_env().build_view(cx)),
         )
-        .expect("open CDitor V2 window");
+        .expect("open Cditor window");
     });
 }
 

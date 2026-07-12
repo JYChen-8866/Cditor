@@ -83,6 +83,7 @@ impl TableAxisSelection {
     }
 }
 
+#[cfg(test)]
 pub(super) fn cell_selected(
     axis_selection: Option<TableAxisSelection>,
     range_selection: Option<TableCellRangeSelection>,
@@ -98,6 +99,7 @@ pub(super) fn cell_selected(
             .unwrap_or(false)
 }
 
+#[cfg(test)]
 pub(super) fn row_handle_selected(
     selection: Option<TableAxisSelection>,
     block_id: BlockId,
@@ -108,6 +110,7 @@ pub(super) fn row_handle_selected(
         .unwrap_or(false)
 }
 
+#[cfg(test)]
 pub(super) fn column_handle_selected(
     selection: Option<TableAxisSelection>,
     block_id: BlockId,

@@ -1,55 +1,27 @@
-use gpui::prelude::FluentBuilder;
-use gpui::{AnyElement, IntoElement, Styled, div, px, rgb};
-
-use crate::gui::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::TableViewState;
 
 use super::selection::TableAxis;
-use super::style::TABLE_RESIZE_INDICATOR_THICKNESS_PX;
 
 pub(crate) type TableReorderPreview = (BlockId, TableAxis, usize, usize);
 
-pub(super) fn table_axis_track_sizes(table_view: &TableViewState, axis: TableAxis) -> Vec<f32> {
-    let count = match axis {
-        TableAxis::Row => table_view.row_count,
-        TableAxis::Column => table_view.col_count,
-    };
-    (0..count)
-        .map(|index| table_axis_track_size(table_view, axis, index).unwrap_or(0.0))
-        .collect()
+pub(crate) fn table_axis_track_sizes(table_view: &TableViewState, axis: TableAxis) -> Vec<f32> {
+    match axis {
+        TableAxis::Row => table_view.row_heights_px.clone(),
+        TableAxis::Column => table_view.column_widths_px.clone(),
+    }
 }
 
-pub(super) fn render_table_reorder_indicator(
+pub(crate) fn table_reorder_indicator_edge_px_for_preview(
     block_id: BlockId,
     table_view: &TableViewState,
     preview: Option<TableReorderPreview>,
-    theme: GuiTheme,
-) -> Option<AnyElement> {
+) -> Option<(TableAxis, f32)> {
     let (preview_block_id, axis, _from, target) = preview?;
     if preview_block_id != block_id {
         return None;
     }
-    let edge_px = table_reorder_indicator_edge_px(table_view, axis, target)?;
-    Some(
-        div()
-            .absolute()
-            .bg(rgb(theme.action_accent))
-            .rounded(px(TABLE_RESIZE_INDICATOR_THICKNESS_PX))
-            .when(axis == TableAxis::Column, |this| {
-                this.left(px(edge_px - TABLE_RESIZE_INDICATOR_THICKNESS_PX / 2.0))
-                    .top(px(0.0))
-                    .w(px(TABLE_RESIZE_INDICATOR_THICKNESS_PX))
-                    .h(px(table_view.height_px))
-            })
-            .when(axis == TableAxis::Row, |this| {
-                this.left(px(0.0))
-                    .top(px(edge_px - TABLE_RESIZE_INDICATOR_THICKNESS_PX / 2.0))
-                    .w(px(table_view.width_px))
-                    .h(px(TABLE_RESIZE_INDICATOR_THICKNESS_PX))
-            })
-            .into_any_element(),
-    )
+    table_reorder_indicator_edge_px(table_view, axis, target).map(|edge_px| (axis, edge_px))
 }
 
 fn table_reorder_indicator_edge_px(
@@ -67,17 +39,18 @@ fn table_axis_track_start(
     axis: TableAxis,
     index: usize,
 ) -> Option<f32> {
-    table_view
-        .visible_cells
-        .iter()
-        .find(|cell| match axis {
-            TableAxis::Row => cell.position.row == index && cell.row_span == 1,
-            TableAxis::Column => cell.position.col == index && cell.col_span == 1,
-        })
-        .map(|cell| match axis {
-            TableAxis::Row => cell.y_px,
-            TableAxis::Column => cell.x_px,
-        })
+    let sizes = match axis {
+        TableAxis::Row => &table_view.row_heights_px,
+        TableAxis::Column => &table_view.column_widths_px,
+    };
+    (index < sizes.len()).then(|| {
+        sizes[..index].iter().sum::<f32>()
+            + if axis == TableAxis::Column {
+                table_view.horizontal_scroll_offset_px
+            } else {
+                0.0
+            }
+    })
 }
 
 fn table_axis_track_size(
@@ -85,17 +58,10 @@ fn table_axis_track_size(
     axis: TableAxis,
     index: usize,
 ) -> Option<f32> {
-    table_view
-        .visible_cells
-        .iter()
-        .find(|cell| match axis {
-            TableAxis::Row => cell.position.row == index && cell.row_span == 1,
-            TableAxis::Column => cell.position.col == index && cell.col_span == 1,
-        })
-        .map(|cell| match axis {
-            TableAxis::Row => cell.height_px,
-            TableAxis::Column => cell.width_px,
-        })
+    match axis {
+        TableAxis::Row => table_view.row_heights_px.get(index).copied(),
+        TableAxis::Column => table_view.column_widths_px.get(index).copied(),
+    }
 }
 
 #[cfg(test)]
@@ -139,6 +105,9 @@ mod tests {
             col_count: 2,
             width_px: 300.0,
             height_px: 84.0,
+            column_widths_px: vec![120.0, 180.0],
+            row_heights_px: vec![36.0, 48.0],
+            horizontal_scroll_offset_px: 0.0,
             focused_cell: None,
             focused_cell_offset: None,
             visible_cells: vec![

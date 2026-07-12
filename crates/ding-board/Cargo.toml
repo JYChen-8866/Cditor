@@ -1,0 +1,33 @@
+[package]
+name = "ding-board"
+version = "0.1.0"
+edition = "2024"
+description = "An infinite, pannable/zoomable whiteboard canvas for Ding."
+license = "GPL-3.0-or-later"
+
+[dependencies]
+# Same git spec (no rev) as the workspace root so Cargo unifies to one gpui;
+# the lock pins the actual revision.
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
+
+# The board model (`Scene` + camera, and elements once drawing lands) is owned
+# and (de)serialized by this crate, so the host can persist it as an opaque
+# JSON string in its own store.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+log = "0.4"
+
+# Glyph outlines for on-canvas text: text is rendered as vector paths (not gpui
+# overlay glyphs) so it rotates + scales with the camera and shapes, and so the
+# host can supply a custom/user-uploaded face. Pinned to gpui's version so the
+# lockfile unifies to a single copy. The default face (JetBrains Mono, OFL) is
+# bundled under `assets/`.
+ttf-parser = "0.25"
+
+[dev-dependencies]
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
+
+[[example]]
+name = "minimal_board"
+path = "examples/minimal_board.rs"

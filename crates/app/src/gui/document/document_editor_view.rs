@@ -1,17 +1,26 @@
+use std::collections::HashMap;
+
 use gpui::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Styled, div, prelude::FluentBuilder, px, rgb,
+    ParentElement, Styled, div, prelude::FluentBuilder, px,
 };
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
+use crate::gui::app::cditor_v2_view::TableScrollSnapshot;
 use crate::gui::block::{
-    BlockActionState, BlockDragOverlaySnapshot, BlockView, TableAxisSelection,
-    TableCellRangeSelection, TableReorderPreview, TableResizePreview, render_block_drag_overlay,
+    BlockActionState, BlockDragOverlaySnapshot, BlockView, MermaidRenderCache, TableAxis,
+    TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
+    WhiteboardThumbnailCache, render_block_drag_overlay, render_table_axis_overlays,
+    render_table_axis_toolbar, render_table_resize_overlays, table_axis_track_sizes,
+    table_content_editor_origin, table_toolbar_editor_origin,
 };
 use crate::gui::document::DocumentSurface;
 use crate::gui::input::CodeLanguageEditState;
 use crate::gui::overlay::render_editor_overlays;
+use crate::gui::overlay::table::{
+    render_table_horizontal_scrollbar, render_table_reorder_preview_overlay,
+};
 use cditor_core::ids::BlockId;
 use cditor_runtime::EditorViewProjection;
 
@@ -72,6 +81,10 @@ fn block_action_state_for_projection(
     }
 }
 
+fn document_block_top(before_window_height: f64, window_local_top: f64) -> f64 {
+    before_window_height + window_local_top
+}
+
 impl DocumentEditorView {
     pub fn new(theme: GuiTheme) -> Self {
         Self { theme }
@@ -92,17 +105,86 @@ impl DocumentEditorView {
         table_reorder_preview: Option<TableReorderPreview>,
         table_range_selection: Option<TableCellRangeSelection>,
         code_language_edit: Option<&CodeLanguageEditState>,
+        table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
+        mermaid_renders: &MermaidRenderCache,
+        mermaid_source_blocks: &std::collections::HashSet<BlockId>,
+        whiteboard_thumbnails: &WhiteboardThumbnailCache,
         cx: &mut App,
     ) -> AnyElement {
         let block_view = BlockView::new(self.theme);
         let mut block_y = 0.0;
+        let mut table_overlay_elements = Vec::new();
         let mut block_elements = projection
             .blocks
             .iter()
             .map(|block| {
                 let top = block_y;
+                let document_top = document_block_top(projection.before_window_height, top);
                 let height = block.layout.effective_height();
                 block_y += height;
+                if let Some(table_view) = &block.table_view {
+                    let content_origin =
+                        table_content_editor_origin(block, document_top as f32, self.theme);
+                    let grid_origin =
+                        table_toolbar_editor_origin(block, document_top as f32, self.theme);
+                    let row_track_sizes = table_axis_track_sizes(table_view, TableAxis::Row);
+                    let column_track_sizes = table_axis_track_sizes(table_view, TableAxis::Column);
+                    // Scrollbar first so that axis overlays (gutters) render on top.
+                    if let Some(scroll_snapshot) = table_scroll_snapshots.get(&block.block_id)
+                        && let Some(measurement) = scroll_snapshot.viewport_measurement
+                        && let Some(scrollbar) = render_table_horizontal_scrollbar(
+                            block.block_id,
+                            table_view,
+                            grid_origin,
+                            measurement,
+                            scroll_snapshot.offset_x,
+                            0.0,
+                            self.theme,
+                            view.clone(),
+                        )
+                    {
+                        table_overlay_elements.push(scrollbar);
+                    }
+                    table_overlay_elements.extend(render_table_axis_overlays(
+                        block.block_id,
+                        table_view,
+                        table_axis_selection,
+                        table_range_selection,
+                        table_view.focused_cell,
+                        &row_track_sizes,
+                        &column_track_sizes,
+                        content_origin,
+                        self.theme,
+                        view.clone(),
+                    ));
+                    table_overlay_elements.extend(render_table_resize_overlays(
+                        block.block_id,
+                        table_view,
+                        content_origin,
+                        self.theme,
+                        view.clone(),
+                    ));
+                    if let Some(selection) = table_axis_selection
+                        .filter(|selection| selection.block_id == block.block_id)
+                    {
+                        table_overlay_elements.push(render_table_axis_toolbar(
+                            selection,
+                            table_view,
+                            grid_origin,
+                            self.theme,
+                            view.clone(),
+                        ));
+                    }
+                    if let Some(reorder_preview) = render_table_reorder_preview_overlay(
+                        block.block_id,
+                        table_view,
+                        grid_origin,
+                        table_reorder_preview,
+                        self.theme,
+                    ) {
+                        table_overlay_elements.push(reorder_preview);
+                    }
+                }
                 div()
                     .absolute()
                     .left_0()
@@ -135,6 +217,12 @@ impl DocumentEditorView {
                             table_range_selection
                                 .filter(|selection| selection.block_id == block.block_id),
                             code_language_edit,
+                            table_scroll_snapshots
+                                .get(&block.block_id)
+                                .map(|snapshot| snapshot.handle.clone()),
+                            mermaid_renders,
+                            mermaid_source_blocks.contains(&block.block_id),
+                            whiteboard_thumbnails,
                             cx,
                         )
                     })
@@ -162,6 +250,7 @@ impl DocumentEditorView {
             .right_0()
             .top_0()
             .child(render_editor_overlays(projection, self.theme))
+            .children(table_overlay_elements)
             .when_some(drag_overlay, |this, overlay| {
                 this.child(render_block_drag_overlay(overlay, self.theme))
             })
@@ -179,7 +268,7 @@ impl DocumentEditorView {
 fn render_down_placer(
     top: f64,
     height: f64,
-    theme: GuiTheme,
+    _theme: GuiTheme,
     view: Entity<CditorV2View>,
 ) -> AnyElement {
     div()
@@ -196,14 +285,6 @@ fn render_down_placer(
             });
             cx.stop_propagation();
         })
-        .child(
-            div()
-                .mx_auto()
-                .mt_4()
-                .w(px(160.0))
-                .h(px(1.0))
-                .bg(rgb(theme.border)),
-        )
         .into_any_element()
 }
 
@@ -256,5 +337,10 @@ mod tests {
         assert!(!next_root_state.action_active);
         assert!(!next_root_state.action_root);
         assert!(!next_root_state.dragging);
+    }
+
+    #[test]
+    fn overlay_block_top_includes_virtual_window_prefix_height() {
+        assert_eq!(document_block_top(8_000.0, 128.0), 8_128.0);
     }
 }

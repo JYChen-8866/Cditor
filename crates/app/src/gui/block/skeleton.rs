@@ -199,6 +199,7 @@ mod tests {
             layout: BlockLayoutMeta::new(1, 32.0),
             selected: false,
             selection_range: None,
+            selection_overlay: false,
             focused: false,
             caret_offset: None,
             marked_range: None,

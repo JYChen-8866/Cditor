@@ -66,12 +66,16 @@ impl SkeletonItem {
 
         div()
             .h(px(height))
-            .bg(rgb(theme.surface))
+            .bg(rgb(skeleton_background(theme)))
             .rounded(px(radius))
             .when_some(self.width, |this, width| this.w(width))
             .when(self.width.is_none(), |this| this.w_full())
             .into_any_element()
     }
+}
+
+fn skeleton_background(theme: GuiTheme) -> u32 {
+    theme.skeleton
 }
 
 impl SkeletonRows {
@@ -144,5 +148,13 @@ mod tests {
         assert_eq!(item.variant, SkeletonVariant::Image);
         assert_eq!(item.height_px, Some(120.0));
         assert!(item.width.is_some());
+    }
+
+    #[test]
+    fn skeleton_background_uses_theme_token() {
+        let theme = GuiTheme::light();
+
+        assert_eq!(skeleton_background(theme), theme.skeleton);
+        assert_ne!(skeleton_background(theme), theme.surface);
     }
 }

@@ -1,4 +1,4 @@
-# CDitor V2 模块拆分计划
+# Cditor 模块拆分计划
 
 > 目标：降低巨石文件复杂度，同时不破坏 V2 大文档架构：Runtime 是真相，UI 只消费 projection，Postgres 异步保存，Input/IME hot path 不同步等待存储或重型 layout。
 
@@ -104,7 +104,7 @@ src/storage/postgres/types/
 
 - [x] 初始化/确认 Git 工作树
 - [x] 忽略运行时粘贴素材目录 `minimal-editor-assets/`
-- [x] 提交拆分前基线：`41f76f1 Initial CDitor V2 baseline`
+- [x] 提交拆分前基线：`41f76f1 Initial Cditor baseline`
 
 ### Phase 1：拆 `src/gui/app/cditor_v2_view.rs` 低风险模块
 

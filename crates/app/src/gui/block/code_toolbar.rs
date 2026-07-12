@@ -15,10 +15,11 @@ use gpui::{
 pub const V1_CODE_TOOLBAR_TOP_PX: f32 = 6.0;
 pub const V1_CODE_TOOLBAR_RIGHT_PX: f32 = 6.0;
 pub const V1_CODE_TOOLBAR_HEIGHT_PX: f32 = 30.0;
-pub const V1_CODE_TOOLBAR_RADIUS_PX: f32 = 7.0;
+pub const V1_CODE_TOOLBAR_RADIUS_PX: f32 = 3.0;
 pub const V1_CODE_TOOLBAR_PADDING_PX: f32 = 2.0;
 pub const V1_CODE_TOOLBAR_BUTTON_SIZE_PX: f32 = 26.0;
-pub const V1_CODE_TOOLBAR_BUTTON_RADIUS_PX: f32 = 5.0;
+pub const V1_CODE_TOOLBAR_BUTTON_RADIUS_PX: f32 = 3.0;
+pub const V1_CODE_LANGUAGE_BUTTON_WIDTH_PX: f32 = 72.0;
 pub const V1_CODE_LANGUAGE_EDIT_WIDTH_PX: f32 = 132.0;
 pub const V1_CODE_TOOLBAR_GAP_PX: f32 = 2.0;
 pub const V1_CODE_LANGUAGE_POPUP_GAP_PX: f32 = 6.0;
@@ -39,7 +40,9 @@ pub fn render_code_toolbar(
         .absolute()
         .top(px(V1_CODE_TOOLBAR_TOP_PX))
         .right(px(V1_CODE_TOOLBAR_RIGHT_PX))
-        .occlude()
+        .opacity(0.0)
+        .group_hover("notion-code-block", |style| style.opacity(1.0))
+        .when(language_edit.is_some(), |this| this.opacity(1.0))
         .flex()
         .flex_col()
         .items_end()
@@ -51,10 +54,6 @@ pub fn render_code_toolbar(
                 .items_center()
                 .gap(px(V1_CODE_TOOLBAR_GAP_PX))
                 .rounded(px(V1_CODE_TOOLBAR_RADIUS_PX))
-                .border_1()
-                .border_color(rgb(theme.code_toolbar_border))
-                .bg(rgb(theme.code_toolbar_background))
-                .shadow_sm()
                 .p(px(V1_CODE_TOOLBAR_PADDING_PX))
                 .text_size(px(12.0))
                 .text_color(rgb(theme.code_toolbar_text))
@@ -106,7 +105,7 @@ fn render_language_editor(
     div()
         .relative()
         .h(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
-        .min_w(px(46.0))
+        .min_w(px(V1_CODE_LANGUAGE_BUTTON_WIDTH_PX))
         .flex()
         .items_center()
         .child(
@@ -115,7 +114,7 @@ fn render_language_editor(
                 .w(px(if is_editing {
                     V1_CODE_LANGUAGE_EDIT_WIDTH_PX
                 } else {
-                    46.0
+                    V1_CODE_LANGUAGE_BUTTON_WIDTH_PX
                 }))
                 .px(px(8.0))
                 .flex()
@@ -129,7 +128,7 @@ fn render_language_editor(
                 .bg(rgb(if is_editing {
                     theme.code_toolbar_hover
                 } else {
-                    theme.code_toolbar_background
+                    theme.code_background
                 }))
                 .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
                 .when(is_editing, |this| {
@@ -491,7 +490,7 @@ fn render_copy_icon(theme: GuiTheme) -> AnyElement {
                 .rounded(px(2.0))
                 .border_1()
                 .border_color(icon_color)
-                .bg(rgb(theme.code_toolbar_background)),
+                .bg(rgb(theme.code_background)),
         )
         .into_any_element()
 }
@@ -519,8 +518,10 @@ mod tests {
         assert_eq!(V1_CODE_TOOLBAR_TOP_PX, 6.0);
         assert_eq!(V1_CODE_TOOLBAR_RIGHT_PX, 6.0);
         assert_eq!(V1_CODE_TOOLBAR_HEIGHT_PX, 30.0);
-        assert_eq!(V1_CODE_TOOLBAR_RADIUS_PX, 7.0);
+        assert_eq!(V1_CODE_TOOLBAR_RADIUS_PX, 3.0);
         assert_eq!(V1_CODE_TOOLBAR_BUTTON_SIZE_PX, 26.0);
+        assert_eq!(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX, 3.0);
+        assert_eq!(V1_CODE_LANGUAGE_BUTTON_WIDTH_PX, 72.0);
         assert_eq!(V1_CODE_LANGUAGE_EDIT_WIDTH_PX, 132.0);
         assert_eq!(V1_CODE_TOOLBAR_GAP_PX, 2.0);
         assert_eq!(V1_CODE_LANGUAGE_POPUP_GAP_PX, 6.0);

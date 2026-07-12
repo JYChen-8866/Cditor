@@ -1,6 +1,7 @@
 use gpui::{Context, Pixels, Point, Window};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::gui::block::table::TableAxis;
 use crate::gui::input::BlockDragSelectionController;
 use crate::gui::persistence::EditorSaveStatus;
@@ -40,6 +41,10 @@ impl CditorV2View {
         self.scrollbar_drag = None;
         self.image_resize_drag = None;
         self.table_resize_drag = None;
+        self.table_hscroll_drag = None;
+        self.table_interaction_mode = GuiTableInteractionMode::AxisSelected(
+            crate::gui::block::table::TableAxisSelection::new(block_id, axis, index),
+        );
         self.hovered_block_id = Some(block_id);
         self.action_block_id = Some(block_id);
         self.table_reorder_drag = Some(GuiTableReorderDrag {
@@ -82,6 +87,7 @@ impl CditorV2View {
         drag.exceeded_threshold |= delta.abs() >= TABLE_REORDER_MIN_DRAG_DELTA_PX;
         drag.target_index =
             table_reorder_target_index(drag.from_index, delta, &drag.track_sizes_px);
+        self.table_interaction_mode = table_reorder_interaction_mode(&drag);
         self.table_reorder_drag = Some(drag);
         cx.notify();
         true
@@ -97,6 +103,10 @@ impl CditorV2View {
         self.action_block_id = self
             .action_block_id
             .filter(|action_block_id| *action_block_id != drag.block_id);
+        if matches!(self.table_interaction_mode, GuiTableInteractionMode::Reordering { block_id, .. } if block_id == drag.block_id)
+        {
+            self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        }
         if !drag.exceeded_threshold || drag.from_index == drag.target_index {
             cx.notify();
             return true;
@@ -127,6 +137,24 @@ fn table_reorder_pointer(axis: TableAxis, position: Point<Pixels>) -> f32 {
     match axis {
         TableAxis::Row => f32::from(position.y),
         TableAxis::Column => f32::from(position.x),
+    }
+}
+
+fn table_reorder_interaction_mode(drag: &GuiTableReorderDrag) -> GuiTableInteractionMode {
+    if drag.exceeded_threshold {
+        GuiTableInteractionMode::Reordering {
+            block_id: drag.block_id,
+            axis: drag.axis,
+            from_index: drag.from_index,
+            target_index: drag.target_index,
+            active: true,
+        }
+    } else {
+        GuiTableInteractionMode::AxisSelected(crate::gui::block::table::TableAxisSelection::new(
+            drag.block_id,
+            drag.axis,
+            drag.from_index,
+        ))
     }
 }
 
@@ -173,5 +201,30 @@ mod tests {
     #[test]
     fn table_reorder_target_keeps_invalid_origin_stable() {
         assert_eq!(table_reorder_target_index(4, 100.0, &[80.0, 80.0]), 4);
+    }
+
+    #[test]
+    fn click_keeps_axis_selected_until_drag_threshold_is_crossed() {
+        let mut drag = GuiTableReorderDrag {
+            block_id: 7,
+            axis: TableAxis::Column,
+            from_index: 1,
+            target_index: 1,
+            start_pointer: 20.0,
+            track_sizes_px: vec![120.0, 120.0],
+            exceeded_threshold: false,
+        };
+
+        assert_eq!(
+            table_reorder_interaction_mode(&drag),
+            GuiTableInteractionMode::AxisSelected(
+                crate::gui::block::table::TableAxisSelection::new(7, TableAxis::Column, 1,),
+            )
+        );
+        drag.exceeded_threshold = true;
+        assert!(matches!(
+            table_reorder_interaction_mode(&drag),
+            GuiTableInteractionMode::Reordering { active: true, .. }
+        ));
     }
 }

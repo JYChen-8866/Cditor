@@ -1,4 +1,5 @@
 mod cell;
+mod chrome;
 pub(crate) mod menu;
 mod render;
 mod reorder;
@@ -8,10 +9,20 @@ mod style;
 mod text;
 mod toolbar;
 
+pub(crate) use chrome::render_table_axis_overlays;
 pub(crate) use render::render_table_block;
-pub(crate) use reorder::TableReorderPreview;
-pub(crate) use resize::TableResizePreview;
+pub(crate) use reorder::{
+    TableReorderPreview, table_axis_track_sizes, table_reorder_indicator_edge_px_for_preview,
+};
+pub(crate) use resize::{
+    TableResizePreview, render_table_resize_overlays, table_resize_indicator_edge_px,
+};
 pub(crate) use selection::{TableAxis, TableAxisSelection, TableCellRangeSelection};
+pub(crate) use style::TABLE_RESIZE_INDICATOR_THICKNESS_PX;
+pub(crate) use toolbar::{
+    TableToolbarEditorOrigin, render_table_axis_toolbar, table_content_editor_origin,
+    table_toolbar_editor_origin,
+};
 
 fn table_trace_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -45,18 +56,19 @@ mod tests {
         TABLE_ACTIVE_CELL_BORDER_WIDTH_PX, V1_TABLE_CELL_MIN_WIDTH_PX, V1_TABLE_CELL_PADDING_X_PX,
         V1_TABLE_CELL_PADDING_Y_PX, V1_TABLE_RADIUS_PX, table_active_border_color,
         table_border_color, table_cell_background, table_cell_border_color, table_cell_line_height,
-        table_cell_text_size, table_header_background, table_selected_cell_background,
-        table_style_color, table_surface_background,
+        table_cell_text_size, table_header_background, table_style_color, table_surface_background,
     };
 
     #[test]
-    fn v1_table_geometry_constants_match_editor2() {
-        assert_eq!(V1_TABLE_RADIUS_PX, 8.0);
+    fn v1_table_geometry_constants_are_stable() {
+        assert_eq!(V1_TABLE_RADIUS_PX, 0.0);
         assert_eq!(V1_TABLE_CELL_MIN_WIDTH_PX, 120.0);
         assert_eq!(V1_TABLE_CELL_PADDING_X_PX, 10.0);
-        assert_eq!(V1_TABLE_CELL_PADDING_Y_PX, 8.0);
-        assert_eq!(GuiTheme::light().table_header_background, 0xf1f5f9);
-        assert_eq!(GuiTheme::light().table_active_border, 0x60a5fa);
+        assert_eq!(V1_TABLE_CELL_PADDING_Y_PX, 7.0);
+        // H-014: Updated to Notion-like colors
+        assert_eq!(GuiTheme::light().table_header_background, 0xf7f6f4);
+        assert_eq!(GuiTheme::light().table_active_border, 0x2383e2);
+        assert_eq!(GuiTheme::light().border, 0xe9e9e7);
         assert_eq!(
             table_surface_background(GuiTheme::light()),
             GuiTheme::light().surface
@@ -120,20 +132,20 @@ mod tests {
     }
 
     #[test]
-    fn table_selected_cell_border_uses_selection_background_to_avoid_gaps() {
+    fn table_cell_border_remains_visible_during_selection_and_editing() {
         let theme = GuiTheme::light();
 
         assert_eq!(table_cell_border_color(theme, false), theme.border);
-        assert_eq!(
-            table_cell_border_color(theme, true),
-            table_selected_cell_background(theme)
-        );
+        assert_eq!(table_cell_border_color(theme, true), theme.border);
     }
 
     #[test]
     fn table_cell_line_height_is_stable_for_empty_active_cells() {
         assert_eq!(table_cell_text_size(), px(14.0));
-        assert_eq!(table_cell_line_height(), px(17.5));
+        assert_eq!(
+            table_cell_line_height(),
+            px(cditor_core::layout::NOTION_TABLE_CELL_LINE_HEIGHT_PX as f32)
+        );
     }
 
     #[test]
@@ -183,5 +195,70 @@ mod tests {
         assert!(column_handle_selected(column, 7, 1));
         assert!(!column_handle_selected(column, 7, 2));
         assert!(!column_handle_selected(row, 7, 1));
+    }
+
+    #[test]
+    fn table_hscrollbar_hidden_when_content_fits_viewport() {
+        use crate::gui::overlay::table::table_hscroll_thumb;
+
+        // Content narrower than viewport → no scrollbar.
+        assert!(table_hscroll_thumb(800.0, 600.0, 0.0, 0.0).is_none());
+        // Not laid out yet (zero viewport) → no scrollbar.
+        assert!(table_hscroll_thumb(0.0, 1200.0, 400.0, 0.0).is_none());
+    }
+
+    #[test]
+    fn table_hscrollbar_thumb_tracks_scroll_progress() {
+        use crate::gui::overlay::table::table_hscroll_thumb;
+
+        // Viewport 600 over content 1200 → thumb covers half the track.
+        let max_offset = 600.0; // content - viewport
+        let at_start = table_hscroll_thumb(600.0, 1200.0, max_offset, 0.0).unwrap();
+        assert_eq!(at_start.width_px, 300.0);
+        assert_eq!(at_start.left_px, 0.0);
+
+        // Fully scrolled: offset stored as negative max.
+        let at_end = table_hscroll_thumb(600.0, 1200.0, max_offset, -max_offset).unwrap();
+        assert_eq!(at_end.width_px, 300.0);
+        // Thumb pinned to the right edge: travel = viewport - thumb = 300.
+        assert_eq!(at_end.left_px, 300.0);
+
+        // Halfway.
+        let mid = table_hscroll_thumb(600.0, 1200.0, max_offset, -max_offset / 2.0).unwrap();
+        assert_eq!(mid.left_px, 150.0);
+    }
+
+    #[test]
+    fn table_hscrollbar_thumb_respects_minimum_width() {
+        use crate::gui::overlay::table::table_hscroll_thumb;
+
+        // Very wide content would give a tiny thumb; clamp to the minimum.
+        let thumb = table_hscroll_thumb(300.0, 6000.0, 5700.0, 0.0).unwrap();
+        assert_eq!(thumb.width_px, 32.0);
+    }
+
+    #[test]
+    fn table_hscrollbar_drag_travel_is_viewport_minus_thumb() {
+        use crate::gui::overlay::table::{table_hscroll_thumb, table_hscroll_thumb_travel};
+
+        let thumb = table_hscroll_thumb(600.0, 1200.0, 600.0, 0.0).unwrap();
+
+        assert_eq!(table_hscroll_thumb_travel(600.0, thumb.width_px), 300.0);
+        assert_eq!(table_hscroll_thumb_travel(120.0, 180.0), 0.0);
+    }
+
+    #[test]
+    fn table_hscrollbar_track_excludes_table_left_gutter() {
+        use crate::gui::overlay::table::table_hscroll_track_width;
+
+        assert_eq!(table_hscroll_track_width(628.0, 28.0), 600.0);
+        assert_eq!(table_hscroll_track_width(20.0, 28.0), 0.0);
+    }
+
+    #[test]
+    fn table_hscrollbar_reserves_bottom_space_outside_table() {
+        use crate::gui::overlay::table::table_hscroll_block_height;
+
+        assert_eq!(table_hscroll_block_height(144.0), 158.0);
     }
 }

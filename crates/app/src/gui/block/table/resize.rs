@@ -9,10 +9,8 @@ use cditor_core::ids::BlockId;
 use cditor_runtime::TableViewState;
 
 use super::selection::TableAxis;
-use super::style::{
-    TABLE_RESIZE_HANDLE_LINE_THICKNESS_PX, TABLE_RESIZE_HANDLE_THICKNESS_PX,
-    TABLE_RESIZE_INDICATOR_THICKNESS_PX,
-};
+use super::style::{TABLE_RESIZE_HANDLE_LINE_THICKNESS_PX, TABLE_RESIZE_HANDLE_THICKNESS_PX};
+use super::toolbar::TableToolbarEditorOrigin;
 
 pub(crate) type TableResizePreview = (BlockId, TableAxis, usize, f32);
 
@@ -31,37 +29,23 @@ impl TableResizeTrack {
     }
 }
 
-pub(super) fn render_table_resize_overlays(
+pub(crate) fn render_table_resize_overlays(
     block_id: BlockId,
     table_view: &TableViewState,
-    preview: Option<TableResizePreview>,
+    origin: TableToolbarEditorOrigin,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
 ) -> Vec<AnyElement> {
-    let mut overlays = Vec::new();
-    overlays.extend(
-        column_resize_tracks(table_view)
-            .into_iter()
-            .map(|track| render_table_resize_handle(block_id, track, theme, view.clone())),
-    );
-    overlays.extend(
-        row_resize_tracks(table_view)
-            .into_iter()
-            .map(|track| render_table_resize_handle(block_id, track, theme, view.clone())),
-    );
-    if let Some((preview_block_id, axis, index, size_px)) = preview {
-        if preview_block_id == block_id {
-            overlays.push(render_table_resize_indicator(
-                table_view, axis, index, size_px, theme,
-            ));
-        }
-    }
-    overlays
+    column_resize_tracks(table_view)
+        .into_iter()
+        .map(|track| render_table_resize_handle(block_id, track, origin, theme, view.clone()))
+        .collect()
 }
 
 fn render_table_resize_handle(
     block_id: BlockId,
     track: TableResizeTrack,
+    origin: TableToolbarEditorOrigin,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
 ) -> AnyElement {
@@ -70,20 +54,24 @@ fn render_table_resize_handle(
     div()
         .absolute()
         .when(track.axis == TableAxis::Column, |this| {
-            this.left(px(track.edge_px() - TABLE_RESIZE_HANDLE_THICKNESS_PX / 2.0))
-                .top(px(0.0))
-                .w(px(TABLE_RESIZE_HANDLE_THICKNESS_PX))
-                .h(px(track.extent_px))
-                .cursor_col_resize()
+            this.left(px(
+                origin.x_px + track.edge_px() - TABLE_RESIZE_HANDLE_THICKNESS_PX / 2.0
+            ))
+            .top(px(origin.y_px))
+            .w(px(TABLE_RESIZE_HANDLE_THICKNESS_PX))
+            .h(px(track.extent_px))
+            .cursor_col_resize()
         })
         .when(track.axis == TableAxis::Row, |this| {
-            this.left(px(0.0))
-                .top(px(track.edge_px() - TABLE_RESIZE_HANDLE_THICKNESS_PX / 2.0))
+            this.left(px(origin.x_px))
+                .top(px(
+                    origin.y_px + track.edge_px() - TABLE_RESIZE_HANDLE_THICKNESS_PX / 2.0
+                ))
                 .w(px(track.extent_px))
                 .h(px(TABLE_RESIZE_HANDLE_THICKNESS_PX))
                 .cursor_row_resize()
         })
-        .opacity(0.0)
+        .opacity(table_resize_handle_idle_opacity(track.axis))
         .hover(|style| style.opacity(1.0))
         .on_mouse_down(gpui::MouseButton::Left, move |event, window, cx| {
             let _ = start_view.update(cx, |view, cx| {
@@ -101,6 +89,10 @@ fn render_table_resize_handle(
         })
         .child(resize_handle_line(track, color))
         .into_any_element()
+}
+
+fn table_resize_handle_idle_opacity(_axis: TableAxis) -> f32 {
+    0.0
 }
 
 fn resize_handle_line(track: TableResizeTrack, color: u32) -> AnyElement {
@@ -127,40 +119,13 @@ fn resize_handle_line(track: TableResizeTrack, color: u32) -> AnyElement {
         .into_any_element()
 }
 
-fn render_table_resize_indicator(
-    table_view: &TableViewState,
-    axis: TableAxis,
-    index: usize,
-    preview_size_px: f32,
-    theme: GuiTheme,
-) -> AnyElement {
-    let start_px = resize_track_start_px(table_view, axis, index).unwrap_or(0.0);
-    let edge_px = start_px + preview_size_px.max(0.0);
-    div()
-        .absolute()
-        .bg(rgb(theme.action_accent))
-        .rounded(px(TABLE_RESIZE_INDICATOR_THICKNESS_PX))
-        .when(axis == TableAxis::Column, |this| {
-            this.left(px(edge_px - TABLE_RESIZE_INDICATOR_THICKNESS_PX / 2.0))
-                .top(px(0.0))
-                .w(px(TABLE_RESIZE_INDICATOR_THICKNESS_PX))
-                .h(px(table_view.height_px))
-        })
-        .when(axis == TableAxis::Row, |this| {
-            this.left(px(0.0))
-                .top(px(edge_px - TABLE_RESIZE_INDICATOR_THICKNESS_PX / 2.0))
-                .w(px(table_view.width_px))
-                .h(px(TABLE_RESIZE_INDICATOR_THICKNESS_PX))
-        })
-        .into_any_element()
-}
-
 fn column_resize_tracks(table_view: &TableViewState) -> Vec<TableResizeTrack> {
     (0..table_view.col_count)
         .filter_map(|index| resize_track(table_view, TableAxis::Column, index))
         .collect()
 }
 
+#[allow(dead_code)]
 fn row_resize_tracks(table_view: &TableViewState) -> Vec<TableResizeTrack> {
     (0..table_view.row_count)
         .filter_map(|index| resize_track(table_view, TableAxis::Row, index))
@@ -172,21 +137,22 @@ fn resize_track(
     axis: TableAxis,
     index: usize,
 ) -> Option<TableResizeTrack> {
-    let cell = table_view.visible_cells.iter().find(|cell| match axis {
-        TableAxis::Column => cell.position.col == index && cell.col_span == 1,
-        TableAxis::Row => cell.position.row == index && cell.row_span == 1,
-    })?;
+    let sizes = match axis {
+        TableAxis::Column => &table_view.column_widths_px,
+        TableAxis::Row => &table_view.row_heights_px,
+    };
+    let size_px = *sizes.get(index)?;
+    let start_px = sizes[..index].iter().sum::<f32>()
+        + if axis == TableAxis::Column {
+            table_view.horizontal_scroll_offset_px
+        } else {
+            0.0
+        };
     Some(TableResizeTrack {
         axis,
         index,
-        start_px: match axis {
-            TableAxis::Column => cell.x_px,
-            TableAxis::Row => cell.y_px,
-        },
-        size_px: match axis {
-            TableAxis::Column => cell.width_px,
-            TableAxis::Row => cell.height_px,
-        },
+        start_px,
+        size_px,
         extent_px: match axis {
             TableAxis::Column => table_view.height_px,
             TableAxis::Row => table_view.width_px,
@@ -194,12 +160,13 @@ fn resize_track(
     })
 }
 
-fn resize_track_start_px(
+pub(crate) fn table_resize_indicator_edge_px(
     table_view: &TableViewState,
     axis: TableAxis,
     index: usize,
+    preview_size_px: f32,
 ) -> Option<f32> {
-    resize_track(table_view, axis, index).map(|track| track.start_px)
+    resize_track(table_view, axis, index).map(|track| track.start_px + preview_size_px.max(0.0))
 }
 
 #[cfg(test)]
@@ -235,13 +202,43 @@ mod tests {
         let table_view = table_view_with_two_by_two_cells();
 
         assert_eq!(
-            resize_track_start_px(&table_view, TableAxis::Column, 1).unwrap() + 180.0,
+            table_resize_indicator_edge_px(&table_view, TableAxis::Column, 1, 180.0).unwrap(),
             300.0
         );
         assert_eq!(
-            resize_track_start_px(&table_view, TableAxis::Row, 1).unwrap() + 48.0,
+            table_resize_indicator_edge_px(&table_view, TableAxis::Row, 1, 48.0).unwrap(),
             84.0
         );
+    }
+
+    #[test]
+    fn column_resize_handles_are_hidden_before_hover() {
+        assert_eq!(table_resize_handle_idle_opacity(TableAxis::Column), 0.0);
+        assert_eq!(table_resize_handle_idle_opacity(TableAxis::Row), 0.0);
+    }
+
+    #[test]
+    fn merged_cells_do_not_hide_underlying_column_resize_tracks() {
+        let mut table_view = table_view_with_two_by_two_cells();
+        table_view.visible_cells = vec![TableVisibleCell {
+            position: TableCellPosition { row: 0, col: 0 },
+            row_span: 2,
+            col_span: 2,
+            x_px: 0.0,
+            y_px: 0.0,
+            width_px: 240.0,
+            height_px: 72.0,
+            header: false,
+            spans: Vec::new(),
+            align: cditor_core::rich_text::TableCellAlign::Left,
+            background_color: None,
+        }];
+
+        let columns = column_resize_tracks(&table_view);
+
+        assert_eq!(columns.len(), 2);
+        assert_eq!(columns[0].edge_px(), 120.0);
+        assert_eq!(columns[1].edge_px(), 240.0);
     }
 
     fn table_view_with_two_by_two_cells() -> TableViewState {
@@ -251,6 +248,9 @@ mod tests {
             col_count: 2,
             width_px: 240.0,
             height_px: 72.0,
+            column_widths_px: vec![120.0, 120.0],
+            row_heights_px: vec![36.0, 36.0],
+            horizontal_scroll_offset_px: 0.0,
             focused_cell: None,
             focused_cell_offset: None,
             visible_cells: vec![

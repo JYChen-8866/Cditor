@@ -287,6 +287,38 @@ mod tests {
     }
 
     #[test]
+    fn text_offset_map_normalizes_invalid_cjk_byte_ranges() {
+        let text = "萨德";
+        let map = TextOffsetMap::build(text);
+
+        assert_eq!(
+            map.normalize_internal_range(InternalTextOffset(2)..InternalTextOffset(2)),
+            InternalTextOffset(0)..InternalTextOffset(0)
+        );
+        assert_eq!(
+            map.normalize_internal_range(InternalTextOffset(1)..InternalTextOffset(2)),
+            InternalTextOffset(0)..InternalTextOffset("萨".len())
+        );
+    }
+
+    #[test]
+    fn text_offset_map_normalizes_combining_and_emoji_ranges_by_grapheme() {
+        let combining = "e\u{301}x";
+        let combining_map = TextOffsetMap::build(combining);
+        assert_eq!(
+            combining_map.normalize_internal_range(InternalTextOffset(1)..InternalTextOffset(2)),
+            InternalTextOffset(0)..InternalTextOffset("e\u{301}".len())
+        );
+
+        let emoji = "a👨‍👩‍👧‍👦b";
+        let emoji_map = TextOffsetMap::build(emoji);
+        assert_eq!(
+            emoji_map.normalize_internal_range(InternalTextOffset(2)..InternalTextOffset(4)),
+            InternalTextOffset(1)..InternalTextOffset(emoji.len() - 1)
+        );
+    }
+
+    #[test]
     fn rtl_ltr_mixed_text_builds_bidi_runs() {
         let text = "abc שלום def";
         let map = TextOffsetMap::build(text);

@@ -5,10 +5,16 @@ use gpui::{
 };
 
 use crate::gui::GuiTheme;
-use crate::gui::block::chrome::BlockChromeStyle;
-use crate::gui::block::gutter::{GutterMouseDownHandler, render_block_gutter};
+use crate::gui::block::chrome::{
+    BLOCK_ROW_GAP_PX, BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
+};
+use crate::gui::block::gutter::{
+    GutterAddHandler, GutterDeleteHandler, GutterMouseDownHandler, render_block_gutter,
+};
 use crate::gui::block::prefix::{TodoToggleHandler, render_block_prefix};
 use cditor_runtime::ViewBlockSnapshot;
+
+const NOTION_QUOTE_BAR_WIDTH_PX: f32 = 3.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlockActionState {
@@ -46,7 +52,9 @@ pub fn block_shell(
     action: BlockActionState,
     on_mouse_down: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut App) + 'static,
     on_mouse_move: Option<BlockMouseMoveHandler>,
+    on_gutter_add: Option<GutterAddHandler>,
     on_gutter_mouse_down: Option<GutterMouseDownHandler>,
+    on_gutter_delete: Option<GutterDeleteHandler>,
     on_todo_toggle: Option<TodoToggleHandler>,
 ) -> AnyElement {
     let chrome = BlockChromeStyle::from_snapshot(block, theme);
@@ -55,20 +63,15 @@ pub fn block_shell(
     let content_background =
         content_background_for_action(chrome.content_background, theme, action);
     let shell_border = border_for_action(theme.surface, theme, action);
-    let content_border = border_for_action(
-        chrome.quote_bar.unwrap_or(chrome.content_border),
-        theme,
-        action,
-    );
+    let content_border = border_for_action(chrome.content_border, theme, action);
     div()
         .id(("v2-block", block.block_id))
         .w_full()
-        .rounded(px(8.0))
         .border_1()
         .border_color(rgb(shell_border))
         .bg(rgb(outer_background))
         .text_color(rgb(chrome.text_color))
-        .px_2()
+        .px(px(BLOCK_SHELL_OUTER_PADDING_X_PX))
         .py(px(4.0))
         .on_mouse_down(MouseButton::Left, on_mouse_down)
         .when_some(on_mouse_move, |this, handler| this.on_mouse_move(handler))
@@ -78,13 +81,15 @@ pub fn block_shell(
                     .id(("v2-block-row", block.block_id))
                     .w_full()
                     .flex()
-                    .items_center()
-                    .gap_2()
+                    .items_start()
+                    .gap(px(BLOCK_ROW_GAP_PX))
                     .child(render_block_gutter(
                         theme,
                         gutter_visible,
                         action.action_active,
+                        on_gutter_add,
                         on_gutter_mouse_down,
+                        on_gutter_delete,
                     ))
                     .child(
                         div()
@@ -96,13 +101,17 @@ pub fn block_shell(
                             .bg(rgb(content_background))
                             .when(chrome.quote_bar.is_none(), |this| this.border_1())
                             .border_color(rgb(content_border))
+                            // Keep the historical 4px quote geometry slot so caret/hit-test
+                            // origins stay stable, while drawing the visible Notion bar at 3px.
                             .border_l(px(if chrome.quote_bar.is_some() { 4.0 } else { 1.0 }))
                             .pl(px(chrome.content_padding_left_px))
                             .pr(px(chrome.content_padding_right_px))
                             .py(px(chrome.content_padding_y_px))
                             .flex()
-                            .items_center()
-                            .when(chrome.quote_bar.is_some(), |this| this.items_start())
+                            .items_start()
+                            .when_some(chrome.quote_bar, |this, color| {
+                                this.child(render_quote_bar(color))
+                            })
                             .child(render_block_prefix(
                                 &block.chrome.prefix,
                                 theme,
@@ -134,18 +143,17 @@ pub fn content_background_for_action(
 
 pub fn outer_background_for_action(
     default_outer_background: u32,
-    theme: GuiTheme,
-    action: BlockActionState,
+    _theme: GuiTheme,
+    _action: BlockActionState,
 ) -> u32 {
-    if action.action_active {
-        theme.action_background
-    } else {
-        default_outer_background
-    }
+    // Outer shell (which includes gutter) never changes background on selection.
+    // Only the content container shows the action/selection color.
+    default_outer_background
 }
 
 pub fn border_for_action(default_border: u32, theme: GuiTheme, action: BlockActionState) -> u32 {
-    if action.action_active {
+    if action.dragging {
+        // Only show distinct border when actively dragging
         theme.action_background
     } else {
         default_border
@@ -157,11 +165,21 @@ pub fn placeholder_shell(theme: GuiTheme, content: AnyElement) -> AnyElement {
         .w_full()
         .px_2()
         .py_1()
-        .rounded(px(6.0))
         .border_1()
-        .border_color(rgb(theme.border))
+        .border_color(rgb(theme.page))
         .bg(rgb(theme.page))
         .child(content)
+        .into_any_element()
+}
+
+fn render_quote_bar(color: u32) -> AnyElement {
+    div()
+        .absolute()
+        .left(px(0.0))
+        .top_0()
+        .bottom_0()
+        .w(px(NOTION_QUOTE_BAR_WIDTH_PX))
+        .bg(rgb(color))
         .into_any_element()
 }
 
@@ -179,6 +197,11 @@ mod tests {
     }
 
     #[test]
+    fn notion_quote_bar_is_three_pixels_without_changing_hit_test_slot() {
+        assert_eq!(NOTION_QUOTE_BAR_WIDTH_PX, 3.0);
+    }
+
+    #[test]
     fn action_active_uses_v1_action_background_without_height_change() {
         let theme = GuiTheme::light();
         let action = BlockActionState {
@@ -186,14 +209,17 @@ mod tests {
             action_root: false,
             dragging: true,
         };
+        // Content background changes on action_active
         assert_eq!(
             content_background_for_action(0x123456, theme, action),
             theme.action_background
         );
+        // Outer background does NOT change on action_active (gutter stays uncolored)
         assert_eq!(
             outer_background_for_action(0xabcdef, theme, action),
-            theme.action_background
+            0xabcdef
         );
+        // Border only changes when dragging
         assert_eq!(
             border_for_action(theme.surface, theme, action),
             theme.action_background
