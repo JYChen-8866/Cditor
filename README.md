@@ -310,6 +310,14 @@ The workflow runs for pushes to `main`, pull requests targeting `main`, version 
 
 These files are workflow artifacts, not GitHub Packages. The repository's **Packages** section can remain empty; use **Actions → Desktop builds → Artifacts** for the EXE and DMG downloads.
 
+Release artifacts use the workspace's performance-first Cargo profile: optimization
+level 3, fat whole-program LTO, one codegen unit, abort-on-panic, disabled
+incremental compilation, and stripped symbols. Windows additionally links the
+static C runtime. The workflow deliberately avoids `target-cpu=native`, so a
+binary built on a GitHub runner does not accidentally require that runner's CPU
+instruction set. Run `./scripts/dev/check_release_profile.sh` to verify these
+release invariants locally.
+
 The macOS application bundles are ad-hoc signed so the DMG layout and bundle integrity can be verified in CI. They are not Apple-notarized because the public repository does not contain Apple Developer signing credentials. macOS may therefore require using **Open** from Finder's context menu the first time the application is launched.
 
 ## Testing & Quality Gates

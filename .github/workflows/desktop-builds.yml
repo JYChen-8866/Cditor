@@ -47,6 +47,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-cargo-
 
+      - name: Verify performance release profile
+        shell: bash
+        run: ./scripts/dev/check_release_profile.sh
+
       - name: Test editor input and runtime on Windows
         shell: pwsh
         run: cargo test --locked -p cditor-runtime -p cditor-app --lib
@@ -54,7 +58,7 @@ jobs:
       - name: Build release executable
         shell: pwsh
         env:
-          RUSTFLAGS: -C target-feature=+crt-static -C strip=symbols
+          RUSTFLAGS: -C target-feature=+crt-static
         run: cargo build --locked --release -p cditor-app
 
       - name: Package executable and checksum
@@ -115,9 +119,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-cargo-
 
+      - name: Verify performance release profile
+        run: ./scripts/dev/check_release_profile.sh
+
       - name: Build release application
-        env:
-          RUSTFLAGS: -C strip=symbols
         run: cargo build --locked --release -p cditor-app --target "${{ matrix.target }}"
 
       - name: Package application bundle and DMG
