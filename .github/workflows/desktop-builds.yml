@@ -1,0 +1,135 @@
+name: Desktop builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-builds-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  windows:
+    name: Windows x64 EXE
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust
+        shell: pwsh
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-cargo-
+
+      - name: Build release executable
+        shell: pwsh
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static -C strip=symbols
+        run: cargo build --locked --release -p cditor-app
+
+      - name: Package executable and checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target/release/cditor-app.exe dist/Cditor.exe
+          $hash = (Get-FileHash dist/Cditor.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  Cditor.exe" | Set-Content dist/Cditor.exe.sha256 -Encoding ascii
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cditor-Windows-x64
+          path: |
+            dist/Cditor.exe
+            dist/Cditor.exe.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  macos:
+    name: macOS ${{ matrix.name }} DMG
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Apple-Silicon
+            runner: macos-15
+            target: aarch64-apple-darwin
+            arch: arm64
+            artifact: Cditor-macOS-Apple-Silicon
+            dmg: Cditor-macOS-arm64.dmg
+          - name: Intel
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            arch: x64
+            artifact: Cditor-macOS-Intel
+            dmg: Cditor-macOS-x64.dmg
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-cargo-
+
+      - name: Build release application
+        env:
+          RUSTFLAGS: -C strip=symbols
+        run: cargo build --locked --release -p cditor-app --target "${{ matrix.target }}"
+
+      - name: Package application bundle and DMG
+        run: |
+          ./scripts/packaging/package_macos.sh \
+            "${{ matrix.target }}" \
+            "${{ matrix.arch }}" \
+            "${{ matrix.dmg }}"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/${{ matrix.dmg }}
+            dist/${{ matrix.dmg }}.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

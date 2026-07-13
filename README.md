@@ -243,6 +243,20 @@ Launch editor with GPUI runtime shader feature enabled:
 cargo run -p cditor-app --features runtime-shaders
 ```
 
+### GitHub Desktop Artifacts
+
+The `Desktop builds` GitHub Actions workflow produces three downloadable artifacts:
+
+| Artifact | Output | Target |
+| --- | --- | --- |
+| `Cditor-Windows-x64` | `Cditor.exe` and SHA-256 checksum | 64-bit Windows |
+| `Cditor-macOS-Apple-Silicon` | `Cditor-macOS-arm64.dmg` and SHA-256 checksum | Apple Silicon Macs |
+| `Cditor-macOS-Intel` | `Cditor-macOS-x64.dmg` and SHA-256 checksum | Intel Macs |
+
+The workflow runs for pushes to `main`, pull requests targeting `main`, version tags, and manual dispatches. Download outputs from the workflow run's **Artifacts** section.
+
+The macOS application bundles are ad-hoc signed so the DMG layout and bundle integrity can be verified in CI. They are not Apple-notarized because the public repository does not contain Apple Developer signing credentials. macOS may therefore require using **Open** from Finder's context menu the first time the application is launched.
+
 ## Testing & Quality Gates
 Run all default unit tests:
 ```bash
