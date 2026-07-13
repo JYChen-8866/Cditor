@@ -214,15 +214,11 @@ impl DocumentRuntime {
                 block_id,
                 estimate_payload_height(&payload, insert_at + fragment_index - 1),
             ));
-            self.insert_runtime_block(
-                insert_at + fragment_index - 1,
-                record.clone(),
-                payload.clone(),
-            )?;
             inserted_records.push(record);
             inserted_payloads.push(payload);
             focus_block_id = block_id;
         }
+        self.insert_runtime_blocks_batch(insert_at, &inserted_records, inserted_payloads)?;
         self.focus_block_at_offset(focus_block_id, focus_offset)?;
         let after_current_record = self.index_record_for_block(current_block_id)?;
         let after_current_payload = self
@@ -237,7 +233,7 @@ impl DocumentRuntime {
             after_current_record,
             after_current_payload,
             inserted_records,
-            inserted_payloads,
+            inserted_payloads: Vec::new(),
             deleted_records,
             deleted_payloads,
             before_focus: original_focus,
@@ -318,12 +314,12 @@ impl DocumentRuntime {
                 block_id,
                 estimate_payload_height(&payload, insert_at + offset),
             ));
-            self.insert_runtime_block(insert_at + offset, record.clone(), payload.clone())?;
             inserted_records.push(record);
             inserted_payloads.push(payload);
         }
+        let first_id = inserted_records[0].id;
+        self.insert_runtime_blocks_batch(insert_at, &inserted_records, inserted_payloads)?;
         self.selected_block_ids.clear();
-        let first_id = inserted_payloads[0].block_id;
         if let Some(text_len) = self
             .text_models
             .get(&first_id)
@@ -335,12 +331,12 @@ impl DocumentRuntime {
         }
         self.record_structure_paste(StructurePasteUndoStep {
             current_block_id: anchor_id,
-            before_current_record: before_current_record.clone(),
+            before_current_record,
             before_current_payload: before_current_payload.clone(),
             after_current_record: before_current_record,
             after_current_payload: before_current_payload,
             inserted_records,
-            inserted_payloads,
+            inserted_payloads: Vec::new(),
             deleted_records: Vec::new(),
             deleted_payloads: Vec::new(),
             before_focus,

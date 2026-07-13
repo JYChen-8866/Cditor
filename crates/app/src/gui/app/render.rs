@@ -281,6 +281,11 @@ impl Render for CditorV2View {
             .text_color(rgb(theme.text));
 
         let mut pending_table_scroll_offsets = Vec::new();
+        let postgres_payload_pool = self
+            .postgres_persistence
+            .target()
+            .map(|target| target.pool.clone());
+        let mut pending_payload_window_load = None;
 
         match &mut self.state {
             CditorViewState::Ready(runtime) => {
@@ -298,6 +303,11 @@ impl Render for CditorV2View {
                 let _ = runtime
                     .flush_pending_height_corrections_with_priority(height_correction_priority);
                 let projection = runtime.projection_for_window_planned();
+                if postgres_payload_pool.is_some() && projection.render_window.is_placeholder() {
+                    pending_payload_window_load = runtime.plan_payload_window_load_if_needed(
+                        projection.render_window.block_range.clone(),
+                    );
+                }
                 self.mermaid_renders
                     .sync_visible_window(&projection, theme, cx);
                 self.whiteboard_thumbnails
@@ -447,6 +457,9 @@ impl Render for CditorV2View {
                     let _ = runtime.set_table_horizontal_scroll_offset_px(block_id, offset_x);
                 }
             }
+        }
+        if let (Some(pool), Some(request)) = (postgres_payload_pool, pending_payload_window_load) {
+            self.load_postgres_payload_window(pool, request, cx);
         }
         if let Some(toolbar) = formatting_toolbar {
             root = root.child(render_floating_toolbar(

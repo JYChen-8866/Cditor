@@ -79,6 +79,10 @@ impl PostgresPersistenceState {
         self.target.is_some()
     }
 
+    pub fn target(&self) -> Option<&PostgresPersistenceTarget> {
+        self.target.as_ref()
+    }
+
     pub fn set_target(
         &mut self,
         target: Option<PostgresPersistenceTarget>,

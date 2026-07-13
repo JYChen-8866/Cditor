@@ -3,6 +3,7 @@ use super::*;
 impl DocumentRuntime {
     pub fn focus_block(&mut self, block_id: BlockId) {
         let previous_focus = self.focused_block_id();
+        self.hydrate_payload_runtime_state(block_id);
 
         // Get block kind to determine input capability
         let kind = self
@@ -117,6 +118,7 @@ impl DocumentRuntime {
         row: usize,
         col: usize,
     ) -> Result<(), String> {
+        self.hydrate_payload_runtime_state(block_id);
         let payload_content_version = self
             .payload_window
             .get(block_id)

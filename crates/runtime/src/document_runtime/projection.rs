@@ -24,14 +24,13 @@ impl DocumentRuntime {
     pub fn projection_for_window_planned(&mut self) -> EditorViewProjection {
         let total_start = Instant::now();
         self.refresh_ai_session_validity();
-        let (page_range, block_range) = if self.demo_payload_count.is_some() {
-            self.demo_viewport_window_ranges()
-        } else {
-            let page_range = self.current_page_window_planned();
-            let block_range = self.block_range_for_page_window(&page_range);
-            (page_range, block_range)
-        };
+        // The GUI always projects a viewport-sized block window. Page windows are
+        // still maintained for layout and scroll geometry, but must not decide how
+        // many block entities are created in a frame. This is the same bounded
+        // path used by the synthetic 100k fixture and by resident/PG documents.
+        let (page_range, block_range) = self.viewport_window_ranges();
         self.ensure_demo_payload_window(&block_range);
+        self.hydrate_payload_runtime_state_for_range(block_range.clone());
         let projection = self.projection_for_ranges(page_range, block_range);
         let projection =
             if self.scrollbar_drag.is_some() && projection.render_window.is_placeholder() {
@@ -59,7 +58,7 @@ impl DocumentRuntime {
         )
     }
 
-    fn demo_viewport_window_ranges(&self) -> (Range<usize>, Range<usize>) {
+    fn viewport_window_ranges(&self) -> (Range<usize>, Range<usize>) {
         let total_visible = self.visible_index.total_visible_count();
         if total_visible == 0 {
             return (0..0, 0..0);
@@ -82,13 +81,19 @@ impl DocumentRuntime {
         let end = natural_end
             .min(start.saturating_add(max_blocks))
             .max(start + 1);
-        let page = self
+        let start_page = self
             .page_layout
-            .page_for_block_index(current)
+            .page_for_block_index(start)
             .unwrap_or(0)
             .min(self.page_layout.page_count().saturating_sub(1));
+        let end_page = self
+            .page_layout
+            .page_for_block_index(end.saturating_sub(1))
+            .unwrap_or(start_page)
+            .saturating_add(1)
+            .min(self.page_layout.page_count());
         (
-            page..page.saturating_add(1).min(self.page_layout.page_count()),
+            start_page..end_page.max(start_page.saturating_add(1)),
             start..end,
         )
     }
@@ -395,7 +400,7 @@ impl DocumentRuntime {
             .height_index
             .offset_of_block(block_range.start)
             .unwrap_or(0.0);
-        let placeholder_height = self.height_for_page_range(&page_range);
+        let placeholder_height = self.height_for_block_range(&block_range);
         let render_window = RenderWindow::placeholder(PlaceholderWindow {
             page_range: page_range.clone(),
             block_range,
@@ -434,17 +439,15 @@ impl DocumentRuntime {
         }
     }
 
-    fn height_for_page_range(&self, page_range: &Range<usize>) -> f64 {
-        let page_count = self.page_layout.page_count();
-        if page_range.is_empty() || page_count == 0 {
-            return 0.0;
-        }
-        let start = page_range.start.min(page_count);
-        let end = page_range.end.min(page_count).max(start);
-        self.page_layout.pages[start..end]
-            .iter()
-            .map(|page| page.height)
-            .sum()
+    fn height_for_block_range(&self, block_range: &Range<usize>) -> f64 {
+        let start = block_range.start.min(self.height_index.len());
+        let end = block_range.end.min(self.height_index.len()).max(start);
+        let start_offset = self.height_index.offset_of_block(start).unwrap_or(0.0);
+        let end_offset = self
+            .height_index
+            .offset_of_block(end)
+            .unwrap_or(start_offset);
+        (end_offset - start_offset).max(0.0)
     }
 }
 

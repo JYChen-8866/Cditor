@@ -227,6 +227,49 @@ fn whole_block_clipboard_remaps_ids_and_preserves_complex_payload_hierarchy() {
 }
 
 #[test]
+fn large_whole_block_clipboard_paste_rebuilds_structure_once_and_hydrates_a_window() {
+    let blocks = (1..=2_000 as BlockId)
+        .map(|source_id| ClipboardBlock {
+            source_id,
+            parent_source_id: None,
+            depth: 0,
+            kind: RichBlockKind::Paragraph,
+            payload: BlockPayload::RichText {
+                spans: vec![InlineSpan::plain(format!("block {source_id}"))],
+            },
+        })
+        .collect::<Vec<_>>();
+    let mut target = DocumentRuntime::from_payloads(
+        2,
+        vec![BlockPayloadRecord::rich_text(
+            10,
+            RichBlockKind::Paragraph,
+            "anchor",
+        )],
+        720.0,
+    );
+    target.focus_block_at_offset(10, 6).unwrap();
+
+    assert!(
+        target
+            .paste_clipboard_selection(&ClipboardSelection::Blocks { blocks })
+            .unwrap()
+    );
+    let projection = target.projection_for_window_planned();
+
+    assert_eq!(target.index.total_count(), 2_001);
+    assert_eq!(target.structure_version(), 2);
+    assert!(projection.blocks.len() <= 320);
+    assert!(target.text_models.len() <= 322);
+
+    assert!(target.undo_focused_block().unwrap());
+    assert_eq!(target.index.total_count(), 1);
+    assert!(target.redo_focused_block().unwrap());
+    assert_eq!(target.index.total_count(), 2_001);
+    assert!(target.text_models.len() <= 322);
+}
+
+#[test]
 fn table_clipboard_metadata_preserves_cell_marks_and_style() {
     let mut table = cditor_core::rich_text::TablePayload {
         rows: vec![cditor_core::rich_text::TableRowPayload {

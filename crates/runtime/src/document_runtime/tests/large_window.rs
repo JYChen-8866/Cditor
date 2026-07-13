@@ -211,6 +211,22 @@ fn large_mixed_demo_keeps_payloads_windowed() {
 }
 
 #[test]
+fn planned_projection_uses_the_same_bounded_viewport_for_resident_100k_document() {
+    let mut runtime = runtime_with_paragraph_blocks(100_000);
+    runtime
+        .scroll
+        .scroll_to_global_offset(1_000_000.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .unwrap();
+
+    let projection = runtime.projection_for_window_planned();
+
+    assert!(!projection.render_window.is_placeholder());
+    assert!(!projection.blocks.is_empty());
+    assert!(projection.blocks.len() <= 320);
+    assert!(projection.render_window.block_range.start > 0);
+}
+
+#[test]
 fn target_for_global_offset_maps_100k_document_precisely() {
     let runtime = runtime_with_paragraph_blocks(100_000);
     let samples = [0.0, 1.0, 31.9, 32.0, 50_000.0, 3_199_999.0];

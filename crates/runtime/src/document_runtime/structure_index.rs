@@ -212,4 +212,43 @@ impl DocumentRuntime {
         self.selected_block_ids.clear();
         Ok(())
     }
+
+    pub(super) fn insert_runtime_blocks_batch(
+        &mut self,
+        insert_at: usize,
+        inserted_records: &[BlockIndexRecord],
+        payloads: Vec<BlockPayloadRecord>,
+    ) -> Result<(), String> {
+        if inserted_records.len() != payloads.len() {
+            return Err(format!(
+                "batch insert record/payload mismatch: records={} payloads={}",
+                inserted_records.len(),
+                payloads.len()
+            ));
+        }
+        if inserted_records.is_empty() {
+            return Ok(());
+        }
+        if inserted_records
+            .iter()
+            .zip(&payloads)
+            .any(|(record, payload)| record.id != payload.block_id)
+        {
+            return Err("batch insert record/payload block ids do not match".to_owned());
+        }
+
+        let mut records = self.index_records();
+        let insert_at = insert_at.min(records.len());
+        records.splice(insert_at..insert_at, inserted_records.iter().copied());
+        self.rebuild_structure_index(records)?;
+
+        for mut payload in payloads {
+            payload = normalize_payload_record_for_kind(payload);
+            if matches!(payload.kind, RichBlockKind::Table) {
+                self.sync_table_runtime_from_loaded_record(&mut payload);
+            }
+            self.payload_window.insert(payload);
+        }
+        Ok(())
+    }
 }

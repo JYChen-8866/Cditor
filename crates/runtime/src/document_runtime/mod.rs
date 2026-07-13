@@ -10,6 +10,7 @@ mod inline_format;
 mod layout_heights;
 mod markdown_paste;
 mod media;
+mod payload_hydration;
 mod payload_window;
 mod projection;
 mod scroll;

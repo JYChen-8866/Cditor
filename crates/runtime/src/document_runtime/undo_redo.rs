@@ -35,10 +35,10 @@ impl DocumentRuntime {
                 }
             }
             RuntimeUndoEvent::StructurePaste => {
-                let Some(step) = self.paste_undo_stack.pop() else {
+                let Some(mut step) = self.paste_undo_stack.pop() else {
                     return Ok(false);
                 };
-                self.apply_structure_paste_step(&step, false)?;
+                self.apply_structure_paste_step(&mut step, false)?;
                 self.paste_redo_stack.push(step);
                 self.redo_events.push(event);
                 Ok(true)
@@ -80,10 +80,10 @@ impl DocumentRuntime {
                 }
             }
             RuntimeUndoEvent::StructurePaste => {
-                let Some(step) = self.paste_redo_stack.pop() else {
+                let Some(mut step) = self.paste_redo_stack.pop() else {
                     return Ok(false);
                 };
-                self.apply_structure_paste_step(&step, true)?;
+                self.apply_structure_paste_step(&mut step, true)?;
                 self.paste_undo_stack.push(step);
                 self.undo_events.push(event);
                 Ok(true)
@@ -140,7 +140,7 @@ impl DocumentRuntime {
 
     fn apply_structure_paste_step(
         &mut self,
-        step: &StructurePasteUndoStep,
+        step: &mut StructurePasteUndoStep,
         redo: bool,
     ) -> Result<(), String> {
         let mut records = self.index_records();
@@ -199,12 +199,21 @@ impl DocumentRuntime {
             }
             for payload in &step.inserted_payloads {
                 let mut payload = normalize_payload_record_for_kind(payload.clone());
-                self.sync_table_runtime_from_loaded_record(&mut payload);
-                self.payload_window.insert(payload.clone());
+                if matches!(payload.kind, RichBlockKind::Table) {
+                    self.sync_table_runtime_from_loaded_record(&mut payload);
+                }
+                self.payload_window.insert(payload);
             }
         } else {
+            let capture_inserted_payloads = step.inserted_payloads.is_empty();
             for block_id in inserted_ids {
-                self.payload_window.payloads.remove(&block_id);
+                if capture_inserted_payloads
+                    && let Some(payload) = self.payload_window.payloads.remove(&block_id)
+                {
+                    step.inserted_payloads.push(payload);
+                } else {
+                    self.payload_window.payloads.remove(&block_id);
+                }
                 self.text_models.remove(&block_id);
                 self.table_runtimes.remove(&block_id);
             }

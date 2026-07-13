@@ -65,6 +65,29 @@ pub(super) fn table_style_color(theme: GuiTheme, color: &str) -> Option<u32> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn table_background_accepts_persisted_notion_palette_hex_values() {
+        let theme = GuiTheme::light();
+
+        assert_eq!(
+            table_cell_background(theme, false, Some("#fbf3db")),
+            0xfbf3db
+        );
+        assert_eq!(
+            table_cell_background(theme, true, Some("#edf3ec")),
+            0xedf3ec
+        );
+        assert_eq!(
+            table_cell_background(theme, false, Some("#FDEBEC")),
+            0xfdebec
+        );
+    }
+}
+
 pub(super) fn table_selected_cell_background(theme: GuiTheme) -> u32 {
     theme.action_background
 }

@@ -105,7 +105,7 @@ pub(crate) fn render_block_content(
                         .w_full()
                         .min_h(px(24.0))
                         .child(text_element)
-                        .child(render_empty_ai_hint(theme))
+                        .child(render_empty_ai_hint(&block.kind, theme))
                         .into_any_element()
                 } else {
                     text_element

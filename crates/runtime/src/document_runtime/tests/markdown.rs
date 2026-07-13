@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn large_markdown_paste_hydrates_only_focused_and_viewport_text_models() {
+    let mut runtime = DocumentRuntime::empty();
+    runtime.focus_block(1);
+    let markdown = (0..2_000)
+        .map(|index| format!("- item {index}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(runtime.insert_markdown_paste(&markdown).unwrap());
+    let projection = runtime.projection_for_window_planned();
+
+    assert_eq!(runtime.index.total_count(), 2_000);
+    assert!(projection.blocks.len() <= 320);
+    assert!(runtime.text_models.len() <= 322);
+    assert!(runtime.text_models.len() < runtime.index.total_count());
+}
+
+#[test]
 fn markdown_paste_heading_replaces_current_block_and_preserves_prefix_suffix() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "hello world")]);

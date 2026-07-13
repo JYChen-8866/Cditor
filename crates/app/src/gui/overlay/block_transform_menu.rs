@@ -12,7 +12,13 @@ use cditor_core::rich_text::{CalloutVariant, RichBlockKind};
 pub const BLOCK_TRANSFORM_MENU_WIDTH_PX: f32 = 220.0;
 const BLOCK_TRANSFORM_MENU_HEIGHT_PX: f32 = 372.0;
 const BLOCK_TRANSFORM_MENU_GAP_PX: f32 = 6.0;
-const BLOCK_TRANSFORM_MENU_RIGHT_OFFSET_PX: f32 = 174.0;
+const PRIMARY_TOOLBAR_WIDTH_PX: f32 = 194.0;
+const PRIMARY_TOOLBAR_CONTENT_LEFT_PX: f32 = 8.0;
+const BLOCK_TRANSFORM_MENU_RIGHT_OFFSET_PX: f32 =
+    PRIMARY_TOOLBAR_WIDTH_PX - PRIMARY_TOOLBAR_CONTENT_LEFT_PX + BLOCK_TRANSFORM_MENU_GAP_PX;
+const BLOCK_TRANSFORM_MENU_LEFT_OFFSET_PX: f32 = -(BLOCK_TRANSFORM_MENU_WIDTH_PX
+    + PRIMARY_TOOLBAR_CONTENT_LEFT_PX
+    + BLOCK_TRANSFORM_MENU_GAP_PX);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockTransformAction {
@@ -142,7 +148,10 @@ impl BlockTransformAction {
 }
 
 pub fn block_transform_menu_opens_left(toolbar_x: f32, viewport_width: f32) -> bool {
-    toolbar_x + 194.0 + BLOCK_TRANSFORM_MENU_GAP_PX + BLOCK_TRANSFORM_MENU_WIDTH_PX
+    toolbar_x
+        + PRIMARY_TOOLBAR_WIDTH_PX
+        + BLOCK_TRANSFORM_MENU_GAP_PX
+        + BLOCK_TRANSFORM_MENU_WIDTH_PX
         > viewport_width - 10.0
 }
 
@@ -166,9 +175,7 @@ pub fn render_block_transform_menu(
         .absolute()
         .top(px(top_offset))
         .when(opens_left, |menu| {
-            // Keep both hover surfaces touching; a dead gap would hide the
-            // submenu before the pointer can enter it.
-            menu.left(px(-BLOCK_TRANSFORM_MENU_WIDTH_PX))
+            menu.left(px(BLOCK_TRANSFORM_MENU_LEFT_OFFSET_PX))
         })
         .when(!opens_left, |menu| {
             menu.left(px(BLOCK_TRANSFORM_MENU_RIGHT_OFFSET_PX))
@@ -299,12 +306,17 @@ mod tests {
     }
 
     #[test]
-    fn transform_submenu_has_no_dead_hover_gap() {
-        const TRIGGER_WIDTH_PX: f32 = 178.0;
-        assert!(BLOCK_TRANSFORM_MENU_RIGHT_OFFSET_PX <= TRIGGER_WIDTH_PX);
+    fn transform_submenu_has_an_exact_visual_gap_from_the_primary_panel() {
         assert_eq!(
-            -BLOCK_TRANSFORM_MENU_WIDTH_PX + BLOCK_TRANSFORM_MENU_WIDTH_PX,
-            0.0
+            PRIMARY_TOOLBAR_CONTENT_LEFT_PX + BLOCK_TRANSFORM_MENU_RIGHT_OFFSET_PX
+                - PRIMARY_TOOLBAR_WIDTH_PX,
+            BLOCK_TRANSFORM_MENU_GAP_PX
+        );
+        assert_eq!(
+            -(PRIMARY_TOOLBAR_CONTENT_LEFT_PX
+                + BLOCK_TRANSFORM_MENU_LEFT_OFFSET_PX
+                + BLOCK_TRANSFORM_MENU_WIDTH_PX),
+            BLOCK_TRANSFORM_MENU_GAP_PX
         );
     }
 }
