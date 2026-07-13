@@ -22,7 +22,7 @@ pub use document::{
     AssetRef, CoverPositionY, DocumentMetadata, PageCover, PageIcon, RichBlockRecord,
     RichTextDocument, RichTextFormatVersion, SortKey,
 };
-pub use inline::{InlineMark, InlineSpan, plain_text_from_spans};
+pub use inline::{InlineColorTarget, InlineMark, InlineSpan, plain_text_from_spans};
 pub use markdown::{
     MarkdownImportOptions, ParsedMarkdownDocument, block_kind_shortcut,
     block_kind_shortcut_with_marker_len, code_fence_shortcut, export_plain_markdown,

@@ -35,6 +35,37 @@ fn table_cell_background_color_is_projected_from_payload_style() {
 }
 
 #[test]
+fn table_header_toggles_commit_projection_and_support_undo() {
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
+    runtime.focus_block(10);
+
+    assert!(runtime.set_table_header_rows(10, 0).unwrap());
+    assert!(runtime.set_table_header_columns(10, 1).unwrap());
+    let payload = runtime.block_payload_record(10).unwrap();
+    let BlockPayload::Table(table) = payload.payload else {
+        panic!("expected table payload");
+    };
+    assert_eq!(table.header_rows, 0);
+    assert_eq!(table.header_cols, 1);
+
+    let projection = runtime.projection_for_window();
+    let table_view = projection.blocks[0]
+        .table_view
+        .as_ref()
+        .expect("table projection");
+    assert!(table_view.visible_cells[0].header);
+    assert!(!table_view.visible_cells[1].header);
+
+    assert!(runtime.undo_focused_block().unwrap());
+    let payload = runtime.block_payload_record(10).unwrap();
+    let BlockPayload::Table(table) = payload.payload else {
+        panic!("expected table payload");
+    };
+    assert_eq!(table.header_rows, 0);
+    assert_eq!(table.header_cols, 0);
+}
+
+#[test]
 fn table_structure_edits_reject_merged_tables_without_losing_runtime_payload() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
     runtime

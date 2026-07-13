@@ -9,11 +9,12 @@ use crate::gui::block::chrome::{BLOCK_GUTTER_HEIGHT_PX, BLOCK_GUTTER_WIDTH_PX};
 
 pub type GutterMouseDownHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 pub type GutterAddHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
-pub type GutterDeleteHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 
 const GUTTER_BUTTON_SIZE_PX: f32 = 24.0;
-const GUTTER_CLUSTER_WIDTH_PX: f32 = GUTTER_BUTTON_SIZE_PX * 3.0;
-const GUTTER_CLUSTER_LEFT_PX: f32 = -GUTTER_BUTTON_SIZE_PX * 2.0;
+const GUTTER_CLUSTER_WIDTH_PX: f32 = GUTTER_BUTTON_SIZE_PX * 2.0;
+const GUTTER_CLUSTER_LEFT_PX: f32 = 0.0;
+const GUTTER_ADD_ICON_SIZE_PX: f32 = 12.0;
+const GUTTER_ADD_ICON_STROKE_PX: f32 = 1.5;
 
 pub fn render_block_gutter(
     theme: GuiTheme,
@@ -21,7 +22,6 @@ pub fn render_block_gutter(
     action_active: bool,
     on_add: Option<GutterAddHandler>,
     on_mouse_down: Option<GutterMouseDownHandler>,
-    on_delete: Option<GutterDeleteHandler>,
 ) -> AnyElement {
     let color = if action_active {
         theme.action_accent
@@ -42,7 +42,6 @@ pub fn render_block_gutter(
                 .h(px(GUTTER_BUTTON_SIZE_PX))
                 .flex()
                 .items_center()
-                .child(render_delete_button(theme, on_delete))
                 .child(render_add_button(theme, on_add))
                 .child(render_drag_button(
                     theme,
@@ -57,28 +56,6 @@ pub fn render_block_gutter(
         .into_any_element()
 }
 
-fn render_delete_button(theme: GuiTheme, on_delete: Option<GutterDeleteHandler>) -> AnyElement {
-    div()
-        .size(px(GUTTER_BUTTON_SIZE_PX))
-        .rounded(px(3.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_size(px(14.0))
-        .text_color(rgb(theme.gutter_foreground))
-        .cursor_pointer()
-        .hover(move |style| {
-            style
-                .bg(rgb(theme.hover_surface))
-                .text_color(rgb(theme.danger))
-        })
-        .when_some(on_delete, |this, handler| {
-            this.on_mouse_down(MouseButton::Left, handler)
-        })
-        .child("×")
-        .into_any_element()
-}
-
 fn render_add_button(theme: GuiTheme, on_add: Option<GutterAddHandler>) -> AnyElement {
     div()
         .size(px(GUTTER_BUTTON_SIZE_PX))
@@ -86,18 +63,40 @@ fn render_add_button(theme: GuiTheme, on_add: Option<GutterAddHandler>) -> AnyEl
         .flex()
         .items_center()
         .justify_center()
-        .text_size(px(20.0))
-        .text_color(rgb(theme.gutter_foreground))
         .cursor_pointer()
-        .hover(move |style| {
-            style
-                .bg(rgb(theme.hover_surface))
-                .text_color(rgb(theme.text))
-        })
+        .hover(move |style| style.bg(rgb(theme.hover_surface)))
         .when_some(on_add, |this, handler| {
             this.on_mouse_down(MouseButton::Left, handler)
         })
-        .child("+")
+        .child(render_add_icon(theme.gutter_foreground))
+        .into_any_element()
+}
+
+fn render_add_icon(color: u32) -> AnyElement {
+    let stroke_offset = (GUTTER_ADD_ICON_SIZE_PX - GUTTER_ADD_ICON_STROKE_PX) / 2.0;
+    div()
+        .relative()
+        .size(px(GUTTER_ADD_ICON_SIZE_PX))
+        .child(
+            div()
+                .absolute()
+                .left_0()
+                .top(px(stroke_offset))
+                .w(px(GUTTER_ADD_ICON_SIZE_PX))
+                .h(px(GUTTER_ADD_ICON_STROKE_PX))
+                .rounded(px(GUTTER_ADD_ICON_STROKE_PX))
+                .bg(rgb(color)),
+        )
+        .child(
+            div()
+                .absolute()
+                .left(px(stroke_offset))
+                .top_0()
+                .w(px(GUTTER_ADD_ICON_STROKE_PX))
+                .h(px(GUTTER_ADD_ICON_SIZE_PX))
+                .rounded(px(GUTTER_ADD_ICON_STROKE_PX))
+                .bg(rgb(color)),
+        )
         .into_any_element()
 }
 
@@ -160,9 +159,12 @@ mod tests {
 
     #[test]
     fn gutter_dimensions_match_v1_contract() {
-        assert_eq!(BLOCK_GUTTER_WIDTH_PX, 24.0);
+        assert_eq!(BLOCK_GUTTER_WIDTH_PX, 48.0);
         assert_eq!(BLOCK_GUTTER_HEIGHT_PX, 24.0);
-        assert_eq!(GUTTER_CLUSTER_WIDTH_PX, 72.0); // 24.0 * 3.0 buttons
-        assert_eq!(GUTTER_CLUSTER_LEFT_PX, -48.0); // -24.0 * 2.0
+        assert_eq!(GUTTER_CLUSTER_WIDTH_PX, 48.0); // add + drag buttons
+        assert_eq!(GUTTER_CLUSTER_LEFT_PX, 0.0);
+        assert_eq!(GUTTER_CLUSTER_WIDTH_PX, BLOCK_GUTTER_WIDTH_PX);
+        assert_eq!(GUTTER_BUTTON_SIZE_PX, BLOCK_GUTTER_HEIGHT_PX);
+        assert_eq!((GUTTER_BUTTON_SIZE_PX - GUTTER_ADD_ICON_SIZE_PX) / 2.0, 6.0,);
     }
 }

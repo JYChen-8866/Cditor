@@ -1,9 +1,7 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgba};
 
 use crate::gui::GuiTheme;
-use crate::gui::block::chrome::{
-    BLOCK_GUTTER_WIDTH_PX, BLOCK_INDENT_STEP_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_OUTER_PADDING_X_PX,
-};
+use crate::gui::block::chrome::{BLOCK_INDENT_STEP_PX, block_content_left_px};
 use cditor_core::ids::BlockId;
 use cditor_runtime::EditorViewProjection;
 
@@ -40,10 +38,7 @@ pub fn selection_overlay_fragments(
 }
 
 fn selection_content_left_px(depth: usize) -> f32 {
-    BLOCK_SHELL_OUTER_PADDING_X_PX
-        + BLOCK_GUTTER_WIDTH_PX
-        + BLOCK_ROW_GAP_PX
-        + depth as f32 * BLOCK_INDENT_STEP_PX
+    block_content_left_px(depth as f32 * BLOCK_INDENT_STEP_PX)
 }
 
 pub fn render_selection_overlay(
@@ -125,8 +120,7 @@ mod tests {
 
         assert_eq!(fragments.len(), 3);
         assert!(fragments.iter().all(|fragment| !fragment.full_block));
-        let root_content_left =
-            BLOCK_SHELL_OUTER_PADDING_X_PX + BLOCK_GUTTER_WIDTH_PX + BLOCK_ROW_GAP_PX;
+        let root_content_left = block_content_left_px(0.0);
         assert_eq!(fragments[0].content_left_px, root_content_left);
         assert_eq!(
             fragments[1].content_left_px,

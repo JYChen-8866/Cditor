@@ -35,7 +35,7 @@ impl CditorV2View {
         else {
             return false;
         };
-        let (x, y) = self.slash_menu_anchor(block_id, caret);
+        let (x, y) = self.ai_prompt_line_anchor(block_id, caret);
         self.open_ai_prompt_from_gui_with_presentation(
             x,
             y,
@@ -58,7 +58,7 @@ impl CditorV2View {
         self.open_ai_prompt_from_gui_with_presentation(x, y, presentation, cx)
     }
 
-    fn open_ai_prompt_from_gui_with_presentation(
+    pub(in crate::gui::app) fn open_ai_prompt_from_gui_with_presentation(
         &mut self,
         x: f32,
         y: f32,

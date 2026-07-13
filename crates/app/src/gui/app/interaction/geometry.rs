@@ -196,7 +196,8 @@ pub(in crate::gui::app) fn fallback_text_metrics_for_block(
         + 8.0
         + border_left
         + f64::from(chrome.content_padding_left_px)
-        + f64::from(chrome.prefix_width_px)
+        + f64::from(chrome.marker_lane_width_px)
+        + f64::from(chrome.content_prefix_width_px)
         + code_x;
     let origin_y = 4.0 + 1.0 + f64::from(chrome.content_padding_y_px) + code_y;
     let width = (f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX)

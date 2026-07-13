@@ -5,6 +5,7 @@ pub(in crate::document_runtime) fn table_view_state_from_payload(
     table: &cditor_core::rich_text::TablePayload,
     focused_cell: Option<TableCellPosition>,
     focused_cell_offset: Option<usize>,
+    focused_cell_selection_range: Option<Range<usize>>,
     horizontal_scroll_offset_px: f32,
 ) -> TableViewState {
     let geometry = table_layout_from_payload(table);
@@ -42,6 +43,7 @@ pub(in crate::document_runtime) fn table_view_state_from_payload(
         visible_cells,
         focused_cell,
         focused_cell_offset,
+        focused_cell_selection_range,
     }
 }
 
@@ -50,5 +52,5 @@ fn is_table_header_cell(
     row: usize,
     col: usize,
 ) -> bool {
-    row < table.header_rows.max(usize::from(table.header_rows == 0)) || col < table.header_cols
+    row < table.header_rows || col < table.header_cols
 }

@@ -107,7 +107,12 @@ impl RichBlockKind {
 pub fn kind_tag_for_rich_block_kind(kind: &RichBlockKind) -> u16 {
     match kind {
         RichBlockKind::Paragraph => 1,
-        RichBlockKind::Heading { .. } => 2,
+        RichBlockKind::Heading { level: 1 } => 2,
+        RichBlockKind::Heading { level: 2 } => 26,
+        RichBlockKind::Heading { level: 3 } => 27,
+        RichBlockKind::Heading { level: 4 } => 28,
+        RichBlockKind::Heading { level: 5 } => 29,
+        RichBlockKind::Heading { .. } => 30,
         RichBlockKind::Quote => 3,
         RichBlockKind::Callout { .. } => 4,
         RichBlockKind::Todo { .. } => 5,
@@ -138,6 +143,11 @@ pub fn kind_tag_for_rich_block_kind(kind: &RichBlockKind) -> u16 {
 pub fn rich_block_kind_from_tag(tag: u16) -> RichBlockKind {
     match tag {
         2 => RichBlockKind::Heading { level: 1 },
+        26 => RichBlockKind::Heading { level: 2 },
+        27 => RichBlockKind::Heading { level: 3 },
+        28 => RichBlockKind::Heading { level: 4 },
+        29 => RichBlockKind::Heading { level: 5 },
+        30 => RichBlockKind::Heading { level: 6 },
         3 => RichBlockKind::Quote,
         4 => RichBlockKind::Callout {
             variant: CalloutVariant::Note,
@@ -164,5 +174,21 @@ pub fn rich_block_kind_from_tag(tag: u16) -> RichBlockKind {
         24 => RichBlockKind::Comment,
         25 => RichBlockKind::RawMarkdown,
         _ => RichBlockKind::Paragraph,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lightweight_kind_tags_preserve_all_heading_levels() {
+        for level in 1..=6 {
+            let kind = RichBlockKind::Heading { level };
+            assert_eq!(
+                rich_block_kind_from_tag(kind_tag_for_rich_block_kind(&kind)),
+                kind
+            );
+        }
     }
 }

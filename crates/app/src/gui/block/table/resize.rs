@@ -253,6 +253,7 @@ mod tests {
             horizontal_scroll_offset_px: 0.0,
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_selection_range: None,
             visible_cells: vec![
                 visible_cell(0, 0, 0.0, 0.0),
                 visible_cell(0, 1, 120.0, 0.0),

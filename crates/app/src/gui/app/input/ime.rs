@@ -302,7 +302,7 @@ impl EntityInputHandler for CditorV2View {
                 text.len()
             ),
         );
-        match runtime.replace_text_in_focused_range(range, text) {
+        match apply_platform_text_replacement(runtime, range, text) {
             Ok(true) => {
                 self.mark_dirty(cx);
                 self.sync_slash_menu_from_runtime(cx);
@@ -512,6 +512,40 @@ impl EntityInputHandler for CditorV2View {
     }
 }
 
+fn apply_platform_text_replacement(
+    runtime: &mut DocumentRuntime,
+    range: Option<Range<usize>>,
+    text: &str,
+) -> Result<bool, String> {
+    let has_active_selection = runtime.has_active_selection();
+    let route = if text.is_empty() && has_active_selection {
+        "delete_active_selection"
+    } else {
+        "replace_focused_range"
+    };
+    trace_input(
+        "platform_text_replacement.start",
+        format_args!(
+            "route={route} text_len={} explicit_range={range:?} focus={:?} active_selection={has_active_selection} cross_block={} focused_range={:?} session_range={:?}",
+            text.len(),
+            runtime.focused_block_id(),
+            runtime.has_cross_block_text_selection(),
+            runtime.focused_text_selection_range(),
+            runtime.input_session_selected_range(),
+        ),
+    );
+    let result = if route == "delete_active_selection" {
+        runtime.delete_active_selection()
+    } else {
+        runtime.replace_text_in_focused_range(range, text)
+    };
+    trace_input(
+        "platform_text_replacement.end",
+        format_args!("route={route} result={result:?}"),
+    );
+    result
+}
+
 pub(in crate::gui::app) fn platform_input_target_allows(
     registered: Option<GuiPlatformInputTarget>,
     runtime: &DocumentRuntime,
@@ -642,7 +676,9 @@ fn is_empty_line_ai_platform_input(range_utf16: Option<&Range<usize>>, text: &st
 
 #[cfg(test)]
 mod tests {
-    use super::is_empty_line_ai_platform_input;
+    use super::{apply_platform_text_replacement, is_empty_line_ai_platform_input};
+    use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
+    use cditor_runtime::DocumentRuntime;
 
     #[test]
     fn platform_space_commit_is_recognized_without_replacing_text() {
@@ -650,5 +686,43 @@ mod tests {
         assert!(is_empty_line_ai_platform_input(Some(&(0..0)), " "));
         assert!(!is_empty_line_ai_platform_input(Some(&(0..1)), " "));
         assert!(!is_empty_line_ai_platform_input(None, "x"));
+    }
+
+    #[test]
+    fn empty_platform_replacement_deletes_cross_block_document_selection() {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![
+                BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "ab"),
+                BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "middle"),
+                BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "cd"),
+            ],
+            720.0,
+        );
+        runtime.set_document_text_selection(1, 1, 3, 1).unwrap();
+
+        assert!(apply_platform_text_replacement(&mut runtime, Some(1..1), "").unwrap());
+        assert_eq!(runtime.focused_text(), Some("ad"));
+        assert_eq!(runtime.projection_for_window().blocks.len(), 1);
+        assert!(!runtime.has_active_selection());
+    }
+
+    #[test]
+    fn empty_platform_replacement_deletes_same_block_document_selection() {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                "abcd",
+            )],
+            720.0,
+        );
+        runtime.set_document_text_selection(1, 1, 1, 3).unwrap();
+
+        assert!(apply_platform_text_replacement(&mut runtime, Some(1..3), "").unwrap());
+        assert_eq!(runtime.focused_text(), Some("ad"));
+        assert_eq!(runtime.caret_offset_for_block(1), Some(1));
+        assert!(!runtime.has_active_selection());
     }
 }

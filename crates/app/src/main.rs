@@ -18,7 +18,6 @@ fn main() {
                 })),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Cditor".into()),
-                    appears_transparent: true,
                     ..Default::default()
                 }),
                 ..Default::default()

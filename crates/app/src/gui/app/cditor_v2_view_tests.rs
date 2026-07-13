@@ -419,6 +419,56 @@ fn fallback_text_metrics_include_list_prefix_and_indent() {
 }
 
 #[test]
+fn fallback_text_origins_align_heading_and_root_paragraph_marker_lanes() {
+    let heading_kind = cditor_core::rich_text::RichBlockKind::Heading { level: 1 };
+    let heading = fallback_snapshot(
+        heading_kind.clone(),
+        cditor_core::block::BlockChromeSnapshot::from_kind(
+            &heading_kind,
+            cditor_core::block::BlockListInfo::root(),
+            true,
+            false,
+        ),
+    );
+    let paragraph = fallback_snapshot(
+        cditor_core::rich_text::RichBlockKind::Paragraph,
+        cditor_core::block::BlockChromeSnapshot::plain(),
+    );
+
+    let heading = fallback_text_metrics_for_block(&heading, GuiTheme::light());
+    let paragraph = fallback_text_metrics_for_block(&paragraph, GuiTheme::light());
+
+    assert_eq!(heading.origin_x_in_block_px, paragraph.origin_x_in_block_px);
+}
+
+#[test]
+fn fallback_todo_text_starts_after_checkbox_at_shared_surface_origin() {
+    let todo_kind = cditor_core::rich_text::RichBlockKind::Todo { checked: false };
+    let todo = fallback_snapshot(
+        todo_kind.clone(),
+        cditor_core::block::BlockChromeSnapshot::from_kind(
+            &todo_kind,
+            cditor_core::block::BlockListInfo::root(),
+            false,
+            false,
+        ),
+    );
+    let paragraph = fallback_snapshot(
+        cditor_core::rich_text::RichBlockKind::Paragraph,
+        cditor_core::block::BlockChromeSnapshot::plain(),
+    );
+
+    let todo = fallback_text_metrics_for_block(&todo, GuiTheme::light());
+    let paragraph = fallback_text_metrics_for_block(&paragraph, GuiTheme::light());
+
+    assert_eq!(
+        todo.origin_x_in_block_px,
+        paragraph.origin_x_in_block_px
+            + f64::from(crate::gui::block::chrome::BLOCK_PREFIX_WIDTH_PX)
+    );
+}
+
+#[test]
 fn fallback_text_metrics_include_v1_code_content_padding() {
     let code_block = fallback_snapshot(
         cditor_core::rich_text::RichBlockKind::Code {
@@ -438,9 +488,9 @@ fn fallback_text_metrics_include_v1_code_content_padding() {
         code.origin_y_in_block_px,
         4.0 + 1.0 + f64::from(V1_CODE_CONTENT_PADDING_TOP_PX)
     );
-    assert!(
-        code.origin_x_in_block_px
-            >= paragraph.origin_x_in_block_px + f64::from(V1_CODE_CONTENT_PADDING_X_PX)
+    assert_eq!(
+        code.origin_x_in_block_px,
+        paragraph.origin_x_in_block_px + f64::from(V1_CODE_CONTENT_PADDING_X_PX)
     );
 }
 

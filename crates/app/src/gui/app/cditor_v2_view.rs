@@ -33,6 +33,8 @@ use cditor_runtime::DocumentRuntime;
 pub(in crate::gui::app) mod ai;
 mod block_actions;
 mod code_language;
+mod folding;
+mod formatting_color;
 mod formatting_toolbar;
 mod platform_input;
 mod slash_menu;
@@ -75,9 +77,14 @@ pub struct CditorV2View {
     pub(in crate::gui::app) slash_menu: Option<SlashMenuState>,
     pub(in crate::gui::app) toast: Option<GuiToast>,
     pub(in crate::gui::app) table_interaction_mode: GuiTableInteractionMode,
+    pub(in crate::gui::app) table_menu_ui: crate::gui::block::table::menu::TableMenuUiState,
     pub(in crate::gui::app) hovered_block_id: Option<BlockId>,
     pub(in crate::gui::app) action_block_id: Option<BlockId>,
     pub(in crate::gui::app) gutter_toolbar_block_id: Option<BlockId>,
+    pub(in crate::gui::app) block_transform_menu_open: bool,
+    pub(in crate::gui::app) color_menu_open: bool,
+    pub(in crate::gui::app) color_menu_scroll_handle: gpui::ScrollHandle,
+    pub(in crate::gui::app) last_color_action: Option<crate::gui::overlay::ColorMenuAction>,
     pub(in crate::gui::app) gutter_block_drag: Option<GutterBlockDragState>,
     pub(in crate::gui::app) gutter_drag_auto_scroll_scheduled: bool,
     pub(in crate::gui::app) image_resize_drag: Option<GuiImageResizeDrag>,
@@ -244,6 +251,7 @@ impl CditorV2View {
         window.focus(&self.focus, cx);
         if self.table_interaction_mode.block_id().is_some() {
             self.table_interaction_mode = GuiTableInteractionMode::Idle;
+            self.table_menu_ui = Default::default();
         }
         self.clear_gutter_action();
         let position = position.into();
@@ -345,8 +353,19 @@ impl CditorV2View {
     pub(in crate::gui::app) fn clear_gutter_action(&mut self) {
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.block_transform_menu_open = false;
+        self.color_menu_open = false;
         self.gutter_block_drag = None;
         self.gutter_drag_auto_scroll_scheduled = false;
+    }
+
+    pub(crate) fn dismiss_gutter_toolbar_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.gutter_toolbar_block_id.is_none() {
+            return false;
+        }
+        self.clear_gutter_action();
+        cx.notify();
+        true
     }
 }
 

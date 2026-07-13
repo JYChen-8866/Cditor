@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use gpui::{ClipboardItem, Context, KeyDownEvent, Window};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::gui::app::input_trace::trace_input;
 use crate::gui::block::table::{TableAxis, TableAxisSelection};
 use crate::gui::clipboard_assets::image_asset_from_clipboard_item;
 use crate::gui::image_preview::close_active_preview_if_escape_enabled;
@@ -71,6 +72,11 @@ impl CditorV2View {
                 _ => {}
             }
         }
+        if self.handle_table_menu_key_down(event, cx) {
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
         if self.handle_table_cell_key_down(event, cx) {
             cx.stop_propagation();
             cx.notify();
@@ -95,6 +101,26 @@ impl CditorV2View {
             return;
         }
         let command = command_for_key_down(event);
+        if !matches!(command, GuiInputCommand::Ignore) {
+            trace_input(
+                "key_down.command",
+                format_args!(
+                    "key={} modifiers={:?} command={command:?} focus={:?} active_selection={} cross_block={} focused_range={:?} session_range={:?}",
+                    event.keystroke.key,
+                    event.keystroke.modifiers,
+                    self.ready_runtime_ref()
+                        .and_then(DocumentRuntime::focused_block_id),
+                    self.ready_runtime_ref()
+                        .is_some_and(DocumentRuntime::has_active_selection),
+                    self.ready_runtime_ref()
+                        .is_some_and(DocumentRuntime::has_cross_block_text_selection),
+                    self.ready_runtime_ref()
+                        .and_then(DocumentRuntime::focused_text_selection_range),
+                    self.ready_runtime_ref()
+                        .and_then(DocumentRuntime::input_session_selected_range),
+                ),
+            );
+        }
         if self.focused_mermaid_is_preview() {
             if matches!(command, GuiInputCommand::HandleEnter) {
                 self.apply_input_command(GuiInputCommand::InsertParagraphAfterFocused, cx);
@@ -231,7 +257,7 @@ impl CditorV2View {
             match command {
                 GuiInputCommand::Ignore | GuiInputCommand::ToggleDebugOverlay => {}
                 GuiInputCommand::SelectAllFocusedText => {
-                    runtime.select_focused_text_all();
+                    runtime.select_all_command();
                 }
                 GuiInputCommand::CopySelection => {
                     if let Some((block_id, range)) =
@@ -373,12 +399,16 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::DeleteBackward => {
-                    if runtime.delete_backward().is_ok() {
+                    let result = runtime.delete_backward();
+                    trace_input("delete_backward.result", format_args!("{result:?}"));
+                    if matches!(result, Ok(true)) {
                         self.mark_dirty(cx);
                     }
                 }
                 GuiInputCommand::DeleteForward => {
-                    if runtime.delete_forward().is_ok() {
+                    let result = runtime.delete_forward();
+                    trace_input("delete_forward.result", format_args!("{result:?}"));
+                    if matches!(result, Ok(true)) {
                         self.mark_dirty(cx);
                     }
                 }

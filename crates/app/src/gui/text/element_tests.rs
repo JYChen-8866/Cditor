@@ -1,12 +1,103 @@
 use cditor_core::rich_text::{InlineMark, InlineSpan, RichBlockKind};
 
-use super::element::{
-    base_font_weight_for_kind, is_completed_todo, line_height_for_kind, render_visual_run_segments,
-    text_color_for_kind, text_size_for_kind,
+use super::background::{
+    InlineBackgroundDecoration, inline_background_decorations,
+    notion_inline_code_background_bounds, text_selection_background,
 };
+use super::element::{
+    base_font_weight_for_kind, is_completed_todo, line_height_for_kind, text_color_for_kind,
+    text_size_for_kind,
+};
+use super::fallback_render::render_visual_run_segments;
 use super::*;
 use crate::gui::theme::GuiTheme;
-use gpui::{FontWeight, px};
+use gpui::{Bounds, FontWeight, point, px, size};
+
+#[test]
+fn inline_code_decorations_merge_adjacent_code_spans_and_keep_custom_backgrounds() {
+    let theme = GuiTheme::light();
+    let spans = vec![
+        InlineSpan {
+            text: "ab".to_owned(),
+            marks: vec![InlineMark::Code],
+        },
+        InlineSpan {
+            text: "cd".to_owned(),
+            marks: vec![InlineMark::Code, InlineMark::Bold],
+        },
+        InlineSpan::plain(" "),
+        InlineSpan {
+            text: "ef".to_owned(),
+            marks: vec![
+                InlineMark::Code,
+                InlineMark::Background("#abcdef".to_owned()),
+            ],
+        },
+    ];
+
+    assert_eq!(
+        inline_background_decorations(&spans, theme),
+        vec![
+            InlineBackgroundDecoration {
+                range: 0..4,
+                background_color: theme.inline_code_background,
+                horizontal_padding_px: 3.0,
+            },
+            InlineBackgroundDecoration {
+                range: 5..7,
+                background_color: 0xabcdef,
+                horizontal_padding_px: 3.0,
+            },
+        ]
+    );
+}
+
+#[test]
+fn explicit_background_marks_generate_paintable_highlight_decorations_without_code() {
+    let theme = GuiTheme::light();
+    let spans = vec![
+        InlineSpan {
+            text: "ab".to_owned(),
+            marks: vec![InlineMark::Background("#fbf3db".to_owned())],
+        },
+        InlineSpan {
+            text: "cd".to_owned(),
+            marks: vec![
+                InlineMark::Bold,
+                InlineMark::Background("#fbf3db".to_owned()),
+            ],
+        },
+        InlineSpan::plain("ef"),
+    ];
+
+    assert_eq!(
+        inline_background_decorations(&spans, theme),
+        vec![InlineBackgroundDecoration {
+            range: 0..4,
+            background_color: 0xfbf3db,
+            horizontal_padding_px: 1.0,
+        }]
+    );
+}
+
+#[test]
+fn text_selection_uses_translucent_accent_so_applied_background_remains_visible() {
+    let theme = GuiTheme::light();
+    assert_eq!(
+        text_selection_background(theme),
+        (theme.focused << 8) | 0x26
+    );
+}
+
+#[test]
+fn inline_code_background_adds_visible_notion_padding_on_both_sides() {
+    let segment = Bounds::new(point(px(11.0), px(20.0)), size(px(40.0), px(24.0)));
+
+    assert_eq!(
+        notion_inline_code_background_bounds(segment),
+        Bounds::from_corners(point(px(8.0), px(21.0)), point(px(54.0), px(43.0)))
+    );
+}
 
 #[test]
 fn rich_text_element_paints_spans() {

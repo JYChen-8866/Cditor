@@ -1,6 +1,7 @@
 use gpui::{Context, MouseMoveEvent, MouseUpEvent, ScrollDelta, ScrollWheelEvent, Window};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::gui::app::interaction::scrollbar::scrollbar_local_pointer_y;
 use crate::gui::app::interaction::scrollbar::scrollbar_policy;
 use cditor_editor::scroll::{ScrollDeltaMode, ScrollDevice, ScrollInput, ScrollPhase};
 
@@ -87,7 +88,8 @@ impl CditorV2View {
             return;
         };
         let policy = scrollbar_policy(runtime);
-        let thumb_top = f64::from(event.position.y) - drag.pointer_y_offset_in_thumb;
+        let thumb_top =
+            scrollbar_local_pointer_y(f64::from(event.position.y)) - drag.pointer_y_offset_in_thumb;
         let _ = runtime.drag_scrollbar_to_thumb_top(policy, thumb_top);
         cx.stop_propagation();
         cx.notify();

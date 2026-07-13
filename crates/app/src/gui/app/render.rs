@@ -11,6 +11,7 @@ use crate::gui::app::interaction::geometry::{
 use crate::gui::app::interaction::scrollbar::{render_scrollbar, scrollbar_policy};
 use crate::gui::app::interaction::table_scroll::TableScrollSnapshot;
 use crate::gui::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX;
+use crate::gui::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use crate::gui::document::{DocumentBlockActionProjection, DocumentEditorView};
 use crate::gui::image_preview::render_image_preview_overlay;
 use crate::gui::overlay::table::{table_hscroll_scroll_max, table_hscroll_track_width};
@@ -44,11 +45,9 @@ impl Render for CditorV2View {
         let embedded_ai_prompt = self.ai_prompt.as_ref().is_some_and(|prompt| {
             self.gutter_toolbar_block_id == Some(prompt.block_id)
                 || (prompt.presentation == AiRequestPresentation::Automatic
-                    && self.ready_runtime_ref().is_some_and(|runtime| {
-                        runtime
-                            .input_session_selected_range()
-                            .is_some_and(|range| !range.is_empty())
-                    }))
+                    && self
+                        .ready_runtime_ref()
+                        .is_some_and(|runtime| runtime.has_document_text_selection()))
         });
         let formatting_toolbar = formatting_toolbar_state(
             self.ready_runtime_ref(),
@@ -62,11 +61,17 @@ impl Render for CditorV2View {
                 self.gutter_block_drag
                     .is_none_or(|drag| !drag.exceeded_threshold)
             }),
+            self.block_transform_menu_open,
+            self.color_menu_open,
+            self.last_color_action,
             &self.projected_block_rects,
             self.ready_runtime_ref()
                 .map(|runtime| runtime.scroll.global_scroll_top)
                 .unwrap_or(0.0),
         );
+        if formatting_toolbar.is_none() {
+            self.color_menu_open = false;
+        }
         let mut root = div()
             .id("cditor-v2-root")
             .relative()
@@ -87,7 +92,9 @@ impl Render for CditorV2View {
 
         match &mut self.state {
             CditorViewState::Ready(runtime) => {
-                let viewport_height = f32::from(window.viewport_size().height) as f64;
+                let viewport_height = (f32::from(window.viewport_size().height)
+                    - DEFAULT_DOCUMENT_TOP_INSET_PX)
+                    .max(1.0) as f64;
                 let _ = runtime.sync_viewport_height(viewport_height);
                 self.scroll_accumulator
                     .maybe_mark_idle(std::time::Instant::now());
@@ -177,11 +184,14 @@ impl Render for CditorV2View {
                         drag_overlay,
                         block_action,
                         table_axis_selection,
+                        &self.table_menu_ui,
+                        self.readonly,
                         self.image_resize_preview(),
                         self.table_resize_preview(),
                         self.table_reorder_preview(),
                         table_range_selection,
                         code_language_edit.as_ref(),
+                        self.ai_prompt.is_some(),
                         &table_scroll_snapshots,
                         &self.mermaid_renders,
                         &mermaid_source_blocks,
@@ -253,6 +263,7 @@ impl Render for CditorV2View {
                 view,
                 self.ai_prompt.as_ref().filter(|_| embedded_ai_prompt),
                 self.ai_prompt_focus.clone(),
+                &self.color_menu_scroll_handle,
             ));
         }
         if let Some(preview_overlay) = render_image_preview_overlay(window, cx) {
@@ -270,11 +281,14 @@ impl Render for CditorV2View {
         }
         if !embedded_ai_prompt {
             if let Some(prompt) = self.ai_prompt.as_ref() {
+                let viewport = window.viewport_size();
                 root = root.child(render_ai_prompt(
                     prompt,
                     theme,
                     cx.entity(),
                     self.ai_prompt_focus.clone(),
+                    f32::from(viewport.width),
+                    f32::from(viewport.height),
                 ));
             }
         }
@@ -302,7 +316,7 @@ fn ai_preview_block_anchor(
     scroll_top: f64,
 ) -> Bounds<gpui::Pixels> {
     let page_left = ((viewport_width - DEFAULT_DOCUMENT_PAGE_WIDTH_PX) / 2.0).max(0.0);
-    let top = (document_top - scroll_top) as f32;
+    let top = (document_top - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
     let height = block_height.max(24.0) as f32;
     Bounds::new(
         point(px(page_left + text_origin_x as f32), px(top)),
@@ -318,7 +332,7 @@ mod ai_preview_position_tests {
     fn ai_panel_anchor_tracks_projected_block_after_scroll() {
         let anchor = ai_preview_block_anchor(920.0, 48.0, 42.0, 760.0, 1200.0, 600.0);
         assert_eq!(f32::from(anchor.left()), 212.0);
-        assert_eq!(f32::from(anchor.top()), 320.0);
-        assert_eq!(f32::from(anchor.bottom()), 368.0);
+        assert_eq!(f32::from(anchor.top()), 352.0);
+        assert_eq!(f32::from(anchor.bottom()), 400.0);
     }
 }

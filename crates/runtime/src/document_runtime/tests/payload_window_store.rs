@@ -164,7 +164,7 @@ async fn runtime_from_store_loads_metadata_snapshot_layout_and_initial_payload_w
         .await
         .unwrap();
     document_store
-        .save_document_index_snapshot(document.id, 0, 1, &records)
+        .save_document_index_snapshot(document.id, DOCUMENT_INDEX_VISIBLE_VERSION, 1, &records)
         .await
         .unwrap();
     let layout_key = runtime_store_layout_key();
