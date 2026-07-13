@@ -5,14 +5,24 @@ use gpui::{
 
 use crate::gui::GuiTheme;
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, formatting_toolbar_state};
+use crate::gui::app::input::actions::BoundInputAction;
 use crate::gui::app::interaction::geometry::{
     fallback_text_metrics_for_block, projected_block_rects_from_projection,
 };
 use crate::gui::app::interaction::scrollbar::{render_scrollbar, scrollbar_policy};
 use crate::gui::app::interaction::table_scroll::TableScrollSnapshot;
 use crate::gui::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX;
+use crate::gui::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use crate::gui::document::{DocumentBlockActionProjection, DocumentEditorView};
 use crate::gui::image_preview::render_image_preview_overlay;
+use crate::gui::input::GuiInputCommand;
+use crate::gui::input::actions::{
+    Backspace, Backtab, CDITOR_KEY_CONTEXT, Cancel, Copy, Cut, Delete, Duplicate, MoveDown,
+    MoveLeft, MoveRight, MoveToLineEnd, MoveToLineStart, MoveUp, Newline, NewlineBelow, Paste,
+    Redo, SelectAll, SelectDown, SelectLeft, SelectRight, SelectToLineEnd, SelectToLineStart,
+    SelectUp, SoftLineBreak, Tab, ToggleBold, ToggleInlineCode, ToggleItalic, ToggleUnderline,
+    Undo,
+};
 use crate::gui::overlay::table::{table_hscroll_scroll_max, table_hscroll_track_width};
 use crate::gui::overlay::{
     render_ai_preview_overlay, render_ai_prompt, render_floating_toolbar, render_slash_menu,
@@ -44,11 +54,9 @@ impl Render for CditorV2View {
         let embedded_ai_prompt = self.ai_prompt.as_ref().is_some_and(|prompt| {
             self.gutter_toolbar_block_id == Some(prompt.block_id)
                 || (prompt.presentation == AiRequestPresentation::Automatic
-                    && self.ready_runtime_ref().is_some_and(|runtime| {
-                        runtime
-                            .input_session_selected_range()
-                            .is_some_and(|range| !range.is_empty())
-                    }))
+                    && self
+                        .ready_runtime_ref()
+                        .is_some_and(|runtime| runtime.has_document_text_selection()))
         });
         let formatting_toolbar = formatting_toolbar_state(
             self.ready_runtime_ref(),
@@ -62,16 +70,205 @@ impl Render for CditorV2View {
                 self.gutter_block_drag
                     .is_none_or(|drag| !drag.exceeded_threshold)
             }),
+            self.block_transform_menu_open,
+            self.color_menu_open,
+            self.last_color_action,
             &self.projected_block_rects,
             self.ready_runtime_ref()
                 .map(|runtime| runtime.scroll.global_scroll_top)
                 .unwrap_or(0.0),
         );
+        if formatting_toolbar.is_none() {
+            self.color_menu_open = false;
+        }
         let mut root = div()
             .id("cditor-v2-root")
             .relative()
+            .key_context(CDITOR_KEY_CONTEXT)
             .track_focus(&self.focus)
-            .on_key_down(cx.listener(Self::on_key_down))
+            .on_action(cx.listener(|view, _: &Newline, _window, cx| {
+                view.handle_bound_input_action(BoundInputAction::Newline, cx)
+            }))
+            .on_action(cx.listener(|view, _: &SoftLineBreak, _window, cx| {
+                view.handle_bound_input_action(BoundInputAction::SoftLineBreak, cx)
+            }))
+            .on_action(cx.listener(|view, _: &NewlineBelow, _window, cx| {
+                view.handle_bound_input_action(BoundInputAction::NewlineBelow, cx)
+            }))
+            .on_action(cx.listener(|view, _: &Tab, _window, cx| {
+                view.handle_bound_input_action(BoundInputAction::Tab { backwards: false }, cx)
+            }))
+            .on_action(cx.listener(|view, _: &Backtab, _window, cx| {
+                view.handle_bound_input_action(BoundInputAction::Tab { backwards: true }, cx)
+            }))
+            .on_action(cx.listener(|view, _: &Cancel, _window, cx| {
+                view.handle_bound_input_action(BoundInputAction::Cancel, cx)
+            }))
+            .on_action(cx.listener(|view, _: &MoveLeft, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveLeft {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &MoveRight, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveRight {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &MoveUp, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveUp {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &MoveDown, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveDown {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectLeft, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveLeft {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectRight, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveRight {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectUp, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveUp {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectDown, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveDown {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &MoveToLineStart, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToLineStart {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &MoveToLineEnd, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToLineEnd {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectToLineStart, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToLineStart {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectToLineEnd, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToLineEnd {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &Backspace, _window, cx| {
+                view.handle_bound_input_action(BoundInputAction::DeleteBackward, cx)
+            }))
+            .on_action(cx.listener(|view, _: &Delete, _window, cx| {
+                view.handle_bound_input_action(BoundInputAction::DeleteForward, cx)
+            }))
+            .on_action(cx.listener(|view, _: &Duplicate, _window, cx| {
+                view.handle_bound_input_action(BoundInputAction::Duplicate, cx)
+            }))
+            .on_action(cx.listener(|view, _: &SelectAll, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::SelectAllFocusedText),
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &Copy, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::CopySelection),
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &Cut, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::CutSelection),
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &Paste, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::PasteClipboard),
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &Undo, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::UndoFocusedBlock),
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &Redo, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::RedoFocusedBlock),
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &ToggleBold, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::ToggleBold),
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &ToggleItalic, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::ToggleItalic),
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &ToggleUnderline, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::ToggleUnderline),
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &ToggleInlineCode, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::Command(GuiInputCommand::ToggleInlineCode),
+                    cx,
+                )
+            }))
             .on_scroll_wheel(cx.listener(Self::on_scroll_wheel))
             .on_mouse_move(cx.listener(Self::on_scrollbar_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_scrollbar_mouse_up))
@@ -87,7 +284,9 @@ impl Render for CditorV2View {
 
         match &mut self.state {
             CditorViewState::Ready(runtime) => {
-                let viewport_height = f32::from(window.viewport_size().height) as f64;
+                let viewport_height = (f32::from(window.viewport_size().height)
+                    - DEFAULT_DOCUMENT_TOP_INSET_PX)
+                    .max(1.0) as f64;
                 let _ = runtime.sync_viewport_height(viewport_height);
                 self.scroll_accumulator
                     .maybe_mark_idle(std::time::Instant::now());
@@ -177,11 +376,14 @@ impl Render for CditorV2View {
                         drag_overlay,
                         block_action,
                         table_axis_selection,
+                        &self.table_menu_ui,
+                        self.readonly,
                         self.image_resize_preview(),
                         self.table_resize_preview(),
                         self.table_reorder_preview(),
                         table_range_selection,
                         code_language_edit.as_ref(),
+                        self.ai_prompt.is_some(),
                         &table_scroll_snapshots,
                         &self.mermaid_renders,
                         &mermaid_source_blocks,
@@ -253,6 +455,7 @@ impl Render for CditorV2View {
                 view,
                 self.ai_prompt.as_ref().filter(|_| embedded_ai_prompt),
                 self.ai_prompt_focus.clone(),
+                &self.color_menu_scroll_handle,
             ));
         }
         if let Some(preview_overlay) = render_image_preview_overlay(window, cx) {
@@ -270,11 +473,14 @@ impl Render for CditorV2View {
         }
         if !embedded_ai_prompt {
             if let Some(prompt) = self.ai_prompt.as_ref() {
+                let viewport = window.viewport_size();
                 root = root.child(render_ai_prompt(
                     prompt,
                     theme,
                     cx.entity(),
                     self.ai_prompt_focus.clone(),
+                    f32::from(viewport.width),
+                    f32::from(viewport.height),
                 ));
             }
         }
@@ -302,7 +508,7 @@ fn ai_preview_block_anchor(
     scroll_top: f64,
 ) -> Bounds<gpui::Pixels> {
     let page_left = ((viewport_width - DEFAULT_DOCUMENT_PAGE_WIDTH_PX) / 2.0).max(0.0);
-    let top = (document_top - scroll_top) as f32;
+    let top = (document_top - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
     let height = block_height.max(24.0) as f32;
     Bounds::new(
         point(px(page_left + text_origin_x as f32), px(top)),
@@ -318,7 +524,7 @@ mod ai_preview_position_tests {
     fn ai_panel_anchor_tracks_projected_block_after_scroll() {
         let anchor = ai_preview_block_anchor(920.0, 48.0, 42.0, 760.0, 1200.0, 600.0);
         assert_eq!(f32::from(anchor.left()), 212.0);
-        assert_eq!(f32::from(anchor.top()), 320.0);
-        assert_eq!(f32::from(anchor.bottom()), 368.0);
+        assert_eq!(f32::from(anchor.top()), 352.0);
+        assert_eq!(f32::from(anchor.bottom()), 400.0);
     }
 }

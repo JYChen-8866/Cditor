@@ -1,6 +1,69 @@
 use super::*;
 
 impl DocumentRuntime {
+    /// Move the caret to the logical line boundary used by native Home/End.
+    /// This works for rich-text blocks, code/quote soft lines, and table cells,
+    /// and preserves Shift-selection semantics on every platform.
+    pub fn move_focused_caret_to_line_boundary(
+        &mut self,
+        to_end: bool,
+        extend_selection: bool,
+    ) -> Result<bool, String> {
+        let Some((block_id, text)) = self.focused_text_for_platform_input() else {
+            return Ok(false);
+        };
+        let caret = self
+            .focused_table_cell
+            .filter(|cell| cell.block_id == block_id)
+            .map(|cell| cell.offset)
+            .or_else(|| self.caret_offset_for_block(block_id))
+            .unwrap_or(0);
+        let caret = normalized_grapheme_offset(&text, caret);
+        let target = logical_line_boundary(&text, caret, to_end);
+
+        if let Some(focused) = self
+            .focused_table_cell
+            .filter(|cell| cell.block_id == block_id)
+        {
+            let anchor =
+                if extend_selection && focused.selected_range_start != focused.selected_range_end {
+                    if focused.selection_reversed {
+                        focused.selected_range_end
+                    } else {
+                        focused.selected_range_start
+                    }
+                } else {
+                    caret
+                };
+            let (selection, reversed) = if extend_selection {
+                (anchor.min(target)..anchor.max(target), target < anchor)
+            } else {
+                (target..target, false)
+            };
+            if let Some(cell) = self.focused_table_cell.as_mut() {
+                *cell = cell
+                    .with_selected_range(selection.clone(), reversed)
+                    .with_marked_range(None);
+            }
+            if let Some(editing) = self.editing.as_mut() {
+                editing.set_input_target(InputTarget::TableCell {
+                    block_id,
+                    row: focused.row,
+                    col: focused.col,
+                });
+                if extend_selection {
+                    editing.set_selected_range(selection, reversed);
+                } else {
+                    editing.set_collapsed_selection(target);
+                }
+                editing.clear_composition();
+            }
+            return Ok(target != caret || extend_selection);
+        }
+
+        self.move_focused_caret_to_offset(block_id, target, extend_selection)
+    }
+
     pub fn move_caret_left(&mut self, extend_selection: bool) -> Result<bool, String> {
         self.move_caret_horizontally(false, extend_selection)
     }
@@ -231,5 +294,23 @@ impl DocumentRuntime {
             index.checked_add(1)?
         };
         self.visible_index.id_at_visible_index(target)
+    }
+}
+
+fn logical_line_boundary(text: &str, caret: usize, to_end: bool) -> usize {
+    let caret = normalized_grapheme_offset(text, caret);
+    if to_end {
+        text[caret..]
+            .char_indices()
+            .find(|(_, ch)| matches!(ch, '\r' | '\n' | '\u{2028}' | '\u{2029}'))
+            .map(|(index, _)| caret + index)
+            .unwrap_or(text.len())
+    } else {
+        text[..caret]
+            .char_indices()
+            .rev()
+            .find(|(_, ch)| matches!(ch, '\r' | '\n' | '\u{2028}' | '\u{2029}'))
+            .map(|(index, ch)| index + ch.len_utf8())
+            .unwrap_or(0)
     }
 }

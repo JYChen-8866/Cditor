@@ -107,6 +107,24 @@ impl TableCellPayload {
 }
 
 impl TablePayload {
+    pub fn set_header_rows(&mut self, count: usize) -> bool {
+        let count = count.min(self.row_count());
+        if self.header_rows == count {
+            return false;
+        }
+        self.header_rows = count;
+        true
+    }
+
+    pub fn set_header_columns(&mut self, count: usize) -> bool {
+        let count = count.min(self.column_count());
+        if self.header_cols == count {
+            return false;
+        }
+        self.header_cols = count;
+        true
+    }
+
     pub fn normalize(&mut self) {
         let columns = self.column_count();
         if self.columns.len() < columns {

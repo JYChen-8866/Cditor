@@ -7,6 +7,7 @@ pub mod image_preview;
 pub mod input;
 pub mod overlay;
 pub mod persistence;
+pub mod platform;
 pub mod rich_text;
 pub mod scroll;
 pub mod skeleton;

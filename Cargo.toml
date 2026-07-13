@@ -13,6 +13,19 @@ default-members = ["crates/app"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
+
+# Distribution builds favor runtime performance over CI compile time. Fat LTO
+# and a single codegen unit let LLVM optimize across the complete crate graph.
+[profile.release]
+opt-level = 3
+debug = false
+strip = "symbols"
+debug-assertions = false
+overflow-checks = false
+lto = "fat"
+panic = "abort"
+incremental = false
+codegen-units = 1

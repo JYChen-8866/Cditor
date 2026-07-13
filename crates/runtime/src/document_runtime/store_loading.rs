@@ -1,5 +1,7 @@
 use super::*;
 
+pub const DOCUMENT_INDEX_VISIBLE_VERSION: i64 = 2;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentRuntimeFromStoreOptions {
     pub viewport_height: u32,
@@ -12,7 +14,7 @@ impl Default for DocumentRuntimeFromStoreOptions {
     fn default() -> Self {
         Self {
             viewport_height: 720,
-            visible_index_version: 0,
+            visible_index_version: DOCUMENT_INDEX_VISIBLE_VERSION,
             initial_payload_window_blocks: 64,
             layout_key: LayoutCacheKey {
                 width_bucket: 10,

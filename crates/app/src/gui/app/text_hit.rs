@@ -217,6 +217,7 @@ mod tests {
                 },
             },
             line_height: px(17.5),
+            text_align: gpui::TextAlign::Left,
             measured_height: 36.0,
             table_cell_position: Some(TableCellPosition { row: 0, col: 0 }),
         };

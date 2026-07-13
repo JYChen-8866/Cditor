@@ -62,6 +62,8 @@ impl CditorV2View {
             Ok(true) => {
                 if self.gutter_toolbar_block_id == Some(block_id) {
                     self.gutter_toolbar_block_id = None;
+                    self.block_transform_menu_open = false;
+                    self.color_menu_open = false;
                 }
                 if self.action_block_id == Some(block_id) {
                     self.action_block_id = None;

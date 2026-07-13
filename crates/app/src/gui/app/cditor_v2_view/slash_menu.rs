@@ -6,6 +6,7 @@ use crate::gui::app::interaction::geometry::{FallbackViewportOrigin, ProjectedBl
 use crate::gui::overlay::{SlashMenuCommand, SlashMenuItem, SlashMenuState};
 use crate::gui::persistence::EditorSaveStatus;
 use crate::gui::text::platform_range_bounds;
+use cditor_runtime::AiRequestPresentation;
 
 impl CditorV2View {
     pub(crate) fn sync_slash_menu_from_runtime(&mut self, cx: &mut Context<Self>) {
@@ -145,7 +146,12 @@ impl CditorV2View {
             if changed {
                 self.mark_dirty(cx);
             }
-            return self.open_ai_prompt_from_gui(menu.x, menu.y, cx);
+            return self.open_ai_prompt_from_gui_with_presentation(
+                menu.x,
+                menu.y,
+                slash_ai_presentation(),
+                cx,
+            );
         }
         let kind = item.kind;
         let opens_whiteboard = matches!(kind, cditor_core::rich_text::RichBlockKind::Whiteboard);
@@ -206,6 +212,32 @@ impl CditorV2View {
             .map(|rect| slash_menu_fallback_anchor(rect, viewport_origin, scroll_top))
             .unwrap_or((120.0, 120.0))
     }
+
+    pub(super) fn ai_prompt_line_anchor(&self, block_id: BlockId, caret: usize) -> (f32, f32) {
+        if let Some(cache) = self.text_layouts.get(&block_id)
+            && let Some(bounds) = platform_range_bounds(cache, caret..caret)
+        {
+            return (f32::from(bounds.left()), f32::from(bounds.top()));
+        }
+        let Some(viewport_origin) = self.infer_document_viewport_origin() else {
+            return (120.0, 120.0);
+        };
+        let Some(scroll_top) = self
+            .ready_runtime_ref()
+            .map(|runtime| runtime.scroll.global_scroll_top)
+        else {
+            return (120.0, 120.0);
+        };
+        self.projected_block_rects
+            .iter()
+            .find(|rect| rect.block_id == block_id)
+            .map(|rect| ai_prompt_fallback_line_anchor(rect, viewport_origin, scroll_top))
+            .unwrap_or((120.0, 120.0))
+    }
+}
+
+fn slash_ai_presentation() -> AiRequestPresentation {
+    AiRequestPresentation::AssistantPanel
 }
 
 fn slash_menu_fallback_anchor(
@@ -220,9 +252,29 @@ fn slash_menu_fallback_anchor(
     )
 }
 
+fn ai_prompt_fallback_line_anchor(
+    rect: &ProjectedBlockRect,
+    viewport_origin: FallbackViewportOrigin,
+    scroll_top: f64,
+) -> (f32, f32) {
+    (
+        (viewport_origin.x + rect.text_origin_x_in_block_px) as f32,
+        (viewport_origin.y + rect.document_top - scroll_top + rect.text_origin_y_in_block_px)
+            as f32,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slash_ask_ai_always_uses_a_visible_assistant_panel() {
+        assert_eq!(
+            slash_ai_presentation(),
+            AiRequestPresentation::AssistantPanel
+        );
+    }
 
     #[test]
     fn fallback_anchor_projects_document_coordinates_into_viewport() {
@@ -242,6 +294,31 @@ mod tests {
         assert_eq!(
             slash_menu_fallback_anchor(&rect, FallbackViewportOrigin { x: 100.0, y: 30.0 }, 500.0,),
             (142.0, 178.0),
+        );
+    }
+
+    #[test]
+    fn ai_prompt_fallback_anchor_uses_current_text_line_top() {
+        let rect = ProjectedBlockRect {
+            block_id: 1,
+            visible_index: 0,
+            depth: 0,
+            document_top: 620.0,
+            document_bottom: 652.0,
+            indent_px: 0.0,
+            text_origin_x_in_block_px: 42.0,
+            text_origin_y_in_block_px: 6.0,
+            text_width_px: 720.0,
+            supports_children: false,
+        };
+
+        assert_eq!(
+            ai_prompt_fallback_line_anchor(
+                &rect,
+                FallbackViewportOrigin { x: 100.0, y: 0.0 },
+                300.0,
+            ),
+            (142.0, 326.0),
         );
     }
 }

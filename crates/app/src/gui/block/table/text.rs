@@ -28,6 +28,7 @@ pub(super) struct TableCellTextElement {
     text: String,
     active: bool,
     caret_offset: Option<usize>,
+    selection_range: Option<Range<usize>>,
     marked_range: Option<Range<usize>>,
     header: bool,
     theme: GuiTheme,
@@ -40,6 +41,7 @@ pub struct TableCellTextPrepaintState {
     lines: Vec<WrappedLine>,
     cursor: Option<gpui::PaintQuad>,
     marked_backgrounds: Vec<gpui::PaintQuad>,
+    selection_backgrounds: Vec<gpui::PaintQuad>,
     line_height: Pixels,
 }
 
@@ -51,6 +53,7 @@ impl TableCellTextElement {
         text: String,
         active: bool,
         caret_offset: Option<usize>,
+        selection_range: Option<Range<usize>>,
         marked_range: Option<Range<usize>>,
         header: bool,
         theme: GuiTheme,
@@ -65,6 +68,7 @@ impl TableCellTextElement {
             text,
             active,
             caret_offset,
+            selection_range,
             marked_range,
             header,
             theme,
@@ -200,6 +204,7 @@ impl Element for TableCellTextElement {
                 &self.text,
                 self.caret_offset.unwrap_or(self.text.len()),
                 px(1.5),
+                gpui_text_align(self.align),
             )
             .map(|bounds| fill(bounds, rgb(table_active_border_color(self.theme))))
         } else {
@@ -211,10 +216,38 @@ impl Element for TableCellTextElement {
             self.marked_range
                 .clone()
                 .map(|range| {
-                    platform_range_segment_bounds(&lines, bounds, line_height, &self.text, range)
-                        .into_iter()
-                        .map(|segment| fill(segment, rgba((self.theme.focused << 8) | 0x1f)))
-                        .collect()
+                    platform_range_segment_bounds(
+                        &lines,
+                        bounds,
+                        line_height,
+                        &self.text,
+                        range,
+                        gpui_text_align(self.align),
+                    )
+                    .into_iter()
+                    .map(|segment| fill(segment, rgba((self.theme.focused << 8) | 0x1f)))
+                    .collect()
+                })
+                .unwrap_or_default()
+        };
+        let selection_backgrounds = if self.placeholder_visible() {
+            Vec::new()
+        } else {
+            self.selection_range
+                .clone()
+                .filter(|range| !range.is_empty())
+                .map(|range| {
+                    platform_range_segment_bounds(
+                        &lines,
+                        bounds,
+                        line_height,
+                        &self.text,
+                        range,
+                        gpui_text_align(self.align),
+                    )
+                    .into_iter()
+                    .map(|segment| fill(segment, rgba((self.theme.focused << 8) | 0x26)))
+                    .collect()
                 })
                 .unwrap_or_default()
         };
@@ -223,6 +256,7 @@ impl Element for TableCellTextElement {
             lines,
             cursor,
             marked_backgrounds,
+            selection_backgrounds,
             line_height,
         }
     }
@@ -267,6 +301,9 @@ impl Element for TableCellTextElement {
             ),
         );
 
+        for background in prepaint.selection_backgrounds.drain(..) {
+            window.paint_quad(background);
+        }
         for background in prepaint.marked_backgrounds.drain(..) {
             window.paint_quad(background);
         }
@@ -278,7 +315,7 @@ impl Element for TableCellTextElement {
                 point(bounds.left(), bounds.top() + y_offset),
                 prepaint.line_height,
                 text_align,
-                None,
+                Some(bounds),
                 window,
                 cx,
             )
@@ -297,6 +334,7 @@ impl Element for TableCellTextElement {
             lines: std::mem::take(&mut prepaint.lines),
             bounds,
             line_height: prepaint.line_height,
+            text_align,
             measured_height: f64::from(bounds.size.height),
             table_cell_position: Some(self.position),
         };

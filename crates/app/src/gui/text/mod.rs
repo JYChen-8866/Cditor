@@ -1,7 +1,9 @@
+mod background;
 pub mod element;
 #[cfg(test)]
 #[path = "element_tests.rs"]
 mod element_tests;
+mod fallback_render;
 pub mod input;
 pub mod layout;
 mod platform;

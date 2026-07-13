@@ -1,10 +1,10 @@
 use cditor_core::ids::BlockId;
-use gpui::{Context, KeyDownEvent, Window};
+use gpui::{Context, Window};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::gui::input::{
-    CodeLanguageEditKeyResult, CodeLanguageEditState, CodeLanguagePopupPlacement,
-    apply_code_language_key,
+    CodeLanguageEditAction, CodeLanguageEditKeyResult, CodeLanguageEditState,
+    CodeLanguagePopupPlacement, apply_code_language_action,
 };
 
 impl CditorV2View {
@@ -69,21 +69,24 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(crate) fn apply_code_language_key_from_gui(
+    pub(crate) fn apply_code_language_action_from_gui(
         &mut self,
-        event: &KeyDownEvent,
+        action: CodeLanguageEditAction,
         cx: &mut Context<Self>,
     ) -> bool {
         let Some(edit) = self.code_language_edit.as_mut() else {
             return false;
         };
-        match apply_code_language_key(edit, event) {
+        match apply_code_language_action(edit, action) {
             CodeLanguageEditKeyResult::Commit => {
                 self.commit_code_language_edit(cx);
                 true
             }
             CodeLanguageEditKeyResult::Cancel => self.cancel_code_language_edit(cx),
-            CodeLanguageEditKeyResult::Changed => true,
+            CodeLanguageEditKeyResult::Changed => {
+                cx.notify();
+                true
+            }
             CodeLanguageEditKeyResult::Ignored => false,
         }
     }

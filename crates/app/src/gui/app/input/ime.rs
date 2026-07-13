@@ -2,16 +2,25 @@ use std::ops::Range;
 
 use gpui::{Bounds, Context, EntityInputHandler, Pixels, Point, UTF16Selection, Window, px};
 
-use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, GuiPlatformInputTarget};
+use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::gui::app::input_trace::trace_input;
+use crate::gui::block::table::menu::TABLE_MENU_SEARCH_FONT_SIZE_PX;
 use crate::gui::input::ime::{
-    marked_preview_range_to_base_range, utf8_range_to_utf16_range, utf8_to_utf16_offset,
-    utf16_range_to_utf8_range,
+    utf8_range_to_utf16_range, utf8_to_utf16_offset, utf16_range_to_utf8_range,
 };
 use crate::gui::input::{SINGLE_LINE_INPUT_FONT_SIZE_PX, single_line_text_offset_for_x};
+use crate::gui::platform::{is_single_line_break_commit, normalize_external_line_endings};
 use crate::gui::text::platform_index_for_point;
-use cditor_core::ids::BlockId;
-use cditor_runtime::{DocumentRuntime, InputTarget};
+use cditor_runtime::InputTarget;
+
+use super::ime_support::{
+    ai_prompt_input_target_allows, apply_platform_text_replacement, ime_replacement_range,
+    is_empty_line_ai_platform_input, table_menu_input_target_allows,
+};
+pub(in crate::gui::app) use super::ime_support::{
+    code_language_input_target_allows, platform_input_fallback_range, platform_input_target_allows,
+    platform_selected_text_range,
+};
 
 impl EntityInputHandler for CditorV2View {
     fn text_for_range(
@@ -21,6 +30,15 @@ impl EntityInputHandler for CditorV2View {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<String> {
+        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+                return None;
+            }
+            let range = utf16_range_to_utf8_range(&self.table_menu_ui.query, &range_utf16);
+            let actual = utf8_range_to_utf16_range(&self.table_menu_ui.query, &range);
+            actual_range.replace(actual);
+            return self.table_menu_ui.query.get(range).map(ToOwned::to_owned);
+        }
         if self.ai_prompt_focus.is_focused(_window) {
             let registered_target = self.platform_input_target;
             let prompt = self.ai_prompt.as_ref()?;
@@ -80,6 +98,17 @@ impl EntityInputHandler for CditorV2View {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
+        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+                return None;
+            }
+            let caret =
+                utf8_to_utf16_offset(&self.table_menu_ui.query, self.table_menu_ui.caret_offset);
+            return Some(UTF16Selection {
+                range: caret..caret,
+                reversed: false,
+            });
+        }
         if self.ai_prompt_focus.is_focused(_window) {
             let registered_target = self.platform_input_target;
             let prompt = self.ai_prompt.as_ref()?;
@@ -137,6 +166,16 @@ impl EntityInputHandler for CditorV2View {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<Range<usize>> {
+        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+                return None;
+            }
+            return self
+                .table_menu_ui
+                .marked_range
+                .as_ref()
+                .map(|range| utf8_range_to_utf16_range(&self.table_menu_ui.query, range));
+        }
         if self.ai_prompt_focus.is_focused(_window) {
             let registered_target = self.platform_input_target;
             let prompt = self.ai_prompt.as_ref()?;
@@ -191,6 +230,13 @@ impl EntityInputHandler for CditorV2View {
     }
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+            if table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+                self.table_menu_ui.unmark();
+                cx.notify();
+            }
+            return;
+        }
         if self.ai_prompt_focus.is_focused(_window) {
             let registered_target = self.platform_input_target;
             if let Some(prompt) = self.ai_prompt.as_mut()
@@ -229,7 +275,27 @@ impl EntityInputHandler for CditorV2View {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+                return;
+            }
+            if is_single_line_break_commit(text) {
+                let _ = self.confirm_table_menu_from_gui(cx);
+                return;
+            }
+            let range = range_utf16
+                .map(|range| utf16_range_to_utf8_range(&self.table_menu_ui.query, &range))
+                .unwrap_or_else(|| self.table_menu_ui.input_replacement_range());
+            let text = normalize_external_line_endings(text).replace('\n', " ");
+            self.table_menu_ui.replace_range(range, &text);
+            cx.notify();
+            return;
+        }
         if self.ai_prompt_focus.is_focused(_window) {
+            if is_single_line_break_commit(text) {
+                let _ = self.submit_ai_prompt_from_gui(cx);
+                return;
+            }
             let registered_target = self.platform_input_target;
             if let Some(prompt) = self.ai_prompt.as_mut() {
                 if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
@@ -238,12 +304,18 @@ impl EntityInputHandler for CditorV2View {
                 let range = range_utf16
                     .map(|range| utf16_range_to_utf8_range(&prompt.draft, &range))
                     .unwrap_or_else(|| prompt.input_replacement_range());
-                prompt.replace_range(range, text);
+                let text = normalize_external_line_endings(text);
+                prompt.replace_range(range, text.as_ref());
                 cx.notify();
             }
             return;
         }
         if self.code_language_focus.is_focused(_window) {
+            if is_single_line_break_commit(text) {
+                self.commit_code_language_edit(cx);
+                cx.notify();
+                return;
+            }
             let registered_target = self.platform_input_target;
             if let Some(edit) = self.code_language_edit.as_mut() {
                 if !code_language_input_target_allows(registered_target, edit.block_id) {
@@ -256,7 +328,8 @@ impl EntityInputHandler for CditorV2View {
                 let range = range_utf16
                     .map(|range| utf16_range_to_utf8_range(&edit.draft, &range))
                     .unwrap_or_else(|| edit.input_replacement_range());
-                edit.replace_range(range, text);
+                let text = normalize_external_line_endings(text);
+                edit.replace_range(range, text.as_ref());
                 cx.notify();
             }
             return;
@@ -264,6 +337,9 @@ impl EntityInputHandler for CditorV2View {
         // A newly opened AI prompt may not own the window focus until the next
         // render pass. Do not let the triggering space leak into the document.
         if self.ai_prompt.is_some() {
+            if is_single_line_break_commit(text) {
+                let _ = self.submit_ai_prompt_from_gui(cx);
+            }
             return;
         }
         if self.readonly {
@@ -276,6 +352,16 @@ impl EntityInputHandler for CditorV2View {
                     && runtime.focused_empty_text_block_for_ai().is_some()
             });
         if empty_line_ai_input && self.invoke_empty_line_ai_from_gui(cx) {
+            cx.notify();
+            return;
+        }
+        if is_single_line_break_commit(text) {
+            trace_input(
+                "replace_text_in_range.native_enter_fallback",
+                format_args!("registered={registered_target:?}"),
+            );
+            self.apply_input_command(crate::gui::input::GuiInputCommand::HandleEnter, cx);
+            self.sync_slash_menu_from_runtime(cx);
             cx.notify();
             return;
         }
@@ -302,7 +388,8 @@ impl EntityInputHandler for CditorV2View {
                 text.len()
             ),
         );
-        match runtime.replace_text_in_focused_range(range, text) {
+        let text = normalize_external_line_endings(text);
+        match apply_platform_text_replacement(runtime, range, text.as_ref()) {
             Ok(true) => {
                 self.mark_dirty(cx);
                 self.sync_slash_menu_from_runtime(cx);
@@ -324,6 +411,21 @@ impl EntityInputHandler for CditorV2View {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+                return;
+            }
+            let range = range_utf16
+                .map(|range| utf16_range_to_utf8_range(&self.table_menu_ui.query, &range))
+                .unwrap_or_else(|| self.table_menu_ui.input_replacement_range());
+            let new_text = normalize_external_line_endings(new_text).replace('\n', " ");
+            let selected_range =
+                new_selected_range.map(|range| utf16_range_to_utf8_range(&new_text, &range));
+            self.table_menu_ui
+                .replace_and_mark_range(range, &new_text, selected_range);
+            cx.notify();
+            return;
+        }
         if self.ai_prompt_focus.is_focused(_window) {
             let registered_target = self.platform_input_target;
             if let Some(prompt) = self.ai_prompt.as_mut() {
@@ -419,6 +521,18 @@ impl EntityInputHandler for CditorV2View {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<usize> {
+        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+                return None;
+            }
+            let utf8 = single_line_text_offset_for_x(
+                &self.table_menu_ui.query,
+                point.x,
+                px(TABLE_MENU_SEARCH_FONT_SIZE_PX),
+                _window,
+            );
+            return Some(utf8_to_utf16_offset(&self.table_menu_ui.query, utf8));
+        }
         if self.ai_prompt_focus.is_focused(_window) {
             let registered_target = self.platform_input_target;
             let prompt = self.ai_prompt.as_ref()?;
@@ -494,6 +608,9 @@ impl EntityInputHandler for CditorV2View {
     }
 
     fn accepts_text_input(&self, _window: &mut Window, _cx: &mut Context<Self>) -> bool {
+        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+            return table_menu_input_target_allows(self.platform_input_target, selection.block_id);
+        }
         if self.ai_prompt_focus.is_focused(_window) {
             return self.ai_prompt.as_ref().is_some_and(|prompt| {
                 ai_prompt_input_target_allows(self.platform_input_target, prompt.block_id)
@@ -509,146 +626,5 @@ impl EntityInputHandler for CditorV2View {
             && self.ready_runtime_ref().is_none_or(|runtime| {
                 platform_input_target_allows(self.platform_input_target, runtime)
             })
-    }
-}
-
-pub(in crate::gui::app) fn platform_input_target_allows(
-    registered: Option<GuiPlatformInputTarget>,
-    runtime: &DocumentRuntime,
-) -> bool {
-    let Some(registered) = registered else {
-        return true;
-    };
-    let Some(runtime_target) = runtime.input_session_target() else {
-        return false;
-    };
-    registered.matches_runtime_target(runtime_target)
-}
-
-pub(in crate::gui::app) fn code_language_input_target_allows(
-    registered: Option<GuiPlatformInputTarget>,
-    block_id: BlockId,
-) -> bool {
-    let Some(registered) = registered else {
-        return true;
-    };
-    registered.is_code_language_for(block_id)
-}
-
-pub(in crate::gui::app) fn ai_prompt_input_target_allows(
-    registered: Option<GuiPlatformInputTarget>,
-    block_id: BlockId,
-) -> bool {
-    registered.is_some_and(|target| target.is_ai_prompt_for(block_id))
-}
-
-pub(in crate::gui::app) fn platform_selected_text_range(
-    runtime: &DocumentRuntime,
-) -> Option<UTF16Selection> {
-    let (block_id, text) = runtime.focused_text_for_platform_input()?;
-    if let Some(selection) = runtime.input_session_selected_range() {
-        return Some(UTF16Selection {
-            range: utf8_range_to_utf16_range(&text, &selection),
-            reversed: runtime.input_session_selection_reversed(),
-        });
-    }
-    if let Some(marked_range) = runtime.active_composition_marked_range() {
-        let caret = utf8_to_utf16_offset(&text, marked_range.end.min(text.len()));
-        return Some(UTF16Selection {
-            range: caret..caret,
-            reversed: false,
-        });
-    }
-    if runtime.input_session_target().is_some() {
-        trace_input(
-            "selected_text_range.missing_session_selection",
-            format_args!(
-                "block={block_id} target={:?}",
-                runtime.input_session_target()
-            ),
-        );
-        return None;
-    }
-    if let Some(selection) = runtime.focused_text_selection_range() {
-        return Some(UTF16Selection {
-            range: utf8_range_to_utf16_range(&text, &selection),
-            reversed: false,
-        });
-    }
-    let caret = runtime
-        .focused_table_cell_offset()
-        .filter(|(focused_block_id, _, _, _)| *focused_block_id == block_id)
-        .map(|(_, _, _, offset)| offset)
-        .unwrap_or(0)
-        .min(text.len());
-    let caret = utf8_to_utf16_offset(&text, caret);
-    Some(UTF16Selection {
-        range: caret..caret,
-        reversed: false,
-    })
-}
-
-pub(in crate::gui::app) fn platform_input_fallback_range(
-    runtime: &DocumentRuntime,
-    block_id: BlockId,
-) -> Range<usize> {
-    runtime
-        .active_composition()
-        .filter(|composition| composition.block_id == block_id)
-        .map(|composition| composition.range_start as usize..composition.range_end as usize)
-        .or_else(|| runtime.input_session_marked_range())
-        .or_else(|| runtime.input_session_selected_range())
-        .unwrap_or_else(|| {
-            if runtime.input_session_target().is_some() {
-                trace_input(
-                    "platform_input_fallback_range.missing_session_selection",
-                    format_args!(
-                        "block={block_id} target={:?}",
-                        runtime.input_session_target()
-                    ),
-                );
-                return 0..0;
-            }
-            let caret = runtime
-                .focused_text_selection_range()
-                .map(|range| range.end)
-                .unwrap_or(0);
-            caret..caret
-        })
-}
-
-fn ime_replacement_range(
-    runtime: &DocumentRuntime,
-    range_utf16: Option<Range<usize>>,
-) -> Option<Range<usize>> {
-    let range_utf16 = range_utf16?;
-    let (_block_id, text) = runtime.focused_text_for_platform_input()?;
-    let preview_range = utf16_range_to_utf8_range(&text, &range_utf16);
-    let Some(composition) = runtime.active_composition() else {
-        return Some(preview_range);
-    };
-    let preview_marked_range = runtime.active_composition_marked_range()?;
-    let base_marked_range = composition.range_start as usize..composition.range_end as usize;
-    Some(marked_preview_range_to_base_range(
-        preview_range,
-        base_marked_range,
-        preview_marked_range,
-    ))
-}
-
-fn is_empty_line_ai_platform_input(range_utf16: Option<&Range<usize>>, text: &str) -> bool {
-    text == " " && range_utf16.is_none_or(|range| range.is_empty())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::is_empty_line_ai_platform_input;
-
-    #[test]
-    fn platform_space_commit_is_recognized_without_replacing_text() {
-        assert!(is_empty_line_ai_platform_input(None, " "));
-        assert!(is_empty_line_ai_platform_input(Some(&(0..0)), " "));
-        assert!(!is_empty_line_ai_platform_input(Some(&(0..1)), " "));
-        assert!(!is_empty_line_ai_platform_input(None, "x"));
     }
 }

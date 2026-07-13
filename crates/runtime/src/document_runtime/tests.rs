@@ -124,6 +124,8 @@ fn sample_table_payload() -> BlockPayloadRecord {
 
 #[path = "tests/ai.rs"]
 mod ai;
+#[path = "tests/capabilities.rs"]
+mod capabilities;
 #[path = "tests/clipboard.rs"]
 mod clipboard;
 #[path = "tests/complex_block_input.rs"]
@@ -134,6 +136,8 @@ mod composition_input;
 mod conversion_clipboard_media;
 #[path = "tests/delete_navigation_height.rs"]
 mod delete_navigation_height;
+#[path = "tests/inline_color.rs"]
+mod inline_color;
 #[path = "tests/inline_markdown_incremental.rs"]
 mod inline_markdown_incremental;
 #[path = "tests/large_window.rs"]
@@ -162,3 +166,5 @@ mod table_structure_layout;
 mod table_style_input;
 #[path = "tests/window_projection.rs"]
 mod window_projection;
+#[path = "tests/windows_input.rs"]
+mod windows_input;

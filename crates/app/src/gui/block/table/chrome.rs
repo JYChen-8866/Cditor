@@ -12,8 +12,9 @@ use cditor_runtime::{TableCellPosition, TableViewState};
 use super::selection::{TableAxis, TableAxisSelection, TableCellRangeSelection};
 use super::style::{
     TABLE_AXIS_COLUMN_HANDLE_TOP_PX, TABLE_AXIS_HANDLE_SIZE_PX, TABLE_AXIS_OUTLINE_THICKNESS_PX,
-    TABLE_AXIS_ROW_HANDLE_LEFT_PX, TABLE_CELL_GUTTER_SIZE_PX, TABLE_CELL_GUTTER_THICKNESS_PX,
-    table_active_border_color, table_axis_handle_background, table_axis_handle_foreground,
+    TABLE_AXIS_ROW_HANDLE_LEFT_PX, TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
+    TABLE_CELL_GUTTER_SIZE_PX, TABLE_CELL_GUTTER_THICKNESS_PX, table_active_border_color,
+    table_axis_handle_background, table_axis_handle_foreground,
 };
 
 const TABLE_AXIS_HANDLE_DOT_ROWS: usize = 3;
@@ -140,7 +141,7 @@ fn table_cell_rect(
         .iter()
         .find(|cell| cell.position.row == row && cell.position.col == col)
         .map(|cell| TableOverlayRect {
-            x: cell.x_px,
+            x: table_viewport_x(table_view, cell.x_px),
             y: cell.y_px,
             width: cell.width_px,
             height: cell.height_px,
@@ -158,7 +159,7 @@ fn table_axis_track_rect(
             .iter()
             .find(|cell| cell.position.row == index)
             .map(|cell| TableOverlayRect {
-                x: 0.0,
+                x: table_view.horizontal_scroll_offset_px,
                 y: cell.y_px,
                 width: table_view.width_px,
                 height: cell.height_px,
@@ -168,12 +169,16 @@ fn table_axis_track_rect(
             .iter()
             .find(|cell| cell.position.col == index)
             .map(|cell| TableOverlayRect {
-                x: cell.x_px,
+                x: table_viewport_x(table_view, cell.x_px),
                 y: 0.0,
                 width: cell.width_px,
                 height: table_view.height_px,
             }),
     }
+}
+
+fn table_viewport_x(table_view: &TableViewState, table_local_x: f32) -> f32 {
+    table_local_x + table_view.horizontal_scroll_offset_px
 }
 
 fn table_axis_selection_rect(
@@ -191,10 +196,12 @@ fn table_axis_selection_outline_rect(
     // Use inner stroke: the outline border is drawn inside the cell bounds.
     // This avoids the last-row clipping issue where expanding outward by `half`
     // gets clamped to table_view.height_px, making the bottom border invisible.
+    let left = rect.x.max(0.0);
+    let right = (rect.x + rect.width).min(table_view.width_px);
     Some(TableOverlayRect {
-        x: rect.x.max(0.0),
+        x: left,
         y: rect.y.max(0.0),
-        width: rect.width.min(table_view.width_px - rect.x.max(0.0)),
+        width: (right - left).max(0.0),
         height: rect.height.min(table_view.height_px - rect.y.max(0.0)),
     })
 }
@@ -203,20 +210,20 @@ fn table_range_selection_outline_rect(
     table_view: &TableViewState,
     selection: TableCellRangeSelection,
 ) -> Option<TableOverlayRect> {
-    let top_left = table_view.visible_cells.iter().find(|cell| {
-        cell.position.row == selection.range.start_row
-            && cell.position.col == selection.range.start_col
-    })?;
-    let bottom_right = table_view.visible_cells.iter().find(|cell| {
-        cell.position.row == selection.range.end_row && cell.position.col == selection.range.end_col
-    })?;
+    let top_left = table_cell_rect(
+        table_view,
+        selection.range.start_row,
+        selection.range.start_col,
+    )?;
+    let bottom_right =
+        table_cell_rect(table_view, selection.range.end_row, selection.range.end_col)?;
     // Use inner stroke: the outline border is drawn inside the selection bounds.
     // This avoids the last-row clipping issue where expanding outward would get
     // clamped to table_view.height_px, making the bottom border invisible.
-    let x = top_left.x_px.max(0.0);
-    let y = top_left.y_px.max(0.0);
-    let right = (bottom_right.x_px + bottom_right.width_px).min(table_view.width_px);
-    let bottom = (bottom_right.y_px + bottom_right.height_px).min(table_view.height_px);
+    let x = top_left.x.max(0.0);
+    let y = top_left.y.max(0.0);
+    let right = (bottom_right.x + bottom_right.width).min(table_view.width_px);
+    let bottom = (bottom_right.y + bottom_right.height).min(table_view.height_px);
     Some(TableOverlayRect {
         x,
         y,
@@ -241,10 +248,15 @@ fn render_table_axis_handle(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
 ) -> AnyElement {
-    let selected_long_edge = 22.0;
     let (width, height) = match (axis, selected) {
-        (TableAxis::Row, true) => (TABLE_AXIS_HANDLE_SIZE_PX, selected_long_edge),
-        (TableAxis::Column, true) => (selected_long_edge, TABLE_AXIS_HANDLE_SIZE_PX),
+        (TableAxis::Row, true) => (
+            TABLE_AXIS_HANDLE_SIZE_PX,
+            TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
+        ),
+        (TableAxis::Column, true) => (
+            TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
+            TABLE_AXIS_HANDLE_SIZE_PX,
+        ),
         _ => (TABLE_AXIS_HANDLE_SIZE_PX, TABLE_AXIS_HANDLE_SIZE_PX),
     };
     let (left, top) = match axis {
@@ -487,6 +499,43 @@ mod tests {
     }
 
     #[test]
+    fn table_axis_chrome_follows_horizontal_content_scroll() {
+        let mut table_view = table_view_with_two_by_two_cells();
+        table_view.horizontal_scroll_offset_px = -80.0;
+
+        assert_eq!(
+            table_cell_rect(&table_view, 0, 1),
+            Some(TableOverlayRect {
+                x: 40.0,
+                y: 0.0,
+                width: 120.0,
+                height: 36.0,
+            })
+        );
+        assert_eq!(
+            table_axis_track_rect(&table_view, TableAxis::Column, 1),
+            Some(TableOverlayRect {
+                x: 40.0,
+                y: 0.0,
+                width: 120.0,
+                height: 72.0,
+            })
+        );
+        assert_eq!(
+            table_axis_selection_outline_rect(
+                &table_view,
+                TableAxisSelection::new(7, TableAxis::Column, 0),
+            ),
+            Some(TableOverlayRect {
+                x: 0.0,
+                y: 0.0,
+                width: 40.0,
+                height: 72.0,
+            })
+        );
+    }
+
+    #[test]
     fn table_axis_overlay_editor_position_adds_content_origin_once() {
         let table_view = table_view_with_two_by_two_cells();
         let origin = TableToolbarEditorOrigin {
@@ -517,6 +566,7 @@ mod tests {
             ],
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_selection_range: None,
         }
     }
 

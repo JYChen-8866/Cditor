@@ -5,6 +5,7 @@ use gpui::{
 
 use crate::gui::GuiTheme;
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::gui::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use cditor_editor::scroll::{ScrollbarPolicy, ScrollbarVisualState};
 use cditor_runtime::DocumentRuntime;
 
@@ -38,7 +39,7 @@ pub(in crate::gui::app) fn render_scrollbar(
     let thumb_color = scrollbar_thumb_color(theme, dragging);
     div()
         .absolute()
-        .top_0()
+        .top(px(DEFAULT_DOCUMENT_TOP_INSET_PX))
         .right(px(GUI_SCROLLBAR_RIGHT_PX))
         .w(px(GUI_SCROLLBAR_WIDTH_PX))
         .h(px(visual.track_height as f32))
@@ -82,7 +83,7 @@ impl CditorV2View {
         if !visual.enabled {
             return;
         }
-        let pointer_y = f64::from(event.position.y);
+        let pointer_y = scrollbar_local_pointer_y(f64::from(event.position.y));
         let inside_thumb =
             visual.thumb_top <= pointer_y && pointer_y <= visual.thumb_top + visual.thumb_height;
         let pointer_y_offset_in_thumb = if inside_thumb {
@@ -110,6 +111,10 @@ impl CditorV2View {
     }
 }
 
+pub(in crate::gui::app) fn scrollbar_local_pointer_y(window_pointer_y: f64) -> f64 {
+    window_pointer_y - f64::from(DEFAULT_DOCUMENT_TOP_INSET_PX)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,5 +125,10 @@ mod tests {
 
         assert_eq!(scrollbar_thumb_color(theme, false), theme.scrollbar);
         assert_eq!(scrollbar_thumb_color(theme, true), theme.scrollbar_hover);
+    }
+
+    #[test]
+    fn scrollbar_pointer_coordinates_exclude_editor_top_inset() {
+        assert_eq!(scrollbar_local_pointer_y(52.0), 20.0);
     }
 }

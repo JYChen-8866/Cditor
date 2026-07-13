@@ -8,6 +8,7 @@ use gpui::{
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::app::cditor_v2_view::TableScrollSnapshot;
+use crate::gui::block::table::menu::TableMenuUiState;
 use crate::gui::block::{
     BlockActionState, BlockDragOverlaySnapshot, BlockView, MermaidRenderCache, TableAxis,
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
@@ -100,11 +101,14 @@ impl DocumentEditorView {
         drag_overlay: Option<BlockDragOverlaySnapshot>,
         action: DocumentBlockActionProjection,
         table_axis_selection: Option<TableAxisSelection>,
+        table_menu_ui: &TableMenuUiState,
+        readonly: bool,
         image_resize_preview: Option<(BlockId, f32)>,
         table_resize_preview: Option<TableResizePreview>,
         table_reorder_preview: Option<TableReorderPreview>,
         table_range_selection: Option<TableCellRangeSelection>,
         code_language_edit: Option<&CodeLanguageEditState>,
+        suppress_document_text_input: bool,
         table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
         mermaid_renders: &MermaidRenderCache,
         mermaid_source_blocks: &std::collections::HashSet<BlockId>,
@@ -171,8 +175,11 @@ impl DocumentEditorView {
                             selection,
                             table_view,
                             grid_origin,
+                            table_menu_ui,
+                            readonly,
                             self.theme,
                             view.clone(),
+                            focus.clone(),
                         ));
                     }
                     if let Some(reorder_preview) = render_table_reorder_preview_overlay(
@@ -217,6 +224,7 @@ impl DocumentEditorView {
                             table_range_selection
                                 .filter(|selection| selection.block_id == block.block_id),
                             code_language_edit,
+                            suppress_document_text_input,
                             table_scroll_snapshots
                                 .get(&block.block_id)
                                 .map(|snapshot| snapshot.handle.clone()),
