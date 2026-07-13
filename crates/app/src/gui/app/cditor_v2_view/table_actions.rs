@@ -1,6 +1,6 @@
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::TableRange;
-use gpui::{Context, KeyDownEvent, Pixels, Point, Window};
+use gpui::{Context, Pixels, Point, Window};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
@@ -150,63 +150,46 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(crate) fn handle_table_menu_key_down(
+    pub(crate) fn confirm_table_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(selection) = self.table_interaction_mode.axis_selection() else {
+            return false;
+        };
+        let Some(action) =
+            filter_table_menu_items(&table_axis_menu_items(selection), &self.table_menu_ui.query)
+                .first()
+                .map(|item| item.action)
+        else {
+            return true;
+        };
+        let _ = self.apply_selected_table_menu_action_from_gui(action, cx);
+        true
+    }
+
+    pub(crate) fn duplicate_selected_table_axis_from_gui(
         &mut self,
-        event: &KeyDownEvent,
         cx: &mut Context<Self>,
     ) -> bool {
         let Some(selection) = self.table_interaction_mode.axis_selection() else {
             return false;
         };
-        if event.keystroke.is_ime_in_progress() {
+        let action = match selection.axis {
+            TableAxis::Row => TableMenuAction::DuplicateRow,
+            TableAxis::Column => TableMenuAction::DuplicateColumn,
+        };
+        let _ = self.apply_selected_table_menu_action_from_gui(action, cx);
+        true
+    }
+
+    pub(crate) fn delete_table_menu_query_backward_from_gui(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.table_interaction_mode.axis_selection().is_none() {
             return false;
         }
-        let modifiers = event.keystroke.modifiers;
-        let key = event.keystroke.key.as_str();
-        if (modifiers.platform || modifiers.control) && !modifiers.alt && key == "d" {
-            let action = match selection.axis {
-                TableAxis::Row => TableMenuAction::DuplicateRow,
-                TableAxis::Column => TableMenuAction::DuplicateColumn,
-            };
-            let _ = self.apply_selected_table_menu_action_from_gui(action, cx);
-            return true;
-        }
-        if modifiers.platform || modifiers.control || modifiers.alt {
-            return false;
-        }
-        match key {
-            "escape" => self.dismiss_table_menu_from_gui(cx),
-            "backspace" => {
-                self.table_menu_ui.query.pop();
-                self.table_menu_ui.color_submenu_open = false;
-                cx.notify();
-                true
-            }
-            "enter" => {
-                let Some(action) = filter_table_menu_items(
-                    &table_axis_menu_items(selection),
-                    &self.table_menu_ui.query,
-                )
-                .first()
-                .map(|item| item.action) else {
-                    return true;
-                };
-                let _ = self.apply_selected_table_menu_action_from_gui(action, cx);
-                true
-            }
-            _ => {
-                let Some(text) = event.keystroke.key_char.as_deref() else {
-                    return false;
-                };
-                if text.chars().any(char::is_control) {
-                    return false;
-                }
-                self.table_menu_ui.query.push_str(text);
-                self.table_menu_ui.color_submenu_open = false;
-                cx.notify();
-                true
-            }
-        }
+        self.table_menu_ui.delete_backward();
+        cx.notify();
+        true
     }
 
     pub(crate) fn set_table_background_submenu_open_from_gui(

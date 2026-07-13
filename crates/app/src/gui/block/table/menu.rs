@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use cditor_core::rich_text::TableCellMerge;
 use cditor_runtime::TableViewState;
 
@@ -6,16 +8,136 @@ use super::selection::{TableAxis, TableAxisSelection};
 pub(crate) const TABLE_MENU_WIDTH_PX: f32 = 264.0;
 pub(crate) const TABLE_MENU_ROW_HEIGHT_PX: f32 = 29.0;
 pub(crate) const TABLE_MENU_SEARCH_HEIGHT_PX: f32 = 30.0;
+pub(crate) const TABLE_MENU_SEARCH_FONT_SIZE_PX: f32 = 13.0;
 pub(crate) const TABLE_MENU_PADDING_PX: f32 = 6.0;
 pub(crate) const TABLE_MENU_SEARCH_GAP_PX: f32 = 6.0;
 pub(crate) const TABLE_MENU_MAX_VISIBLE_ROWS: usize = 10;
 pub(crate) const TABLE_MENU_VIEWPORT_MARGIN_PX: f32 = 8.0;
 pub(crate) const TABLE_MENU_GAP_PX: f32 = 8.0;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TableMenuUiState {
     pub query: String,
+    pub caret_offset: usize,
+    pub marked_range: Option<Range<usize>>,
     pub color_submenu_open: bool,
+}
+
+impl Default for TableMenuUiState {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            caret_offset: 0,
+            marked_range: None,
+            color_submenu_open: false,
+        }
+    }
+}
+
+impl TableMenuUiState {
+    pub(crate) fn input_replacement_range(&self) -> Range<usize> {
+        self.marked_range
+            .clone()
+            .unwrap_or(self.caret_offset..self.caret_offset)
+    }
+
+    pub(crate) fn replace_range(&mut self, range: Range<usize>, text: &str) {
+        let range = safe_query_range(&self.query, range);
+        self.query.replace_range(range.clone(), text);
+        self.caret_offset = range.start + text.len();
+        self.marked_range = None;
+        self.color_submenu_open = false;
+    }
+
+    pub(crate) fn replace_and_mark_range(
+        &mut self,
+        range: Range<usize>,
+        text: &str,
+        selected_range: Option<Range<usize>>,
+    ) {
+        let range = safe_query_range(&self.query, range);
+        self.query.replace_range(range.clone(), text);
+        self.marked_range = Some(range.start..range.start + text.len());
+        self.caret_offset = selected_range
+            .map(|selection| range.start + selection.end.min(text.len()))
+            .unwrap_or(range.start + text.len());
+        self.color_submenu_open = false;
+    }
+
+    pub(crate) fn unmark(&mut self) {
+        self.marked_range = None;
+    }
+
+    pub(crate) fn move_left(&mut self) {
+        if let Some(previous) = previous_query_char_boundary(&self.query, self.caret_offset) {
+            self.caret_offset = previous;
+        }
+        self.marked_range = None;
+    }
+
+    pub(crate) fn move_right(&mut self) {
+        self.caret_offset = next_query_char_boundary(&self.query, self.caret_offset);
+        self.marked_range = None;
+    }
+
+    pub(crate) fn move_to_start(&mut self) {
+        self.caret_offset = 0;
+        self.marked_range = None;
+    }
+
+    pub(crate) fn move_to_end(&mut self) {
+        self.caret_offset = self.query.len();
+        self.marked_range = None;
+    }
+
+    pub(crate) fn delete_backward(&mut self) {
+        if let Some(previous) = previous_query_char_boundary(&self.query, self.caret_offset) {
+            self.query.replace_range(previous..self.caret_offset, "");
+            self.caret_offset = previous;
+        }
+        self.marked_range = None;
+        self.color_submenu_open = false;
+    }
+
+    pub(crate) fn delete_forward(&mut self) {
+        let next = next_query_char_boundary(&self.query, self.caret_offset);
+        if next > self.caret_offset {
+            self.query.replace_range(self.caret_offset..next, "");
+        }
+        self.marked_range = None;
+        self.color_submenu_open = false;
+    }
+}
+
+fn safe_query_range(text: &str, range: Range<usize>) -> Range<usize> {
+    let start = clamp_query_char_boundary(text, range.start.min(text.len()));
+    let end = clamp_query_char_boundary(text, range.end.min(text.len())).max(start);
+    start..end
+}
+
+fn clamp_query_char_boundary(text: &str, offset: usize) -> usize {
+    let mut offset = offset.min(text.len());
+    while offset > 0 && !text.is_char_boundary(offset) {
+        offset -= 1;
+    }
+    offset
+}
+
+fn previous_query_char_boundary(text: &str, offset: usize) -> Option<usize> {
+    let offset = clamp_query_char_boundary(text, offset);
+    text[..offset]
+        .char_indices()
+        .next_back()
+        .map(|(index, _)| index)
+}
+
+fn next_query_char_boundary(text: &str, offset: usize) -> usize {
+    let offset = clamp_query_char_boundary(text, offset);
+    text[offset..]
+        .char_indices()
+        .nth(1)
+        .map(|(index, _)| offset + index)
+        .unwrap_or(text.len())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -366,6 +488,37 @@ mod tests {
                 .any(|item| item.action == TableMenuAction::BackgroundColor)
         );
         assert!(filter_table_menu_items(&items, "zzz").is_empty());
+    }
+
+    #[test]
+    fn table_menu_query_edits_unicode_on_character_boundaries() {
+        let mut state = TableMenuUiState::default();
+        state.replace_range(state.input_replacement_range(), "颜色a");
+        assert_eq!(state.caret_offset, "颜色a".len());
+
+        state.move_left();
+        state.delete_backward();
+        assert_eq!(state.query, "颜a");
+        assert_eq!(state.caret_offset, "颜".len());
+
+        state.delete_forward();
+        assert_eq!(state.query, "颜");
+        state.move_to_end();
+        state.delete_backward();
+        assert_eq!(state.query, "");
+    }
+
+    #[test]
+    fn table_menu_query_tracks_ime_marked_range() {
+        let mut state = TableMenuUiState::default();
+        state.replace_and_mark_range(0..0, "颜", Some("颜".len().."颜".len()));
+
+        assert_eq!(state.query, "颜");
+        assert_eq!(state.marked_range, Some(0.."颜".len()));
+        assert_eq!(state.input_replacement_range(), 0.."颜".len());
+
+        state.unmark();
+        assert_eq!(state.marked_range, None);
     }
 
     #[test]

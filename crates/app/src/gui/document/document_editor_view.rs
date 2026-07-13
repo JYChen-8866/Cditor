@@ -179,6 +179,7 @@ impl DocumentEditorView {
                             readonly,
                             self.theme,
                             view.clone(),
+                            focus.clone(),
                         ));
                     }
                     if let Some(reorder_preview) = render_table_reorder_preview_overlay(

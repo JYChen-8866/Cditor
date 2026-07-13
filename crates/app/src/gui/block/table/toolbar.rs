@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Entity, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    Styled, div, px, rgb,
+    AnyElement, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Styled, div, px, rgb,
 };
 
 use crate::gui::GuiTheme;
@@ -13,15 +13,17 @@ use crate::gui::block::chrome::{
 use crate::gui::block::chrome::{
     BLOCK_ROW_GAP_PX, BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
 };
+use crate::gui::input::SingleLineTextInputElement;
 #[cfg(test)]
 use cditor_core::rich_text::TableCellAlign;
 use cditor_runtime::{TableViewState, ViewBlockSnapshot};
 
 use super::menu::{
-    TABLE_MENU_PADDING_PX, TABLE_MENU_ROW_HEIGHT_PX, TABLE_MENU_SEARCH_GAP_PX,
-    TABLE_MENU_SEARCH_HEIGHT_PX, TABLE_MENU_WIDTH_PX, TableBackgroundColor, TableMenuAction,
-    TableMenuUiState, filter_table_menu_items, table_axis_header_enabled, table_axis_menu_items,
-    table_menu_action_enabled, table_menu_panel_height, table_menu_position,
+    TABLE_MENU_PADDING_PX, TABLE_MENU_ROW_HEIGHT_PX, TABLE_MENU_SEARCH_FONT_SIZE_PX,
+    TABLE_MENU_SEARCH_GAP_PX, TABLE_MENU_SEARCH_HEIGHT_PX, TABLE_MENU_WIDTH_PX,
+    TableBackgroundColor, TableMenuAction, TableMenuUiState, filter_table_menu_items,
+    table_axis_header_enabled, table_axis_menu_items, table_menu_action_enabled,
+    table_menu_panel_height, table_menu_position,
 };
 use super::selection::{TableAxis, TableAxisSelection};
 use super::style::{
@@ -84,6 +86,7 @@ pub(crate) fn render_table_axis_toolbar(
     readonly: bool,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
+    focus: FocusHandle,
 ) -> AnyElement {
     let items = filter_table_menu_items(&table_axis_menu_items(selection), menu_ui.query.as_str());
     let anchor = table_menu_anchor(selection, table_view);
@@ -123,7 +126,12 @@ pub(crate) fn render_table_axis_toolbar(
         .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
             cx.stop_propagation();
         })
-        .child(render_table_menu_search(&menu_ui.query, theme))
+        .child(render_table_menu_search(
+            menu_ui,
+            theme,
+            view.clone(),
+            focus,
+        ))
         .child(div().h(px(TABLE_MENU_SEARCH_GAP_PX)).flex_none());
 
     if empty {
@@ -157,8 +165,12 @@ pub(crate) fn render_table_axis_toolbar(
     panel.into_any_element()
 }
 
-fn render_table_menu_search(query: &str, theme: GuiTheme) -> AnyElement {
-    let is_empty = query.is_empty();
+fn render_table_menu_search(
+    menu_ui: &TableMenuUiState,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    focus: FocusHandle,
+) -> AnyElement {
     div()
         .h(px(TABLE_MENU_SEARCH_HEIGHT_PX))
         .w_full()
@@ -170,12 +182,18 @@ fn render_table_menu_search(query: &str, theme: GuiTheme) -> AnyElement {
         .border_1()
         .border_color(rgb(theme.table_active_border))
         .bg(rgb(theme.surface))
-        .text_size(px(13.0))
-        .text_color(rgb(if is_empty { theme.muted } else { theme.text }))
-        .child(if is_empty {
-            "搜索操作...".to_owned()
-        } else {
-            query.to_owned()
+        .track_focus(&focus)
+        .child(SingleLineTextInputElement {
+            handler: view,
+            focus,
+            value: menu_ui.query.clone(),
+            placeholder: Some("搜索操作...".to_owned()),
+            caret_offset: Some(menu_ui.caret_offset),
+            marked_range: menu_ui.marked_range.clone(),
+            text_color: theme.text,
+            placeholder_color: theme.muted,
+            caret_color: theme.focused,
+            font_size: px(TABLE_MENU_SEARCH_FONT_SIZE_PX),
         })
         .into_any_element()
 }

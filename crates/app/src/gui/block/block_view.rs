@@ -18,6 +18,7 @@ use crate::gui::input::{
     CodeLanguageEditState, focus_block_from_mouse, gutter_mouse_down_from_mouse,
     hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,
 };
+use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 
@@ -213,7 +214,7 @@ fn render_kind_content(
             .w_full()
             .rounded(px(3.0))
             .bg(rgb(theme.code_background))
-            .font_family("Menlo")
+            .font_family(EDITOR_MONO_FONT_FAMILY)
             .text_size(px(13.0))
             .child(content)
             .into_any_element(),

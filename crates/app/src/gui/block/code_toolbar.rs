@@ -131,22 +131,7 @@ fn render_language_editor(
                     theme.code_background
                 }))
                 .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
-                .when(is_editing, |this| {
-                    let view = view.clone();
-                    this.track_focus(&code_language_focus)
-                        .on_key_down(move |event, _window, cx| {
-                            let handled = view.update(cx, |view, cx| {
-                                let handled = view.apply_code_language_key_from_gui(event, cx);
-                                if handled {
-                                    cx.notify();
-                                }
-                                handled
-                            });
-                            if handled {
-                                cx.stop_propagation();
-                            }
-                        })
-                })
+                .when(is_editing, |this| this.track_focus(&code_language_focus))
                 .on_mouse_down(MouseButton::Left, move |event, window, cx| {
                     let _ = input_view.update(cx, |view, cx| {
                         view.start_code_language_edit_from_gui(

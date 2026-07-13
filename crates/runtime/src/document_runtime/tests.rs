@@ -166,3 +166,5 @@ mod table_structure_layout;
 mod table_style_input;
 #[path = "tests/window_projection.rs"]
 mod window_projection;
+#[path = "tests/windows_input.rs"]
+mod windows_input;

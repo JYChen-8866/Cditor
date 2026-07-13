@@ -2,6 +2,7 @@ use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::block::code_toolbar::render_code_toolbar;
 use crate::gui::input::CodeLanguageEditState;
+use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
 use cditor_core::ids::BlockId;
 use gpui::{
     AnyElement, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, div,
@@ -35,7 +36,7 @@ pub fn render_code_block(
         } else {
             theme.code_background
         }))
-        .font_family("Menlo")
+        .font_family(EDITOR_MONO_FONT_FAMILY)
         .child(render_code_content(content, theme))
         .child(render_code_toolbar(
             block_id,

@@ -372,3 +372,7 @@ impl CditorV2View {
 #[cfg(test)]
 #[path = "cditor_v2_view_tests.rs"]
 mod cditor_v2_view_tests;
+
+#[cfg(test)]
+#[path = "cditor_v2_view_interaction_tests.rs"]
+mod cditor_v2_view_interaction_tests;

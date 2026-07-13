@@ -8,16 +8,15 @@ use gpui::*;
 fn main() {
     let app = gpui_platform::application();
     app.run(|cx: &mut App| {
+        cditor_app::gui::input::bind_cditor_keys(cx);
         cx.activate(true);
         cx.open_window(
             WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds {
-                    origin: Point::default(),
-                    size: Size {
-                        width: px(1200.0),
-                        height: px(800.0),
-                    },
-                })),
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    size(px(1200.0), px(800.0)),
+                    cx,
+                ))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Cditor".into()),
                     ..Default::default()

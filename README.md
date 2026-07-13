@@ -107,6 +107,25 @@ Naming note for `cditor-editor`: This crate is frequently misinterpreted. It con
 - Git: GPUI and Mermaid renderer are pinned to specific commits in the Zed repository; Git dependencies are fetched on initial build
 - Platform-native compilation tooling required for GPUI
 
+### Windows Toolchain
+
+Cditor uses the native MSVC GPUI backend on Windows. Install:
+
+- 64-bit Windows 10 or Windows 11
+- [Rustup](https://rustup.rs/) with the `stable-x86_64-pc-windows-msvc` toolchain
+- Visual Studio Build Tools with **Desktop development with C++**, MSVC v143 or newer, and a current Windows SDK
+- Git for Windows
+
+Verify the active host toolchain in PowerShell:
+
+```powershell
+rustup default stable-x86_64-pc-windows-msvc
+rustc -vV
+cargo --version
+```
+
+The GNU Rust target is not supported by the desktop build. Use the MSVC target shown above.
+
 ### Optional
 - Docker & Docker Compose: Local PostgreSQL deployment
 - OpenAI API-compatible LLM service: For inline AI functionality
@@ -130,11 +149,45 @@ Launch a small demo document:
 CDITOR_SMALL_DEMO=1 cargo run -p cditor-app
 ```
 
+PowerShell uses this equivalent syntax on Windows:
+
+```powershell
+$env:CDITOR_SMALL_DEMO = "1"
+cargo run -p cditor-app
+```
+
 Launch a large demo document with 100,000 Blocks:
 ```bash
 CDITOR_LARGE_DEMO=1 cargo run -p cditor-app
 ```
 The large demo constructs performance-testing large documents, resulting in longer startup times and higher memory usage than standard mode.
+
+### Keyboard and IME Architecture
+
+Cditor follows Zed's GPUI input architecture across macOS and Windows:
+
+1. GPUI's native platform backend translates physical keys to canonical keystrokes such as `enter`, `backspace`, and `home`.
+2. The Cditor keymap converts keystrokes into typed actions inside the `CditorEditor` key context.
+3. Context-aware action handlers route the action to the document, table cell, slash menu, table menu, code-language input, or AI prompt.
+4. Printable text and IME composition never depend on physical key names; they flow through GPUI's `EntityInputHandler` using UTF-16 platform ranges and UTF-8 document offsets.
+
+The editor keeps document line endings as LF internally. Windows TSF and clipboard input are normalized from CRLF at the platform boundary. The main editing bindings are:
+
+| Operation | macOS | Windows |
+| --- | --- | --- |
+| Create/split Block | `Enter` | `Enter` |
+| Soft line break | `Shift+Enter` | `Shift+Enter` |
+| Create Block below | `Command+Enter` | `Ctrl+Enter` |
+| Select current Block, then full document | `Command+A` once/twice | `Ctrl+A` once/twice |
+| Undo / redo | `Command+Z` / `Command+Shift+Z` | `Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z` |
+| Line start / end | `Home`, `End`, or Zed's macOS aliases | `Home`, `End` |
+| Clipboard | `Command+C/X/V` | `Ctrl+C/X/V`; Zed-compatible `Ctrl+Insert`, `Shift+Delete`, `Shift+Insert` |
+
+Applications embedding `CditorV2View` directly must install the keymap once during GPUI startup before opening the window:
+
+```rust
+cditor_app::gui::input::bind_cditor_keys(cx);
+```
 
 ### 2. Local PostgreSQL Deployment
 Start the development database container:
@@ -254,6 +307,8 @@ The `Desktop builds` GitHub Actions workflow produces three downloadable artifac
 | `Cditor-macOS-Intel` | `Cditor-macOS-x64.dmg` and SHA-256 checksum | Intel Macs |
 
 The workflow runs for pushes to `main`, pull requests targeting `main`, version tags, and manual dispatches. Download outputs from the workflow run's **Artifacts** section.
+
+These files are workflow artifacts, not GitHub Packages. The repository's **Packages** section can remain empty; use **Actions → Desktop builds → Artifacts** for the EXE and DMG downloads.
 
 The macOS application bundles are ad-hoc signed so the DMG layout and bundle integrity can be verified in CI. They are not Apple-notarized because the public repository does not contain Apple Developer signing credentials. macOS may therefore require using **Open** from Finder's context menu the first time the application is launched.
 
