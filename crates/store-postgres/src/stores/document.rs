@@ -270,6 +270,25 @@ impl PostgresDocumentStore {
             .collect()
     }
 
+    pub async fn count_live_blocks(
+        &self,
+        document_id: PgDocumentId,
+    ) -> PostgresStorageResult<usize> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM blocks
+            WHERE document_id = $1 AND deleted_at IS NULL
+            "#,
+        )
+        .bind(document_id)
+        .fetch_one(&self.pool)
+        .await?;
+        usize::try_from(count).map_err(|_| PostgresStorageError::CorruptData {
+            message: format!("document {document_id} has invalid live block count {count}"),
+        })
+    }
+
     pub async fn soft_delete_block(&self, block_id: PgBlockId) -> PostgresStorageResult<()> {
         let result = sqlx::query(
             r#"
@@ -422,6 +441,31 @@ impl PostgresDocumentStore {
                 .map(BlockIndexRecord::from)
                 .collect(),
         ))
+    }
+
+    pub async fn has_document_index_snapshot(
+        &self,
+        document_id: PgDocumentId,
+        visible_index_version: i64,
+        structure_version: i64,
+    ) -> PostgresStorageResult<bool> {
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM document_index_snapshot
+                WHERE document_id = $1
+                  AND visible_index_version = $2
+                  AND structure_version = $3
+            )
+            "#,
+        )
+        .bind(document_id)
+        .bind(visible_index_version)
+        .bind(structure_version)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
     async fn ensure_workspace_exists(&self, workspace_id: Uuid) -> PostgresStorageResult<()> {

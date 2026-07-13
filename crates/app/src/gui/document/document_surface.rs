@@ -2,9 +2,11 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentB
 
 use crate::gui::GuiTheme;
 use crate::gui::document::layout_metrics::DocumentLayoutMetrics;
-use crate::gui::document::skeleton_window::render_document_skeleton_window;
+use crate::gui::document::skeleton_window::{
+    render_document_skeleton_window, render_document_window_error,
+};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DocumentSurface {
     pub page_width_px: f32,
     pub content_width_px: f32,
@@ -12,6 +14,7 @@ pub struct DocumentSurface {
     pub top_inset_px: f32,
     pub before_window_height: f64,
     pub placeholder_window_height: Option<f64>,
+    pub placeholder_window_error: Option<String>,
     pub after_window_height: f64,
     pub scroll_top: f64,
 }
@@ -34,6 +37,11 @@ impl DocumentSurface {
         )
     }
 
+    pub fn with_placeholder_error(mut self, message: Option<String>) -> Self {
+        self.placeholder_window_error = message;
+        self
+    }
+
     pub fn with_scroll(
         before_window_height: f64,
         placeholder_window_height: Option<f64>,
@@ -48,16 +56,17 @@ impl DocumentSurface {
             top_inset_px: metrics.top_inset_px,
             before_window_height,
             placeholder_window_height,
+            placeholder_window_error: None,
             after_window_height,
             scroll_top,
         }
     }
 
-    fn window_top_px(self) -> f32 {
+    fn window_top_px(&self) -> f32 {
         (self.before_window_height - self.scroll_top) as f32
     }
 
-    fn overlay_top_px(self) -> f32 {
+    fn overlay_top_px(&self) -> f32 {
         -(self.scroll_top as f32)
     }
 
@@ -67,6 +76,12 @@ impl DocumentSurface {
         block_elements: Vec<AnyElement>,
         overlay: Option<AnyElement>,
     ) -> AnyElement {
+        let placeholder = self.placeholder_window_height.map(|height| {
+            self.placeholder_window_error
+                .as_deref()
+                .map(|message| render_document_window_error(height, message, theme))
+                .unwrap_or_else(|| render_document_skeleton_window(height, theme))
+        });
         div()
             .flex_1()
             .flex()
@@ -94,8 +109,8 @@ impl DocumentSurface {
                                     .left_0()
                                     .right_0()
                                     .top(px(self.window_top_px()))
-                                    .when_some(self.placeholder_window_height, |this, height| {
-                                        this.child(render_document_skeleton_window(height, theme))
+                                    .when_some(placeholder, |this, placeholder| {
+                                        this.child(placeholder)
                                     })
                                     .children(block_elements),
                             )

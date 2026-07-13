@@ -1,4 +1,5 @@
 use std::fmt;
+use std::time::Duration;
 
 pub type PostgresStorageResult<T> = Result<T, PostgresStorageError>;
 
@@ -6,14 +7,30 @@ pub type PostgresStorageResult<T> = Result<T, PostgresStorageError>;
 pub enum PostgresStorageError {
     Sqlx(sqlx::Error),
     Migration(String),
-    SchemaVersionMismatch { expected: u32, found: u32 },
-    NotFound { entity: &'static str, id: String },
-    CorruptData { message: String },
+    SchemaVersionMismatch {
+        expected: u32,
+        found: u32,
+    },
+    NotFound {
+        entity: &'static str,
+        id: String,
+    },
+    CorruptData {
+        message: String,
+    },
     Serialization(serde_json::Error),
     Io(std::io::Error),
     Busy,
-    Conflict { message: String },
-    RetryExhausted { task_id: String },
+    Conflict {
+        message: String,
+    },
+    RetryExhausted {
+        task_id: String,
+    },
+    Timeout {
+        operation: &'static str,
+        timeout: Duration,
+    },
 }
 
 impl fmt::Display for PostgresStorageError {
@@ -34,6 +51,11 @@ impl fmt::Display for PostgresStorageError {
             Self::Busy => write!(f, "storage is busy"),
             Self::Conflict { message } => write!(f, "storage conflict: {message}"),
             Self::RetryExhausted { task_id } => write!(f, "retry exhausted for task {task_id}"),
+            Self::Timeout { operation, timeout } => write!(
+                f,
+                "{operation} timed out after {:.1} seconds",
+                timeout.as_secs_f64()
+            ),
         }
     }
 }

@@ -3,7 +3,7 @@ use std::time::Duration;
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 
-use super::error::PostgresStorageResult;
+use super::error::{PostgresStorageError, PostgresStorageResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostgresPoolConfig {
@@ -48,14 +48,19 @@ pub async fn create_pg_pool(config: &PostgresPoolConfig) -> PostgresStorageResul
         connect_options = connect_options.ssl_mode(PgSslMode::Require);
     }
 
-    let pool = PgPoolOptions::new()
+    let connect = PgPoolOptions::new()
         .max_connections(config.max_connections)
         .min_connections(config.min_connections)
         .acquire_timeout(config.acquire_timeout)
         .idle_timeout(config.idle_timeout)
         .max_lifetime(config.max_lifetime)
-        .connect_with(connect_options)
-        .await?;
+        .connect_with(connect_options);
+    let pool = tokio::time::timeout(config.acquire_timeout, connect)
+        .await
+        .map_err(|_| PostgresStorageError::Timeout {
+            operation: "PostgreSQL connection",
+            timeout: config.acquire_timeout,
+        })??;
 
     Ok(pool)
 }

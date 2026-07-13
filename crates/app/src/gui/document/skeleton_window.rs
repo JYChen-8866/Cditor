@@ -1,4 +1,4 @@
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
 
 use crate::gui::GuiTheme;
 use crate::gui::skeleton::{SkeletonItem, SkeletonRows, SkeletonVariant};
@@ -16,6 +16,36 @@ pub fn render_document_skeleton_window(height_px: f64, theme: GuiTheme) -> AnyEl
         .flex_col()
         .gap_4()
         .children((0..count).map(|index| render_window_skeleton_block(index, theme)))
+        .into_any_element()
+}
+
+pub fn render_document_window_error(height_px: f64, message: &str, theme: GuiTheme) -> AnyElement {
+    div()
+        .h(px(height_px.max(120.0) as f32))
+        .w_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .max_w(px(560.0))
+                .rounded(px(8.0))
+                .border_1()
+                .border_color(rgb(theme.border))
+                .bg(rgb(theme.panel))
+                .p_4()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .text_color(rgb(theme.text))
+                .child("无法加载当前内容")
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(theme.muted))
+                        .child(message.to_owned()),
+                ),
+        )
         .into_any_element()
 }
 

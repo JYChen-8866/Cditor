@@ -107,6 +107,28 @@ impl PostgresPayloadStore {
         })
     }
 
+    pub async fn count_live_payloads(
+        &self,
+        document_id: PgDocumentId,
+    ) -> PostgresStorageResult<usize> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM block_payloads p
+            INNER JOIN blocks b ON b.id = p.block_id
+            WHERE p.document_id = $1
+              AND b.document_id = $1
+              AND b.deleted_at IS NULL
+            "#,
+        )
+        .bind(document_id)
+        .fetch_one(&self.pool)
+        .await?;
+        usize::try_from(count).map_err(|_| PostgresStorageError::CorruptData {
+            message: format!("document {document_id} has invalid live payload count {count}"),
+        })
+    }
+
     pub async fn save_block_payloads(
         &self,
         document_id: PgDocumentId,

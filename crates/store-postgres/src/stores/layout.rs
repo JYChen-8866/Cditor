@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::{PgPool, Row};
 
 use cditor_core::ids::{BlockId, DocumentId};
@@ -149,6 +151,41 @@ impl PostgresLayoutCacheStore {
             .map(|row| row.load_for_key(key))
             .map(Ok)
             .unwrap_or_else(|| Ok(missing_block_height()))
+    }
+
+    /// Loads the best cached height for every requested block with one database round trip.
+    ///
+    /// An exact layout-key match wins. When no exact row exists, the newest measured row is
+    /// returned as an estimate, matching [`Self::load_block_height`] without issuing two queries
+    /// per block during large-document cold start.
+    pub async fn load_block_heights(
+        &self,
+        block_ids: &[BlockId],
+        key: LayoutCacheKey,
+    ) -> PostgresStorageResult<HashMap<BlockId, CachedHeight>> {
+        if block_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let pg_block_ids = block_ids
+            .iter()
+            .copied()
+            .map(pg_block_id_from_runtime)
+            .collect::<Vec<_>>();
+        let exact_hash = key.hash_key();
+        let sql = batch_block_layout_select_sql();
+        let rows = sqlx::query(&sql)
+            .bind(&pg_block_ids)
+            .bind(&exact_hash)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut heights = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let row = block_layout_row_from_pg(row)?;
+            heights.insert(row.block_id, row.load_for_key(key));
+        }
+        Ok(heights)
     }
 
     pub async fn save_page_layout(&self, row: &PageLayoutRow) -> PostgresStorageResult<()> {
@@ -372,6 +409,19 @@ fn block_layout_select_sql(where_clause: &str) -> String {
         {where_clause}
         "#
     )
+}
+
+fn batch_block_layout_select_sql() -> String {
+    block_layout_select_sql(
+        r#"
+        WHERE block_id = ANY($1)
+        ORDER BY block_id,
+                 (layout_key_hash = $2) DESC,
+                 measured_at DESC NULLS LAST,
+                 updated_at DESC
+        "#,
+    )
+    .replacen("SELECT", "SELECT DISTINCT ON (block_id)", 1)
 }
 
 fn page_layout_select_sql(where_clause: &str) -> String {

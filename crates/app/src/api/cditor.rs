@@ -6,6 +6,7 @@ use crate::gui::CditorV2View;
 use crate::gui::persistence::PostgresPersistenceTarget;
 use cditor_core::ids::DocumentId;
 use cditor_runtime::DocumentRuntime;
+use cditor_storage_postgres::PostgresStorageError;
 use cditor_storage_postgres::block_on_postgres;
 
 use super::cold_start::{CditorColdStartPlan, load_runtime_from_options};
@@ -161,9 +162,17 @@ impl Cditor {
 }
 
 fn spawn_postgres_cold_start(options: CditorOptions, cx: &mut Context<CditorV2View>) {
+    let timeout = postgres_cold_start_timeout(&options);
     let load_task = cx.background_spawn(async move {
-        block_on_postgres(load_runtime_from_options(&options))
-            .and_then(|result| result.map_err(|error| error.to_string()))
+        block_on_postgres(async move {
+            tokio::time::timeout(timeout, load_runtime_from_options(&options))
+                .await
+                .map_err(|_| PostgresStorageError::Timeout {
+                    operation: "PostgreSQL document cold start",
+                    timeout,
+                })?
+        })
+        .and_then(|result| result.map_err(|error| error.to_string()))
     });
 
     cx.spawn(async move |view, cx| match load_task.await {
@@ -193,6 +202,14 @@ fn spawn_postgres_cold_start(options: CditorOptions, cx: &mut Context<CditorV2Vi
         }
     })
     .detach();
+}
+
+fn postgres_cold_start_timeout(options: &CditorOptions) -> Duration {
+    if options.seed_large_demo_to_postgres {
+        Duration::from_secs(30 * 60)
+    } else {
+        Duration::from_secs(90)
+    }
 }
 
 #[cfg(test)]
@@ -239,6 +256,23 @@ mod tests {
         assert!(cditor.options().seed_large_demo_to_postgres);
         assert_eq!(cditor.options().seed_large_demo_block_count, 1);
         assert!(cditor.options().force_reseed_large_demo);
+    }
+
+    #[test]
+    fn postgres_seed_gets_a_longer_cold_start_deadline() {
+        let normal = Cditor::new().into_options();
+        let seeded = Cditor::new()
+            .with_postgres_large_demo_seed(100_000, false)
+            .into_options();
+
+        assert_eq!(
+            postgres_cold_start_timeout(&normal),
+            Duration::from_secs(90)
+        );
+        assert_eq!(
+            postgres_cold_start_timeout(&seeded),
+            Duration::from_secs(30 * 60)
+        );
     }
 
     #[test]
