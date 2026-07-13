@@ -268,9 +268,6 @@ pub(super) fn marks_for_insertion(spans: &[InlineSpan], offset: usize) -> Vec<In
         if span_start <= offset && offset < span_end {
             return span.marks.clone();
         }
-        if offset == span_end && !span.marks.is_empty() {
-            return span.marks.clone();
-        }
         cursor = span_end;
     }
     Vec::new()

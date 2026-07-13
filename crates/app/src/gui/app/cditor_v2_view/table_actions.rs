@@ -1,10 +1,12 @@
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::{TableCellAlign, TableRange};
+use cditor_core::rich_text::TableRange;
 use gpui::{Context, Pixels, Point, Window};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
-use crate::gui::block::table::menu::TableMenuAction;
+use crate::gui::block::table::menu::{
+    TableBackgroundColor, TableMenuAction, filter_table_menu_items, table_axis_menu_items,
+};
 use crate::gui::block::table::{TableAxis, TableAxisSelection, TableCellRangeSelection};
 
 impl CditorV2View {
@@ -13,6 +15,7 @@ impl CditorV2View {
             return false;
         }
         self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        self.table_menu_ui = Default::default();
         cx.notify();
         true
     }
@@ -143,12 +146,71 @@ impl CditorV2View {
         }
         let selection = TableAxisSelection::new(block_id, axis, index);
         self.table_interaction_mode = GuiTableInteractionMode::AxisSelected(selection);
+        self.table_menu_ui = Default::default();
         cx.notify();
     }
 
-    pub(crate) fn set_selected_table_axis_align_from_gui(
+    pub(crate) fn confirm_table_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(selection) = self.table_interaction_mode.axis_selection() else {
+            return false;
+        };
+        let Some(action) =
+            filter_table_menu_items(&table_axis_menu_items(selection), &self.table_menu_ui.query)
+                .first()
+                .map(|item| item.action)
+        else {
+            return true;
+        };
+        let _ = self.apply_selected_table_menu_action_from_gui(action, cx);
+        true
+    }
+
+    pub(crate) fn duplicate_selected_table_axis_from_gui(
         &mut self,
-        align: TableCellAlign,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(selection) = self.table_interaction_mode.axis_selection() else {
+            return false;
+        };
+        let action = match selection.axis {
+            TableAxis::Row => TableMenuAction::DuplicateRow,
+            TableAxis::Column => TableMenuAction::DuplicateColumn,
+        };
+        let _ = self.apply_selected_table_menu_action_from_gui(action, cx);
+        true
+    }
+
+    pub(crate) fn delete_table_menu_query_backward_from_gui(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.table_interaction_mode.axis_selection().is_none() {
+            return false;
+        }
+        self.table_menu_ui.delete_backward();
+        cx.notify();
+        true
+    }
+
+    pub(crate) fn set_table_background_submenu_open_from_gui(
+        &mut self,
+        open: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.table_interaction_mode.axis_selection().is_none() {
+            return false;
+        }
+        if self.table_menu_ui.color_submenu_open == open {
+            return false;
+        }
+        self.table_menu_ui.color_submenu_open = open;
+        cx.notify();
+        true
+    }
+
+    pub(crate) fn set_selected_table_background_from_gui(
+        &mut self,
+        color: TableBackgroundColor,
         cx: &mut Context<Self>,
     ) -> bool {
         if self.readonly {
@@ -159,9 +221,18 @@ impl CditorV2View {
         };
         let changed = self
             .ready_runtime()
-            .and_then(|runtime| runtime.set_table_cell_align(block_id, range, align).ok())
+            .and_then(|runtime| {
+                runtime
+                    .set_table_cell_background_color(
+                        block_id,
+                        range,
+                        color.value().map(str::to_owned),
+                    )
+                    .ok()
+            })
             .unwrap_or(false);
         if changed {
+            self.dismiss_table_menu_from_gui(cx);
             self.mark_dirty(cx);
             cx.notify();
         }
@@ -178,6 +249,38 @@ impl CditorV2View {
         }
         let axis_selection = self.table_interaction_mode.axis_selection();
         let changed = match action {
+            TableMenuAction::ToggleHeader => {
+                let Some(selection) = axis_selection else {
+                    return false;
+                };
+                let currently_enabled = self
+                    .ready_runtime_ref()
+                    .and_then(|runtime| runtime.block_payload_record(selection.block_id))
+                    .and_then(|record| match &record.payload {
+                        cditor_core::rich_text::BlockPayload::Table(table) => {
+                            Some(match selection.axis {
+                                TableAxis::Row => table.header_rows > 0,
+                                TableAxis::Column => table.header_cols > 0,
+                            })
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or(false);
+                let count = usize::from(!currently_enabled);
+                self.ready_runtime()
+                    .and_then(|runtime| match selection.axis {
+                        TableAxis::Row => runtime
+                            .set_table_header_rows(selection.block_id, count)
+                            .ok(),
+                        TableAxis::Column => runtime
+                            .set_table_header_columns(selection.block_id, count)
+                            .ok(),
+                    })
+                    .unwrap_or(false)
+            }
+            TableMenuAction::BackgroundColor => {
+                return self.set_table_background_submenu_open_from_gui(true, cx);
+            }
             TableMenuAction::InsertRowAbove
                 if axis_selection.is_some_and(|selection| selection.axis == TableAxis::Row) =>
             {
@@ -277,23 +380,12 @@ impl CditorV2View {
                     })
                     .unwrap_or(false)
             }
-            TableMenuAction::Align(align) => self.set_selected_table_axis_align_from_gui(align, cx),
-            TableMenuAction::MergeCells => self.merge_selected_table_axis_from_gui(cx),
-            TableMenuAction::SplitCell => self.split_selected_table_axis_from_gui(cx),
-            TableMenuAction::BackgroundColor => {
+            TableMenuAction::ClearContents => {
                 let Some((block_id, range)) = self.selected_table_range() else {
                     return false;
                 };
                 self.ready_runtime()
-                    .and_then(|runtime| {
-                        runtime
-                            .set_table_cell_background_color(
-                                block_id,
-                                range,
-                                Some("action_background".to_owned()),
-                            )
-                            .ok()
-                    })
+                    .and_then(|runtime| runtime.clear_table_range(block_id, range).ok())
                     .unwrap_or(false)
             }
             TableMenuAction::DuplicateRow
@@ -307,46 +399,6 @@ impl CditorV2View {
         };
         if changed {
             self.dismiss_table_menu_from_gui(cx);
-            self.mark_dirty(cx);
-            cx.notify();
-        }
-        changed
-    }
-
-    pub(crate) fn merge_selected_table_axis_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.readonly {
-            return false;
-        }
-        let Some((block_id, range)) = self.selected_table_range() else {
-            return false;
-        };
-        let changed = self
-            .ready_runtime()
-            .and_then(|runtime| runtime.merge_table_cells(block_id, range).ok())
-            .unwrap_or(false);
-        if changed {
-            self.mark_dirty(cx);
-            cx.notify();
-        }
-        changed
-    }
-
-    pub(crate) fn split_selected_table_axis_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.readonly {
-            return false;
-        }
-        let Some((block_id, range)) = self.selected_table_range() else {
-            return false;
-        };
-        let changed = self
-            .ready_runtime()
-            .and_then(|runtime| {
-                runtime
-                    .split_table_cell(block_id, range.start_row, range.start_col)
-                    .ok()
-            })
-            .unwrap_or(false);
-        if changed {
             self.mark_dirty(cx);
             cx.notify();
         }

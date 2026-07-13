@@ -10,10 +10,13 @@ use cditor_core::rich_text::{
 };
 
 use super::GuiTheme;
+use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
 
 pub(crate) const NOTION_INLINE_CODE_RADIUS_PX: f32 = 3.0;
-pub(crate) const NOTION_INLINE_CODE_TEXT_SIZE_PX: f32 = 13.0;
-pub(crate) const NOTION_MONO_FONT_FAMILY: &str = "Menlo";
+pub(crate) const NOTION_INLINE_CODE_TEXT_SIZE_PX: f32 = 14.0;
+pub(crate) const NOTION_INLINE_CODE_PADDING_X_PX: f32 = 3.0;
+pub(crate) const NOTION_INLINE_CODE_PADDING_Y_PX: f32 = 1.0;
+pub(crate) const NOTION_MONO_FONT_FAMILY: &str = EDITOR_MONO_FONT_FAMILY;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct InlineMarkVisualStyle {
@@ -339,7 +342,8 @@ fn render_span_with_wrapping(span: &InlineSpan, theme: GuiTheme, wrapping: bool)
     div()
         .when(wrapping, |this| this.min_w(px(0.0)).whitespace_normal())
         .when(style.code, |this| {
-            this.px_1()
+            this.px(px(NOTION_INLINE_CODE_PADDING_X_PX))
+                .py(px(NOTION_INLINE_CODE_PADDING_Y_PX))
                 .rounded(px(NOTION_INLINE_CODE_RADIUS_PX))
                 .font_family(NOTION_MONO_FONT_FAMILY)
                 .text_size(px(NOTION_INLINE_CODE_TEXT_SIZE_PX))

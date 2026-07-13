@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 use std::env;
 
 use cditor_app::Cditor;
@@ -6,19 +8,17 @@ use gpui::*;
 fn main() {
     let app = gpui_platform::application();
     app.run(|cx: &mut App| {
+        cditor_app::gui::input::bind_cditor_keys(cx);
         cx.activate(true);
         cx.open_window(
             WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds {
-                    origin: Point::default(),
-                    size: Size {
-                        width: px(1200.0),
-                        height: px(800.0),
-                    },
-                })),
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    size(px(1200.0), px(800.0)),
+                    cx,
+                ))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Cditor".into()),
-                    appears_transparent: true,
                     ..Default::default()
                 }),
                 ..Default::default()

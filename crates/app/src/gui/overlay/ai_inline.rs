@@ -24,7 +24,8 @@ use cditor_core::rich_text::{
     BlockPayloadRecord, MarkdownImportOptions, RichBlockKind, parse_markdown_document,
 };
 
-const AI_PROMPT_WIDTH_PX: f32 = 420.0;
+const AI_PROMPT_WIDTH_PX: f32 = 720.0;
+const AI_PROMPT_HEIGHT_PX: f32 = 48.0;
 const AI_PREVIEW_WIDTH_PX: f32 = 520.0;
 const AI_ASSISTANT_PANEL_WIDTH_PX: f32 = 640.0;
 const AI_ASSISTANT_PANEL_HEIGHT_PX: f32 = 320.0;
@@ -46,33 +47,43 @@ struct AiScrollbarMetrics {
     thumb_height: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct AiPromptGeometry {
+    x: f32,
+    y: f32,
+    width: f32,
+}
+
 pub fn render_ai_prompt(
     prompt: &AiPromptState,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
+    viewport_width: f32,
+    viewport_height: f32,
 ) -> AnyElement {
-    let quick_actions = [
-        "Improve writing",
-        "Fix spelling and grammar",
-        "Make shorter",
-        "Make longer",
-        "Translate",
-    ];
+    let geometry = ai_prompt_geometry(
+        f32::from(prompt.x),
+        f32::from(prompt.y),
+        viewport_width,
+        viewport_height,
+    );
+    let can_submit = ai_prompt_can_submit(&prompt.draft);
     let panel = div()
         .absolute()
-        .left(prompt.x)
-        .top(prompt.y + px(8.0))
-        .w(px(AI_PROMPT_WIDTH_PX))
-        .p(px(8.0))
+        .left(px(geometry.x))
+        .top(px(geometry.y))
+        .w(px(geometry.width))
+        .h(px(AI_PROMPT_HEIGHT_PX))
+        .px(px(10.0))
         .flex()
-        .flex_col()
-        .gap(px(6.0))
-        .rounded(px(6.0))
+        .items_center()
+        .gap(px(8.0))
+        .rounded(px(12.0))
         .border_1()
-        .border_color(rgb(theme.strong_border))
+        .border_color(rgb(theme.border))
         .bg(rgb(theme.panel))
-        .shadow_lg()
+        .shadow_sm()
         .occlude()
         .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
             cx.stop_propagation();
@@ -85,20 +96,29 @@ pub fn render_ai_prompt(
         })
         .child(
             div()
-                .h(px(36.0))
-                .w_full()
-                .px(px(8.0))
+                .size(px(28.0))
+                .flex_none()
                 .flex()
                 .items_center()
-                .rounded(px(4.0))
+                .justify_center()
+                .rounded_full()
                 .border_1()
                 .border_color(rgb(theme.border))
+                .text_size(px(15.0))
+                .text_color(rgb(theme.text))
+                .child("✧"),
+        )
+        .child(
+            div()
+                .min_w(px(0.0))
+                .h(px(28.0))
+                .flex_1()
                 .track_focus(&focus)
                 .child(SingleLineTextInputElement {
                     handler: view.clone(),
                     focus,
                     value: prompt.draft.clone(),
-                    placeholder: Some("Ask AI to write or edit...".to_owned()),
+                    placeholder: Some("使用 AI 编辑（@ 提醒以使用技能）".to_owned()),
                     caret_offset: Some(prompt.caret_offset),
                     marked_range: prompt.marked_range.clone(),
                     text_color: theme.text,
@@ -108,13 +128,61 @@ pub fn render_ai_prompt(
                 }),
         )
         .child(
-            div().flex().flex_wrap().gap(px(4.0)).children(
-                quick_actions
-                    .into_iter()
-                    .map(|label| ai_command_button(label, theme, view.clone())),
-            ),
+            div()
+                .id("ai-prompt-submit")
+                .size(px(18.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .bg(rgb(if can_submit {
+                    theme.text
+                } else {
+                    theme.strong_border
+                }))
+                .text_size(px(12.0))
+                .text_color(rgb(theme.panel))
+                .when(can_submit, |button| {
+                    button
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(rgb(theme.action_accent)))
+                        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                            let _ = view.update(cx, |view, cx| view.submit_ai_prompt_from_gui(cx));
+                            cx.stop_propagation();
+                        })
+                })
+                .child("↑"),
         );
     deferred(panel).with_priority(150).into_any_element()
+}
+
+fn ai_prompt_geometry(
+    anchor_x: f32,
+    anchor_y: f32,
+    viewport_width: f32,
+    viewport_height: f32,
+) -> AiPromptGeometry {
+    const PROMPT_GAP_PX: f32 = 8.0;
+    let available_width = (viewport_width - AI_VIEWPORT_MARGIN_PX * 2.0).max(1.0);
+    let width = AI_PROMPT_WIDTH_PX.min(available_width);
+    let max_x = (viewport_width - AI_VIEWPORT_MARGIN_PX - width).max(AI_VIEWPORT_MARGIN_PX);
+    let x = anchor_x.clamp(AI_VIEWPORT_MARGIN_PX, max_x);
+    let above = anchor_y - AI_PROMPT_HEIGHT_PX - PROMPT_GAP_PX;
+    let max_y =
+        (viewport_height - AI_VIEWPORT_MARGIN_PX - AI_PROMPT_HEIGHT_PX).max(AI_VIEWPORT_MARGIN_PX);
+    let y = if anchor_y <= max_y {
+        anchor_y.max(AI_VIEWPORT_MARGIN_PX)
+    } else if above >= AI_VIEWPORT_MARGIN_PX {
+        above
+    } else {
+        max_y
+    };
+    AiPromptGeometry { x, y, width }
+}
+
+fn ai_prompt_can_submit(draft: &str) -> bool {
+    !draft.trim().is_empty()
 }
 
 pub(crate) fn render_ai_preview_overlay(
@@ -430,32 +498,6 @@ fn ai_preview_geometry(
     }
 }
 
-fn ai_command_button(
-    label: &'static str,
-    theme: GuiTheme,
-    view: Entity<CditorV2View>,
-) -> AnyElement {
-    div()
-        .h(px(28.0))
-        .px(px(8.0))
-        .flex()
-        .items_center()
-        .rounded(px(4.0))
-        .bg(rgb(theme.hover_surface))
-        .text_size(px(12.0))
-        .text_color(rgb(theme.text))
-        .cursor_pointer()
-        .hover(move |style| style.bg(rgb(theme.action_background)))
-        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-            let _ = view.update(cx, |view, cx| {
-                view.submit_ai_prompt_instruction_from_gui(label, cx)
-            });
-            cx.stop_propagation();
-        })
-        .child(label)
-        .into_any_element()
-}
-
 fn ai_preview_apply_button(
     label: &'static str,
     mode: AiApplyMode,
@@ -514,6 +556,41 @@ fn ai_preview_discard_button(theme: GuiTheme, view: Entity<CditorV2View>) -> Any
 mod tests {
     use super::*;
     use gpui::{point, size};
+
+    #[test]
+    fn prompt_geometry_matches_notion_bar_and_stays_in_viewport() {
+        assert_eq!(
+            ai_prompt_geometry(120.0, 100.0, 1200.0, 800.0),
+            AiPromptGeometry {
+                x: 120.0,
+                y: 100.0,
+                width: 720.0,
+            }
+        );
+        assert_eq!(
+            ai_prompt_geometry(700.0, 600.0, 800.0, 640.0),
+            AiPromptGeometry {
+                x: 68.0,
+                y: 544.0,
+                width: 720.0,
+            }
+        );
+        assert_eq!(
+            ai_prompt_geometry(0.0, 40.0, 300.0, 200.0),
+            AiPromptGeometry {
+                x: 12.0,
+                y: 40.0,
+                width: 276.0,
+            }
+        );
+    }
+
+    #[test]
+    fn prompt_submit_requires_non_whitespace_instruction() {
+        assert!(!ai_prompt_can_submit(""));
+        assert!(!ai_prompt_can_submit(" \n\t"));
+        assert!(ai_prompt_can_submit("帮我续写"));
+    }
 
     #[test]
     fn assistant_panel_flips_above_when_anchor_is_near_viewport_bottom() {

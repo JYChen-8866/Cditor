@@ -119,3 +119,56 @@ fn test_nested_inline_markdown() {
         );
     }
 }
+
+#[test]
+fn closed_inline_markdown_does_not_leak_marks_to_following_text() {
+    let cases = [
+        ("**ad**", vec![InlineMark::Bold]),
+        ("*ad*", vec![InlineMark::Italic]),
+        ("~~ad~~", vec![InlineMark::Strike]),
+        ("++ad++", vec![InlineMark::Underline]),
+        ("`ad`", vec![InlineMark::Code]),
+        (
+            "[ad](https://example.com)",
+            vec![InlineMark::Link {
+                href: "https://example.com".to_owned(),
+            }],
+        ),
+        ("***ad***", vec![InlineMark::Bold, InlineMark::Italic]),
+    ];
+
+    for (source, expected_marks) in cases {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                "",
+            )],
+            720.0,
+        );
+        runtime.focus_block_at_offset(1, 0).unwrap();
+
+        for ch in source.chars().chain("x".chars()) {
+            runtime.insert_char(ch).unwrap();
+        }
+
+        let payload = runtime.payload_window.get(1).unwrap();
+        let BlockPayload::RichText { spans } = &payload.payload else {
+            panic!("expected rich text for {source}");
+        };
+        assert_eq!(plain_text_from_spans(spans), "adx", "source={source}");
+        assert!(
+            spans
+                .iter()
+                .any(|span| span.text == "ad" && span.marks == expected_marks),
+            "closed syntax should mark only its content: source={source}, spans={spans:?}"
+        );
+        assert!(
+            spans
+                .iter()
+                .any(|span| span.text == "x" && span.marks.is_empty()),
+            "following text must be plain: source={source}, spans={spans:?}"
+        );
+    }
+}

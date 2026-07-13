@@ -83,5 +83,21 @@ mod tests {
             GuiPlatformInputTarget::BlockText { block_id: 1 },
             &runtime,
         ));
+
+        let menu = GuiPlatformInputTarget::table_menu_query(2);
+        assert!(platform_input_registration_allows(
+            Some(menu),
+            menu,
+            &runtime
+        ));
+        assert!(!platform_input_registration_allows(
+            Some(menu),
+            GuiPlatformInputTarget::TableCell {
+                block_id: 2,
+                row: 0,
+                col: 0,
+            },
+            &runtime,
+        ));
     }
 }

@@ -6,7 +6,6 @@ use crate::gui::app::input::ime::{
     platform_selected_text_range,
 };
 use crate::gui::app::input::keyboard::ensure_runtime_focus_for_insert_char;
-use crate::gui::app::input::mouse::scroll_delta_y;
 use crate::gui::app::interaction::geometry::{
     ParentDropTarget, drop_target_for_document_y_from_rects, fallback_text_metrics_for_block,
     parent_drop_target_from_rects,
@@ -14,7 +13,6 @@ use crate::gui::app::interaction::geometry::{
 use crate::gui::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta;
 use crate::gui::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
 use cditor_core::block::BlockDropTarget;
-use gpui::{ScrollDelta, ScrollWheelEvent};
 
 #[test]
 fn save_status_for_mode_respects_readonly() {
@@ -419,6 +417,56 @@ fn fallback_text_metrics_include_list_prefix_and_indent() {
 }
 
 #[test]
+fn fallback_text_origins_align_heading_and_root_paragraph_marker_lanes() {
+    let heading_kind = cditor_core::rich_text::RichBlockKind::Heading { level: 1 };
+    let heading = fallback_snapshot(
+        heading_kind.clone(),
+        cditor_core::block::BlockChromeSnapshot::from_kind(
+            &heading_kind,
+            cditor_core::block::BlockListInfo::root(),
+            true,
+            false,
+        ),
+    );
+    let paragraph = fallback_snapshot(
+        cditor_core::rich_text::RichBlockKind::Paragraph,
+        cditor_core::block::BlockChromeSnapshot::plain(),
+    );
+
+    let heading = fallback_text_metrics_for_block(&heading, GuiTheme::light());
+    let paragraph = fallback_text_metrics_for_block(&paragraph, GuiTheme::light());
+
+    assert_eq!(heading.origin_x_in_block_px, paragraph.origin_x_in_block_px);
+}
+
+#[test]
+fn fallback_todo_text_starts_after_checkbox_at_shared_surface_origin() {
+    let todo_kind = cditor_core::rich_text::RichBlockKind::Todo { checked: false };
+    let todo = fallback_snapshot(
+        todo_kind.clone(),
+        cditor_core::block::BlockChromeSnapshot::from_kind(
+            &todo_kind,
+            cditor_core::block::BlockListInfo::root(),
+            false,
+            false,
+        ),
+    );
+    let paragraph = fallback_snapshot(
+        cditor_core::rich_text::RichBlockKind::Paragraph,
+        cditor_core::block::BlockChromeSnapshot::plain(),
+    );
+
+    let todo = fallback_text_metrics_for_block(&todo, GuiTheme::light());
+    let paragraph = fallback_text_metrics_for_block(&paragraph, GuiTheme::light());
+
+    assert_eq!(
+        todo.origin_x_in_block_px,
+        paragraph.origin_x_in_block_px
+            + f64::from(crate::gui::block::chrome::BLOCK_PREFIX_WIDTH_PX)
+    );
+}
+
+#[test]
 fn fallback_text_metrics_include_v1_code_content_padding() {
     let code_block = fallback_snapshot(
         cditor_core::rich_text::RichBlockKind::Code {
@@ -438,9 +486,9 @@ fn fallback_text_metrics_include_v1_code_content_padding() {
         code.origin_y_in_block_px,
         4.0 + 1.0 + f64::from(V1_CODE_CONTENT_PADDING_TOP_PX)
     );
-    assert!(
-        code.origin_x_in_block_px
-            >= paragraph.origin_x_in_block_px + f64::from(V1_CODE_CONTENT_PADDING_X_PX)
+    assert_eq!(
+        code.origin_x_in_block_px,
+        paragraph.origin_x_in_block_px + f64::from(V1_CODE_CONTENT_PADDING_X_PX)
     );
 }
 
@@ -589,92 +637,4 @@ fn parent_drop_target_uses_previous_supported_block_outside_source_subtree() {
             sibling_index: usize::MAX,
         })
     );
-}
-
-#[test]
-fn parent_drop_target_computes_direct_child_sibling_index() {
-    let rects = vec![
-        ProjectedBlockRect {
-            block_id: 10,
-            visible_index: 0,
-            depth: 0,
-            document_top: 0.0,
-            document_bottom: 40.0,
-            indent_px: 0.0,
-            text_origin_x_in_block_px: 0.0,
-            text_origin_y_in_block_px: 0.0,
-            text_width_px: 860.0,
-            supports_children: true,
-        },
-        ProjectedBlockRect {
-            block_id: 11,
-            visible_index: 1,
-            depth: 1,
-            document_top: 40.0,
-            document_bottom: 80.0,
-            indent_px: 24.0,
-            text_origin_x_in_block_px: 24.0,
-            text_origin_y_in_block_px: 0.0,
-            text_width_px: 836.0,
-            supports_children: false,
-        },
-        ProjectedBlockRect {
-            block_id: 12,
-            visible_index: 2,
-            depth: 1,
-            document_top: 80.0,
-            document_bottom: 120.0,
-            indent_px: 24.0,
-            text_origin_x_in_block_px: 24.0,
-            text_origin_y_in_block_px: 0.0,
-            text_width_px: 836.0,
-            supports_children: false,
-        },
-        ProjectedBlockRect {
-            block_id: 20,
-            visible_index: 3,
-            depth: 0,
-            document_top: 120.0,
-            document_bottom: 160.0,
-            indent_px: 0.0,
-            text_origin_x_in_block_px: 0.0,
-            text_origin_y_in_block_px: 0.0,
-            text_width_px: 860.0,
-            supports_children: false,
-        },
-    ];
-
-    assert_eq!(
-        parent_drop_target_from_rects(
-            &rects,
-            20,
-            BlockDropTarget {
-                insert_before_block_id: Some(12),
-                target_visible_index: 2,
-            },
-        ),
-        Some(ParentDropTarget {
-            parent_id: 10,
-            sibling_index: 1,
-        })
-    );
-}
-
-#[test]
-fn gui_scroll_delta_pixels_and_lines_are_normalized() {
-    let pixel_event = ScrollWheelEvent {
-        position: gpui::point(gpui::px(0.0), gpui::px(0.0)),
-        delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(42.0))),
-        modifiers: gpui::Modifiers::default(),
-        touch_phase: gpui::TouchPhase::Moved,
-    };
-    let line_event = ScrollWheelEvent {
-        position: gpui::point(gpui::px(0.0), gpui::px(0.0)),
-        delta: ScrollDelta::Lines(gpui::point(0.0, 3.0)),
-        modifiers: gpui::Modifiers::default(),
-        touch_phase: gpui::TouchPhase::Moved,
-    };
-
-    assert_eq!(scroll_delta_y(&pixel_event), -42.0);
-    assert_eq!(scroll_delta_y(&line_event), -48.0);
 }

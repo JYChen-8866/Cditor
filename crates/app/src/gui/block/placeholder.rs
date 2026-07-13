@@ -1,8 +1,11 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
 
 use crate::gui::GuiTheme;
+use crate::gui::block::paragraph::NOTION_PARAGRAPH_TEXT_SIZE_PX;
 use crate::gui::block::skeleton::render_block_skeleton;
 use cditor_runtime::ViewBlockSnapshot;
+
+const EMPTY_LINE_PLACEHOLDER_TEXT_SIZE_PX: f32 = NOTION_PARAGRAPH_TEXT_SIZE_PX;
 
 pub fn render_placeholder(block: &ViewBlockSnapshot, theme: GuiTheme) -> AnyElement {
     render_block_skeleton(block, theme)
@@ -13,7 +16,7 @@ pub fn render_empty_ai_hint(theme: GuiTheme) -> AnyElement {
         .absolute()
         .left(px(4.0))
         .top(px(0.0))
-        .text_size(px(13.0))
+        .text_size(px(EMPTY_LINE_PLACEHOLDER_TEXT_SIZE_PX))
         .text_color(rgb(theme.muted))
         .child("按 space（空格）以启用 AI，或按“/”启用命令")
         .into_any_element()
@@ -29,4 +32,17 @@ pub fn render_error(message: &str, theme: GuiTheme) -> AnyElement {
         .text_color(rgb(theme.danger))
         .child(format!("Unable to load block: {message}"))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_line_placeholder_uses_regular_paragraph_text_size() {
+        assert_eq!(
+            EMPTY_LINE_PLACEHOLDER_TEXT_SIZE_PX,
+            NOTION_PARAGRAPH_TEXT_SIZE_PX
+        );
+    }
 }

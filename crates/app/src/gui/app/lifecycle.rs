@@ -90,9 +90,14 @@ impl CditorV2View {
             slash_menu: None,
             toast: None,
             table_interaction_mode: GuiTableInteractionMode::Idle,
+            table_menu_ui: Default::default(),
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            block_transform_menu_open: false,
+            color_menu_open: false,
+            color_menu_scroll_handle: Default::default(),
+            last_color_action: None,
             gutter_block_drag: None,
             gutter_drag_auto_scroll_scheduled: false,
             image_resize_drag: None,
@@ -149,9 +154,14 @@ impl CditorV2View {
             slash_menu: None,
             toast: None,
             table_interaction_mode: GuiTableInteractionMode::Idle,
+            table_menu_ui: Default::default(),
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            block_transform_menu_open: false,
+            color_menu_open: false,
+            color_menu_scroll_handle: Default::default(),
+            last_color_action: None,
             gutter_block_drag: None,
             gutter_drag_auto_scroll_scheduled: false,
             image_resize_drag: None,
@@ -208,9 +218,14 @@ impl CditorV2View {
             slash_menu: None,
             toast: None,
             table_interaction_mode: GuiTableInteractionMode::Idle,
+            table_menu_ui: Default::default(),
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            block_transform_menu_open: false,
+            color_menu_open: false,
+            color_menu_scroll_handle: Default::default(),
+            last_color_action: None,
             gutter_block_drag: None,
             gutter_drag_auto_scroll_scheduled: false,
             image_resize_drag: None,
@@ -247,9 +262,12 @@ impl CditorV2View {
         self.slash_menu = None;
         self.toast = None;
         self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        self.table_menu_ui = Default::default();
         self.hovered_block_id = None;
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.block_transform_menu_open = false;
+        self.color_menu_open = false;
         self.gutter_block_drag = None;
         self.gutter_drag_auto_scroll_scheduled = false;
         self.image_resize_drag = None;
@@ -279,9 +297,12 @@ impl CditorV2View {
         self.slash_menu = None;
         self.toast = None;
         self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        self.table_menu_ui = Default::default();
         self.hovered_block_id = None;
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.block_transform_menu_open = false;
+        self.color_menu_open = false;
         self.gutter_block_drag = None;
         self.gutter_drag_auto_scroll_scheduled = false;
         self.image_resize_drag = None;

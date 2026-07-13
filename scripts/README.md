@@ -4,6 +4,7 @@
 
 - `dev/`：日常开发、运行和本地验证入口。
 - `database/`：PostgreSQL 环境初始化与远程隧道工具。
+- `packaging/`：桌面应用打包脚本；GitHub Actions 使用它生成 macOS `.app` 和 `.dmg`。
 - `archive/workspace-migration/`：早期 workspace 拆分期间使用的迁移脚本，仅作历史参考，不应在当前目录结构上再次执行。
 
 常用命令：

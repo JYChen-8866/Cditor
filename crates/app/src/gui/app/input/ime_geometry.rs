@@ -2,11 +2,13 @@ use std::ops::Range;
 
 use gpui::{Bounds, Context, Pixels, Point, Size, Window, px};
 
-use super::ime::{
+use super::ime_support::{
     ai_prompt_input_target_allows, code_language_input_target_allows, platform_input_target_allows,
+    table_menu_input_target_allows,
 };
 use crate::gui::app::cditor_v2_view::CditorV2View;
 use crate::gui::app::input_trace::trace_input;
+use crate::gui::block::table::menu::TABLE_MENU_SEARCH_FONT_SIZE_PX;
 use crate::gui::input::ime::utf16_range_to_utf8_range;
 use crate::gui::input::{SINGLE_LINE_INPUT_FONT_SIZE_PX, single_line_visible_range_x};
 use crate::gui::text::platform_range_bounds;
@@ -20,6 +22,30 @@ impl CditorV2View {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
+        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+                return None;
+            }
+            let range = utf16_range_to_utf8_range(&self.table_menu_ui.query, &range_utf16);
+            let x_range = single_line_visible_range_x(
+                &self.table_menu_ui.query,
+                range,
+                self.table_menu_ui.caret_offset,
+                px(TABLE_MENU_SEARCH_FONT_SIZE_PX),
+                element_bounds,
+                _window,
+            );
+            return Some(Bounds {
+                origin: Point {
+                    x: element_bounds.origin.x + px(x_range.start),
+                    y: element_bounds.origin.y,
+                },
+                size: Size {
+                    width: px((x_range.end - x_range.start).max(1.0)),
+                    height: element_bounds.size.height,
+                },
+            });
+        }
         if self.ai_prompt_focus.is_focused(_window) {
             let registered_target = self.platform_input_target;
             let prompt = self.ai_prompt.as_ref()?;

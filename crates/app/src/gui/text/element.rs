@@ -4,17 +4,14 @@ use std::{cell::RefCell, ops::Range, rc::Rc, sync::OnceLock};
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, Entity, FocusHandle, FontStyle,
     FontWeight, GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId, ParentElement,
-    Pixels, SharedString, Size, StrikethroughStyle, Style, Styled, TextAlign, TextRun,
-    UnderlineStyle, Window, WrappedLine as GpuiWrappedLine, div, fill, point, px, rgb,
+    Pixels, Size, StrikethroughStyle, Style, Styled, TextAlign, TextRun, UnderlineStyle, Window,
+    WrappedLine as GpuiWrappedLine, div, fill, point, px, rgb, rgba,
 };
 
 use crate::gui::GuiTheme;
 use crate::gui::app::{CditorV2View, GuiPlatformInputTarget};
 use crate::gui::input::platform_adapter::handle_registered_platform_input;
-use crate::gui::rich_text::{
-    NOTION_INLINE_CODE_RADIUS_PX, NOTION_INLINE_CODE_TEXT_SIZE_PX, NOTION_MONO_FONT_FAMILY,
-    inline_mark_visual_style,
-};
+use crate::gui::rich_text::{NOTION_MONO_FONT_FAMILY, inline_mark_visual_style};
 use cditor_core::layout::block_metrics::{
     NOTION_BODY_LINE_HEIGHT_PX, NOTION_HEADING_1_LINE_HEIGHT_PX, NOTION_HEADING_2_LINE_HEIGHT_PX,
     NOTION_HEADING_3_LINE_HEIGHT_PX,
@@ -23,11 +20,13 @@ use cditor_core::layout::normalize_text_inner_measured_height;
 use cditor_core::rich_text::{InlineSpan, RichBlockKind};
 use cditor_runtime::TableCellPosition;
 
+use super::background::{inline_background_quads, text_selection_background};
+use super::fallback_render::render_visual_run_segments;
 use super::platform::{
     RichTextPlatformLayout, normalized_text_range, platform_cursor_bounds_for_offset,
     platform_range_segment_bounds,
 };
-use super::{RichTextLayoutInput, TextHitPoint, VisualRun, wrap_rich_text};
+use super::{RichTextLayoutInput, TextHitPoint, wrap_rich_text};
 
 fn input_trace_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
@@ -222,6 +221,7 @@ struct RichTextGpuiElement {
 struct RichTextGpuiPrepaintState {
     lines: Vec<GpuiWrappedLine>,
     cursor: Option<gpui::PaintQuad>,
+    inline_backgrounds: Vec<gpui::PaintQuad>,
     marked_backgrounds: Vec<gpui::PaintQuad>,
     line_height: Pixels,
 }
@@ -326,6 +326,7 @@ impl Element for RichTextGpuiElement {
                     &text,
                     offset,
                     px(1.5),
+                    TextAlign::Left,
                 )
                 .map(|bounds| fill(bounds, rgb(self.theme.focused)))
             })
@@ -337,15 +338,31 @@ impl Element for RichTextGpuiElement {
             .clone()
             .map(|range| {
                 let text = plain_text_from_spans(&self.input.spans);
-                platform_range_segment_bounds(&lines, bounds, line_height, &text, range)
-                    .into_iter()
-                    .map(|segment| fill(segment, rgb(self.theme.action_background)))
-                    .collect()
+                platform_range_segment_bounds(
+                    &lines,
+                    bounds,
+                    line_height,
+                    &text,
+                    range,
+                    TextAlign::Left,
+                )
+                .into_iter()
+                .map(|segment| fill(segment, rgb(self.theme.action_background)))
+                .collect()
             })
             .unwrap_or_default();
+        let inline_backgrounds = inline_background_quads(
+            &self.input.spans,
+            &lines,
+            bounds,
+            line_height,
+            &text,
+            self.theme,
+        );
         RichTextGpuiPrepaintState {
             lines,
             cursor,
+            inline_backgrounds,
             marked_backgrounds,
             line_height,
         }
@@ -398,6 +415,9 @@ impl Element for RichTextGpuiElement {
 
         let lines = std::mem::take(&mut prepaint.lines);
         let text = plain_text_from_spans(&self.input.spans);
+        for background in prepaint.inline_backgrounds.drain(..) {
+            window.paint_quad(background);
+        }
         if let Some(selection_range) = self.selection_range.clone() {
             for segment in platform_range_segment_bounds(
                 &lines,
@@ -405,8 +425,9 @@ impl Element for RichTextGpuiElement {
                 prepaint.line_height,
                 &text,
                 selection_range,
+                TextAlign::Left,
             ) {
-                window.paint_quad(fill(segment, rgb(self.theme.action_background)));
+                window.paint_quad(fill(segment, rgba(text_selection_background(self.theme))));
             }
         }
         for background in prepaint.marked_backgrounds.drain(..) {
@@ -436,6 +457,7 @@ impl Element for RichTextGpuiElement {
             lines,
             bounds,
             line_height: prepaint.line_height,
+            text_align: TextAlign::Left,
             measured_height: normalize_text_inner_measured_height(
                 &self.input.kind,
                 f64::from(bounds.size.height),
@@ -533,6 +555,8 @@ fn platform_text_runs(
             len: end - start,
             font,
             color,
+            // Keep the native run background as a fallback, while the rounded
+            // decoration quad adds the visible horizontal inset around code.
             background_color: visual_style
                 .background_color
                 .map(|color| Hsla::from(rgb(color))),
@@ -603,96 +627,4 @@ pub(super) fn text_color_for_kind(kind: &RichBlockKind, theme: GuiTheme) -> u32 
 
 pub(super) fn is_completed_todo(kind: &RichBlockKind) -> bool {
     matches!(kind, RichBlockKind::Todo { checked: true })
-}
-
-pub(super) fn render_visual_run_segments(
-    text: &str,
-    run: &VisualRun,
-    theme: GuiTheme,
-    marked_range: Option<&Range<usize>>,
-) -> Vec<AnyElement> {
-    let Some(marked_range) = marked_range else {
-        return vec![render_visual_run_segment(
-            text,
-            run,
-            theme,
-            run.logical_range.clone(),
-            false,
-        )];
-    };
-    let marked_start = run.logical_range.start.max(marked_range.start);
-    let marked_end = run.logical_range.end.min(marked_range.end);
-    if marked_start >= marked_end {
-        return vec![render_visual_run_segment(
-            text,
-            run,
-            theme,
-            run.logical_range.clone(),
-            false,
-        )];
-    }
-
-    let mut segments = Vec::with_capacity(3);
-    if run.logical_range.start < marked_start {
-        segments.push(render_visual_run_segment(
-            text,
-            run,
-            theme,
-            run.logical_range.start..marked_start,
-            false,
-        ));
-    }
-    segments.push(render_visual_run_segment(
-        text,
-        run,
-        theme,
-        marked_start..marked_end,
-        true,
-    ));
-    if marked_end < run.logical_range.end {
-        segments.push(render_visual_run_segment(
-            text,
-            run,
-            theme,
-            marked_end..run.logical_range.end,
-            false,
-        ));
-    }
-    segments
-}
-
-fn render_visual_run_segment(
-    text: &str,
-    run: &VisualRun,
-    theme: GuiTheme,
-    range: Range<usize>,
-    marked: bool,
-) -> AnyElement {
-    let label = text.get(range).unwrap_or_default().to_owned();
-    div()
-        .when(run.mark_style.code, |this| {
-            this.px_1()
-                .rounded(px(NOTION_INLINE_CODE_RADIUS_PX))
-                .bg(rgb(theme.inline_code_background))
-                .font_family(NOTION_MONO_FONT_FAMILY)
-                .text_size(px(NOTION_INLINE_CODE_TEXT_SIZE_PX))
-        })
-        .when(run.mark_style.bold, |this| {
-            this.font_weight(FontWeight::BOLD)
-        })
-        .when(run.mark_style.italic, |this| this.italic())
-        .when(
-            marked || run.mark_style.underline || run.mark_style.link,
-            |this| this.text_decoration_1(),
-        )
-        .when(run.mark_style.strike, |this| this.line_through())
-        .text_color(rgb(if run.mark_style.link {
-            theme.focused
-        } else if run.mark_style.code {
-            theme.inline_code_text
-        } else {
-            theme.text
-        }))
-        .child(SharedString::from(label))
-        .into_any_element()
 }

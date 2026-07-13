@@ -39,6 +39,160 @@ fn document_text_selection_projects_partial_and_full_ranges() {
 }
 
 #[test]
+fn document_text_selection_fragments_cover_every_selected_block_in_document_order() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "abcd"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "efgh"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "ijkl"),
+        ],
+        720.0,
+    );
+    runtime.set_document_text_selection(3, 1, 1, 2).unwrap();
+
+    assert_eq!(
+        runtime.document_text_selection_fragments().unwrap(),
+        vec![
+            DocumentTextSelectionFragment {
+                block_id: 1,
+                range: 2..4,
+            },
+            DocumentTextSelectionFragment {
+                block_id: 2,
+                range: 0..4,
+            },
+            DocumentTextSelectionFragment {
+                block_id: 3,
+                range: 0..1,
+            },
+        ]
+    );
+}
+
+#[test]
+fn select_all_command_expands_from_focused_block_to_entire_document() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "first"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "middle"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "last"),
+        ],
+        720.0,
+    );
+    runtime.focus_block_at_offset(2, 3).unwrap();
+
+    assert!(runtime.select_all_command());
+    assert_eq!(
+        runtime.document_text_selection_fragments().unwrap(),
+        vec![DocumentTextSelectionFragment {
+            block_id: 2,
+            range: 0..6,
+        }]
+    );
+
+    assert!(runtime.select_all_command());
+    assert_eq!(
+        runtime.document_text_selection_fragments().unwrap(),
+        vec![
+            DocumentTextSelectionFragment {
+                block_id: 1,
+                range: 0..5,
+            },
+            DocumentTextSelectionFragment {
+                block_id: 2,
+                range: 0..6,
+            },
+            DocumentTextSelectionFragment {
+                block_id: 3,
+                range: 0..4,
+            },
+        ]
+    );
+    assert_eq!(runtime.focused_block_id(), Some(2));
+}
+
+#[test]
+fn select_all_command_selects_an_empty_block_before_expanding_to_document() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "first"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, ""),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "last"),
+        ],
+        720.0,
+    );
+    runtime.focus_block_at_offset(2, 0).unwrap();
+
+    assert!(runtime.select_all_command());
+    assert!(runtime.has_selected_blocks());
+    assert_eq!(runtime.document_text_selection_fragments(), None);
+
+    assert!(runtime.select_all_command());
+    assert!(!runtime.has_selected_blocks());
+    assert_eq!(
+        runtime.document_text_selection_fragments().unwrap(),
+        vec![
+            DocumentTextSelectionFragment {
+                block_id: 1,
+                range: 0..5,
+            },
+            DocumentTextSelectionFragment {
+                block_id: 2,
+                range: 0..0,
+            },
+            DocumentTextSelectionFragment {
+                block_id: 3,
+                range: 0..4,
+            },
+        ]
+    );
+}
+
+#[test]
+fn same_block_document_selection_deletes_its_explicit_range() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "abcd",
+        )],
+        720.0,
+    );
+    runtime.set_document_text_selection(1, 1, 1, 3).unwrap();
+
+    assert!(runtime.delete_active_selection().unwrap());
+    assert_eq!(runtime.focused_text(), Some("ad"));
+    assert_eq!(runtime.caret_offset_for_block(1), Some(1));
+    assert!(!runtime.has_active_selection());
+}
+
+#[test]
+fn shift_arrow_selection_deletes_without_collapsing_the_range_first() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "abcd",
+        )],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, 3).unwrap();
+    assert!(runtime.move_caret_left(true).unwrap());
+    assert!(runtime.move_caret_left(true).unwrap());
+    assert_eq!(runtime.focused_text_selection_range(), Some(1..3));
+
+    assert!(runtime.delete_backward().unwrap());
+    assert_eq!(runtime.focused_text(), Some("ad"));
+    assert_eq!(runtime.caret_offset_for_block(1), Some(1));
+    assert!(!runtime.has_active_selection());
+}
+
+#[test]
 fn focused_text_selection_replaces_and_moves_with_shift_arrows() {
     let mut runtime = DocumentRuntime::demo();
     runtime.focus_block_at_offset(3, 0).unwrap();

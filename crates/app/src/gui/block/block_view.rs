@@ -16,8 +16,9 @@ use crate::gui::block::table::{
 use crate::gui::block::{MermaidRenderCache, WhiteboardThumbnailCache, render_mermaid_block};
 use crate::gui::input::{
     CodeLanguageEditState, focus_block_from_mouse, gutter_mouse_down_from_mouse,
-    hover_block_from_mouse, toggle_todo_from_mouse,
+    hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,
 };
+use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 
@@ -45,6 +46,7 @@ impl BlockView {
         table_reorder_preview: Option<TableReorderPreview>,
         table_range_selection: Option<TableCellRangeSelection>,
         code_language_edit: Option<&CodeLanguageEditState>,
+        suppress_document_text_input: bool,
         table_scroll_handle: Option<ScrollHandle>,
         mermaid_renders: &MermaidRenderCache,
         mermaid_show_source: bool,
@@ -66,6 +68,7 @@ impl BlockView {
             table_reorder_preview,
             table_range_selection,
             code_language_edit,
+            suppress_document_text_input,
             table_scroll_handle,
             mermaid_renders,
             mermaid_show_source,
@@ -76,7 +79,6 @@ impl BlockView {
         let hover_view = view.clone();
         let add_view = view.clone();
         let gutter_view = view.clone();
-        let delete_view = view.clone();
         let on_todo_toggle = matches!(
             block.chrome.prefix,
             cditor_core::block::BlockPrefixSnapshot::Todo { .. }
@@ -91,6 +93,22 @@ impl BlockView {
                     cx.stop_propagation();
                 },
             ) as crate::gui::block::prefix::TodoToggleHandler
+        });
+        let on_fold_toggle = matches!(
+            block.chrome.prefix,
+            cditor_core::block::BlockPrefixSnapshot::Heading { .. }
+                | cditor_core::block::BlockPrefixSnapshot::Toggle { .. }
+        )
+        .then(|| {
+            let fold_view = view.clone();
+            Box::new(
+                move |event: &gpui::MouseDownEvent,
+                      window: &mut gpui::Window,
+                      cx: &mut gpui::App| {
+                    toggle_block_fold_from_mouse(&fold_view, block_id, event, window, cx);
+                    cx.stop_propagation();
+                },
+            ) as crate::gui::block::prefix::FoldToggleHandler
         });
         block_shell(
             block,
@@ -115,13 +133,8 @@ impl BlockView {
                 gutter_mouse_down_from_mouse(&gutter_view, block_id, event, window, cx);
                 cx.stop_propagation();
             })),
-            Some(Box::new(move |_event, _window, cx| {
-                let _ = delete_view.update(cx, |view, cx| {
-                    view.delete_block_from_gui(block_id, cx);
-                });
-                cx.stop_propagation();
-            })),
             on_todo_toggle,
+            on_fold_toggle,
         )
     }
 }
@@ -139,6 +152,7 @@ fn render_kind_content(
     table_reorder_preview: Option<TableReorderPreview>,
     table_range_selection: Option<TableCellRangeSelection>,
     code_language_edit: Option<&CodeLanguageEditState>,
+    suppress_document_text_input: bool,
     table_scroll_handle: Option<ScrollHandle>,
     mermaid_renders: &MermaidRenderCache,
     mermaid_show_source: bool,
@@ -154,7 +168,8 @@ fn render_kind_content(
         table_resize_preview,
         table_reorder_preview,
         table_range_selection,
-        code_language_edit.is_some()
+        suppress_document_text_input
+            || code_language_edit.is_some()
             || (matches!(block.kind, RichBlockKind::Mermaid) && !mermaid_show_source),
         table_axis_selection,
         table_scroll_handle,
@@ -199,7 +214,7 @@ fn render_kind_content(
             .w_full()
             .rounded(px(3.0))
             .bg(rgb(theme.code_background))
-            .font_family("Menlo")
+            .font_family(EDITOR_MONO_FONT_FAMILY)
             .text_size(px(13.0))
             .child(content)
             .into_any_element(),

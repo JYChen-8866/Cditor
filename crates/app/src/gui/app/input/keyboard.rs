@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
-use gpui::{ClipboardItem, Context, KeyDownEvent, Window};
+use gpui::{ClipboardItem, Context};
 
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::gui::app::input_trace::trace_input;
 use crate::gui::block::table::{TableAxis, TableAxisSelection};
 use crate::gui::clipboard_assets::image_asset_from_clipboard_item;
-use crate::gui::image_preview::close_active_preview_if_escape_enabled;
-use crate::gui::input::{GuiInputCommand, command_for_key_down, is_empty_line_ai_shortcut};
+use crate::gui::input::GuiInputCommand;
+use crate::gui::platform::normalize_external_line_endings;
 use crate::gui::text::RichTextPlatformLayout;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{
@@ -35,176 +36,6 @@ fn clipboard_trace_preview(text: &str) -> String {
 }
 
 impl CditorV2View {
-    pub(in crate::gui::app) fn on_key_down(
-        &mut self,
-        event: &KeyDownEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.apply_ai_prompt_key_from_gui(event, cx) {
-            cx.stop_propagation();
-            cx.notify();
-            return;
-        }
-        if is_empty_line_ai_shortcut(event) && self.invoke_empty_line_ai_from_gui(cx) {
-            cx.stop_propagation();
-            cx.notify();
-            return;
-        }
-        if self
-            .ready_runtime_ref()
-            .is_some_and(|runtime| runtime.ai_session_snapshot().is_some())
-        {
-            match event.keystroke.key.as_str() {
-                "tab" => {
-                    if self.accept_ai_preview_from_gui(cx) {
-                        cx.stop_propagation();
-                        return;
-                    }
-                }
-                "escape" => {
-                    if self.reject_ai_preview_from_gui(cx) {
-                        cx.stop_propagation();
-                        return;
-                    }
-                }
-                _ => {}
-            }
-        }
-        if self.handle_table_cell_key_down(event, cx) {
-            cx.stop_propagation();
-            cx.notify();
-            return;
-        }
-        if self.apply_code_language_key_from_gui(event, cx) {
-            cx.stop_propagation();
-            cx.notify();
-            return;
-        }
-        if self.handle_slash_menu_key_down(event, cx) {
-            cx.stop_propagation();
-            return;
-        }
-        if event.keystroke.key.as_str() == "escape" && self.dismiss_table_menu_from_gui(cx) {
-            cx.stop_propagation();
-            return;
-        }
-        if event.keystroke.key.as_str() == "escape" && close_active_preview_if_escape_enabled(cx) {
-            cx.stop_propagation();
-            cx.notify();
-            return;
-        }
-        let command = command_for_key_down(event);
-        if self.focused_mermaid_is_preview() {
-            if matches!(command, GuiInputCommand::HandleEnter) {
-                self.apply_input_command(GuiInputCommand::InsertParagraphAfterFocused, cx);
-                cx.stop_propagation();
-                cx.notify();
-                return;
-            }
-            if mermaid_preview_blocks_command(command) {
-                cx.stop_propagation();
-                return;
-            }
-        }
-        if command.should_stop_propagation() {
-            self.apply_input_command(command, cx);
-            self.sync_slash_menu_from_runtime(cx);
-            cx.stop_propagation();
-            cx.notify();
-        }
-    }
-
-    fn focused_mermaid_is_preview(&self) -> bool {
-        let Some(runtime) = self.ready_runtime_ref() else {
-            return false;
-        };
-        let Some(block_id) = runtime.focused_block_id() else {
-            return false;
-        };
-        !self.mermaid_source_blocks.contains(&block_id)
-            && runtime
-                .block_payload_record(block_id)
-                .is_some_and(|payload| {
-                    matches!(payload.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
-                })
-    }
-
-    fn handle_table_cell_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
-        if event.keystroke.is_ime_in_progress() {
-            return false;
-        }
-        let modifiers = event.keystroke.modifiers;
-        if modifiers.platform || modifiers.control || modifiers.alt {
-            return false;
-        }
-        let CditorViewState::Ready(runtime) = &mut self.state else {
-            return false;
-        };
-        if runtime.focused_table_cell_offset().is_none() {
-            return false;
-        }
-        let (consumed, changed) = match event.keystroke.key.as_str() {
-            "escape" => (runtime.blur_table_cell(), false),
-            "backspace" => (true, runtime.delete_backward().unwrap_or(false)),
-            "delete" => (true, runtime.delete_forward().unwrap_or(false)),
-            "left" => (
-                true,
-                runtime.move_focused_table_cell_left().unwrap_or(false),
-            ),
-            "right" => (
-                true,
-                runtime.move_focused_table_cell_right().unwrap_or(false),
-            ),
-            "up" => (true, runtime.move_focused_table_cell_up().unwrap_or(false)),
-            "down" => (
-                true,
-                runtime.move_focused_table_cell_down().unwrap_or(false),
-            ),
-            "tab" => (
-                true,
-                runtime
-                    .move_focused_table_cell_tab(modifiers.shift)
-                    .unwrap_or(false),
-            ),
-            "space" => (
-                true,
-                runtime
-                    .replace_text_in_focused_range(None, " ")
-                    .unwrap_or(false),
-            ),
-            "enter" => (true, runtime.handle_enter().is_ok()),
-            _ => (false, false),
-        };
-        if consumed {
-            self.slash_menu = None;
-        }
-        if changed {
-            self.mark_dirty(cx);
-        }
-        consumed
-    }
-
-    fn handle_slash_menu_key_down(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) -> bool {
-        if self.slash_menu.is_none() || event.keystroke.is_ime_in_progress() {
-            return false;
-        }
-        let modifiers = event.keystroke.modifiers;
-        if modifiers.platform || modifiers.control || modifiers.alt {
-            return false;
-        }
-        match event.keystroke.key.as_str() {
-            "escape" => self.cancel_slash_menu(cx),
-            "up" => self.move_slash_menu_selection(-1, cx),
-            "down" => self.move_slash_menu_selection(1, cx),
-            "enter" | "tab" => {
-                let _ = self.apply_selected_slash_menu_item(cx);
-                true
-            }
-            _ => false,
-        }
-    }
-
     pub(in crate::gui::app) fn apply_input_command(
         &mut self,
         command: GuiInputCommand,
@@ -231,7 +62,7 @@ impl CditorV2View {
             match command {
                 GuiInputCommand::Ignore | GuiInputCommand::ToggleDebugOverlay => {}
                 GuiInputCommand::SelectAllFocusedText => {
-                    runtime.select_focused_text_all();
+                    runtime.select_all_command();
                 }
                 GuiInputCommand::CopySelection => {
                     if let Some((block_id, range)) =
@@ -373,12 +204,16 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::DeleteBackward => {
-                    if runtime.delete_backward().is_ok() {
+                    let result = runtime.delete_backward();
+                    trace_input("delete_backward.result", format_args!("{result:?}"));
+                    if matches!(result, Ok(true)) {
                         self.mark_dirty(cx);
                     }
                 }
                 GuiInputCommand::DeleteForward => {
-                    if runtime.delete_forward().is_ok() {
+                    let result = runtime.delete_forward();
+                    trace_input("delete_forward.result", format_args!("{result:?}"));
+                    if matches!(result, Ok(true)) {
                         self.mark_dirty(cx);
                     }
                 }
@@ -411,6 +246,12 @@ impl CditorV2View {
                     if !moved_in_block {
                         let _ = runtime.move_caret_down(extend_selection);
                     }
+                }
+                GuiInputCommand::MoveCaretToLineStart { extend_selection } => {
+                    let _ = runtime.move_focused_caret_to_line_boundary(false, extend_selection);
+                }
+                GuiInputCommand::MoveCaretToLineEnd { extend_selection } => {
+                    let _ = runtime.move_focused_caret_to_line_boundary(true, extend_selection);
                 }
                 GuiInputCommand::ToggleBold => {
                     if runtime
@@ -458,7 +299,7 @@ impl CditorV2View {
     }
 }
 
-fn mermaid_preview_blocks_command(command: GuiInputCommand) -> bool {
+pub(super) fn mermaid_preview_blocks_command(command: GuiInputCommand) -> bool {
     matches!(
         command,
         GuiInputCommand::SelectAllFocusedText
@@ -468,6 +309,8 @@ fn mermaid_preview_blocks_command(command: GuiInputCommand) -> bool {
             | GuiInputCommand::InsertSpaceOrMarkdownShortcut
             | GuiInputCommand::DeleteBackward
             | GuiInputCommand::DeleteForward
+            | GuiInputCommand::MoveCaretToLineStart { .. }
+            | GuiInputCommand::MoveCaretToLineEnd { .. }
             | GuiInputCommand::ToggleBold
             | GuiInputCommand::ToggleItalic
             | GuiInputCommand::ToggleUnderline
@@ -503,6 +346,8 @@ fn paste_text_from_clipboard(
     text: &str,
     metadata_selection: Option<&ClipboardSelection>,
 ) -> bool {
+    let text = normalize_external_line_endings(text);
+    let text = text.as_ref();
     let markdown_detected = looks_like_markdown_paste(text);
     trace_clipboard_markdown(
         "received",

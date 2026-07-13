@@ -247,11 +247,14 @@ impl DocumentRuntime {
                     .list_projection_cache
                     .entry(source_index)
                     .map(|entry| {
+                        let has_foldable_content = self
+                            .visible_index
+                            .has_foldable_content(&self.index, *block_id);
                         cditor_core::block::BlockChromeSnapshot::from_kind(
                             &kind,
                             entry.list_info,
-                            entry.chrome.has_children,
-                            entry.chrome.collapsed,
+                            has_foldable_content,
+                            self.visible_index.is_folded(*block_id),
                         )
                     })
                     .unwrap_or_else(cditor_core::block::BlockChromeSnapshot::plain);
@@ -260,11 +263,16 @@ impl DocumentRuntime {
                     .focused_table_cell_offset()
                     .filter(|(focused_block_id, _, _, _)| focused_block_id == block_id)
                     .map(|(_, _, _, offset)| offset);
+                let focused_table_cell_selection_range = self
+                    .focused_table_cell_selection_state()
+                    .filter(|(focused_block_id, _, _, _, _, _)| focused_block_id == block_id)
+                    .map(|(_, _, _, range, _, _)| range);
                 let table_view = self.table_runtime(*block_id).map(|runtime| {
                     table::table_view_state_from_payload(
                         runtime.table(),
                         focused_table_cell,
                         focused_table_cell_offset,
+                        focused_table_cell_selection_range,
                         self.table_horizontal_scroll_offset_px(*block_id),
                     )
                 });
@@ -295,13 +303,15 @@ impl DocumentRuntime {
                         ),
                     );
                 }
+                let mut attrs = BlockAttrs::default();
+                attrs.folded = self.visible_index.is_folded(*block_id);
                 ViewBlockSnapshot {
                     block_id: *block_id,
                     visible_index,
                     depth: self.index.depths[source_index],
                     chrome,
                     kind,
-                    attrs: BlockAttrs::default(),
+                    attrs,
                     payload,
                     layout,
                     selected: self.selected_block_ids.contains(block_id),

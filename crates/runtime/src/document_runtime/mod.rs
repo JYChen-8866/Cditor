@@ -1,8 +1,12 @@
 mod ai;
+mod capabilities;
 mod clipboard;
 mod composition;
 mod constructors;
 mod focus;
+mod folding;
+mod inline_color;
+mod inline_format;
 mod layout_heights;
 mod markdown_paste;
 mod media;
@@ -30,8 +34,10 @@ pub use ai::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
     AiStreamApplyResult, RuntimeAiTarget,
 };
+pub use selection::DocumentTextSelectionFragment;
 pub use store_loading::{
-    DocumentRuntimeColdStartReport, DocumentRuntimeFromStoreOptions, DocumentRuntimeIndexSource,
+    DOCUMENT_INDEX_VISIBLE_VERSION, DocumentRuntimeColdStartReport,
+    DocumentRuntimeFromStoreOptions, DocumentRuntimeIndexSource,
 };
 
 use self::{selection::FocusedTextSelection, table::TableRuntime};
@@ -64,11 +70,12 @@ use cditor_core::layout::{
 use cditor_core::rich_text::{
     BlockAttrs, BlockPayload, BlockPayloadRecord, BlockPayloadView, ClipboardBlock,
     ClipboardBlockFragment, ClipboardFragmentBoundary, ClipboardSelection, ImagePayload,
-    InlineMark, InlineSpan, MarkdownImportOptions, ParsedMarkdownDocument, RichBlockKind,
-    RichBlockRecord, RichTextDocument, TableCellAlign, TableCellMerge, TableRange, TableTrackSize,
-    block_kind_shortcut_with_marker_len, code_fence_shortcut, import_markdown_block_incremental,
-    kind_tag_for_rich_block_kind, looks_like_markdown_paste, markdown_inline_shortcut_spans,
-    parse_callout_marker, parse_markdown_document, plain_text_from_spans, rich_block_kind_from_tag,
+    InlineColorTarget, InlineMark, InlineSpan, MarkdownImportOptions, ParsedMarkdownDocument,
+    RichBlockKind, RichBlockRecord, RichTextDocument, TableCellAlign, TableCellMerge, TableRange,
+    TableTrackSize, block_kind_shortcut_with_marker_len, code_fence_shortcut,
+    import_markdown_block_incremental, kind_tag_for_rich_block_kind, looks_like_markdown_paste,
+    markdown_inline_shortcut_spans, parse_callout_marker, parse_markdown_document,
+    plain_text_from_spans, rich_block_kind_from_tag,
 };
 use cditor_editor::debug_overlay::DebugOverlaySnapshot;
 use cditor_editor::scroll::{
@@ -130,6 +137,7 @@ use state::{
 };
 pub use table::TableClipboardSnapshot;
 
+use inline_color::set_color_mark_for_range;
 use table::{default_table_payload, ensure_table_payload_for_kind};
 use text_payload::{
     append_plain_text_to_payload, backspace_at_start_resets_kind_to_paragraph,

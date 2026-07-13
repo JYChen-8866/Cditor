@@ -10,6 +10,7 @@ pub(super) const V1_TABLE_CELL_PADDING_X_PX: f32 = 10.0;
 pub(super) const V1_TABLE_CELL_PADDING_Y_PX: f32 = NOTION_TABLE_CELL_PADDING_Y_PX as f32;
 pub(super) const V1_TABLE_EMPTY_PADDING_PX: f32 = 8.0;
 pub(super) const TABLE_AXIS_HANDLE_SIZE_PX: f32 = 16.0;
+pub(super) const TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX: f32 = 22.0;
 pub(super) const TABLE_AXIS_ROW_HANDLE_LEFT_PX: f32 = -28.0;
 pub(super) const TABLE_AXIS_COLUMN_HANDLE_TOP_PX: f32 = -15.0;
 pub(super) const TABLE_CELL_GUTTER_SIZE_PX: f32 = 14.0;

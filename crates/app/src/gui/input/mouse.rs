@@ -82,6 +82,18 @@ pub fn toggle_todo_from_mouse(
     });
 }
 
+pub fn toggle_block_fold_from_mouse(
+    view: &Entity<CditorV2View>,
+    block_id: BlockId,
+    _event: &MouseDownEvent,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    view.update(cx, |view, cx| {
+        view.toggle_block_fold_from_gui(block_id, window, cx);
+    });
+}
+
 pub fn hover_block_from_mouse(
     view: &Entity<CditorV2View>,
     block_id: BlockId,

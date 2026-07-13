@@ -20,6 +20,8 @@ pub enum GuiInputCommand {
     MoveCaretRight { extend_selection: bool },
     MoveCaretUp { extend_selection: bool },
     MoveCaretDown { extend_selection: bool },
+    MoveCaretToLineStart { extend_selection: bool },
+    MoveCaretToLineEnd { extend_selection: bool },
     ToggleBold,
     ToggleItalic,
     ToggleUnderline,

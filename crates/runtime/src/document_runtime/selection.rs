@@ -6,6 +6,12 @@ pub struct RichTextSelectionSnapshot {
     pub spans: Vec<InlineSpan>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentTextSelectionFragment {
+    pub block_id: BlockId,
+    pub range: Range<usize>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct FocusedTextSelection {
     pub(super) anchor: usize,
@@ -177,6 +183,17 @@ impl DocumentRuntime {
         };
         let len = model.len();
         self.focused_table_cell = None;
+        self.selected_block_ids.clear();
+        if len == 0 {
+            self.document_selection = None;
+            self.focused_text_selection = None;
+            self.selected_block_ids.insert(block_id);
+            if let Some(editing) = self.editing.as_mut() {
+                editing.set_input_target(InputTarget::BlockText { block_id });
+                editing.set_collapsed_selection(0);
+            }
+            return true;
+        }
         self.focused_text_selection = Some(FocusedTextSelection {
             anchor: 0,
             focus: len,
@@ -189,6 +206,79 @@ impl DocumentRuntime {
             editing.set_input_target(InputTarget::BlockText { block_id });
             editing.set_selected_range(0..len, false);
         }
+        true
+    }
+
+    /// Implements the editor's progressive Select All command:
+    /// the first invocation selects the focused block's text, and invoking it
+    /// again while that exact range is still selected expands to the document.
+    pub fn select_all_command(&mut self) -> bool {
+        let Some(block_id) = self.focused_block_id() else {
+            return false;
+        };
+        let Some(block_len) = self
+            .text_models
+            .get(&block_id)
+            .map(PieceTableTextModel::len)
+        else {
+            return false;
+        };
+        let focused_block_is_fully_selected = (self.selected_block_ids.len() == 1
+            && self.selected_block_ids.contains(&block_id))
+            || self.document_selection.is_some_and(|selection| {
+                selection.anchor.block_id == block_id
+                    && selection.focus.block_id == block_id
+                    && selection.anchor.offset.min(selection.focus.offset) == 0
+                    && selection.anchor.offset.max(selection.focus.offset) == block_len
+            });
+        if !focused_block_is_fully_selected || self.index.total_count() <= 1 {
+            trace_input(
+                "select_all_command.block",
+                format_args!("block={block_id} text_len={block_len}"),
+            );
+            return self.select_focused_text_all();
+        }
+
+        let Some(first_block_id) = self.index.block_ids.first().copied() else {
+            return false;
+        };
+        let Some(last_block_id) = self.index.block_ids.last().copied() else {
+            return false;
+        };
+        let Some(last_offset) = self
+            .text_models
+            .get(&last_block_id)
+            .map(PieceTableTextModel::len)
+            .or_else(|| {
+                self.payload_window
+                    .get(last_block_id)
+                    .map(|payload| payload.plain_text().len())
+            })
+        else {
+            trace_input(
+                "select_all_command.document_unavailable",
+                format_args!("last_block={last_block_id} payload_not_loaded=true"),
+            );
+            return false;
+        };
+
+        self.selected_block_ids.clear();
+        self.focused_table_cell = None;
+        self.focused_text_selection = None;
+        self.document_selection = Some(DocumentSelection {
+            anchor: TextPosition::downstream(first_block_id, 0),
+            focus: TextPosition::downstream(last_block_id, last_offset),
+        });
+        if let Some(editing) = self.editing.as_mut() {
+            let caret = editing.caret_anchor.text_offset as usize;
+            editing.set_collapsed_selection(caret);
+        }
+        trace_input(
+            "select_all_command.document",
+            format_args!(
+                "first={first_block_id}:0 last={last_block_id}:{last_offset} focused={block_id}"
+            ),
+        );
         true
     }
 
@@ -302,6 +392,92 @@ impl DocumentRuntime {
         self.document_selection.is_some_and(|selection| {
             !selection.is_caret() && selection.anchor.block_id != selection.focus.block_id
         })
+    }
+
+    pub fn has_document_text_selection(&self) -> bool {
+        self.document_selection
+            .is_some_and(|selection| !selection.is_caret())
+    }
+
+    pub fn document_text_selection_fragments(&self) -> Option<Vec<DocumentTextSelectionFragment>> {
+        let selection = self.document_selection?.normalize(&self.index).ok()?;
+        if selection.start.block_id == selection.end.block_id
+            && selection.start.offset == selection.end.offset
+        {
+            return None;
+        }
+        let start_index = self.index.index_of(selection.start.block_id)?;
+        let end_index = self.index.index_of(selection.end.block_id)?;
+        let mut fragments = Vec::with_capacity(end_index.saturating_sub(start_index) + 1);
+        for index in start_index..=end_index {
+            let block_id = self.index.block_ids[index];
+            let text_len = self
+                .text_models
+                .get(&block_id)
+                .map(|model| model.len())
+                .or_else(|| {
+                    self.payload_window
+                        .get(block_id)
+                        .map(|payload| payload.plain_text().len())
+                })?;
+            let range = if block_id == selection.start.block_id {
+                selection.start.offset.min(text_len)..text_len
+            } else if block_id == selection.end.block_id {
+                0..selection.end.offset.min(text_len)
+            } else {
+                0..text_len
+            };
+            fragments.push(DocumentTextSelectionFragment { block_id, range });
+        }
+        Some(fragments)
+    }
+
+    pub fn has_active_selection(&self) -> bool {
+        !self.selected_block_ids.is_empty()
+            || self
+                .document_selection
+                .is_some_and(|selection| !selection.is_caret())
+            || self.focused_text_selection_range().is_some()
+    }
+
+    pub fn delete_active_selection(&mut self) -> Result<bool, String> {
+        let route = if !self.selected_block_ids.is_empty() {
+            "selected_blocks"
+        } else if self
+            .document_selection
+            .is_some_and(|selection| !selection.is_caret())
+        {
+            "document_selection"
+        } else if self.focused_text_selection_range().is_some() {
+            "focused_text_selection"
+        } else {
+            "none"
+        };
+        trace_input(
+            "delete_active_selection.start",
+            format_args!(
+                "route={route} focus={:?} selected_blocks={} document_selection={:?} focused_selection={:?} session_selection={:?}",
+                self.focused_block_id(),
+                self.selected_block_ids.len(),
+                self.document_selection,
+                self.focused_text_selection_range(),
+                self.input_session_selected_range(),
+            ),
+        );
+        let result = match route {
+            "selected_blocks" => self.delete_selected_blocks(),
+            "document_selection" => self.delete_document_selection(),
+            "focused_text_selection" => {
+                let range = self.focused_text_selection_range();
+                self.replace_text_in_focused_range(range, "")
+            }
+            _ => Ok(false),
+        };
+        trace_input(
+            "delete_active_selection.end",
+            format_args!("route={route} result={result:?}"),
+        );
+        result
     }
 
     pub fn selected_document_text(&self) -> Option<String> {

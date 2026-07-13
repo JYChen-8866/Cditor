@@ -3,7 +3,7 @@ use std::ops::Range;
 use cditor_core::edit::{InternalTextOffset, TextOffsetMap};
 use cditor_core::ids::BlockId;
 use cditor_runtime::TableCellPosition;
-use gpui::{Bounds, Pixels, Point, WrappedLine as GpuiWrappedLine, point, px, size};
+use gpui::{Bounds, Pixels, Point, TextAlign, WrappedLine as GpuiWrappedLine, point, px, size};
 
 pub(crate) struct RichTextPlatformLayout {
     pub block_id: BlockId,
@@ -12,6 +12,7 @@ pub(crate) struct RichTextPlatformLayout {
     pub lines: Vec<GpuiWrappedLine>,
     pub bounds: Bounds<Pixels>,
     pub line_height: Pixels,
+    pub text_align: TextAlign,
     pub measured_height: f64,
     pub table_cell_position: Option<TableCellPosition>,
 }
@@ -20,9 +21,11 @@ pub(crate) fn platform_range_bounds(
     cache: &RichTextPlatformLayout,
     range: Range<usize>,
 ) -> Option<Bounds<Pixels>> {
-    if cache.text.is_empty() && cache.lines.is_empty() {
+    if cache.text.is_empty() {
+        let alignment_offset =
+            platform_text_alignment_offset(cache.text_align, cache.bounds.size.width, px(0.0));
         return Some(Bounds::new(
-            cache.bounds.origin,
+            point(cache.bounds.left() + alignment_offset, cache.bounds.top()),
             size(px(1.0), cache.line_height),
         ));
     }
@@ -32,6 +35,7 @@ pub(crate) fn platform_range_bounds(
         cache.line_height,
         &cache.text,
         range.clone(),
+        cache.text_align,
     );
     if segments.is_empty() {
         return platform_cursor_bounds_for_offset(
@@ -41,6 +45,7 @@ pub(crate) fn platform_range_bounds(
             &cache.text,
             range.start,
             px(1.0),
+            cache.text_align,
         );
     }
     let mut union = segments[0];
@@ -82,7 +87,16 @@ pub(crate) fn platform_index_for_point(
     let Some(layout) = cache.lines.get(line_idx) else {
         return 0;
     };
-    let local = platform_local_point_for_bounds(cache.bounds, position);
+    let mut local = platform_local_point_for_bounds(cache.bounds, position);
+    let row_idx = (f32::from(y_in_line) / f32::from(cache.line_height).max(1.0))
+        .floor()
+        .max(0.0) as usize;
+    local.x -= platform_wrapped_row_alignment_offset(
+        layout,
+        row_idx,
+        cache.bounds.size.width,
+        cache.text_align,
+    );
     let offset_in_line =
         match layout.closest_index_for_position(point(local.x, y_in_line), cache.line_height) {
             Ok(index) | Err(index) => index,
@@ -100,13 +114,33 @@ pub(crate) fn platform_cursor_bounds_for_offset(
     text: &str,
     offset: usize,
     cursor_width: Pixels,
+    text_align: TextAlign,
 ) -> Option<Bounds<Pixels>> {
+    // Some platform shapers return one zero-length line for an empty string,
+    // others return no lines. Empty text has the same stable caret geometry in
+    // both cases and must not depend on the shaper's representation.
+    if text.is_empty() {
+        let alignment_offset =
+            platform_text_alignment_offset(text_align, bounds.size.width, px(0.0));
+        return Some(Bounds::new(
+            point(bounds.left() + alignment_offset, bounds.top()),
+            size(cursor_width, line_height),
+        ));
+    }
     let ranges = hard_line_ranges(text);
     let (line_idx, offset_in_line) = line_index_for_offset(text, &ranges, offset);
     let layout = lines.get(line_idx)?;
     let hard_range = ranges.get(line_idx)?;
-    let cursor_pos =
-        platform_position_for_offset(text, hard_range, layout, offset_in_line, line_height, true)?;
+    let cursor_pos = platform_position_for_offset(
+        text,
+        hard_range,
+        layout,
+        offset_in_line,
+        line_height,
+        true,
+        bounds.size.width,
+        text_align,
+    )?;
     let y_offset = bounds.top() + platform_wrapped_line_top(lines, line_height, line_idx);
     Some(Bounds::new(
         point(bounds.left() + cursor_pos.x, y_offset + cursor_pos.y),
@@ -120,6 +154,7 @@ pub(crate) fn platform_range_segment_bounds(
     line_height: Pixels,
     text: &str,
     range: Range<usize>,
+    text_align: TextAlign,
 ) -> Vec<Bounds<Pixels>> {
     if range.start >= range.end || lines.is_empty() {
         return Vec::new();
@@ -152,6 +187,7 @@ pub(crate) fn platform_range_segment_bounds(
             line_idx,
             line_start,
             line_end,
+            text_align,
         ));
     }
     segments
@@ -171,22 +207,35 @@ fn platform_position_for_offset(
     offset: usize,
     line_height: Pixels,
     prefer_next_wrap_start: bool,
+    align_width: Pixels,
+    text_align: TextAlign,
 ) -> Option<Point<Pixels>> {
     let offset = clamp_local_offset_to_char_boundary(text, hard_range.start, offset);
+    if hard_range.is_empty() && offset == 0 {
+        return Some(point(
+            platform_text_alignment_offset(text_align, align_width, px(0.0)),
+            px(0.0),
+        ));
+    }
     let offsets = platform_wrapped_row_offsets(line);
-    for row_idx in 0..offsets.len().saturating_sub(1) {
+    let row_count = offsets.len().saturating_sub(1);
+    for row_idx in 0..row_count {
         let row_start =
             clamp_local_offset_to_char_boundary(text, hard_range.start, offsets[row_idx]);
         let row_end =
             clamp_local_offset_to_char_boundary(text, hard_range.start, offsets[row_idx + 1]);
         let is_start_of_wrapped_row = prefer_next_wrap_start && row_idx > 0 && offset == row_start;
-        if is_start_of_wrapped_row || (offset >= row_start && offset < row_end) {
+        if is_start_of_wrapped_row
+            || (offset >= row_start
+                && (offset < row_end || (row_idx + 1 == row_count && offset == row_end)))
+        {
             let row_start_x = line.unwrapped_layout.x_for_index(row_start);
-            let x = line.unwrapped_layout.x_for_index(offset) - row_start_x;
+            let x = line.unwrapped_layout.x_for_index(offset) - row_start_x
+                + platform_wrapped_row_alignment_offset(line, row_idx, align_width, text_align);
             return Some(point(x, line_height * row_idx as f32));
         }
     }
-    line.position_for_index(offset, line_height)
+    None
 }
 
 fn platform_range_segment_bounds_for_hard_line(
@@ -198,6 +247,7 @@ fn platform_range_segment_bounds_for_hard_line(
     line_idx: usize,
     start_offset: usize,
     end_offset: usize,
+    text_align: TextAlign,
 ) -> Vec<Bounds<Pixels>> {
     let Some(line) = lines.get(line_idx) else {
         return Vec::new();
@@ -226,13 +276,47 @@ fn platform_range_segment_bounds_for_hard_line(
         let row_start_x = line.unwrapped_layout.x_for_index(row_start);
         let start_x = line.unwrapped_layout.x_for_index(seg_start) - row_start_x;
         let end_x = line.unwrapped_layout.x_for_index(seg_end) - row_start_x;
+        let alignment_offset =
+            platform_wrapped_row_alignment_offset(line, row_idx, bounds.size.width, text_align);
         let y = line_top + line_height * row_idx as f32;
         segments.push(Bounds::from_corners(
-            point(bounds.left() + start_x, y),
-            point(bounds.left() + end_x, y + line_height),
+            point(bounds.left() + alignment_offset + start_x, y),
+            point(bounds.left() + alignment_offset + end_x, y + line_height),
         ));
     }
     segments
+}
+
+fn platform_wrapped_row_alignment_offset(
+    line: &GpuiWrappedLine,
+    row_idx: usize,
+    available_width: Pixels,
+    text_align: TextAlign,
+) -> Pixels {
+    let offsets = platform_wrapped_row_offsets(line);
+    let Some(row_start) = offsets.get(row_idx).copied() else {
+        return px(0.0);
+    };
+    let Some(row_end) = offsets.get(row_idx + 1).copied() else {
+        return px(0.0);
+    };
+    let row_width = (line.unwrapped_layout.x_for_index(row_end)
+        - line.unwrapped_layout.x_for_index(row_start))
+    .max(px(0.0));
+    platform_text_alignment_offset(text_align, available_width, row_width)
+}
+
+pub(crate) fn platform_text_alignment_offset(
+    text_align: TextAlign,
+    available_width: Pixels,
+    row_width: Pixels,
+) -> Pixels {
+    let remaining = (available_width - row_width).max(px(0.0));
+    match text_align {
+        TextAlign::Left => px(0.0),
+        TextAlign::Center => remaining / 2.0,
+        TextAlign::Right => remaining,
+    }
 }
 
 fn hard_line_ranges(text: &str) -> Vec<Range<usize>> {
@@ -351,6 +435,27 @@ mod tests {
     }
 
     #[test]
+    fn platform_cursor_draws_on_trailing_empty_hard_line() {
+        let lines = vec![GpuiWrappedLine::default(), GpuiWrappedLine::default()];
+        let bounds = Bounds::new(point(px(10.0), px(20.0)), size(px(300.0), px(48.0)));
+
+        let cursor = platform_cursor_bounds_for_offset(
+            &lines,
+            bounds,
+            px(24.0),
+            "\n",
+            1,
+            px(1.5),
+            TextAlign::Left,
+        )
+        .expect("trailing empty line must have caret geometry");
+
+        assert_eq!(cursor.left(), px(10.0));
+        assert_eq!(cursor.top(), px(44.0));
+        assert_eq!(cursor.size.height, px(24.0));
+    }
+
+    #[test]
     fn platform_point_hit_testing_uses_cache_bounds_as_local_origin() {
         let bounds = Bounds {
             origin: point(px(120.0), px(240.0)),
@@ -376,6 +481,7 @@ mod tests {
             lines: Vec::new(),
             bounds: Bounds::new(point(px(120.0), px(240.0)), size(px(300.0), px(24.0))),
             line_height: px(24.0),
+            text_align: TextAlign::Left,
             measured_height: 24.0,
             table_cell_position: None,
         };
@@ -386,6 +492,76 @@ mod tests {
                 point(px(120.0), px(240.0)),
                 size(px(1.0), px(24.0))
             ))
+        );
+    }
+
+    #[test]
+    fn empty_text_block_still_has_a_paintable_caret() {
+        let bounds = Bounds::new(point(px(120.0), px(240.0)), size(px(300.0), px(24.0)));
+        assert_eq!(
+            platform_cursor_bounds_for_offset(
+                &[],
+                bounds,
+                px(24.0),
+                "",
+                0,
+                px(1.5),
+                TextAlign::Left,
+            ),
+            Some(Bounds::new(
+                point(px(120.0), px(240.0)),
+                size(px(1.5), px(24.0))
+            ))
+        );
+    }
+
+    #[test]
+    fn empty_centered_table_cell_uses_the_same_alignment_for_caret_and_ime_bounds() {
+        let bounds = Bounds::new(point(px(120.0), px(240.0)), size(px(300.0), px(24.0)));
+        let caret = platform_cursor_bounds_for_offset(
+            &[],
+            bounds,
+            px(24.0),
+            "",
+            0,
+            px(1.5),
+            TextAlign::Center,
+        )
+        .expect("empty centered cell must have caret geometry");
+        let cache = RichTextPlatformLayout {
+            block_id: 1,
+            content_version: 1,
+            text: String::new(),
+            lines: Vec::new(),
+            bounds,
+            line_height: px(24.0),
+            text_align: TextAlign::Center,
+            measured_height: 24.0,
+            table_cell_position: Some(TableCellPosition { row: 0, col: 0 }),
+        };
+        let ime_bounds = platform_range_bounds(&cache, 0..0).unwrap();
+
+        assert_eq!(caret.left(), px(270.0));
+        assert_eq!(ime_bounds.left(), caret.left());
+    }
+
+    #[test]
+    fn table_text_alignment_offsets_all_geometry_from_the_same_width() {
+        assert_eq!(
+            platform_text_alignment_offset(TextAlign::Left, px(120.0), px(40.0)),
+            px(0.0)
+        );
+        assert_eq!(
+            platform_text_alignment_offset(TextAlign::Center, px(120.0), px(40.0)),
+            px(40.0)
+        );
+        assert_eq!(
+            platform_text_alignment_offset(TextAlign::Right, px(120.0), px(40.0)),
+            px(80.0)
+        );
+        assert_eq!(
+            platform_text_alignment_offset(TextAlign::Center, px(40.0), px(80.0)),
+            px(0.0)
         );
     }
 }

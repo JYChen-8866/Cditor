@@ -30,6 +30,19 @@ fn table_2_by_3() -> TablePayload {
 }
 
 #[test]
+fn table_header_counts_are_clamped_and_report_actual_changes() {
+    let mut table = table_2_by_3();
+
+    assert!(table.set_header_rows(99));
+    assert_eq!(table.header_rows, 2);
+    assert!(!table.set_header_rows(2));
+    assert!(table.set_header_columns(99));
+    assert_eq!(table.header_cols, 3);
+    assert!(table.set_header_columns(0));
+    assert_eq!(table.header_cols, 0);
+}
+
+#[test]
 fn normalize_backfills_column_tracks_for_old_payloads() {
     let table = table_2_by_3();
 

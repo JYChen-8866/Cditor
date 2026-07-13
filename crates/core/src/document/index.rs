@@ -10,6 +10,10 @@ use crate::version::StructureVersion;
 pub type BlockKindTag = u16;
 pub type BlockFlags = u32;
 
+pub const BLOCK_FLAG_FOLDED: BlockFlags = 1 << 0;
+pub const BLOCK_FLAG_LOCKED: BlockFlags = 1 << 1;
+pub const BLOCK_FLAG_HAS_STRUCTURAL_CHILDREN: BlockFlags = 1 << 2;
+
 pub trait DocumentIndexStore {
     fn load_document_index_records(&self, document_id: DocumentId) -> Vec<BlockIndexRecord>;
     fn document_structure_version(&self, document_id: DocumentId) -> StructureVersion;

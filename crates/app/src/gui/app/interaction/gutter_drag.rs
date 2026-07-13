@@ -11,8 +11,8 @@ use cditor_core::ids::BlockId;
 use super::geometry::drop_target_for_document_y_from_rects;
 
 use super::gutter_drag_metrics::{
-    GUTTER_DRAG_AUTO_SCROLL_TICK_MS, gutter_drag_auto_scroll_delta, gutter_drag_guideline_end_x_px,
-    gutter_drag_guideline_start_x_px, gutter_drag_guideline_y_px, gutter_drag_pointer_document_y,
+    GUTTER_DRAG_AUTO_SCROLL_TICK_MS, gutter_drag_auto_scroll_delta, gutter_drag_guideline_geometry,
+    gutter_drag_pointer_document_y,
 };
 
 fn gutter_drag_pointer_viewport_y_for_view(view: &CditorV2View, window_y: f32) -> f64 {
@@ -35,21 +35,6 @@ fn gutter_drag_pointer_document_y_for_view(view: &CditorV2View, window_y: f32) -
     )
 }
 
-fn gutter_drag_guideline_for_view(view: &CditorV2View, drag: GutterBlockDragState) -> f32 {
-    gutter_drag_guideline_y_px(
-        &view.projected_block_rects,
-        drag.target,
-        gutter_drag_pointer_document_y_for_view(view, drag.current_position.y),
-    )
-}
-
-fn gutter_drag_guideline_start_x_for_view(
-    view: &CditorV2View,
-    target: Option<BlockDropTarget>,
-) -> f32 {
-    gutter_drag_guideline_start_x_px(&view.projected_block_rects, target)
-}
-
 impl CditorV2View {
     pub(crate) fn gutter_mouse_down_from_gui(
         &mut self,
@@ -62,6 +47,8 @@ impl CditorV2View {
         self.hovered_block_id = Some(block_id);
         self.action_block_id = Some(block_id);
         self.gutter_toolbar_block_id = Some(block_id);
+        self.block_transform_menu_open = false;
+        self.color_menu_open = false;
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.gutter_block_drag = Some(GutterBlockDragState::new(
@@ -86,6 +73,8 @@ impl CditorV2View {
         let threshold_changed = drag.update_position(point);
         if drag.exceeded_threshold {
             self.gutter_toolbar_block_id = None;
+            self.block_transform_menu_open = false;
+            self.color_menu_open = false;
         }
         let auto_scrolled = if drag.exceeded_threshold {
             self.apply_gutter_drag_auto_scroll(gutter_drag_pointer_viewport_y_for_view(
@@ -212,14 +201,12 @@ impl CditorV2View {
             return None;
         }
 
-        let y_px = gutter_drag_guideline_for_view(self, drag);
-        let start_x_px = gutter_drag_guideline_start_x_for_view(self, drag.target);
-        let end_x_px = gutter_drag_guideline_end_x_px();
+        let guideline = gutter_drag_guideline_geometry(&self.projected_block_rects, drag.target?)?;
 
         Some(BlockDragOverlaySnapshot {
-            y_px,
-            start_x_px,
-            end_x_px,
+            y_px: guideline.y_px,
+            start_x_px: guideline.start_x_px,
+            end_x_px: guideline.end_x_px,
             visible: true,
         })
     }

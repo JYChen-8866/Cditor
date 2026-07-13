@@ -20,6 +20,9 @@ pub(crate) enum GuiPlatformInputTarget {
     AiPrompt {
         block_id: BlockId,
     },
+    TableMenuQuery {
+        block_id: BlockId,
+    },
     /// Complex block or block chrome focus (no platform text input)
     None,
 }
@@ -42,12 +45,17 @@ impl GuiPlatformInputTarget {
         Self::AiPrompt { block_id }
     }
 
+    pub(crate) fn table_menu_query(block_id: BlockId) -> Self {
+        Self::TableMenuQuery { block_id }
+    }
+
     pub(crate) fn block_id(self) -> BlockId {
         match self {
             Self::BlockText { block_id }
             | Self::TableCell { block_id, .. }
             | Self::CodeLanguage { block_id }
-            | Self::AiPrompt { block_id } => block_id,
+            | Self::AiPrompt { block_id }
+            | Self::TableMenuQuery { block_id } => block_id,
             Self::None => BlockId::default(),
         }
     }
@@ -58,6 +66,10 @@ impl GuiPlatformInputTarget {
 
     pub(crate) fn is_ai_prompt_for(self, block_id: BlockId) -> bool {
         self == Self::AiPrompt { block_id }
+    }
+
+    pub(crate) fn is_table_menu_query_for(self, block_id: BlockId) -> bool {
+        self == Self::TableMenuQuery { block_id }
     }
 
     pub(crate) fn matches_runtime_target(self, target: InputTarget) -> bool {
@@ -75,6 +87,11 @@ impl CditorV2View {
                 self.code_language_edit
                     .as_ref()
                     .map(|edit| GuiPlatformInputTarget::code_language(edit.block_id))
+            })
+            .or_else(|| {
+                self.table_interaction_mode
+                    .axis_selection()
+                    .map(|selection| GuiPlatformInputTarget::table_menu_query(selection.block_id))
             });
     }
 
@@ -107,7 +124,10 @@ pub(crate) fn platform_input_registration_allows(
     target: GuiPlatformInputTarget,
     runtime: &DocumentRuntime,
 ) -> bool {
-    if matches!(target, GuiPlatformInputTarget::AiPrompt { .. }) {
+    if matches!(
+        target,
+        GuiPlatformInputTarget::AiPrompt { .. } | GuiPlatformInputTarget::TableMenuQuery { .. }
+    ) {
         return current.is_none_or(|current| current == target);
     }
     if current.is_some_and(|current| current != target) {

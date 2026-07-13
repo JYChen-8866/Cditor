@@ -1,4 +1,5 @@
 use crate::document::BlockIndexRecord;
+use crate::document::{BLOCK_FLAG_FOLDED, BLOCK_FLAG_HAS_STRUCTURAL_CHILDREN, BLOCK_FLAG_LOCKED};
 use crate::ids::{BlockId, DocumentId};
 use crate::layout::BlockLayoutMeta;
 use crate::version::StructureVersion;
@@ -379,13 +380,13 @@ fn default_estimated_height(kind: &RichBlockKind, payload: &BlockPayload) -> f64
 fn flags_for_block(block: &RichBlockRecord) -> u32 {
     let mut flags = 0;
     if block.attrs.folded {
-        flags |= 1 << 0;
+        flags |= BLOCK_FLAG_FOLDED;
     }
     if block.attrs.locked {
-        flags |= 1 << 1;
+        flags |= BLOCK_FLAG_LOCKED;
     }
     if !block.children.is_empty() {
-        flags |= 1 << 2;
+        flags |= BLOCK_FLAG_HAS_STRUCTURAL_CHILDREN;
     }
     flags
 }

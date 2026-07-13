@@ -132,6 +132,24 @@ impl TableRuntime {
         Ok(changed)
     }
 
+    pub(in crate::document_runtime) fn set_header_rows(&mut self, count: usize) -> bool {
+        let changed = self.table.set_header_rows(count);
+        if changed {
+            self.revision = self.revision.saturating_add(1);
+            self.dirty = true;
+        }
+        changed
+    }
+
+    pub(in crate::document_runtime) fn set_header_columns(&mut self, count: usize) -> bool {
+        let changed = self.table.set_header_columns(count);
+        if changed {
+            self.revision = self.revision.saturating_add(1);
+            self.dirty = true;
+        }
+        changed
+    }
+
     pub(in crate::document_runtime) fn paste_table_at(
         &mut self,
         row: usize,

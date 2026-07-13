@@ -138,6 +138,15 @@ impl DocumentRuntime {
         page_policy: PagePolicy,
     ) -> Self {
         let record_count = records.len();
+        let loaded_kinds = payloads
+            .iter()
+            .map(|payload| (payload.block_id, &payload.kind))
+            .collect::<HashMap<_, _>>();
+        for record in &mut records {
+            if let Some(kind) = loaded_kinds.get(&record.id) {
+                record.kind_tag = kind_tag_for_rich_block_kind(kind);
+            }
+        }
         let loaded_table_heights = payloads
             .iter()
             .filter_map(|payload| match (&payload.kind, &payload.payload) {
@@ -157,19 +166,6 @@ impl DocumentRuntime {
             }
         }
         let start = Instant::now();
-        let height_estimates = records
-            .iter()
-            .map(|record| {
-                HeightEstimate::new(
-                    record.layout_meta.effective_height(),
-                    HeightConfidence::Historical,
-                    4.0,
-                )
-            })
-            .collect::<Vec<_>>();
-        log_runtime_timing("runtime.height_estimates", start, Some(record_count));
-
-        let start = Instant::now();
         let index = DocumentIndex::new(document_id, records, structure_version)
             .expect("document index is valid");
         log_runtime_timing("runtime.document_index", start, Some(record_count));
@@ -183,7 +179,8 @@ impl DocumentRuntime {
         log_runtime_timing("runtime.visible_index", start, Some(record_count));
 
         let start = Instant::now();
-        let height_index = BlockHeightIndex::new(height_estimates).expect("demo heights are valid");
+        let height_index = BlockHeightIndex::from_visible_document(&index, &visible_index)
+            .expect("demo heights are valid");
         log_runtime_timing("runtime.height_index", start, Some(record_count));
 
         let start = Instant::now();

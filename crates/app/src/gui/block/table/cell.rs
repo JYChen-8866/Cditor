@@ -123,7 +123,7 @@ pub(super) fn is_header_cell(table: &TablePayload, row_index: usize, cell_index:
 
 #[cfg(test)]
 pub(super) fn is_header_row(table: &TablePayload, row_index: usize) -> bool {
-    row_index < table.header_rows.max(usize::from(table.header_rows == 0))
+    row_index < table.header_rows
 }
 
 pub(super) fn is_active_cell(

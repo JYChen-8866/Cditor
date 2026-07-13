@@ -8,6 +8,7 @@ use crate::gui::persistence::EditorSaveStatus;
 use cditor_core::document::BlockIndexRecord;
 use cditor_core::edit::EditTransaction;
 use cditor_core::rich_text::BlockPayloadRecord;
+use cditor_runtime::DOCUMENT_INDEX_VISIBLE_VERSION;
 use cditor_runtime::DocumentRuntime;
 use cditor_storage_postgres::{
     EditTransactionVersions, PgDocumentId, PostgresDocumentStore, PostgresPayloadStore,
@@ -15,7 +16,6 @@ use cditor_storage_postgres::{
 };
 
 pub const DEFAULT_POSTGRES_SAVE_DEBOUNCE: Duration = Duration::from_millis(250);
-const DOCUMENT_INDEX_VISIBLE_VERSION: i64 = 1;
 
 #[derive(Debug, Clone)]
 pub struct PostgresPersistenceTarget {

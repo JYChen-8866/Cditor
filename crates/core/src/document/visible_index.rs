@@ -2,8 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::document::DocumentIndex;
+use crate::document::{BLOCK_FLAG_FOLDED, DocumentIndex};
 use crate::ids::BlockId;
+use crate::rich_text::{RichBlockKind, rich_block_kind_from_tag};
 use crate::version::StructureVersion;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,7 +18,16 @@ pub struct VisibleDocumentIndex {
 
 impl VisibleDocumentIndex {
     pub fn from_document_index(document_index: &DocumentIndex) -> Self {
-        Self::with_folded_blocks(document_index, HashSet::new(), 0)
+        let folded_block_ids = document_index
+            .block_ids
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(index, block_id)| {
+                (document_index.flags[index] & BLOCK_FLAG_FOLDED != 0).then_some(block_id)
+            })
+            .collect();
+        Self::with_folded_blocks(document_index, folded_block_ids, 0)
     }
 
     pub fn with_folded_blocks(
@@ -55,6 +65,22 @@ impl VisibleDocumentIndex {
 
     pub fn is_folded(&self, block_id: BlockId) -> bool {
         self.folded_block_ids.contains(&block_id)
+    }
+
+    pub fn has_foldable_content(&self, document_index: &DocumentIndex, block_id: BlockId) -> bool {
+        document_index
+            .index_of(block_id)
+            .is_some_and(|index| fold_end(document_index, index) > index + 1)
+    }
+
+    pub fn fold_end_index(
+        &self,
+        document_index: &DocumentIndex,
+        block_id: BlockId,
+    ) -> Option<usize> {
+        document_index
+            .index_of(block_id)
+            .map(|index| fold_end(document_index, index))
     }
 
     pub fn folded_block_ids(&self) -> &HashSet<BlockId> {
@@ -151,6 +177,29 @@ impl VisibleDocumentIndex {
             });
         }
 
+        if let Some(requested_index) = document_index.index_of(block_id)
+            && let Some((owner_id, visible_index)) = self
+                .folded_block_ids
+                .iter()
+                .copied()
+                .filter_map(|owner_id| {
+                    let owner_index = document_index.index_of(owner_id)?;
+                    let visible_index = self.visible_index_of(owner_id)?;
+                    (owner_index < requested_index
+                        && requested_index < fold_end(document_index, owner_index))
+                    .then_some((owner_index, owner_id, visible_index))
+                })
+                .max_by_key(|(owner_index, _, _)| *owner_index)
+                .map(|(_, owner_id, visible_index)| (owner_id, visible_index))
+        {
+            return Some(VisibleScrollTarget {
+                requested_block_id: block_id,
+                target_block_id: owner_id,
+                visible_index,
+                resolved_by: ScrollTargetResolution::NearestVisibleAncestor,
+            });
+        }
+
         let mut current = block_id;
         while let Some(index) = document_index.index_of(current) {
             let parent_id = document_index.parent_id_at(index).flatten()?;
@@ -232,27 +281,59 @@ fn build_visible_block_ids(
     folded_block_ids: &HashSet<BlockId>,
 ) -> Vec<BlockId> {
     let mut visible_block_ids = Vec::with_capacity(document_index.total_count());
-    let mut hidden_depth: Option<u16> = None;
+    let mut hidden_until = 0usize;
 
     for index in 0..document_index.total_count() {
-        let block_id = document_index.block_ids[index];
-        let depth = document_index.depths[index];
-
-        if let Some(hidden_parent_depth) = hidden_depth {
-            if depth > hidden_parent_depth {
-                continue;
-            }
-            hidden_depth = None;
+        if index < hidden_until {
+            continue;
         }
+        let block_id = document_index.block_ids[index];
 
         visible_block_ids.push(block_id);
 
         if folded_block_ids.contains(&block_id) {
-            hidden_depth = Some(depth);
+            hidden_until = fold_end(document_index, index);
         }
     }
 
     visible_block_ids
+}
+
+fn fold_end(document_index: &DocumentIndex, index: usize) -> usize {
+    let Some(depth) = document_index.depths.get(index).copied() else {
+        return index;
+    };
+    let kind = document_index
+        .kind_tags
+        .get(index)
+        .copied()
+        .map(rich_block_kind_from_tag)
+        .unwrap_or(RichBlockKind::Paragraph);
+    if let RichBlockKind::Heading { level } = kind {
+        let mut end = index + 1;
+        while end < document_index.total_count() {
+            let candidate_depth = document_index.depths[end];
+            if candidate_depth < depth {
+                break;
+            }
+            if candidate_depth == depth
+                && matches!(
+                    rich_block_kind_from_tag(document_index.kind_tags[end]),
+                    RichBlockKind::Heading { level: candidate_level } if candidate_level <= level
+                )
+            {
+                break;
+            }
+            end += 1;
+        }
+        return end;
+    }
+
+    let mut end = index + 1;
+    while end < document_index.total_count() && document_index.depths[end] > depth {
+        end += 1;
+    }
+    end
 }
 
 fn build_visible_lookup(visible_block_ids: &[BlockId]) -> HashMap<BlockId, usize> {
@@ -317,6 +398,16 @@ mod tests {
         assert_eq!(update.visibility_version, 2);
         assert_eq!(update.folded, Some((2, false)));
         assert_eq!(visible_index.visible_block_ids, vec![1, 2, 3, 4, 5, 6, 7]);
+    }
+
+    #[test]
+    fn heading_fold_end_points_before_the_next_same_level_heading() {
+        let document_index = heading_document();
+        let visible_index = VisibleDocumentIndex::from_document_index(&document_index);
+
+        assert_eq!(visible_index.fold_end_index(&document_index, 1), Some(5));
+        assert_eq!(visible_index.fold_end_index(&document_index, 3), Some(5));
+        assert_eq!(visible_index.fold_end_index(&document_index, 6), Some(7));
     }
 
     #[test]
@@ -402,6 +493,126 @@ mod tests {
         );
     }
 
+    #[test]
+    fn folded_heading_hides_its_entire_section_by_heading_level() {
+        let kinds = [
+            RichBlockKind::Heading { level: 1 },
+            RichBlockKind::Paragraph,
+            RichBlockKind::Heading { level: 2 },
+            RichBlockKind::Paragraph,
+            RichBlockKind::Heading { level: 3 },
+            RichBlockKind::Paragraph,
+            RichBlockKind::Heading { level: 2 },
+            RichBlockKind::Paragraph,
+            RichBlockKind::Heading { level: 1 },
+            RichBlockKind::Paragraph,
+        ];
+        let records = kinds.into_iter().enumerate().map(|(index, kind)| {
+            BlockIndexRecord::new(
+                index as BlockId + 1,
+                None,
+                0,
+                crate::rich_text::kind_tag_for_rich_block_kind(&kind),
+                0,
+            )
+        });
+        let document_index = DocumentIndex::new(DOCUMENT_ID, records, 1).unwrap();
+        let mut visible_index = VisibleDocumentIndex::from_document_index(&document_index);
+
+        assert!(visible_index.has_foldable_content(&document_index, 1));
+        visible_index.toggle_folded(&document_index, 1).unwrap();
+
+        assert_eq!(visible_index.visible_block_ids, vec![1, 9, 10]);
+    }
+
+    #[test]
+    fn folded_h2_stops_at_the_next_h2_or_higher_heading() {
+        let kinds = [
+            RichBlockKind::Heading { level: 1 },
+            RichBlockKind::Heading { level: 2 },
+            RichBlockKind::Paragraph,
+            RichBlockKind::Heading { level: 3 },
+            RichBlockKind::Paragraph,
+            RichBlockKind::Heading { level: 2 },
+            RichBlockKind::Paragraph,
+        ];
+        let records = kinds.into_iter().enumerate().map(|(index, kind)| {
+            BlockIndexRecord::new(
+                index as BlockId + 1,
+                None,
+                0,
+                crate::rich_text::kind_tag_for_rich_block_kind(&kind),
+                0,
+            )
+        });
+        let document_index = DocumentIndex::new(DOCUMENT_ID, records, 1).unwrap();
+        let mut visible_index = VisibleDocumentIndex::from_document_index(&document_index);
+
+        visible_index.toggle_folded(&document_index, 2).unwrap();
+
+        assert_eq!(visible_index.visible_block_ids, vec![1, 2, 6, 7]);
+    }
+
+    #[test]
+    fn folded_flag_is_restored_when_visible_index_is_built() {
+        let records = vec![
+            BlockIndexRecord::new(
+                1,
+                None,
+                0,
+                crate::rich_text::kind_tag_for_rich_block_kind(&RichBlockKind::Heading {
+                    level: 1,
+                }),
+                BLOCK_FLAG_FOLDED,
+            ),
+            BlockIndexRecord::new(2, None, 0, PARAGRAPH, 0),
+        ];
+        let document_index = DocumentIndex::new(DOCUMENT_ID, records, 1).unwrap();
+        let visible_index = VisibleDocumentIndex::from_document_index(&document_index);
+
+        assert!(visible_index.is_folded(1));
+        assert_eq!(visible_index.visible_block_ids, vec![1]);
+    }
+
+    #[test]
+    fn hidden_heading_section_target_resolves_to_its_visible_heading() {
+        let records = vec![
+            BlockIndexRecord::new(
+                1,
+                None,
+                0,
+                crate::rich_text::kind_tag_for_rich_block_kind(&RichBlockKind::Heading {
+                    level: 1,
+                }),
+                0,
+            ),
+            BlockIndexRecord::new(2, None, 0, PARAGRAPH, 0),
+            BlockIndexRecord::new(
+                3,
+                None,
+                0,
+                crate::rich_text::kind_tag_for_rich_block_kind(&RichBlockKind::Heading {
+                    level: 1,
+                }),
+                0,
+            ),
+        ];
+        let document_index = DocumentIndex::new(DOCUMENT_ID, records, 1).unwrap();
+        let mut visible_index = VisibleDocumentIndex::from_document_index(&document_index);
+        visible_index.toggle_folded(&document_index, 1).unwrap();
+
+        let target = visible_index
+            .resolve_scroll_target(&document_index, 2)
+            .unwrap();
+
+        assert_eq!(target.target_block_id, 1);
+        assert_eq!(target.visible_index, 0);
+        assert_eq!(
+            target.resolved_by,
+            ScrollTargetResolution::NearestVisibleAncestor
+        );
+    }
+
     fn sample_nested_document() -> DocumentIndex {
         let records = vec![
             BlockIndexRecord::new(1, None, 0, PARAGRAPH, 0),
@@ -413,5 +624,27 @@ mod tests {
             BlockIndexRecord::new(7, None, 0, PARAGRAPH, 0),
         ];
         DocumentIndex::new(DOCUMENT_ID, records, 9).unwrap()
+    }
+
+    fn heading_document() -> DocumentIndex {
+        let kinds = [
+            RichBlockKind::Heading { level: 1 },
+            RichBlockKind::Paragraph,
+            RichBlockKind::Heading { level: 2 },
+            RichBlockKind::Paragraph,
+            RichBlockKind::Paragraph,
+            RichBlockKind::Heading { level: 1 },
+            RichBlockKind::Paragraph,
+        ];
+        let records = kinds.into_iter().enumerate().map(|(index, kind)| {
+            BlockIndexRecord::new(
+                index as BlockId + 1,
+                None,
+                0,
+                crate::rich_text::kind_tag_for_rich_block_kind(&kind),
+                0,
+            )
+        });
+        DocumentIndex::new(DOCUMENT_ID, records, 1).unwrap()
     }
 }

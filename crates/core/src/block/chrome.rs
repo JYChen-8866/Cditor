@@ -27,7 +27,7 @@ impl BlockChromeSnapshot {
     ) -> Self {
         Self {
             list_info,
-            prefix: BlockPrefixSnapshot::from_kind(kind, list_info, collapsed),
+            prefix: BlockPrefixSnapshot::from_kind(kind, list_info, has_children, collapsed),
             has_children,
             collapsed,
         }
@@ -41,11 +41,17 @@ pub enum BlockPrefixSnapshot {
     Number { ordinal: usize },
     Todo { checked: bool },
     Callout { variant: CalloutVariant },
+    Heading { collapsed: bool },
     Toggle { collapsed: bool },
 }
 
 impl BlockPrefixSnapshot {
-    pub fn from_kind(kind: &RichBlockKind, list_info: BlockListInfo, collapsed: bool) -> Self {
+    pub fn from_kind(
+        kind: &RichBlockKind,
+        list_info: BlockListInfo,
+        _has_children: bool,
+        collapsed: bool,
+    ) -> Self {
         match kind {
             RichBlockKind::BulletedList => Self::Bullet {
                 depth: list_info.depth,
@@ -55,6 +61,7 @@ impl BlockPrefixSnapshot {
             },
             RichBlockKind::Todo { checked } => Self::Todo { checked: *checked },
             RichBlockKind::Callout { variant } => Self::Callout { variant: *variant },
+            RichBlockKind::Heading { .. } => Self::Heading { collapsed },
             RichBlockKind::Toggle => Self::Toggle { collapsed },
             _ => Self::None,
         }
@@ -90,6 +97,7 @@ mod tests {
                 &RichBlockKind::BulletedList,
                 BlockListInfo::with_depth(4),
                 false,
+                false,
             ),
             BlockPrefixSnapshot::Bullet { depth: 4 }
         );
@@ -97,6 +105,7 @@ mod tests {
             BlockPrefixSnapshot::from_kind(
                 &RichBlockKind::NumberedList,
                 BlockListInfo::with_depth(1).with_numbered_ordinal(7),
+                false,
                 false,
             ),
             BlockPrefixSnapshot::Number { ordinal: 7 }
@@ -106,8 +115,18 @@ mod tests {
                 &RichBlockKind::Todo { checked: true },
                 BlockListInfo::root(),
                 false,
+                false,
             ),
             BlockPrefixSnapshot::Todo { checked: true }
+        );
+        assert_eq!(
+            BlockPrefixSnapshot::from_kind(
+                &RichBlockKind::Heading { level: 6 },
+                BlockListInfo::root(),
+                false,
+                false,
+            ),
+            BlockPrefixSnapshot::Heading { collapsed: false }
         );
     }
 

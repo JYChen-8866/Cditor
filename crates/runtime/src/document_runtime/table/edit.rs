@@ -82,6 +82,36 @@ impl DocumentRuntime {
         Ok(changed)
     }
 
+    pub fn set_table_header_rows(
+        &mut self,
+        block_id: BlockId,
+        count: usize,
+    ) -> Result<bool, String> {
+        let changed = self
+            .table_runtime_mut(block_id)
+            .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
+            .set_header_rows(count);
+        if changed {
+            self.commit_table_runtime_payload(block_id)?;
+        }
+        Ok(changed)
+    }
+
+    pub fn set_table_header_columns(
+        &mut self,
+        block_id: BlockId,
+        count: usize,
+    ) -> Result<bool, String> {
+        let changed = self
+            .table_runtime_mut(block_id)
+            .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
+            .set_header_columns(count);
+        if changed {
+            self.commit_table_runtime_payload(block_id)?;
+        }
+        Ok(changed)
+    }
+
     pub fn insert_table_row(&mut self, block_id: BlockId, index: usize) -> Result<bool, String> {
         let changed = {
             let runtime = self

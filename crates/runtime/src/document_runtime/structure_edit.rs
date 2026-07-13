@@ -12,6 +12,9 @@ impl DocumentRuntime {
         if record.kind == kind {
             return Ok(false);
         }
+        if !self.can_convert_block_kind(block_id, &kind) {
+            return Ok(false);
+        }
         let text = record.plain_text();
         self.push_undo_snapshot(block_id)?;
         let payload = payload_for_converted_kind(&kind, text);
@@ -85,6 +88,13 @@ impl DocumentRuntime {
             .get(block_id)
             .map(|payload| payload.kind.clone())
             .unwrap_or_else(|| RichBlockKind::Paragraph);
+
+        if let RichBlockKind::Heading { level } = &kind
+            && self.visible_index.is_folded(block_id)
+        {
+            self.insert_heading_after_folded_section(block_id, *level)?;
+            return Ok(());
+        }
 
         let input_capability = cditor_core::block::BlockInputCapability::for_kind(&kind);
 
@@ -213,6 +223,48 @@ impl DocumentRuntime {
             new_block_id,
             estimate_payload_height(&payload, insert_at),
         ));
+        self.insert_runtime_block(insert_at, record, payload)?;
+        self.focus_block_at_offset(new_block_id, 0)?;
+        Ok(new_block_id)
+    }
+
+    fn insert_heading_after_folded_section(
+        &mut self,
+        block_id: BlockId,
+        level: u8,
+    ) -> Result<BlockId, String> {
+        let current_index = self
+            .index
+            .index_of(block_id)
+            .ok_or_else(|| format!("block {block_id} is missing from index"))?;
+        let insert_at = self
+            .visible_index
+            .fold_end_index(&self.index, block_id)
+            .unwrap_or_else(|| current_index.saturating_add(1));
+        let new_block_id = self
+            .index
+            .block_ids
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        let kind = RichBlockKind::Heading {
+            level: level.clamp(1, 6),
+        };
+        let payload = BlockPayloadRecord::rich_text(new_block_id, kind.clone(), String::new());
+        let record = BlockIndexRecord::new(
+            new_block_id,
+            self.index.parent_ids[current_index],
+            self.index.depths[current_index],
+            kind_tag_for_rich_block_kind(&kind),
+            0,
+        )
+        .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(
+            new_block_id,
+            estimate_payload_height(&payload, insert_at),
+        ));
+
         self.insert_runtime_block(insert_at, record, payload)?;
         self.focus_block_at_offset(new_block_id, 0)?;
         Ok(new_block_id)
@@ -497,50 +549,6 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn toggle_inline_mark_on_selection(&mut self, mark: InlineMark) -> Result<bool, String> {
-        let Some(block_id) = self.focused_block_id() else {
-            return Ok(false);
-        };
-        let Some(range) = self.focused_text_selection_range() else {
-            return Ok(false);
-        };
-        let text = self
-            .text_models
-            .get(&block_id)
-            .ok_or_else(|| format!("missing text model for block {block_id}"))?
-            .text()
-            .to_owned();
-        let range = safe_char_range(&text, range);
-        if range.is_empty() {
-            return Ok(false);
-        }
-        let (kind, current_spans) = self
-            .payload_window
-            .get(block_id)
-            .and_then(|payload| match &payload.payload {
-                BlockPayload::RichText { spans } => Some((payload.kind.clone(), spans.clone())),
-                _ => None,
-            })
-            .ok_or_else(|| format!("block {block_id} does not support inline marks"))?;
-        self.push_undo_snapshot(block_id)?;
-        let spans = toggle_mark_for_range(&current_spans, range.clone(), mark);
-        self.replace_block_kind_and_spans(block_id, kind, spans)?;
-        self.focused_text_selection = Some(FocusedTextSelection {
-            anchor: range.start,
-            focus: range.end,
-        });
-        if let Some(editing) = self
-            .editing
-            .as_mut()
-            .filter(|editing| editing.block_id == block_id)
-        {
-            editing.caret_anchor.text_offset = range.end as u64;
-            editing.set_input_target(InputTarget::BlockText { block_id });
-            editing.set_selected_range(range, false);
-        }
-        Ok(true)
-    }
-
     pub(super) fn replace_block_kind_and_spans(
         &mut self,
         block_id: BlockId,
@@ -561,6 +569,9 @@ impl DocumentRuntime {
         if let Some(index) = self.index.index_of(block_id) {
             let height_estimate = estimate_block_height(&kind, &payload, DEFAULT_LAYOUT_WIDTH_PX);
             self.index.kind_tags[index] = kind_tag_for_rich_block_kind(&kind);
+            if !matches!(kind, RichBlockKind::Heading { .. } | RichBlockKind::Toggle) {
+                self.index.flags[index] &= !cditor_core::document::BLOCK_FLAG_FOLDED;
+            }
             self.index.layout_meta[index].estimated_height = height_estimate.height;
             self.index.layout_meta[index].measured_height = None;
             self.index.layout_meta[index].dirty = true;
@@ -569,27 +580,10 @@ impl DocumentRuntime {
                 .saturating_add(1);
             self.pending_measured_heights.remove(&block_id);
             self.layout_dirty = true;
-            if let Some(visible_index) = self.visible_index.visible_index_of(block_id) {
-                let height_change = self
-                    .height_index
-                    .update_height(visible_index, height_estimate.height)
-                    .map_err(|error| error.to_string())?;
-                if let Some(page_index) = self.page_layout.page_for_block_index(visible_index) {
-                    let next_page_height =
-                        self.page_layout.pages[page_index].height + height_change.delta;
-                    self.page_layout
-                        .update_page_height(page_index, next_page_height)
-                        .map_err(|error| error.to_string())?;
-                }
-                let total_height = self.scroll_extent_height(self.height_index.total_height());
-                self.scroll
-                    .set_model_total_height(total_height)
-                    .map_err(|error| error.to_string())?;
-                self.scroll
-                    .set_displayed_total_height(total_height)
-                    .map_err(|error| error.to_string())?;
-            }
+            self.visible_index = VisibleDocumentIndex::from_document_index(&self.index);
+            self.rebuild_height_indexes_from_layout_meta()?;
             self.list_projection_cache = ListProjectionCache::build(&self.index);
+            self.last_successful_projection = None;
         }
         let content_version = self
             .payload_window
@@ -632,12 +626,17 @@ impl DocumentRuntime {
             .normalize(&self.index)
             .map_err(|error| format!("{error:?}"))?;
         if normalized.start.block_id == normalized.end.block_id {
+            let range = normalized.start.offset..normalized.end.offset;
+            trace_input(
+                "delete_document_selection.single_block",
+                format_args!(
+                    "block={} explicit_range={range:?} focus_before={:?}",
+                    normalized.start.block_id,
+                    self.focused_block_id()
+                ),
+            );
             self.focus_block_at_offset(normalized.start.block_id, normalized.start.offset)?;
-            self.focused_text_selection = Some(FocusedTextSelection {
-                anchor: normalized.start.offset,
-                focus: normalized.end.offset,
-            });
-            return self.replace_text_in_focused_range(None, "");
+            return self.replace_text_in_focused_range(Some(range), "");
         }
         let start_block_id = normalized.start.block_id;
         let before_current_record = self.index_record_for_block(start_block_id)?;

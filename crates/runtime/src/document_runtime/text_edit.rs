@@ -347,19 +347,8 @@ impl DocumentRuntime {
             return Ok(false);
         }
 
-        // Check for whole block selection first (before document_selection)
-        if !self.selected_block_ids.is_empty() {
-            return self.delete_selected_blocks();
-        }
-
-        if self
-            .document_selection
-            .is_some_and(|selection| !selection.is_caret())
-        {
-            return self.delete_document_selection();
-        }
-        if self.focused_text_selection_range().is_some() {
-            return self.replace_text_in_focused_range(None, "");
+        if self.has_active_selection() {
+            return self.delete_active_selection();
         }
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
@@ -456,21 +445,8 @@ impl DocumentRuntime {
             return Ok(false);
         }
 
-        // Check for whole block selection first
-        if !self.selected_block_ids.is_empty() {
-            return self.delete_selected_blocks();
-        }
-
-        // Check for cross-block document selection
-        if self
-            .document_selection
-            .is_some_and(|selection| !selection.is_caret())
-        {
-            return self.delete_document_selection();
-        }
-
-        if self.focused_text_selection_range().is_some() {
-            return self.replace_text_in_focused_range(None, "");
+        if self.has_active_selection() {
+            return self.delete_active_selection();
         }
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);

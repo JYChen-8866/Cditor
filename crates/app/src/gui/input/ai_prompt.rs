@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use cditor_core::ids::BlockId;
 use cditor_runtime::AiRequestPresentation;
-use gpui::{KeyDownEvent, Pixels};
+use gpui::Pixels;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AiPromptState {
@@ -82,36 +82,44 @@ pub enum AiPromptKeyResult {
     Ignored,
 }
 
-pub fn apply_ai_prompt_key(state: &mut AiPromptState, event: &KeyDownEvent) -> AiPromptKeyResult {
-    if event.keystroke.is_ime_in_progress() {
-        return AiPromptKeyResult::Ignored;
-    }
-    let modifiers = event.keystroke.modifiers;
-    if modifiers.control || modifiers.alt {
-        return AiPromptKeyResult::Ignored;
-    }
-    match event.keystroke.key.as_str() {
-        "enter" if !modifiers.shift => AiPromptKeyResult::Submit,
-        "escape" => AiPromptKeyResult::Cancel,
-        "left" => {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiPromptEditAction {
+    Submit,
+    Cancel,
+    MoveLeft,
+    MoveRight,
+    MoveToStart,
+    MoveToEnd,
+    DeleteBackward,
+    DeleteForward,
+}
+
+pub fn apply_ai_prompt_action(
+    state: &mut AiPromptState,
+    action: AiPromptEditAction,
+) -> AiPromptKeyResult {
+    match action {
+        AiPromptEditAction::Submit => AiPromptKeyResult::Submit,
+        AiPromptEditAction::Cancel => AiPromptKeyResult::Cancel,
+        AiPromptEditAction::MoveLeft => {
             if let Some(previous) = previous_char_boundary(&state.draft, state.caret_offset) {
                 state.move_caret_to(previous);
             }
             AiPromptKeyResult::Changed
         }
-        "right" => {
+        AiPromptEditAction::MoveRight => {
             state.move_caret_to(next_char_boundary(&state.draft, state.caret_offset));
             AiPromptKeyResult::Changed
         }
-        "home" => {
+        AiPromptEditAction::MoveToStart => {
             state.move_caret_to(0);
             AiPromptKeyResult::Changed
         }
-        "end" => {
+        AiPromptEditAction::MoveToEnd => {
             state.move_caret_to(state.draft.len());
             AiPromptKeyResult::Changed
         }
-        "backspace" => {
+        AiPromptEditAction::DeleteBackward => {
             if let Some(previous) = previous_char_boundary(&state.draft, state.caret_offset) {
                 state.draft.replace_range(previous..state.caret_offset, "");
                 state.caret_offset = previous;
@@ -119,7 +127,7 @@ pub fn apply_ai_prompt_key(state: &mut AiPromptState, event: &KeyDownEvent) -> A
             }
             AiPromptKeyResult::Changed
         }
-        "delete" => {
+        AiPromptEditAction::DeleteForward => {
             let next = next_char_boundary(&state.draft, state.caret_offset);
             if next > state.caret_offset {
                 state.draft.replace_range(state.caret_offset..next, "");
@@ -127,7 +135,6 @@ pub fn apply_ai_prompt_key(state: &mut AiPromptState, event: &KeyDownEvent) -> A
             }
             AiPromptKeyResult::Changed
         }
-        _ => AiPromptKeyResult::Ignored,
     }
 }
 
@@ -165,19 +172,6 @@ fn next_char_boundary(text: &str, offset: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{Keystroke, Modifiers};
-
-    fn event(key: &str) -> KeyDownEvent {
-        KeyDownEvent {
-            keystroke: Keystroke {
-                modifiers: Modifiers::default(),
-                key: key.to_owned(),
-                key_char: None,
-            },
-            is_held: false,
-            prefer_character_input: false,
-        }
-    }
 
     #[test]
     fn prompt_edits_multibyte_text_on_char_boundaries() {
@@ -185,7 +179,7 @@ mod tests {
         state.replace_range(0..0, "中文");
         assert_eq!(state.caret_offset, 6);
         assert_eq!(
-            apply_ai_prompt_key(&mut state, &event("backspace")),
+            apply_ai_prompt_action(&mut state, AiPromptEditAction::DeleteBackward),
             AiPromptKeyResult::Changed
         );
         assert_eq!(state.draft, "中");
@@ -201,5 +195,20 @@ mod tests {
             AiRequestPresentation::AssistantPanel,
         );
         assert_eq!(state.presentation, AiRequestPresentation::AssistantPanel);
+    }
+
+    #[test]
+    fn prompt_actions_do_not_depend_on_native_key_names() {
+        let mut state = AiPromptState::new(1, gpui::px(0.0), gpui::px(0.0));
+        state.replace_range(0..0, "ab");
+        assert_eq!(
+            apply_ai_prompt_action(&mut state, AiPromptEditAction::DeleteBackward),
+            AiPromptKeyResult::Changed
+        );
+        assert_eq!(state.draft, "a");
+        assert_eq!(
+            apply_ai_prompt_action(&mut state, AiPromptEditAction::Submit),
+            AiPromptKeyResult::Submit
+        );
     }
 }

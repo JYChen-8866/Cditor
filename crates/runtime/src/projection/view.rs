@@ -69,6 +69,7 @@ pub struct TableViewState {
     pub visible_cells: Vec<TableVisibleCell>,
     pub focused_cell: Option<TableCellPosition>,
     pub focused_cell_offset: Option<usize>,
+    pub focused_cell_selection_range: Option<std::ops::Range<usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

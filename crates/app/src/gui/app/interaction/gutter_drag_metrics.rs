@@ -1,20 +1,41 @@
 use cditor_core::block::BlockDropTarget;
 
-use crate::gui::block::chrome::BLOCK_GUTTER_WIDTH_PX;
+use crate::gui::block::chrome::block_content_left_px;
 use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 
 const GUTTER_DRAG_AUTO_SCROLL_EDGE_PX: f64 = 40.0;
 const GUTTER_DRAG_AUTO_SCROLL_MAX_STEP_PX: f64 = 24.0;
 pub(in crate::gui::app) const GUTTER_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
-const GUTTER_DRAG_GUIDELINE_CONTENT_START_BASE_PX: f32 = 8.0 + BLOCK_GUTTER_WIDTH_PX + 8.0;
 const GUTTER_DRAG_GUIDELINE_CONTENT_END_PX: f32 = DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0;
 
-pub(in crate::gui::app) fn gutter_drag_guideline_y_px(
-    _rects: &[super::geometry::ProjectedBlockRect],
-    _target: Option<BlockDropTarget>,
-    pointer_document_y: f32,
-) -> f32 {
-    pointer_document_y
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(in crate::gui::app) struct GutterDragGuidelineGeometry {
+    pub(in crate::gui::app) y_px: f32,
+    pub(in crate::gui::app) start_x_px: f32,
+    pub(in crate::gui::app) end_x_px: f32,
+}
+
+pub(in crate::gui::app) fn gutter_drag_guideline_geometry(
+    rects: &[super::geometry::ProjectedBlockRect],
+    target: BlockDropTarget,
+) -> Option<GutterDragGuidelineGeometry> {
+    let (anchor, y_px) = if let Some(block_id) = target.insert_before_block_id {
+        let anchor = rects.iter().find(|rect| rect.block_id == block_id)?;
+        (anchor, anchor.document_top as f32)
+    } else {
+        let anchor = rects
+            .iter()
+            .filter(|rect| rect.visible_index < target.target_visible_index)
+            .max_by_key(|rect| rect.visible_index)?;
+        (anchor, anchor.document_bottom as f32)
+    };
+    let start_x_px = block_content_left_px(anchor.indent_px);
+    let end_x_px = GUTTER_DRAG_GUIDELINE_CONTENT_END_PX;
+    (end_x_px > start_x_px).then_some(GutterDragGuidelineGeometry {
+        y_px,
+        start_x_px,
+        end_x_px,
+    })
 }
 
 pub(in crate::gui::app) fn gutter_drag_pointer_document_y(
@@ -23,29 +44,6 @@ pub(in crate::gui::app) fn gutter_drag_pointer_document_y(
     scroll_top: f64,
 ) -> f32 {
     (f64::from(window_y) - document_viewport_origin_y + scroll_top) as f32
-}
-
-pub(in crate::gui::app) fn gutter_drag_guideline_start_x_px(
-    rects: &[super::geometry::ProjectedBlockRect],
-    target: Option<BlockDropTarget>,
-) -> f32 {
-    let indent_px = target
-        .and_then(|target| {
-            if let Some(block_id) = target.insert_before_block_id {
-                rects
-                    .iter()
-                    .find(|rect| rect.block_id == block_id)
-                    .map(|rect| rect.indent_px)
-            } else {
-                rects.last().map(|rect| rect.indent_px)
-            }
-        })
-        .unwrap_or(0.0);
-    GUTTER_DRAG_GUIDELINE_CONTENT_START_BASE_PX + indent_px
-}
-
-pub(in crate::gui::app) fn gutter_drag_guideline_end_x_px() -> f32 {
-    GUTTER_DRAG_GUIDELINE_CONTENT_END_PX
 }
 
 pub(in crate::gui::app) fn gutter_drag_auto_scroll_delta(
@@ -92,7 +90,7 @@ mod tests {
     }
 
     #[test]
-    fn gutter_drag_guideline_start_aligns_with_target_content_level() {
+    fn gutter_drag_guideline_aligns_with_target_content_level_and_width() {
         let mut root = rect(1, 0.0, 40.0);
         root.indent_px = 0.0;
         let mut child = rect(2, 40.0, 80.0);
@@ -100,75 +98,116 @@ mod tests {
         let rects = vec![root, child];
 
         assert_eq!(
-            gutter_drag_guideline_start_x_px(
+            gutter_drag_guideline_geometry(
                 &rects,
-                Some(BlockDropTarget {
+                BlockDropTarget {
                     insert_before_block_id: Some(1),
                     target_visible_index: 0,
-                }),
+                },
             ),
-            GUTTER_DRAG_GUIDELINE_CONTENT_START_BASE_PX
+            Some(GutterDragGuidelineGeometry {
+                y_px: 0.0,
+                start_x_px: block_content_left_px(0.0),
+                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+            })
         );
         assert_eq!(
-            gutter_drag_guideline_start_x_px(
+            gutter_drag_guideline_geometry(
                 &rects,
-                Some(BlockDropTarget {
+                BlockDropTarget {
                     insert_before_block_id: Some(2),
                     target_visible_index: 1,
-                }),
+                },
             ),
-            GUTTER_DRAG_GUIDELINE_CONTENT_START_BASE_PX + BLOCK_INDENT_STEP_PX
+            Some(GutterDragGuidelineGeometry {
+                y_px: 40.0,
+                start_x_px: block_content_left_px(BLOCK_INDENT_STEP_PX),
+                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+            })
+        );
+        assert!(GUTTER_DRAG_GUIDELINE_CONTENT_END_PX > block_content_left_px(BLOCK_INDENT_STEP_PX));
+    }
+
+    #[test]
+    fn gutter_drag_guideline_snaps_only_to_block_top_or_bottom() {
+        let rects = vec![rect(1, 100.0, 132.0), rect(2, 132.0, 164.0)];
+
+        assert_eq!(
+            gutter_drag_guideline_geometry(
+                &rects,
+                BlockDropTarget {
+                    insert_before_block_id: Some(2),
+                    target_visible_index: 1,
+                },
+            ),
+            Some(GutterDragGuidelineGeometry {
+                y_px: 132.0,
+                start_x_px: block_content_left_px(0.0),
+                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+            }),
         );
         assert_eq!(
-            GUTTER_DRAG_GUIDELINE_CONTENT_START_BASE_PX,
-            8.0 + BLOCK_GUTTER_WIDTH_PX + 8.0
-        );
-        assert_eq!(
-            gutter_drag_guideline_end_x_px(),
-            DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0
-        );
-        assert!(
-            gutter_drag_guideline_end_x_px()
-                > GUTTER_DRAG_GUIDELINE_CONTENT_START_BASE_PX + BLOCK_INDENT_STEP_PX
+            gutter_drag_guideline_geometry(
+                &rects,
+                BlockDropTarget {
+                    insert_before_block_id: None,
+                    target_visible_index: 2,
+                },
+            ),
+            Some(GutterDragGuidelineGeometry {
+                y_px: 164.0,
+                start_x_px: block_content_left_px(0.0),
+                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+            }),
         );
     }
 
     #[test]
-    fn gutter_drag_guideline_tracks_pointer_document_y() {
-        let rects = vec![rect(1, 100.0, 132.0), rect(2, 132.0, 164.0)];
+    fn gutter_drag_guideline_after_target_uses_preceding_visible_block() {
+        let mut source = rect(3, 164.0, 196.0);
+        source.visible_index = 2;
+        source.indent_px = BLOCK_INDENT_STEP_PX;
+        let rects = vec![rect(1, 100.0, 132.0), rect(2, 132.0, 164.0), source];
 
         assert_eq!(
-            gutter_drag_guideline_y_px(
+            gutter_drag_guideline_geometry(
                 &rects,
-                Some(BlockDropTarget {
-                    insert_before_block_id: Some(2),
-                    target_visible_index: 1,
-                }),
-                12.0,
-            ),
-            12.0,
-        );
-        assert_eq!(
-            gutter_drag_guideline_y_px(
-                &rects,
-                Some(BlockDropTarget {
+                BlockDropTarget {
                     insert_before_block_id: None,
                     target_visible_index: 2,
-                }),
-                150.0,
+                },
             ),
-            150.0,
+            Some(GutterDragGuidelineGeometry {
+                y_px: 164.0,
+                start_x_px: block_content_left_px(0.0),
+                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+            }),
+        );
+    }
+
+    #[test]
+    fn gutter_drag_guideline_is_hidden_without_a_resolvable_block_boundary() {
+        let rects = vec![rect(1, 100.0, 132.0)];
+
+        assert_eq!(
+            gutter_drag_guideline_geometry(
+                &rects,
+                BlockDropTarget {
+                    insert_before_block_id: Some(99),
+                    target_visible_index: 0,
+                },
+            ),
+            None,
         );
         assert_eq!(
-            gutter_drag_guideline_y_px(
+            gutter_drag_guideline_geometry(
                 &rects,
-                Some(BlockDropTarget {
+                BlockDropTarget {
                     insert_before_block_id: None,
-                    target_visible_index: 2,
-                }),
-                220.0,
+                    target_visible_index: 0,
+                },
             ),
-            220.0,
+            None,
         );
     }
 

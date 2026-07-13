@@ -77,6 +77,22 @@ fn focused_table_cell_persists_selection_marked_range_and_direction() {
 }
 
 #[test]
+fn table_projection_carries_cell_selection_range_for_aligned_painting() {
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
+    runtime.focus_table_cell_at_offset(10, 0, 1, 1).unwrap();
+    runtime
+        .begin_or_update_composition_with_selection(10, 0..1, "中", Some(0.."中".len()))
+        .unwrap();
+
+    let projection = runtime.projection_for_window();
+    let table_view = projection.blocks[0]
+        .table_view
+        .as_ref()
+        .expect("table projection");
+    assert_eq!(table_view.focused_cell_selection_range, Some(0.."中".len()));
+}
+
+#[test]
 fn insert_char_updates_focused_table_cell_payload() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
 

@@ -1,5 +1,5 @@
 use super::*;
-use cditor_ai::AiStreamEvent;
+use cditor_ai::{AiStreamEvent, AiTaskKind};
 
 #[test]
 fn empty_editorial_text_blocks_support_space_invoked_ai() {
@@ -249,6 +249,31 @@ fn cross_block_ai_rewrite_accepts_atomically_and_undo_restores_blocks() {
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(runtime.block_payload_record(first).unwrap(), before_first);
     assert_eq!(runtime.block_payload_record(second).unwrap(), before_second);
+}
+
+#[test]
+fn cross_block_ai_request_uses_every_selected_block_as_context() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "alpha"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "beta"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "gamma"),
+        ],
+        720.0,
+    );
+    runtime.set_document_text_selection(1, 2, 3, 3).unwrap();
+
+    let dispatch = runtime.begin_ai_request("Rewrite selection").unwrap();
+
+    assert_eq!(dispatch.request.task, AiTaskKind::RewriteSelection);
+    assert_eq!(dispatch.request.selected_text, "pha\nbeta\ngam");
+    assert_eq!(dispatch.request.prefix, "al");
+    assert_eq!(dispatch.request.suffix, "ma");
+    assert!(matches!(
+        runtime.ai_session_snapshot().unwrap().target,
+        RuntimeAiTarget::TextSelection(_)
+    ));
 }
 
 #[test]
