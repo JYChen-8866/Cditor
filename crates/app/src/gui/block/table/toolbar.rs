@@ -34,6 +34,8 @@ use super::style::{
 const BLOCK_SHELL_OUTER_PADDING_Y_PX: f32 = 4.0;
 const BLOCK_CONTENT_BORDER_WIDTH_PX: f32 = 1.0;
 const TABLE_COLOR_SUBMENU_WIDTH_PX: f32 = 184.0;
+const TABLE_COLOR_SUBMENU_GAP_PX: f32 = 6.0;
+const TABLE_COLOR_SUBMENU_PADDING_PX: f32 = 6.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TableToolbarEditorOrigin {
@@ -99,33 +101,20 @@ pub(crate) fn render_table_axis_toolbar(
         table_view.height_px + table_menu_panel_height(items.len()) + 48.0,
     );
     let empty = items.is_empty();
-    let mut panel = div()
-        .id(("table-axis-menu", selection.block_id))
-        .absolute()
-        .left(px(origin.x_px + menu_position.x))
-        .top(px(origin.y_px + menu_position.y))
-        .flex()
-        .flex_col()
+    let mut primary_panel = div()
+        .id(("table-axis-menu-primary", selection.block_id))
+        .relative()
         .w(px(TABLE_MENU_WIDTH_PX))
         .h(px(menu_position.height))
         .p(px(TABLE_MENU_PADDING_PX))
+        .flex()
+        .flex_col()
         .rounded(px(9.0))
         .border_1()
         .border_color(rgb(theme.border))
         .bg(rgb(theme.panel))
         .shadow_lg()
         .occlude()
-        .on_mouse_down_out({
-            let view = view.clone();
-            move |_event, _window, cx| {
-                let _ = view.update(cx, |view, cx| {
-                    view.dismiss_table_menu_from_gui(cx);
-                });
-            }
-        })
-        .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
-            cx.stop_propagation();
-        })
         .child(render_table_menu_search(
             menu_ui,
             theme,
@@ -135,7 +124,7 @@ pub(crate) fn render_table_axis_toolbar(
         .child(div().h(px(TABLE_MENU_SEARCH_GAP_PX)).flex_none());
 
     if empty {
-        panel = panel.child(
+        primary_panel = primary_panel.child(
             div()
                 .h(px(TABLE_MENU_ROW_HEIGHT_PX))
                 .px(px(8.0))
@@ -146,7 +135,7 @@ pub(crate) fn render_table_axis_toolbar(
                 .child("没有匹配的操作"),
         );
     } else {
-        panel = panel.children(items.into_iter().map(|item| {
+        primary_panel = primary_panel.children(items.into_iter().map(|item| {
             render_table_menu_row(
                 item.action,
                 item.label,
@@ -159,10 +148,42 @@ pub(crate) fn render_table_axis_toolbar(
         }));
     }
 
+    let submenu_top = table_background_submenu_top();
+    let submenu_height = table_background_submenu_height();
+    let container_width = if menu_ui.color_submenu_open {
+        table_background_submenu_left() + TABLE_COLOR_SUBMENU_WIDTH_PX
+    } else {
+        TABLE_MENU_WIDTH_PX
+    };
+    let container_height = if menu_ui.color_submenu_open {
+        menu_position.height.max(submenu_top + submenu_height)
+    } else {
+        menu_position.height
+    };
+    let mut container = div()
+        .id(("table-axis-menu", selection.block_id))
+        .absolute()
+        .left(px(origin.x_px + menu_position.x))
+        .top(px(origin.y_px + menu_position.y))
+        .w(px(container_width))
+        .h(px(container_height))
+        .on_mouse_down_out({
+            let view = view.clone();
+            move |_event, _window, cx| {
+                let _ = view.update(cx, |view, cx| {
+                    view.dismiss_table_menu_from_gui(cx);
+                });
+            }
+        })
+        .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+            cx.stop_propagation();
+        })
+        .child(primary_panel);
+
     if menu_ui.color_submenu_open {
-        panel = panel.child(render_table_background_submenu(theme, view));
+        container = container.child(render_table_background_submenu(theme, view));
     }
-    panel.into_any_element()
+    container.into_any_element()
 }
 
 fn render_table_menu_search(
@@ -310,18 +331,13 @@ fn render_header_toggle(active: bool, enabled: bool, theme: GuiTheme) -> AnyElem
 }
 
 fn render_table_background_submenu(theme: GuiTheme, view: Entity<CditorV2View>) -> AnyElement {
-    let top = TABLE_MENU_PADDING_PX
-        + TABLE_MENU_SEARCH_HEIGHT_PX
-        + TABLE_MENU_SEARCH_GAP_PX
-        + TABLE_MENU_ROW_HEIGHT_PX;
     div()
         .id("table-background-submenu")
         .absolute()
-        // Touch the parent hover surface so there is no disappearing dead zone.
-        .left(px(TABLE_MENU_WIDTH_PX - TABLE_MENU_PADDING_PX))
-        .top(px(top))
+        .left(px(table_background_submenu_left()))
+        .top(px(table_background_submenu_top()))
         .w(px(TABLE_COLOR_SUBMENU_WIDTH_PX))
-        .p(px(6.0))
+        .p(px(TABLE_COLOR_SUBMENU_PADDING_PX))
         .flex()
         .flex_col()
         .rounded(px(8.0))
@@ -371,6 +387,22 @@ fn render_table_background_submenu(theme: GuiTheme, view: Entity<CditorV2View>) 
                 .into_any_element()
         }))
         .into_any_element()
+}
+
+const fn table_background_submenu_left() -> f32 {
+    TABLE_MENU_WIDTH_PX + TABLE_COLOR_SUBMENU_GAP_PX
+}
+
+const fn table_background_submenu_top() -> f32 {
+    TABLE_MENU_PADDING_PX
+        + TABLE_MENU_SEARCH_HEIGHT_PX
+        + TABLE_MENU_SEARCH_GAP_PX
+        + TABLE_MENU_ROW_HEIGHT_PX
+}
+
+const fn table_background_submenu_height() -> f32 {
+    TABLE_COLOR_SUBMENU_PADDING_PX * 2.0
+        + TABLE_MENU_ROW_HEIGHT_PX * TableBackgroundColor::ALL.len() as f32
 }
 
 fn table_menu_action_color(action: TableMenuAction, theme: GuiTheme) -> u32 {
@@ -540,6 +572,19 @@ mod tests {
         assert_eq!(
             table_menu_anchor(TableAxisSelection::new(7, TableAxis::Column, 1), &scrolled).left,
             89.0
+        );
+    }
+
+    #[test]
+    fn table_color_submenu_has_a_visible_gap_and_stays_inside_menu_container() {
+        assert_eq!(
+            table_background_submenu_left() - TABLE_MENU_WIDTH_PX,
+            TABLE_COLOR_SUBMENU_GAP_PX
+        );
+        assert_eq!(
+            table_background_submenu_height(),
+            TABLE_COLOR_SUBMENU_PADDING_PX * 2.0
+                + TABLE_MENU_ROW_HEIGHT_PX * TableBackgroundColor::ALL.len() as f32
         );
     }
 

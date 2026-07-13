@@ -186,10 +186,6 @@ impl DocumentRuntime {
             .into_iter()
             .filter(|record| record.id != current_block_id && record.id >= first_block_id)
             .collect::<Vec<_>>();
-        let inserted_payloads = inserted_records
-            .iter()
-            .filter_map(|record| self.payload_window.get(record.id).cloned())
-            .collect::<Vec<_>>();
         let after_focus = self
             .focused_block_id()
             .map(|block_id| (block_id, self.caret_offset_for_block(block_id).unwrap_or(0)));
@@ -200,7 +196,10 @@ impl DocumentRuntime {
             after_current_record,
             after_current_payload,
             inserted_records,
-            inserted_payloads,
+            // The live payload map already owns these records. Avoid cloning a
+            // potentially huge paste into undo memory; first undo moves the
+            // records into the redo snapshot before removing them from runtime.
+            inserted_payloads: Vec::new(),
             deleted_records,
             deleted_payloads,
             before_focus,
@@ -636,24 +635,15 @@ impl DocumentRuntime {
         if blocks.is_empty() {
             return Ok(());
         }
-        let mut records = self.index_records();
-        let insert_at = insert_at.min(records.len());
         let mut index_records = Vec::with_capacity(blocks.len());
         let mut payload_records = Vec::with_capacity(blocks.len());
         for block in blocks {
-            let mut payload = normalize_payload_record_for_kind(block.to_payload_record());
-            self.sync_table_runtime_from_loaded_record(&mut payload);
-            self.payload_window.insert(payload.clone());
             index_records.push(block.to_index_record());
-            payload_records.push(payload);
+            payload_records.push(block.to_payload_record());
         }
-        records.splice(insert_at..insert_at, index_records);
-        self.rebuild_structure_index(records)?;
-        for mut payload in payload_records {
-            self.sync_table_runtime_from_loaded_record(&mut payload);
-            self.payload_window.insert(payload);
-        }
-        Ok(())
+        // Text piece tables are viewport entities. The shared batch path rebuilds
+        // structure once and hydrates only tables; text models hydrate on focus.
+        self.insert_runtime_blocks_batch(insert_at, &index_records, payload_records)
     }
 }
 

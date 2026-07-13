@@ -102,6 +102,95 @@ fn payload_window_store_marks_loading_and_missing_payload_errors() {
     assert!(runtime.payload_window.failed.contains_key(&2));
 }
 
+#[test]
+fn payload_window_store_deduplicates_an_in_flight_viewport_request() {
+    let records = (1..=100)
+        .map(|block_id| {
+            BlockIndexRecord::new(
+                block_id,
+                None,
+                0,
+                kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut runtime =
+        DocumentRuntime::from_index_records_with_window(1, records, Vec::new(), 1, 720.0, 0..0);
+
+    let first = runtime
+        .plan_payload_window_load_if_needed(20..40)
+        .expect("first viewport needs a load");
+    let duplicate = runtime.plan_payload_window_load_if_needed(20..40);
+
+    assert_eq!(first.block_range, 20..40);
+    assert_eq!(first.block_ids.len(), 20);
+    assert!(duplicate.is_none());
+    assert_eq!(runtime.payload_window_generation(), 1);
+}
+
+#[test]
+fn planned_pg_style_window_load_replaces_bounded_placeholder_without_full_hydration() {
+    let records = (1..=10_000 as BlockId)
+        .map(|block_id| {
+            BlockIndexRecord::new(
+                block_id,
+                None,
+                0,
+                kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                0,
+            )
+            .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(block_id, 32.0))
+        })
+        .collect::<Vec<_>>();
+    let initial_payloads = (1..=64 as BlockId)
+        .map(|block_id| {
+            BlockPayloadRecord::rich_text(block_id, RichBlockKind::Paragraph, "initial")
+        })
+        .collect::<Vec<_>>();
+    let mut runtime = DocumentRuntime::from_index_records_with_window(
+        1,
+        records,
+        initial_payloads,
+        1,
+        720.0,
+        0..64,
+    );
+    runtime
+        .scroll
+        .scroll_to_global_offset(160_000.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .unwrap();
+
+    let placeholder = runtime.projection_for_window_planned();
+    assert!(placeholder.render_window.is_placeholder());
+    assert!(placeholder.render_window.block_range.len() <= 320);
+    assert_eq!(
+        placeholder.placeholder_window_height,
+        Some(placeholder.render_window.block_range.len() as f64 * 32.0)
+    );
+
+    let request = runtime
+        .plan_payload_window_load_if_needed(placeholder.render_window.block_range.clone())
+        .expect("remote viewport must be loaded");
+    let records = request
+        .block_ids
+        .iter()
+        .map(|block_id| {
+            BlockPayloadRecord::rich_text(*block_id, RichBlockKind::Paragraph, "loaded")
+        })
+        .collect();
+    runtime.apply_payload_window_result(PayloadWindowLoadResult {
+        request,
+        records,
+        missing_block_ids: Vec::new(),
+    });
+
+    let loaded = runtime.projection_for_window_planned();
+    assert!(!loaded.render_window.is_placeholder());
+    assert!(loaded.blocks.len() <= 320);
+    assert!(runtime.payload_window.payloads.len() < 500);
+}
+
 #[tokio::test]
 #[ignore = "requires docker compose postgres_test and CDITOR_TEST_DATABASE_URL"]
 async fn payload_window_store_loads_requested_window_from_postgres() {

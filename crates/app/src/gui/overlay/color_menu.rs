@@ -12,7 +12,12 @@ pub const COLOR_MENU_WIDTH_PX: f32 = 220.0;
 pub const COLOR_MENU_DESIRED_HEIGHT_PX: f32 = 520.0;
 const COLOR_MENU_MIN_HEIGHT_PX: f32 = 180.0;
 const COLOR_MENU_GAP_PX: f32 = 6.0;
-const COLOR_MENU_RIGHT_OFFSET_PX: f32 = 174.0;
+const PRIMARY_TOOLBAR_WIDTH_PX: f32 = 194.0;
+const PRIMARY_TOOLBAR_CONTENT_LEFT_PX: f32 = 8.0;
+const COLOR_MENU_RIGHT_OFFSET_PX: f32 =
+    PRIMARY_TOOLBAR_WIDTH_PX - PRIMARY_TOOLBAR_CONTENT_LEFT_PX + COLOR_MENU_GAP_PX;
+const COLOR_MENU_LEFT_OFFSET_PX: f32 =
+    -(COLOR_MENU_WIDTH_PX + PRIMARY_TOOLBAR_CONTENT_LEFT_PX + COLOR_MENU_GAP_PX);
 const COLOR_TRIGGER_TOP_IN_TOOLBAR_PX: f32 = 40.0;
 const COLOR_MENU_ESTIMATED_CONTENT_HEIGHT_PX: f32 = 690.0;
 
@@ -182,8 +187,8 @@ pub fn color_menu_geometry(
     viewport_width: f32,
     viewport_height: f32,
 ) -> ColorMenuGeometry {
-    let opens_left =
-        toolbar_x + 194.0 + COLOR_MENU_GAP_PX + COLOR_MENU_WIDTH_PX > viewport_width - 10.0;
+    let opens_left = toolbar_x + PRIMARY_TOOLBAR_WIDTH_PX + COLOR_MENU_GAP_PX + COLOR_MENU_WIDTH_PX
+        > viewport_width - 10.0;
     let available_height = (viewport_height - 20.0).max(1.0);
     let height = COLOR_MENU_DESIRED_HEIGHT_PX
         .min(available_height)
@@ -280,7 +285,7 @@ pub fn render_color_menu(
         .absolute()
         .top(px(state.color_menu_top_offset))
         .when(state.color_menu_opens_left, |menu| {
-            menu.left(px(-COLOR_MENU_WIDTH_PX))
+            menu.left(px(COLOR_MENU_LEFT_OFFSET_PX))
         })
         .when(!state.color_menu_opens_left, |menu| {
             menu.left(px(COLOR_MENU_RIGHT_OFFSET_PX))
@@ -513,9 +518,14 @@ mod tests {
     }
 
     #[test]
-    fn submenu_has_no_dead_hover_gap() {
-        const TRIGGER_WIDTH_PX: f32 = 178.0;
-        assert!(COLOR_MENU_RIGHT_OFFSET_PX <= TRIGGER_WIDTH_PX);
-        assert_eq!(-COLOR_MENU_WIDTH_PX + COLOR_MENU_WIDTH_PX, 0.0);
+    fn submenu_has_an_exact_visual_gap_from_the_primary_panel() {
+        assert_eq!(
+            PRIMARY_TOOLBAR_CONTENT_LEFT_PX + COLOR_MENU_RIGHT_OFFSET_PX - PRIMARY_TOOLBAR_WIDTH_PX,
+            COLOR_MENU_GAP_PX
+        );
+        assert_eq!(
+            -(PRIMARY_TOOLBAR_CONTENT_LEFT_PX + COLOR_MENU_LEFT_OFFSET_PX + COLOR_MENU_WIDTH_PX),
+            COLOR_MENU_GAP_PX
+        );
     }
 }
