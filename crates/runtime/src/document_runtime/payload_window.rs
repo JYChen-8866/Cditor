@@ -11,7 +11,7 @@ impl DocumentRuntime {
         let has_unrequested_missing = block_ids.iter().any(|block_id| {
             !self.payload_window.payloads.contains_key(block_id)
                 && !self.payload_window.loading.contains(block_id)
-                && !self.payload_window.failed.contains_key(block_id)
+                && self.payload_window.can_retry(*block_id)
         });
 
         if !range_changed && !has_unrequested_missing {
@@ -24,7 +24,11 @@ impl DocumentRuntime {
 
         let missing_block_ids = block_ids
             .into_iter()
-            .filter(|block_id| !self.payload_window.payloads.contains_key(block_id))
+            .filter(|block_id| {
+                !self.payload_window.payloads.contains_key(block_id)
+                    && !self.payload_window.loading.contains(block_id)
+                    && self.payload_window.can_retry(*block_id)
+            })
             .collect::<Vec<_>>();
         if missing_block_ids.is_empty() {
             return None;

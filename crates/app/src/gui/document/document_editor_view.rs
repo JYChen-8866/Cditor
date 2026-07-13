@@ -269,6 +269,7 @@ impl DocumentEditorView {
             projection.after_window_height,
             projection.scroll.global_scroll_top,
         )
+        .with_placeholder_error(projection.placeholder_window_error.clone())
         .render(self.theme, block_elements, Some(overlay))
     }
 }

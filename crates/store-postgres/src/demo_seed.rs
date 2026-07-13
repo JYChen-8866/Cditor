@@ -5,10 +5,12 @@ use cditor_core::demo_fixtures::{
 };
 
 use super::{
-    DocumentRow, PgDocumentId, PostgresDocumentStore, PostgresPayloadStore, PostgresStorageResult,
+    DocumentRow, PgDocumentId, PostgresDocumentStore, PostgresPayloadStore, PostgresStorageError,
+    PostgresStorageResult,
 };
 
 const DEFAULT_PAYLOAD_SEED_BATCH_SIZE: usize = 1_000;
+const DOCUMENT_INDEX_VISIBLE_VERSION: i64 = 2;
 const DEMO_WORKSPACE_NAMESPACE: u128 = 0x9300_0000_0000_0000_0000_0000_0000_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,11 +52,48 @@ pub async fn ensure_large_mixed_demo_seeded(
     payload_store: &PostgresPayloadStore,
     options: LargeDemoSeedOptions,
 ) -> PostgresStorageResult<LargeDemoSeedReport> {
+    let block_count = options.block_count.max(1);
+    let existing_metadata = match document_store
+        .load_document_metadata(options.document_id)
+        .await
+    {
+        Ok(metadata) => Some(metadata),
+        Err(PostgresStorageError::NotFound { .. }) => None,
+        Err(error) => return Err(error),
+    };
+    let existing_document = existing_metadata.is_some();
+    let existing_block_count = if existing_document {
+        document_store
+            .count_live_blocks(options.document_id)
+            .await?
+    } else {
+        0
+    };
+    let existing_payload_count = if existing_document {
+        payload_store
+            .count_live_payloads(options.document_id)
+            .await?
+    } else {
+        0
+    };
+    let snapshot_needs_repair = if let Some(metadata) = &existing_metadata
+        && metadata.structure_version == 1
+    {
+        !document_store
+            .has_document_index_snapshot(
+                options.document_id,
+                DOCUMENT_INDEX_VISIBLE_VERSION,
+                metadata.structure_version,
+            )
+            .await?
+    } else {
+        false
+    };
+
     if !options.force_reseed
-        && document_store
-            .load_document_metadata(options.document_id)
-            .await
-            .is_ok()
+        && existing_block_count == block_count
+        && existing_payload_count == block_count
+        && !snapshot_needs_repair
     {
         return Ok(LargeDemoSeedReport {
             document_id: options.document_id,
@@ -64,39 +103,74 @@ pub async fn ensure_large_mixed_demo_seeded(
         });
     }
 
-    let block_count = options.block_count.max(1);
     let structure_version = 1_i64;
-    let workspace_id = workspace_uuid(options.workspace_id);
-    let document = DocumentRow {
-        id: options.document_id,
-        workspace_id,
-        title: format!("Cditor PostgreSQL 10w mixed demo ({block_count} blocks)"),
-        structure_version,
-        content_version: 1,
-        layout_version: 0,
-        schema_version: 1,
-    };
+    if options.force_reseed || existing_block_count != block_count {
+        let workspace_id = workspace_uuid(options.workspace_id);
+        let document = DocumentRow {
+            id: options.document_id,
+            workspace_id,
+            title: format!("Cditor PostgreSQL 10w mixed demo ({block_count} blocks)"),
+            structure_version,
+            content_version: 1,
+            layout_version: 0,
+            schema_version: 1,
+        };
 
-    document_store.save_document_metadata(&document).await?;
+        document_store.save_document_metadata(&document).await?;
 
-    let records = large_mixed_demo_index_records(block_count);
-    document_store
-        .save_block_index_records(options.document_id, &records, structure_version)
-        .await?;
-    document_store
-        .save_document_index_snapshot(options.document_id, 1, structure_version, &records)
-        .await?;
+        let records = large_mixed_demo_index_records(block_count);
+        document_store
+            .save_block_index_records(options.document_id, &records, structure_version)
+            .await?;
+        document_store
+            .save_document_index_snapshot(
+                options.document_id,
+                DOCUMENT_INDEX_VISIBLE_VERSION,
+                structure_version,
+                &records,
+            )
+            .await?;
+    } else if snapshot_needs_repair {
+        let records = large_mixed_demo_index_records(block_count);
+        document_store
+            .save_document_index_snapshot(
+                options.document_id,
+                DOCUMENT_INDEX_VISIBLE_VERSION,
+                structure_version,
+                &records,
+            )
+            .await?;
+    }
 
     let batch_size = options.payload_batch_size.max(1);
     let mut payload_count = 0usize;
     let mut start = 0usize;
     while start < block_count {
         let end = (start + batch_size).min(block_count);
-        let payloads = large_mixed_demo_payload_records(start..end, block_count);
-        payload_store
-            .save_block_payloads(options.document_id, &payloads)
-            .await?;
-        payload_count += payloads.len();
+        let expected = large_mixed_demo_payload_records(start..end, block_count);
+        let payloads = if options.force_reseed || existing_block_count != block_count {
+            expected
+        } else {
+            let block_ids = expected
+                .iter()
+                .map(|record| record.block_id)
+                .collect::<Vec<_>>();
+            let loaded = payload_store.load_block_payloads(&block_ids).await?;
+            let missing = loaded
+                .missing_block_ids
+                .into_iter()
+                .collect::<std::collections::HashSet<_>>();
+            expected
+                .into_iter()
+                .filter(|record| missing.contains(&record.block_id))
+                .collect()
+        };
+        if !payloads.is_empty() {
+            payload_store
+                .save_block_payloads(options.document_id, &payloads)
+                .await?;
+            payload_count += payloads.len();
+        }
         start = end;
     }
 
@@ -172,5 +246,30 @@ mod tests {
         .await
         .unwrap();
         assert!(skipped.skipped_existing);
+
+        sqlx::query("DELETE FROM block_payloads WHERE block_id = $1")
+            .bind(crate::pg_block_id_from_runtime(13))
+            .execute(payload_store.pool())
+            .await
+            .unwrap();
+        let repaired = ensure_large_mixed_demo_seeded(
+            &document_store,
+            &payload_store,
+            LargeDemoSeedOptions::new(document_id, 1, 36),
+        )
+        .await
+        .unwrap();
+        assert!(!repaired.skipped_existing);
+        assert_eq!(repaired.block_count, 36);
+        assert_eq!(repaired.payload_count, 1);
+        assert_eq!(
+            payload_store
+                .load_block_payloads(&[13])
+                .await
+                .unwrap()
+                .records
+                .len(),
+            1
+        );
     }
 }

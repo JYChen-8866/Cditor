@@ -84,12 +84,15 @@ impl DocumentRuntime {
             ),
         };
 
+        let cached_heights = layout_store
+            .load_block_heights(
+                &records.iter().map(|record| record.id).collect::<Vec<_>>(),
+                options.layout_key,
+            )
+            .await?;
         let mut layout_cache_hits = 0usize;
         for record in &mut records {
-            let cached = layout_store
-                .load_block_height(record.id, options.layout_key)
-                .await?;
-            if cached.source != CacheSource::Missing {
+            if let Some(cached) = cached_heights.get(&record.id) {
                 layout_cache_hits += 1;
                 record.layout_meta = BlockLayoutMeta {
                     block_id: record.id,
@@ -114,6 +117,21 @@ impl DocumentRuntime {
             .await?;
         let payloads_missing = loaded_payloads.missing_block_ids.len();
         let payloads_loaded = loaded_payloads.records.len();
+        if payloads_missing != 0 {
+            let sample = loaded_payloads
+                .missing_block_ids
+                .iter()
+                .take(5)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(PostgresStorageError::CorruptData {
+                message: format!(
+                    "document {} is missing {payloads_missing} payloads in its initial window (sample block ids: {sample}); reseed or repair the document",
+                    metadata.id
+                ),
+            });
+        }
 
         let runtime = Self::from_index_records_with_window(
             runtime_document_id,

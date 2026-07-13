@@ -367,6 +367,7 @@ impl DocumentRuntime {
             ai_preview: self.ai_preview_for_block_range(&block_range),
             before_window_height,
             placeholder_window_height: None,
+            placeholder_window_error: None,
             after_window_height,
             down_placer_height,
             total_visible_blocks,
@@ -401,6 +402,10 @@ impl DocumentRuntime {
             .offset_of_block(block_range.start)
             .unwrap_or(0.0);
         let placeholder_height = self.height_for_block_range(&block_range);
+        let placeholder_window_error = block_range.clone().find_map(|visible_index| {
+            let block_id = self.visible_index.id_at_visible_index(visible_index)?;
+            self.payload_window.failed.get(&block_id).cloned()
+        });
         let render_window = RenderWindow::placeholder(PlaceholderWindow {
             page_range: page_range.clone(),
             block_range,
@@ -432,6 +437,7 @@ impl DocumentRuntime {
             ai_preview: None,
             before_window_height,
             placeholder_window_height: Some(placeholder_height),
+            placeholder_window_error,
             after_window_height,
             down_placer_height,
             total_visible_blocks,

@@ -130,6 +130,37 @@ fn payload_window_store_deduplicates_an_in_flight_viewport_request() {
 }
 
 #[test]
+fn payload_window_store_retries_failures_but_stops_after_the_limit() {
+    let records = (1..=2)
+        .map(|block_id| {
+            BlockIndexRecord::new(
+                block_id,
+                None,
+                0,
+                kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut runtime =
+        DocumentRuntime::from_index_records_with_window(1, records, Vec::new(), 1, 720.0, 0..0);
+
+    for attempt in 1..=3 {
+        let request = runtime
+            .plan_payload_window_load_if_needed(0..2)
+            .expect("failure remains retryable before the limit");
+        runtime.apply_payload_window_load_error(request, format!("attempt {attempt}"));
+    }
+
+    assert!(runtime.plan_payload_window_load_if_needed(0..2).is_none());
+    assert_eq!(runtime.payload_window.failure_attempts.get(&1), Some(&3));
+    assert_eq!(
+        runtime.payload_window.failed.get(&1).map(String::as_str),
+        Some("attempt 3")
+    );
+}
+
+#[test]
 fn planned_pg_style_window_load_replaces_bounded_placeholder_without_full_hydration() {
     let records = (1..=10_000 as BlockId)
         .map(|block_id| {

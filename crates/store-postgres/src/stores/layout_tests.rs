@@ -116,6 +116,16 @@ fn conversion_helpers_reject_negative_values() {
     assert!(u8_from_i32(300, "confidence").is_err());
 }
 
+#[test]
+fn batch_block_layout_query_prioritizes_exact_hash_in_one_round_trip() {
+    let sql = batch_block_layout_select_sql();
+
+    assert!(sql.contains("DISTINCT ON (block_id)"));
+    assert!(sql.contains("block_id = ANY($1)"));
+    assert!(sql.contains("(layout_key_hash = $2) DESC"));
+    assert!(sql.contains("measured_at DESC NULLS LAST"));
+}
+
 #[tokio::test]
 #[ignore = "requires docker compose postgres_test and CDITOR_TEST_DATABASE_URL"]
 async fn postgres_layout_store_saves_and_loads_exact_block_height() {
@@ -134,6 +144,13 @@ async fn postgres_layout_store_saves_and_loads_exact_block_height() {
     assert_eq!(cached.height, 128.0);
     assert_eq!(cached.confidence, HeightConfidence::Exact);
     assert_eq!(cached.source, CacheSource::ExactMatch);
+
+    let batch = layout_store
+        .load_block_heights(&[block_id, block_id + 1], key)
+        .await
+        .unwrap();
+    assert_eq!(batch.get(&block_id), Some(&cached));
+    assert!(!batch.contains_key(&(block_id + 1)));
 }
 
 #[tokio::test]
