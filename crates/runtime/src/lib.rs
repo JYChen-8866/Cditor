@@ -36,6 +36,10 @@ pub use content::paste_import::{
     PasteImportPipeline, PasteImportResult, PastePipelinePhase, PasteProgress, PasteRunOptions,
     PayloadPersistTask, PendingMediaResource,
 };
+pub use content::payload_cache::{
+    DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES, DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES,
+    PayloadCachePolicy, PayloadCacheTrimReport,
+};
 pub use content::payload_window::PayloadWindow;
 pub use content::query_index::{
     BLOCK_FTS_SCHEMA, BlockPayloadForQuery, DocumentQueryIndex, FtsApplyResult, FtsEntry,

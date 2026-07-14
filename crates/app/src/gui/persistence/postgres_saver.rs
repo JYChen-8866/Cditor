@@ -50,6 +50,19 @@ impl PostgresSaveBatch {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostgresSaveOutcome {
+    pub saved_structure_version: Option<u64>,
+    pub saved_payload_versions: Vec<(BlockId, u64)>,
+}
+
+fn payload_versions(payloads: &[BlockPayloadRecord]) -> Vec<(BlockId, u64)> {
+    payloads
+        .iter()
+        .map(|payload| (payload.block_id, payload.content_version))
+        .collect()
+}
+
 #[derive(Debug, Default)]
 pub struct PostgresPersistenceState {
     target: Option<PostgresPersistenceTarget>,
@@ -187,8 +200,9 @@ impl PostgresPersistenceState {
     }
 }
 
-pub async fn save_postgres_batch(batch: PostgresSaveBatch) -> Result<Option<u64>, String> {
+pub async fn save_postgres_batch(batch: PostgresSaveBatch) -> Result<PostgresSaveOutcome, String> {
     let saved_structure_version = batch.saved_structure_version();
+    let saved_payload_versions = payload_versions(&batch.payloads);
     let document_store = PostgresDocumentStore::new(batch.pool.clone());
     let payload_store = PostgresPayloadStore::new(batch.pool.clone());
     let transaction_store = PostgresTransactionStore::new(batch.pool.clone());
@@ -249,7 +263,10 @@ pub async fn save_postgres_batch(batch: PostgresSaveBatch) -> Result<Option<u64>
             .map_err(|error| error.to_string())?;
     }
 
-    Ok(saved_structure_version)
+    Ok(PostgresSaveOutcome {
+        saved_structure_version,
+        saved_payload_versions,
+    })
 }
 
 pub fn mark_dirty_and_schedule_postgres_save(
@@ -259,4 +276,20 @@ pub fn mark_dirty_and_schedule_postgres_save(
 ) {
     *save_status = EditorSaveStatus::Dirty;
     persistence.schedule(cx);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cditor_core::rich_text::RichBlockKind;
+
+    #[test]
+    fn save_acknowledgement_captures_exact_snapshot_versions() {
+        let mut first = BlockPayloadRecord::rich_text(7, RichBlockKind::Paragraph, "first");
+        first.content_version = 12;
+        let mut second = BlockPayloadRecord::rich_text(9, RichBlockKind::Paragraph, "second");
+        second.content_version = 4;
+
+        assert_eq!(payload_versions(&[first, second]), vec![(7, 12), (9, 4)]);
+    }
 }

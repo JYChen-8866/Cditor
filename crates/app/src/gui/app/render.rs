@@ -289,6 +289,7 @@ impl Render for CditorV2View {
             .target()
             .map(|target| target.pool.clone());
         let mut pending_payload_window_load = None;
+        let mut pending_payload_window_range = None;
 
         match &mut self.state {
             CditorViewState::Ready(runtime) => {
@@ -307,9 +308,8 @@ impl Render for CditorV2View {
                     .flush_pending_height_corrections_with_priority(height_correction_priority);
                 let projection = runtime.projection_for_window_planned();
                 if postgres_payload_pool.is_some() && projection.render_window.is_placeholder() {
-                    pending_payload_window_load = runtime.plan_payload_window_load_if_needed(
-                        projection.render_window.block_range.clone(),
-                    );
+                    pending_payload_window_range =
+                        Some(projection.render_window.block_range.clone());
                 }
                 self.code_highlights.sync_visible_window(
                     &projection,
@@ -469,8 +469,35 @@ impl Render for CditorV2View {
                 }
             }
         }
-        if let (Some(pool), Some(request)) = (postgres_payload_pool, pending_payload_window_load) {
-            self.load_postgres_payload_window(pool, request, cx);
+        if let (Some(pool), Some(block_range)) =
+            (postgres_payload_pool, pending_payload_window_range)
+        {
+            let activated_resident_window = self.ready_runtime().is_some_and(|runtime| {
+                runtime.activate_payload_window_if_resident(block_range.clone())
+            });
+            if activated_resident_window {
+                // This frame was projected before the cached range became active.
+                // Replace the placeholder without issuing another database query.
+                cx.notify();
+            } else {
+                match self
+                    .payload_window_load_scheduler
+                    .request(std::time::Instant::now())
+                {
+                    crate::gui::persistence::PayloadWindowLoadSchedule::DispatchNow => {
+                        pending_payload_window_load = self.ready_runtime().and_then(|runtime| {
+                            runtime.plan_payload_window_load_if_needed(block_range)
+                        });
+                    }
+                    crate::gui::persistence::PayloadWindowLoadSchedule::WakeAfter(delay) => {
+                        self.schedule_postgres_payload_window_wake(delay, cx);
+                    }
+                    crate::gui::persistence::PayloadWindowLoadSchedule::WakeAlreadyScheduled => {}
+                }
+            }
+            if let Some(request) = pending_payload_window_load {
+                self.load_postgres_payload_window(pool, request, cx);
+            }
         }
         if let Some(toolbar) = formatting_toolbar {
             root = root.child(render_floating_toolbar(

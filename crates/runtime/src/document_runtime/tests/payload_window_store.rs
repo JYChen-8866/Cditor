@@ -71,6 +71,159 @@ fn payload_window_store_discards_stale_generation_result() {
 }
 
 #[test]
+fn stale_viewport_result_populates_cache_and_releases_its_loading_markers() {
+    let records = (1..=6)
+        .map(|block_id| {
+            BlockIndexRecord::new(
+                block_id,
+                None,
+                0,
+                kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut runtime =
+        DocumentRuntime::from_index_records_with_window(1, records, Vec::new(), 1, 720.0, 0..0);
+    let stale = runtime.plan_payload_window_load(0..2);
+    let current = runtime.plan_payload_window_load(4..6);
+
+    let decision = runtime.apply_payload_window_result(PayloadWindowLoadResult {
+        request: stale,
+        records: vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "one"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "two"),
+        ],
+        missing_block_ids: Vec::new(),
+    });
+
+    assert_eq!(
+        decision,
+        PayloadWindowApplyDecision::DiscardedStaleGeneration {
+            expected: current.generation,
+            actual: current.generation - 1,
+        }
+    );
+    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "one");
+    assert_eq!(runtime.payload_window.get(2).unwrap().plain_text(), "two");
+    assert!(!runtime.payload_window.loading.contains(&1));
+    assert!(!runtime.payload_window.loading.contains(&2));
+    assert!(runtime.payload_window.loading.contains(&5));
+    assert!(runtime.payload_window.loading.contains(&6));
+}
+
+#[test]
+fn stale_result_cannot_clear_or_overwrite_a_newer_request_for_the_same_block() {
+    let records = (1..=3)
+        .map(|block_id| {
+            BlockIndexRecord::new(
+                block_id,
+                None,
+                0,
+                kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut runtime =
+        DocumentRuntime::from_index_records_with_window(1, records, Vec::new(), 1, 720.0, 0..0);
+    let stale = runtime.plan_payload_window_load(0..2);
+    let current = runtime.plan_payload_window_load(1..3);
+
+    runtime.apply_payload_window_result(PayloadWindowLoadResult {
+        request: stale,
+        records: vec![BlockPayloadRecord::rich_text(
+            2,
+            RichBlockKind::Paragraph,
+            "stale",
+        )],
+        missing_block_ids: Vec::new(),
+    });
+
+    assert!(runtime.payload_window.loading.contains(&2));
+    assert!(runtime.payload_window.get(2).is_none());
+
+    runtime.apply_payload_window_result(PayloadWindowLoadResult {
+        request: current,
+        records: vec![BlockPayloadRecord::rich_text(
+            2,
+            RichBlockKind::Paragraph,
+            "current",
+        )],
+        missing_block_ids: Vec::new(),
+    });
+    assert_eq!(
+        runtime.payload_window.get(2).unwrap().plain_text(),
+        "current"
+    );
+}
+
+#[test]
+fn all_in_flight_blocks_keep_their_generation_until_the_request_finishes() {
+    let records = (1..=4)
+        .map(|block_id| {
+            BlockIndexRecord::new(
+                block_id,
+                None,
+                0,
+                kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut runtime =
+        DocumentRuntime::from_index_records_with_window(1, records, Vec::new(), 1, 720.0, 0..0);
+    let request = runtime
+        .plan_payload_window_load_if_needed(0..4)
+        .expect("initial window needs a request");
+
+    assert!(runtime.plan_payload_window_load_if_needed(1..3).is_none());
+    assert_eq!(runtime.payload_window_generation(), request.generation);
+
+    runtime.apply_payload_window_result(PayloadWindowLoadResult {
+        records: request
+            .block_ids
+            .iter()
+            .map(|block_id| {
+                BlockPayloadRecord::rich_text(*block_id, RichBlockKind::Paragraph, "loaded")
+            })
+            .collect(),
+        request,
+        missing_block_ids: Vec::new(),
+    });
+    assert!(runtime.payload_window.loading.is_empty());
+    assert!(runtime.plan_payload_window_load_if_needed(1..3).is_none());
+    assert_eq!(runtime.payload_window.block_range, 1..3);
+}
+
+#[test]
+fn revisiting_a_resident_window_activates_it_without_a_database_request() {
+    let records = (1..=8)
+        .map(|block_id| {
+            BlockIndexRecord::new(
+                block_id,
+                None,
+                0,
+                kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let payloads = (1..=8)
+        .map(|block_id| {
+            BlockPayloadRecord::rich_text(block_id, RichBlockKind::Paragraph, "resident")
+        })
+        .collect::<Vec<_>>();
+    let mut runtime =
+        DocumentRuntime::from_index_records_with_window(1, records, payloads, 1, 720.0, 4..8);
+
+    assert!(runtime.activate_payload_window_if_resident(0..4));
+    assert_eq!(runtime.payload_window.block_range, 0..4);
+    assert!(runtime.plan_payload_window_load_if_needed(0..4).is_none());
+    assert!(!runtime.activate_payload_window_if_resident(0..4));
+}
+
+#[test]
 fn payload_window_store_marks_loading_and_missing_payload_errors() {
     let records = (1..=3)
         .map(|block_id| {
@@ -220,4 +373,91 @@ fn planned_window_load_replaces_bounded_placeholder_without_full_hydration() {
     assert!(!loaded.render_window.is_placeholder());
     assert!(loaded.blocks.len() <= 320);
     assert!(runtime.payload_window.payloads.len() < 500);
+}
+
+#[test]
+fn rapid_remote_scroll_accepts_out_of_order_windows_without_blank_lockup() {
+    let records = (1..=10_000 as BlockId)
+        .map(|block_id| {
+            BlockIndexRecord::new(
+                block_id,
+                None,
+                0,
+                kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                0,
+            )
+            .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(block_id, 32.0))
+        })
+        .collect::<Vec<_>>();
+    let mut runtime =
+        DocumentRuntime::from_index_records_with_window(1, records, Vec::new(), 1, 720.0, 0..0);
+
+    runtime
+        .scroll
+        .scroll_to_global_offset(80_000.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .unwrap();
+    let first_projection = runtime.projection_for_window_planned();
+    let first_range = first_projection.render_window.block_range.clone();
+    let first_request = runtime
+        .plan_payload_window_load_if_needed(first_range.clone())
+        .unwrap();
+
+    runtime
+        .scroll
+        .scroll_to_global_offset(240_000.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .unwrap();
+    let final_projection = runtime.projection_for_window_planned();
+    let final_range = final_projection.render_window.block_range.clone();
+    let final_request = runtime
+        .plan_payload_window_load_if_needed(final_range.clone())
+        .unwrap();
+
+    let stale_records = first_request
+        .block_ids
+        .iter()
+        .map(|block_id| BlockPayloadRecord::rich_text(*block_id, RichBlockKind::Paragraph, "first"))
+        .collect();
+    assert!(matches!(
+        runtime.apply_payload_window_result(PayloadWindowLoadResult {
+            request: first_request,
+            records: stale_records,
+            missing_block_ids: Vec::new(),
+        }),
+        PayloadWindowApplyDecision::DiscardedStaleGeneration { .. }
+    ));
+
+    let final_records = final_request
+        .block_ids
+        .iter()
+        .map(|block_id| BlockPayloadRecord::rich_text(*block_id, RichBlockKind::Paragraph, "final"))
+        .collect();
+    assert_eq!(
+        runtime.apply_payload_window_result(PayloadWindowLoadResult {
+            request: final_request,
+            records: final_records,
+            missing_block_ids: Vec::new(),
+        }),
+        PayloadWindowApplyDecision::Applied
+    );
+    assert!(
+        !runtime
+            .projection_for_window_planned()
+            .render_window
+            .is_placeholder()
+    );
+
+    runtime
+        .scroll
+        .scroll_to_global_offset(80_000.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .unwrap();
+    let revisited = runtime.projection_for_window_planned();
+    assert_eq!(revisited.render_window.block_range, first_range);
+    assert!(revisited.render_window.is_placeholder());
+    assert!(runtime.activate_payload_window_if_resident(first_range));
+    assert!(
+        !runtime
+            .projection_for_window_planned()
+            .render_window
+            .is_placeholder()
+    );
 }

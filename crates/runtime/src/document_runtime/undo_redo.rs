@@ -193,7 +193,7 @@ impl DocumentRuntime {
         self.payload_window.insert(current_payload.clone());
         if redo {
             for block_id in deleted_ids {
-                self.payload_window.payloads.remove(&block_id);
+                self.payload_window.remove(block_id);
                 self.text_models.remove(&block_id);
                 self.table_runtimes.remove(&block_id);
             }
@@ -208,11 +208,11 @@ impl DocumentRuntime {
             let capture_inserted_payloads = step.inserted_payloads.is_empty();
             for block_id in inserted_ids {
                 if capture_inserted_payloads
-                    && let Some(payload) = self.payload_window.payloads.remove(&block_id)
+                    && let Some(payload) = self.payload_window.remove(block_id)
                 {
                     step.inserted_payloads.push(payload);
                 } else {
-                    self.payload_window.payloads.remove(&block_id);
+                    self.payload_window.remove(block_id);
                 }
                 self.text_models.remove(&block_id);
                 self.table_runtimes.remove(&block_id);

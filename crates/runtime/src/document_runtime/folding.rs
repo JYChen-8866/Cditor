@@ -39,7 +39,6 @@ impl DocumentRuntime {
         self.payload_window.block_range = 0..self.visible_index.total_visible_count();
         self.restore_scroll_anchor_after_visibility_change(scroll_anchor)?;
         self.layout_dirty = true;
-        self.last_successful_projection = None;
         Ok(true)
     }
 

@@ -6,44 +6,74 @@ use crate::gui::skeleton::{SkeletonItem, SkeletonRows, SkeletonVariant};
 const MAX_WINDOW_SKELETON_BLOCKS: usize = 12;
 const ESTIMATED_SKELETON_BLOCK_HEIGHT_PX: f64 = 56.0;
 
-pub fn render_document_skeleton_window(height_px: f64, theme: GuiTheme) -> AnyElement {
-    let count = skeleton_block_count(height_px);
+pub fn render_document_skeleton_window(
+    height_px: f64,
+    viewport_offset_px: f64,
+    theme: GuiTheme,
+) -> AnyElement {
+    let count = skeleton_block_count(visible_skeleton_height(height_px));
     div()
+        .relative()
         .h(px(height_px.max(1.0) as f32))
-        .px_2()
-        .py_1()
-        .flex()
-        .flex_col()
-        .gap_4()
-        .children((0..count).map(|index| render_window_skeleton_block(index, theme)))
+        .child(
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .top(px(
+                    skeleton_viewport_offset(height_px, viewport_offset_px) as f32
+                ))
+                .px_2()
+                .py_1()
+                .flex()
+                .flex_col()
+                .gap_4()
+                .children((0..count).map(|index| render_window_skeleton_block(index, theme))),
+        )
         .into_any_element()
 }
 
-pub fn render_document_window_error(height_px: f64, message: &str, theme: GuiTheme) -> AnyElement {
+pub fn render_document_window_error(
+    height_px: f64,
+    viewport_offset_px: f64,
+    message: &str,
+    theme: GuiTheme,
+) -> AnyElement {
     div()
-        .h(px(height_px.max(120.0) as f32))
+        .relative()
+        .h(px(height_px.max(1.0) as f32))
         .w_full()
-        .flex()
-        .items_center()
-        .justify_center()
         .child(
             div()
-                .max_w(px(560.0))
-                .rounded(px(8.0))
-                .border_1()
-                .border_color(rgb(theme.border))
-                .bg(rgb(theme.panel))
-                .p_4()
+                .absolute()
+                .left_0()
+                .right_0()
+                .top(px(
+                    skeleton_viewport_offset(height_px, viewport_offset_px) as f32
+                ))
+                .min_h(px(120.0))
                 .flex()
-                .flex_col()
-                .gap_2()
-                .text_color(rgb(theme.text))
-                .child("无法加载当前内容")
+                .items_center()
+                .justify_center()
                 .child(
                     div()
-                        .text_sm()
-                        .text_color(rgb(theme.muted))
-                        .child(message.to_owned()),
+                        .max_w(px(560.0))
+                        .rounded(px(8.0))
+                        .border_1()
+                        .border_color(rgb(theme.border))
+                        .bg(rgb(theme.panel))
+                        .p_4()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .text_color(rgb(theme.text))
+                        .child("无法加载当前内容")
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(rgb(theme.muted))
+                                .child(message.to_owned()),
+                        ),
                 ),
         )
         .into_any_element()
@@ -82,6 +112,14 @@ fn skeleton_block_count(height_px: f64) -> usize {
     estimated.clamp(1, MAX_WINDOW_SKELETON_BLOCKS)
 }
 
+fn visible_skeleton_height(height_px: f64) -> f64 {
+    height_px.clamp(1.0, 720.0)
+}
+
+fn skeleton_viewport_offset(height_px: f64, viewport_offset_px: f64) -> f64 {
+    viewport_offset_px.clamp(0.0, (height_px - 1.0).max(0.0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,5 +128,13 @@ mod tests {
     fn skeleton_window_count_is_bounded() {
         assert_eq!(skeleton_block_count(1.0), 1);
         assert_eq!(skeleton_block_count(10_000.0), MAX_WINDOW_SKELETON_BLOCKS);
+    }
+
+    #[test]
+    fn skeleton_tracks_the_visible_part_of_a_large_placeholder() {
+        assert_eq!(skeleton_viewport_offset(10_000.0, 1_536.0), 1_536.0);
+        assert_eq!(skeleton_viewport_offset(10_000.0, -20.0), 0.0);
+        assert_eq!(skeleton_viewport_offset(10_000.0, 12_000.0), 9_999.0);
+        assert_eq!(visible_skeleton_height(10_000.0), 720.0);
     }
 }

@@ -270,7 +270,7 @@ impl DocumentRuntime {
             .filter_map(|record| self.payload_window.get(record.id).cloned())
             .collect::<Vec<_>>();
         for block_id in &deleted_ids {
-            self.payload_window.payloads.remove(block_id);
+            self.payload_window.remove(*block_id);
             self.text_models.remove(block_id);
             self.table_runtimes.remove(block_id);
         }
