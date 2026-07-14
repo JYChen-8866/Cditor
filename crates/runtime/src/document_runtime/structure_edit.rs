@@ -583,7 +583,6 @@ impl DocumentRuntime {
             self.visible_index = VisibleDocumentIndex::from_document_index(&self.index);
             self.rebuild_height_indexes_from_layout_meta()?;
             self.list_projection_cache = ListProjectionCache::build(&self.index);
-            self.last_successful_projection = None;
         }
         let content_version = self
             .payload_window

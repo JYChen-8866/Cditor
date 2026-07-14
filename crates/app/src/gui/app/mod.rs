@@ -4,6 +4,7 @@ mod input;
 mod input_trace;
 mod interaction;
 mod lifecycle;
+mod payload_cache;
 mod persistence_bridge;
 mod render;
 mod state;

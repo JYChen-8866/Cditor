@@ -1881,6 +1881,14 @@ fn can_evict(block_id: BlockId) -> bool {
 }
 ```
 
+当前 PostgreSQL 文档的 payload entity cache 已按此规则落地：默认同时受
+`2048` 个 resident payload 和约 `64 MiB`（包含 text/table runtime mirror 估算）
+两道上限约束。active render window、editing/composition、selection endpoints、
+AI target，以及 GUI 菜单和拖拽上下文通过 pin 集合保护；未持久化 payload 通过
+精确 `content_version` 比对自动形成 dirty pin。保存成功只确认该次快照中的版本，
+因此保存过程中产生的新版本仍保持 dirty。批量 LRU 淘汰只释放 payload、text model、
+table runtime 等重实体，结构索引、高度索引和 stable layout box 继续常驻。
+
 ### Entity 状态保存
 
 释放前需要保存：

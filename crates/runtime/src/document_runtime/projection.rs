@@ -43,17 +43,6 @@ impl DocumentRuntime {
         self.ensure_demo_payload_window(&block_range);
         self.hydrate_payload_runtime_state_for_range(block_range.clone());
         let projection = self.projection_for_ranges(page_range, block_range);
-        let projection =
-            if self.scrollbar_drag.is_some() && projection.render_window.is_placeholder() {
-                self.last_successful_projection
-                    .clone()
-                    .unwrap_or(projection)
-            } else {
-                if !projection.render_window.is_placeholder() {
-                    self.last_successful_projection = Some(projection.clone());
-                }
-                projection
-            };
         log_runtime_timing(
             "runtime.projection_for_window_planned",
             total_start,
@@ -135,7 +124,7 @@ impl DocumentRuntime {
         for payload in payloads {
             let mut payload = normalize_payload_record_for_kind(payload);
             self.sync_table_runtime_from_loaded_record(&mut payload);
-            self.payload_window.insert(payload);
+            self.payload_window.insert_loaded(payload);
         }
         eprintln!(
             "[cditor][timing] demo_payload_window range={:?} payloads={} elapsed_ms={:.2}",

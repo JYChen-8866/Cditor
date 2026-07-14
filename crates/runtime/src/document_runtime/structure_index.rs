@@ -103,7 +103,6 @@ impl DocumentRuntime {
         self.payload_window.block_range = 0..self.visible_index.total_visible_count();
         self.rebuild_height_indexes_from_layout_meta()?;
         self.selected_block_ids.clear();
-        self.last_successful_projection = None;
         Ok(())
     }
 

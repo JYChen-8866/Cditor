@@ -84,7 +84,7 @@ fn projection_for_window_exposes_total_visible_count_and_spacers() {
 }
 
 #[test]
-fn scrollbar_drag_uses_runtime_frozen_projection_instead_of_placeholder() {
+fn scrollbar_drag_projects_the_target_placeholder_for_live_loading() {
     let records = (1..=1_000 as BlockId)
         .map(|block_id| {
             BlockIndexRecord::new(
@@ -116,14 +116,13 @@ fn scrollbar_drag_uses_runtime_frozen_projection_instead_of_placeholder() {
     let policy = ScrollbarPolicy::default();
     runtime.begin_scrollbar_drag(policy);
 
-    let frozen = runtime.projection_for_window_planned();
+    let target = runtime.projection_for_window_planned();
 
-    assert!(!frozen.render_window.is_placeholder());
-    assert_eq!(frozen.placeholder_window_height, None);
-    assert!(!frozen.blocks.is_empty());
-    assert_eq!(frozen.blocks[0].block_id, loaded.blocks[0].block_id);
-    assert_eq!(
-        frozen.render_window.block_range,
+    assert!(target.render_window.is_placeholder());
+    assert!(target.placeholder_window_height.is_some());
+    assert!(target.blocks.is_empty());
+    assert_ne!(
+        target.render_window.block_range,
         loaded.render_window.block_range
     );
 }

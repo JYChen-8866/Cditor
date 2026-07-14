@@ -77,10 +77,13 @@ impl DocumentSurface {
         overlay: Option<AnyElement>,
     ) -> AnyElement {
         let placeholder = self.placeholder_window_height.map(|height| {
+            let viewport_offset = (self.scroll_top - self.before_window_height).max(0.0);
             self.placeholder_window_error
                 .as_deref()
-                .map(|message| render_document_window_error(height, message, theme))
-                .unwrap_or_else(|| render_document_skeleton_window(height, theme))
+                .map(|message| {
+                    render_document_window_error(height, viewport_offset, message, theme)
+                })
+                .unwrap_or_else(|| render_document_skeleton_window(height, viewport_offset, theme))
         });
         div()
             .flex_1()

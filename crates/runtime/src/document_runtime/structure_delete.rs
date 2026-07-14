@@ -62,7 +62,7 @@ impl DocumentRuntime {
 
         let mut records = self.index_records();
         records.retain(|record| record.id != current_id);
-        self.payload_window.payloads.remove(&current_id);
+        self.payload_window.remove(current_id);
         self.text_models.remove(&current_id);
         self.table_runtimes.remove(&current_id);
         self.rebuild_structure_index(records)?;
@@ -162,7 +162,7 @@ impl DocumentRuntime {
         let before_focus = Some((current_id, 0));
         let mut records = self.index_records();
         records.retain(|record| record.id != current_id);
-        self.payload_window.payloads.remove(&current_id);
+        self.payload_window.remove(current_id);
         self.text_models.remove(&current_id);
         self.table_runtimes.remove(&current_id);
         self.rebuild_structure_index(records)?;
@@ -235,7 +235,7 @@ impl DocumentRuntime {
         let before_focus = Some((block_id, 0));
         let mut records = self.index_records();
         records.retain(|record| record.id != block_id);
-        self.payload_window.payloads.remove(&block_id);
+        self.payload_window.remove(block_id);
         self.text_models.remove(&block_id);
         self.table_runtimes.remove(&block_id);
         self.rebuild_structure_index(records)?;

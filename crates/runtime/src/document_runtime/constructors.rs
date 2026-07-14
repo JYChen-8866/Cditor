@@ -215,7 +215,7 @@ impl DocumentRuntime {
                 );
             }
             sync_text_model_for_payload(&mut text_models, &payload);
-            payload_window.insert(payload);
+            payload_window.insert_loaded(payload);
         }
 
         Self {
@@ -256,7 +256,6 @@ impl DocumentRuntime {
             pending_measured_heights: HashMap::new(),
             layout_dirty: false,
             scrollbar_drag: None,
-            last_successful_projection: None,
             demo_payload_count: None,
         }
     }

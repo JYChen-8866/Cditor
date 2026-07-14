@@ -82,6 +82,19 @@ fn empty_text_kind_supports_ai(kind: &RichBlockKind) -> bool {
 }
 
 impl DocumentRuntime {
+    pub(super) fn ai_payload_pin_ids(&self) -> Vec<BlockId> {
+        self.ai_session
+            .as_ref()
+            .map(|session| {
+                session
+                    .target_block_versions
+                    .iter()
+                    .map(|(block_id, _)| *block_id)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn focused_empty_text_block_for_ai(&self) -> Option<(BlockId, usize)> {
         if self.document_selection.is_some()
             || self.has_selected_blocks()

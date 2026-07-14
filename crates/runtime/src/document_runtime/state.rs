@@ -41,7 +41,6 @@ pub struct DocumentRuntime {
     pub(super) pending_measured_heights: HashMap<BlockId, PendingMeasuredHeight>,
     pub(super) layout_dirty: bool,
     pub(super) scrollbar_drag: Option<ScrollbarDragSession>,
-    pub(super) last_successful_projection: Option<EditorViewProjection>,
     pub(super) demo_payload_count: Option<usize>,
 }
 

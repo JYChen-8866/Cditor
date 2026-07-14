@@ -113,6 +113,7 @@ impl CditorV2View {
             postgres_persistence: postgres_target
                 .map(|target| PostgresPersistenceState::for_target(target, autosave_interval))
                 .unwrap_or_else(PostgresPersistenceState::disabled),
+            payload_window_load_scheduler: Default::default(),
             autosave_interval,
             platform_input_target: None,
         }
@@ -179,6 +180,7 @@ impl CditorV2View {
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
             postgres_persistence: PostgresPersistenceState::disabled(),
+            payload_window_load_scheduler: Default::default(),
             autosave_interval,
             platform_input_target: None,
         }
@@ -247,6 +249,7 @@ impl CditorV2View {
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
             postgres_persistence: PostgresPersistenceState::disabled(),
+            payload_window_load_scheduler: Default::default(),
             autosave_interval: DEFAULT_POSTGRES_SAVE_DEBOUNCE,
             platform_input_target: None,
         }
@@ -270,6 +273,7 @@ impl CditorV2View {
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
         self.whiteboard_editor = None;
+        self.payload_window_load_scheduler.reset();
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
