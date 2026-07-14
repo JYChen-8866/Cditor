@@ -15,7 +15,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: desktop-builds-${{ github.ref }}
+  # A version tag pushed immediately after main should replace the duplicate
+  # branch build for the same commit and keep the tag/release build.
+  group: desktop-builds-${{ github.sha }}
   cancel-in-progress: true
 
 env:
@@ -29,7 +31,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install stable Rust
         shell: pwsh
@@ -101,7 +103,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install stable Rust target
         run: |
@@ -142,3 +144,44 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - windows
+      - macos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged applications
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release asset set
+        run: |
+          test -f release-assets/Cditor.exe
+          test -f release-assets/Cditor.exe.sha256
+          test -f release-assets/Cditor-macOS-arm64.dmg
+          test -f release-assets/Cditor-macOS-arm64.dmg.sha256
+          test -f release-assets/Cditor-macOS-x64.dmg
+          test -f release-assets/Cditor-macOS-x64.dmg.sha256
+
+      - name: Create release and attach installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release-assets/Cditor.exe \
+            release-assets/Cditor.exe.sha256 \
+            release-assets/Cditor-macOS-arm64.dmg \
+            release-assets/Cditor-macOS-arm64.dmg.sha256 \
+            release-assets/Cditor-macOS-x64.dmg \
+            release-assets/Cditor-macOS-x64.dmg.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Cditor $GITHUB_REF_NAME" \
+            --generate-notes

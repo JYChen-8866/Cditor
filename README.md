@@ -303,9 +303,9 @@ The `Desktop builds` GitHub Actions workflow produces three downloadable artifac
 | `Cditor-macOS-Apple-Silicon` | `Cditor-macOS-arm64.dmg` and SHA-256 checksum | Apple Silicon Macs |
 | `Cditor-macOS-Intel` | `Cditor-macOS-x64.dmg` and SHA-256 checksum | Intel Macs |
 
-The workflow runs for pushes to `main`, pull requests targeting `main`, version tags, and manual dispatches. Download outputs from the workflow run's **Artifacts** section.
+The workflow runs for pushes to `main`, pull requests targeting `main`, version tags, and manual dispatches. Branch and pull-request builds remain available from the workflow run's **Artifacts** section. A `v*` tag additionally creates a GitHub Release and attaches all three installers plus their SHA-256 checksum files.
 
-These files are workflow artifacts, not GitHub Packages. The repository's **Packages** section can remain empty; use **Actions → Desktop builds → Artifacts** for the EXE and DMG downloads.
+Desktop installers belong in GitHub Releases rather than GitHub Packages, which is a package registry for formats such as containers and language packages. Download published EXE and DMG files from the repository's **Releases** page.
 
 Release artifacts use the workspace's performance-first Cargo profile: optimization
 level 3, fat whole-program LTO, one codegen unit, abort-on-panic, disabled
