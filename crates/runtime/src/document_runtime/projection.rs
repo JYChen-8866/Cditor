@@ -165,7 +165,12 @@ impl DocumentRuntime {
         let block_start = block_range.start.min(total_visible_blocks);
         let block_end = block_range.end.min(total_visible_blocks).max(block_start);
         let block_range = block_start..block_end;
-        if !self.payload_window_covers(&block_range) {
+        // Keep resident blocks on screen while PostgreSQL fills the newly
+        // exposed edge of a scrolling window. Replacing the whole projection
+        // because one overscan block is missing makes every wheel tick flash a
+        // full-page skeleton. A full window placeholder is reserved for cold
+        // jumps where none of the target blocks are resident yet.
+        if !self.payload_window_covers(&block_range) && !self.payload_window_has_any(&block_range) {
             return self.placeholder_projection_for_ranges(page_range, block_range);
         }
         let block_ids = self.visible_index.visible_block_ids[block_range.clone()].to_vec();
@@ -235,6 +240,7 @@ impl DocumentRuntime {
                     .unwrap_or(BlockPayloadView::Placeholder {
                         estimated_height: 32.0,
                     });
+                let placeholder = matches!(payload, BlockPayloadView::Placeholder { .. });
                 let kind = match &payload {
                     BlockPayloadView::Loaded(payload) => payload.kind.clone(),
                     _ => rich_block_kind_from_tag(self.index.kind_tags[source_index]),
@@ -336,7 +342,7 @@ impl DocumentRuntime {
                         .editing
                         .as_ref()
                         .is_some_and(|editing| editing.is_pinned(*block_id)),
-                    placeholder: false,
+                    placeholder,
                 }
             })
             .collect::<Vec<_>>();
@@ -385,6 +391,14 @@ impl DocumentRuntime {
             return false;
         }
         block_range.clone().all(|visible_index| {
+            self.visible_index
+                .id_at_visible_index(visible_index)
+                .is_some_and(|block_id| self.payload_window.payloads.contains_key(&block_id))
+        })
+    }
+
+    fn payload_window_has_any(&self, block_range: &Range<usize>) -> bool {
+        block_range.clone().any(|visible_index| {
             self.visible_index
                 .id_at_visible_index(visible_index)
                 .is_some_and(|block_id| self.payload_window.payloads.contains_key(&block_id))

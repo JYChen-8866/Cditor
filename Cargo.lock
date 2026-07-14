@@ -931,7 +931,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-ai"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-channel 2.5.0",
  "dotenvy",
@@ -943,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-app"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cditor-ai",
  "cditor-core",
@@ -967,7 +967,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-core"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -976,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-editor"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cditor-core",
  "unicode-segmentation",
@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-runtime"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cditor-ai",
  "cditor-core",
@@ -993,14 +993,14 @@ dependencies = [
 
 [[package]]
 name = "cditor-storage"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cditor-core",
 ]
 
 [[package]]
 name = "cditor-storage-postgres"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cditor-core",
  "cditor-storage",

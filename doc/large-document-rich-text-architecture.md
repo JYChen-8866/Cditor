@@ -3054,12 +3054,18 @@ enum ScrollInteractionState {
 4. 滚动中的远端 height correction 默认只更新 model，不直接打断当前视觉位置。
 ```
 
-如果目标 page 未加载：
+payload 占位必须按“冷跳转”和“增量滚动”区分，禁止一个 overscan block
+缺失就替换整个可视窗口：
 
-- 立即更新 scrollbar thumb；
-- 显示 placeholder window；
-- 异步加载 page；
-- load 完恢复 target offset。
+- 增量 wheel / momentum 滚动存在 resident overlap 时，继续绘制已加载 block，仅对
+  缺失边缘绘制等高 block placeholder，并立即异步预取；正常情况下这些 placeholder
+  位于 viewport 外的 overscan 区；
+- 回访 resident payload cache 时直接复用，不经过 placeholder window；
+- scrollbar drag、程序跳转或首次打开落到完全无 resident overlap 的区域时，才显示
+  等高 placeholder window，再 atomic swap；
+- load error 必须替换为明确错误态，不能永久伪装成仍在加载的骨架；
+- 任意 placeholder 的高度继续来自 `HeightIndex / PageLayoutIndex`，不得因加载状态改变
+  scroll extent。
 
 ### 滚动条拖动
 

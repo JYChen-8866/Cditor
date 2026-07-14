@@ -307,7 +307,9 @@ impl Render for CditorV2View {
                 let _ = runtime
                     .flush_pending_height_corrections_with_priority(height_correction_priority);
                 let projection = runtime.projection_for_window_planned();
-                if postgres_payload_pool.is_some() && projection.render_window.is_placeholder() {
+                let has_missing_payloads = projection.render_window.is_placeholder()
+                    || projection.blocks.iter().any(|block| block.placeholder);
+                if postgres_payload_pool.is_some() && has_missing_payloads {
                     pending_payload_window_range =
                         Some(projection.render_window.block_range.clone());
                 }

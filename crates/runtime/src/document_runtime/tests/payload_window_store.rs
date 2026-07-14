@@ -25,7 +25,7 @@ fn planned_payload_window_without_records_does_not_render_per_block_placeholders
         .scroll_to_global_offset(400.0 * 32.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
         .unwrap();
 
-    let projection = runtime.projection_for_window();
+    let projection = runtime.projection_for_window_planned();
 
     assert!(projection.render_window.is_placeholder());
     assert!(projection.blocks.is_empty());
@@ -452,12 +452,52 @@ fn rapid_remote_scroll_accepts_out_of_order_windows_without_blank_lockup() {
         .unwrap();
     let revisited = runtime.projection_for_window_planned();
     assert_eq!(revisited.render_window.block_range, first_range);
-    assert!(revisited.render_window.is_placeholder());
+    assert!(!revisited.render_window.is_placeholder());
+    assert!(revisited.blocks.iter().all(|block| !block.placeholder));
     assert!(runtime.activate_payload_window_if_resident(first_range));
     assert!(
         !runtime
             .projection_for_window_planned()
             .render_window
             .is_placeholder()
+    );
+}
+
+#[test]
+fn incremental_scroll_keeps_resident_blocks_and_only_placeholds_missing_edges() {
+    let records = (1..=1_000 as BlockId)
+        .map(|block_id| {
+            BlockIndexRecord::new(
+                block_id,
+                None,
+                0,
+                kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                0,
+            )
+            .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(block_id, 32.0))
+        })
+        .collect::<Vec<_>>();
+    let payloads = (1..=80 as BlockId)
+        .map(|block_id| {
+            BlockPayloadRecord::rich_text(block_id, RichBlockKind::Paragraph, "resident")
+        })
+        .collect::<Vec<_>>();
+    let mut runtime =
+        DocumentRuntime::from_index_records_with_window(1, records, payloads, 1, 720.0, 0..80);
+
+    runtime
+        .scroll
+        .scroll_to_global_offset(1_280.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .unwrap();
+    let projection = runtime.projection_for_window_planned();
+
+    assert!(!projection.render_window.is_placeholder());
+    assert!(projection.placeholder_window_height.is_none());
+    assert!(projection.blocks.iter().any(|block| !block.placeholder));
+    assert!(projection.blocks.iter().any(|block| block.placeholder));
+    assert!(
+        runtime
+            .plan_payload_window_load_if_needed(projection.render_window.block_range.clone())
+            .is_some()
     );
 }
