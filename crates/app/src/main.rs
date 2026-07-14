@@ -2,8 +2,28 @@
 
 use std::env;
 
-use cditor_app::Cditor;
-use gpui::*;
+use cditor_app::{CditorBuilder, CditorComponent};
+use gpui::{
+    App, AppContext, Bounds, Context, IntoElement, ParentElement, Render, Styled, TitlebarOptions,
+    Window, WindowBounds, WindowOptions, div, px, size,
+};
+
+struct CditorHostView {
+    editor: CditorComponent,
+}
+
+impl CditorHostView {
+    fn new(builder: CditorBuilder, cx: &mut Context<Self>) -> Self {
+        let editor = builder.build(cx).expect("build Cditor component");
+        Self { editor }
+    }
+}
+
+impl Render for CditorHostView {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().child(self.editor.view.clone())
+    }
+}
 
 fn main() {
     let app = gpui_platform::application();
@@ -23,19 +43,19 @@ fn main() {
                 }),
                 ..Default::default()
             },
-            |_window, cx| cx.new(|cx| cditor_from_env().build_view(cx)),
+            |_window, cx| cx.new(|cx| CditorHostView::new(cditor_from_env(), cx)),
         )
         .expect("open Cditor window");
     });
 }
 
-fn cditor_from_env() -> Cditor {
+fn cditor_from_env() -> CditorBuilder {
     let mut cditor = if env_flag("CDITOR_LARGE_DEMO", false) {
-        Cditor::new().large_demo()
+        CditorBuilder::new().large_demo()
     } else if env_flag("CDITOR_SMALL_DEMO", false) {
-        Cditor::new().demo()
+        CditorBuilder::new().demo()
     } else {
-        Cditor::new().memory()
+        CditorBuilder::new().memory()
     }
     .with_debug_overlay(env_flag("CDITOR_DEBUG_OVERLAY", false))
     .with_readonly(env_flag("CDITOR_READONLY", false));
@@ -96,4 +116,25 @@ fn env_u64(name: &str) -> Option<u64> {
 
 fn env_usize(name: &str) -> Option<usize> {
     env::var(name).ok()?.parse().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    #[gpui::test]
+    fn desktop_host_owns_sdk_component_and_handle(cx: &mut TestAppContext) {
+        let (_host, handle) = cx.update(|cx| {
+            let host = cx.new(|cx| CditorHostView::new(CditorBuilder::new().memory(), cx));
+            let handle = host.read(cx).editor.handle.clone();
+            (host, handle)
+        });
+
+        assert!(cx.read(|cx| handle.is_ready(cx)));
+        assert_eq!(
+            cx.read(|cx| handle.document_info(cx).unwrap().block_count),
+            1
+        );
+    }
 }

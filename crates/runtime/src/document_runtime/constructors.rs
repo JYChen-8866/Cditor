@@ -220,6 +220,8 @@ impl DocumentRuntime {
 
         Self {
             document_id,
+            document_title: None,
+            revision: structure_version,
             index,
             visible_index,
             height_index,

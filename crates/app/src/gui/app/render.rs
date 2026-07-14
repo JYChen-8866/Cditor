@@ -46,6 +46,8 @@ impl Render for CditorV2View {
         {
             window.focus(&focus, cx);
         }
+        self.sdk_register_focus_observers(window, cx);
+        self.sdk_emit_selection_if_changed(cx);
         self.begin_platform_input_registration_frame();
 
         let view = cx.entity();
@@ -60,7 +62,7 @@ impl Render for CditorV2View {
                         .ready_runtime_ref()
                         .is_some_and(|runtime| runtime.has_document_text_selection()))
         });
-        let formatting_toolbar = formatting_toolbar_state(
+        let mut formatting_toolbar = formatting_toolbar_state(
             self.ready_runtime_ref(),
             &self.text_layouts,
             self.readonly,
@@ -81,6 +83,9 @@ impl Render for CditorV2View {
                 .map(|runtime| runtime.scroll.global_scroll_top)
                 .unwrap_or(0.0),
         );
+        if let Some(toolbar) = formatting_toolbar.as_mut() {
+            toolbar.ai_enabled &= self.ai_enabled;
+        }
         if formatting_toolbar.is_none() {
             self.color_menu_open = false;
         }

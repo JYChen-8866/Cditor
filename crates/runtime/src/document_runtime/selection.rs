@@ -166,6 +166,20 @@ impl DocumentRuntime {
         Ok(true)
     }
 
+    pub fn set_document_selection(&mut self, selection: DocumentSelection) -> Result<bool, String> {
+        let changed = self.set_document_text_selection(
+            selection.anchor.block_id,
+            selection.anchor.offset,
+            selection.focus.block_id,
+            selection.focus.offset,
+        )?;
+        if let Some(current) = self.document_selection.as_mut() {
+            current.anchor.affinity = selection.anchor.affinity;
+            current.focus.affinity = selection.focus.affinity;
+        }
+        Ok(changed)
+    }
+
     fn clamp_text_offset(&self, block_id: BlockId, offset: usize) -> Result<usize, String> {
         let model = self
             .text_models

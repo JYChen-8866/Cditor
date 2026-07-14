@@ -164,13 +164,13 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::UndoFocusedBlock => {
-                    if runtime.undo_focused_block().is_ok() {
-                        self.mark_dirty(cx);
+                    if matches!(runtime.undo_focused_block(), Ok(true)) {
+                        self.mark_dirty_with_origin(crate::api::ChangeOrigin::Undo, cx);
                     }
                 }
                 GuiInputCommand::RedoFocusedBlock => {
-                    if runtime.redo_focused_block().is_ok() {
-                        self.mark_dirty(cx);
+                    if matches!(runtime.redo_focused_block(), Ok(true)) {
+                        self.mark_dirty_with_origin(crate::api::ChangeOrigin::Redo, cx);
                     }
                 }
                 GuiInputCommand::InsertParagraphAfterFocused => {
@@ -254,34 +254,34 @@ impl CditorV2View {
                     let _ = runtime.move_focused_caret_to_line_boundary(true, extend_selection);
                 }
                 GuiInputCommand::ToggleBold => {
-                    if runtime
-                        .toggle_inline_mark_on_selection(InlineMark::Bold)
-                        .is_ok()
-                    {
+                    if matches!(
+                        runtime.toggle_inline_mark_on_selection(InlineMark::Bold),
+                        Ok(true)
+                    ) {
                         self.mark_dirty(cx);
                     }
                 }
                 GuiInputCommand::ToggleItalic => {
-                    if runtime
-                        .toggle_inline_mark_on_selection(InlineMark::Italic)
-                        .is_ok()
-                    {
+                    if matches!(
+                        runtime.toggle_inline_mark_on_selection(InlineMark::Italic),
+                        Ok(true)
+                    ) {
                         self.mark_dirty(cx);
                     }
                 }
                 GuiInputCommand::ToggleUnderline => {
-                    if runtime
-                        .toggle_inline_mark_on_selection(InlineMark::Underline)
-                        .is_ok()
-                    {
+                    if matches!(
+                        runtime.toggle_inline_mark_on_selection(InlineMark::Underline),
+                        Ok(true)
+                    ) {
                         self.mark_dirty(cx);
                     }
                 }
                 GuiInputCommand::ToggleInlineCode => {
-                    if runtime
-                        .toggle_inline_mark_on_selection(InlineMark::Code)
-                        .is_ok()
-                    {
+                    if matches!(
+                        runtime.toggle_inline_mark_on_selection(InlineMark::Code),
+                        Ok(true)
+                    ) {
                         self.mark_dirty(cx);
                     }
                 }

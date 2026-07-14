@@ -94,6 +94,20 @@ impl PostgresPersistenceState {
         self.target.is_some()
     }
 
+    pub fn is_saving(&self) -> bool {
+        self.saving
+    }
+
+    pub fn pending_operation_count(&self) -> usize {
+        usize::from(self.saving)
+            + usize::from(self.debounce_scheduled)
+            + usize::from(self.dirty_while_saving)
+    }
+
+    pub fn clear_scheduled_save(&mut self) {
+        self.debounce_scheduled = false;
+    }
+
     pub fn target(&self) -> Option<&PostgresPersistenceTarget> {
         self.target.as_ref()
     }

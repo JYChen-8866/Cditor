@@ -7,6 +7,7 @@ mod lifecycle;
 mod payload_cache;
 mod persistence_bridge;
 mod render;
+mod sdk;
 mod state;
 mod text_hit;
 

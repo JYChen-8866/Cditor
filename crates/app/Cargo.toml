@@ -11,6 +11,7 @@ name = "cditor_app"
 runtime-shaders = ["gpui_platform/runtime_shaders"]
 
 [dependencies]
+async-trait = "0.1"
 cditor-ai = { path = "../ai" }
 cditor-core = { path = "../core" }
 ding-board = { path = "../ding-board" }
@@ -56,5 +57,6 @@ lumis = { version = "0.12.0", default-features = false, features = [
 ] }
 
 [dev-dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit", "test-support"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["runtime_shaders"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
