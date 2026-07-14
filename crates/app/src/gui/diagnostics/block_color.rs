@@ -1,3 +1,5 @@
+//! Block-color mutation and paint diagnostics.
+
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 

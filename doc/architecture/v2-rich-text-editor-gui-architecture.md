@@ -1,6 +1,6 @@
 # Cditor 富文本 GUI 架构方案
 
-本文档是在阅读第一版 `/Users/jychen/Desktop/Cditor/src/editor2` 后，为当前 `Cditor` 重写的一版富文本 GUI / 数据 / 渲染方案。
+本文档在对照第一版 Cditor 的 `src/editor2` 后，为当前 Cditor 重写富文本 GUI / 数据 / 渲染方案。
 
 目标不是原封不动搬 `editor2`，而是借鉴它已经验证过的 GPUI block renderer、text element、gutter、table、image、code block 等经验，同时严格遵守 V2 大文档架构原则：
 

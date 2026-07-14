@@ -3,8 +3,6 @@ pub mod block_shell;
 pub mod block_view;
 pub mod chrome;
 pub mod code;
-pub(crate) mod code_highlight;
-pub mod code_toolbar;
 pub mod drag_overlay;
 pub mod gutter;
 pub mod heading;
@@ -22,7 +20,7 @@ pub mod whiteboard;
 pub use block_shell::{BlockActionState, BlockShellStyle, block_shell};
 pub use block_view::BlockView;
 pub use chrome::BlockChromeStyle;
-pub(crate) use code_highlight::CodeHighlightCache;
+pub(crate) use code::highlight::CodeHighlightCache;
 pub use drag_overlay::{BlockDragOverlaySnapshot, render_block_drag_overlay};
 pub(crate) use mermaid::{MermaidRenderCache, render_mermaid_block};
 pub(crate) use table::{

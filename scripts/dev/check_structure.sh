@@ -8,6 +8,21 @@ if [ -d crates/engine ]; then
   exit 1
 fi
 
+if grep -Eq 'cditor-storage-postgres|(^|[[:space:]])sqlx[[:space:]]*=|(^|[[:space:]])gpui[[:space:]]*=' crates/runtime/Cargo.toml; then
+  echo 'error: runtime must not depend on PostgreSQL, SQLx, or GPUI' >&2
+  exit 1
+fi
+
+runtime_boundary_violations=$(
+  grep -R -n -E 'cditor_storage_postgres|(^|[^[:alnum:]_])(sqlx|gpui)([^[:alnum:]_]|$)' \
+    --include='*.rs' crates/runtime/src || true
+)
+if [ -n "$runtime_boundary_violations" ]; then
+  echo 'error: runtime source crossed the storage/UI boundary:' >&2
+  echo "$runtime_boundary_violations" >&2
+  exit 1
+fi
+
 oversized=$(
   find crates \
     -path 'crates/ding-board' -prune -o \

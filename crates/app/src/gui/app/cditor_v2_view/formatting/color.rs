@@ -4,10 +4,10 @@ use std::time::Duration;
 use cditor_core::rich_text::{InlineColorTarget, InlineMark, InlineSpan};
 use cditor_runtime::DocumentRuntime;
 
-use crate::gui::block_color_trace::trace as trace_block_color;
+use crate::gui::diagnostics::block_color::trace as trace_block_color;
 use crate::gui::overlay::{ActiveColor, ColorMenuAction, PaletteColor};
 
-use super::CditorV2View;
+use super::super::CditorV2View;
 
 pub(super) fn selected_spans_color(
     spans: &[InlineSpan],

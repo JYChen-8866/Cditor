@@ -79,27 +79,23 @@ For a detailed breakdown, refer to [Cditor Project Structure](doc/architecture/p
 
 ### Dependency Graph
 ```text
-cditor-core
+cditor-app
+  ├──> cditor-runtime ───> cditor-editor ───> cditor-core
+  │          ├───────────> cditor-core
+  │          └───────────> cditor-ai
+  ├──> cditor-storage-postgres ───> cditor-storage ───> cditor-core
   ├──> cditor-editor
-  ├──> cditor-storage ──> cditor-storage-postgres
-  └──────────────────────────────┐
-                                 v
-cditor-ai ─────────────────> cditor-runtime
-cditor-editor ─────────────> cditor-runtime
-cditor-storage ────────────> cditor-runtime
-cditor-storage-postgres ───> cditor-runtime   # Cold startup compatibility layer
-                                 ^
-                                 |
-                             cditor-app <───── ding-board
+  ├──> cditor-ai
+  └──> ding-board
 ```
 
 Arrows point from dependent crates to the crates they consume. For example:
-`cditor-runtime` relies on `cditor-core`, `cditor-editor`, `cditor-storage`, `cditor-storage-postgres`, and `cditor-ai`.
+`cditor-runtime` relies only on `cditor-core`, `cditor-editor`, and `cditor-ai`.
 `cditor-app` serves as the final assembly layer, composing all above crates alongside `ding-board`.
 
 Naming note for `cditor-editor`: This crate is frequently misinterpreted. It contains only viewport calculation logic with no UI framework coupling. All GPUI rendering and user interaction entrypoints live in `cditor-app`.
 
-`cditor-runtime` currently contains PostgreSQL cold-start compatibility logic, creating a direct dependency on `cditor-storage-postgres`. This is a known architectural boundary limitation. Any new storage backends should be implemented against the `cditor-storage` abstraction layer to avoid propagating concrete database dependencies into the runtime crate.
+PostgreSQL cold-start and payload-window I/O live in `cditor-app`, the composition root. The app converts database rows into storage-neutral runtime inputs, so new storage backends do not propagate concrete database types into `cditor-runtime`.
 
 ## Environment Prerequisites
 ### Mandatory
@@ -243,6 +239,7 @@ Remote PostgreSQL tooling documentation: [scripts/README.md](scripts/README.md) 
 | `CDITOR_TRACE_INPUT` | `false` | Print verbose logs for platform input and IME events |
 | `CDITOR_TRACE_TABLE` | `false` | Print table interaction debug traces |
 | `CDITOR_TRACE_MARKDOWN` | `false` | Print Markdown parsing and clipboard operation traces |
+| `CDITOR_TRACE_BLOCK_COLOR` | `false` | Print block color target, persistence, and resolved paint traces |
 
 Boolean variables accept case-insensitive values: `1/true/yes/on` and `0/false/no/off`.
 
@@ -359,7 +356,6 @@ export CDITOR_TEST_DATABASE_URL='postgres://cditor:cditor@localhost:5433/cditor_
 PostgreSQL integration tests are marked `ignored` by default to avoid external service dependencies during standard unit test runs. Execute them per crate explicitly:
 ```bash
 cargo test -p cditor-storage-postgres -- --ignored
-cargo test -p cditor-runtime -- --ignored
 cargo test -p cditor-app --lib -- --ignored
 ```
 
@@ -375,7 +371,7 @@ Many ignored integration tests generate or load 100,000-Block datasets, resultin
 - The workspace maintains exactly one root `Cargo.lock` file.
 - Secrets, database credentials, and absolute local file paths must never be committed to version control.
 
-`./scripts/dev/check_structure.sh` enforces the 700-line limit, validates deprecated `crates/engine` paths, and scans for unwanted system metadata files.
+`./scripts/dev/check_structure.sh` enforces the 700-line limit, validates deprecated paths, scans for unwanted system metadata, and prevents `cditor-runtime` from acquiring PostgreSQL, SQLx, or GPUI dependencies.
 
 ### Feature Placement Guidelines
 | Feature Domain | Primary Code Location |
@@ -432,14 +428,11 @@ The current project layout is logically organized:
 - The `runtime` source directory aligns with its matching `cditor-runtime` crate.
 - All GPUI UI code is isolated within the `app` crate; core data models have no reverse UI dependencies.
 - PostgreSQL persistence logic is decoupled from generic storage abstractions.
+- PostgreSQL cold start and window loading are assembled by `cditor-app`; `cditor-runtime` receives storage-neutral records.
 - Documentation, utility scripts, and test suites are grouped by functional purpose.
 - A strict 700-line source file limit enforces modular code organization for all non-whiteboard modules.
 
-Two ongoing architectural boundary points require long-term attention:
-1. `cditor-editor` implements pure UI-agnostic viewport algorithms, but its naming may confuse new contributors who mistake it for the GUI layer. This document and the project architecture docs clarify its role; no breaking crate rename is planned for now.
-2. `cditor-runtime` carries a direct dependency on `cditor-storage-postgres` to support cold startup workflows. Future additional storage backends should abstract this logic into the application assembly layer or generic storage interfaces to avoid scattering concrete database code throughout the runtime crate.
-
-Beyond these two minor boundary concerns, the existing structure supports iterative feature development and does not require large-scale directory refactoring.
+`cditor-editor` implements pure UI-agnostic viewport algorithms despite its name; all visual editing and platform input remain in `cditor-app`. The structure check protects the more important dependency boundaries automatically.
 
 ## License
 Project licensing terms and third-party dependency notices:

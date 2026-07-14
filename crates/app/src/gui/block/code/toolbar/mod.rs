@@ -1,3 +1,5 @@
+//! Code-block language, copy, and theme controls.
+
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::input::{
@@ -27,6 +29,7 @@ pub const V1_CODE_LANGUAGE_BUTTON_WIDTH_PX: f32 = 112.0;
 pub const V1_CODE_LANGUAGE_EDIT_WIDTH_PX: f32 = 132.0;
 pub const V1_CODE_TOOLBAR_GAP_PX: f32 = 2.0;
 pub const V1_CODE_LANGUAGE_POPUP_GAP_PX: f32 = 6.0;
+#[cfg(test)]
 pub const V1_CODE_LANGUAGE_POPUP_MAX_HEIGHT_PX: f32 = 300.0;
 pub const V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX: f32 = 44.0;
 pub const V1_CODE_COPY_ICON_SIZE_PX: f32 = 16.0;
@@ -598,8 +601,8 @@ mod tests {
     #[test]
     fn unknown_code_theme_falls_back_to_default_catppuccin_latte() {
         assert_eq!(
-            crate::gui::block::code_highlight::code_theme_item("missing").id,
-            crate::gui::block::code_highlight::DEFAULT_CODE_HIGHLIGHT_THEME
+            crate::gui::block::code::highlight::code_theme_item("missing").id,
+            crate::gui::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME
         );
     }
 }

@@ -7,7 +7,7 @@ use cditor_core::ids::BlockId;
 use crate::gui::app::cditor_v2_view::ai::default_ai_provider;
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, save_status_for_mode};
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
-use crate::gui::block::code_highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
+use crate::gui::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::gui::input::BlockDragSelectionController;
 use crate::gui::overlay::table::TableViewportMeasurement;
 use crate::gui::persistence::{

@@ -180,7 +180,7 @@ pub enum TableInteractionMode {
 
 - [x] A-001 阅读并确认 `doc/large-document-rich-text-architecture.md` 中 UI projection、height index、selection、IME 约束。
   - 确认约束：UI 只渲染当前窗口投影；真实 table payload、selection/focus、height index、scroll anchor、IME composition 状态必须在 runtime/engine；candidate rect 和 hit-test 使用当前 visual geometry cache，但不能成为数据真相。
-- [x] A-002 对照旧版 `/Users/jychen/Desktop/Cditor/src` 表格实现，列出需要迁移的行为清单。
+- [x] A-002 对照旧版 Cditor `src` 表格实现，列出需要迁移的行为清单。
   - 旧版表格核心文件：`editor2/block/table.rs`、`editor2/component/table/mod.rs`、`editor2/text/element.rs`、`editor2/block/entity.rs`。
   - 需要迁移的行为：slash table 默认 2x2；cell click 请求焦点；focused cell 独立保存 selected range、selection direction、marked range；cell text replacement 按字符边界 clamp；Backspace/Delete 只删除 cell 内容；cell layout cache 提供 candidate rect；cell 内容变更同步 block payload 和 dirty/save queue；header row 和 active cell 有明确视觉状态。
   - 不能 1:1 照搬的部分：旧版把 `TableRuntime`、cell entity 和 layout cache 放在 GUI/block entity 中；V2 必须把 payload、focus/selection、layout height、transactions 放到 engine/runtime，GUI 只消费 `TableViewState` 和转发事件。

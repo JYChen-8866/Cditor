@@ -48,9 +48,8 @@ pub use content::security::{
 };
 pub use document_runtime::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
-    AiStreamApplyResult, DOCUMENT_INDEX_VISIBLE_VERSION, DocumentRuntime,
-    DocumentTextSelectionFragment, RichTextSelectionSnapshot, RuntimeAiTarget,
-    TableClipboardSnapshot,
+    AiStreamApplyResult, DocumentRuntime, DocumentTextSelectionFragment, RichTextSelectionSnapshot,
+    RuntimeAiTarget, TableClipboardSnapshot,
 };
 pub use editing::composition::{
     CompositionCancelResult, CompositionCommitResult, CompositionController, CompositionError,

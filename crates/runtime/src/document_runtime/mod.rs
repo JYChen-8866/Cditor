@@ -2,6 +2,7 @@ mod ai;
 mod block_attrs;
 mod capabilities;
 mod clipboard;
+mod cold_start;
 mod composition;
 mod constructors;
 mod focus;
@@ -17,7 +18,6 @@ mod projection;
 mod scroll;
 mod selection;
 mod state;
-mod store_loading;
 mod structure_delete;
 mod structure_edit;
 mod structure_index;
@@ -36,11 +36,10 @@ pub use ai::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
     AiStreamApplyResult, RuntimeAiTarget,
 };
-pub use selection::DocumentTextSelectionFragment;
-pub use store_loading::{
-    DOCUMENT_INDEX_VISIBLE_VERSION, DocumentRuntimeColdStartReport,
-    DocumentRuntimeFromStoreOptions, DocumentRuntimeIndexSource,
+pub use cold_start::{
+    DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,
 };
+pub use selection::DocumentTextSelectionFragment;
 
 use self::{selection::FocusedTextSelection, table::TableRuntime};
 
@@ -51,6 +50,10 @@ use std::{
     time::Instant,
 };
 
+use super::{
+    AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus, EditorViewProjection, TableCellPosition,
+    TableViewState, TableVisibleCell, ViewBlockSnapshot,
+};
 use crate::content::payload_window::{
     PayloadWindowApplyDecision, PayloadWindowLoadRequest, PayloadWindowLoadResult,
 };
@@ -88,17 +91,6 @@ use cditor_editor::scroll::{
 use cditor_editor::window::{
     PlaceholderWindow, RenderWindow, ScrollDirection, WindowPlanDecision, WindowPlanRequest,
     WindowPlanner, WindowPlannerPolicy,
-};
-use cditor_storage::layout_cache::{CacheSource, LayoutCacheKey};
-use cditor_storage_postgres::types::runtime_document_id_from_pg;
-use cditor_storage_postgres::{
-    PgDocumentId, PostgresDocumentStore, PostgresLayoutCacheStore, PostgresPayloadStore,
-    PostgresStorageError, PostgresStorageResult,
-};
-
-use super::{
-    AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus, EditorViewProjection, TableCellPosition,
-    TableViewState, TableVisibleCell, ViewBlockSnapshot,
 };
 
 fn input_trace_enabled() -> bool {

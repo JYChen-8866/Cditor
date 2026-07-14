@@ -25,9 +25,8 @@
 
 ## 重构设计
 
-- [模块拆分计划](refactor/module-split-plan.md)
 - [骨架屏加载计划](refactor/skeleton-loading-plan.md)
 
 ## 历史迁移资料
 
-[历史迁移目录](archive/migrations/README.md) 用于记录迁移背景，不代表当前目录和命令。当前 crate 与脚本入口以项目根目录 [README](../README.md) 为准。
+[历史迁移目录](archive/migrations/README.md)与[历史模块拆分记录](archive/refactors/2026-07-module-split-plan.md)用于保留迁移背景，不代表当前目录和命令。当前 crate 与脚本入口以项目根目录 [README](../README.md) 为准。

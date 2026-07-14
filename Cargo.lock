@@ -989,11 +989,6 @@ dependencies = [
  "cditor-ai",
  "cditor-core",
  "cditor-editor",
- "cditor-storage",
- "cditor-storage-postgres",
- "reqwest",
- "sqlx",
- "tokio",
 ]
 
 [[package]]
