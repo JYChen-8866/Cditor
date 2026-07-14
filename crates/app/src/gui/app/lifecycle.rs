@@ -70,10 +70,14 @@ impl CditorV2View {
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
             ai_provider: default_ai_provider(),
+            ai_enabled: true,
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
+            dirty: false,
+            sdk_focus_observers_registered: false,
+            last_emitted_selection: None,
             save_status: save_status_for_mode(readonly),
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
@@ -139,10 +143,14 @@ impl CditorV2View {
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
             ai_provider: default_ai_provider(),
+            ai_enabled: true,
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
+            dirty: false,
+            sdk_focus_observers_registered: false,
+            last_emitted_selection: None,
             save_status: save_status_for_mode(readonly),
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
@@ -208,10 +216,14 @@ impl CditorV2View {
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
             ai_provider: default_ai_provider(),
+            ai_enabled: true,
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
+            dirty: false,
+            sdk_focus_observers_registered: false,
+            last_emitted_selection: None,
             save_status: save_status_for_mode(readonly),
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
@@ -265,6 +277,8 @@ impl CditorV2View {
         postgres_target: Option<PostgresPersistenceTarget>,
     ) {
         self.state.apply_loaded_runtime(runtime);
+        self.dirty = false;
+        self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();
@@ -305,6 +319,8 @@ impl CditorV2View {
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {
         self.state.apply_load_failed(message);
+        self.dirty = false;
+        self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();

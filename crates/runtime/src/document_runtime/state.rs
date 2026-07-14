@@ -4,6 +4,8 @@ use super::*;
 #[derive(Debug)]
 pub struct DocumentRuntime {
     pub document_id: DocumentId,
+    pub(super) document_title: Option<String>,
+    pub(super) revision: u64,
     pub index: DocumentIndex,
     pub visible_index: VisibleDocumentIndex,
     pub height_index: BlockHeightIndex,

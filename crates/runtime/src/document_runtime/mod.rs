@@ -16,6 +16,7 @@ mod payload_cache;
 mod payload_hydration;
 mod payload_window;
 mod projection;
+mod queries;
 mod scroll;
 mod selection;
 mod state;

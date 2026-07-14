@@ -142,6 +142,7 @@ impl DocumentRuntime {
             viewport_height,
             0..window_end,
         );
+        runtime.document_title = Some(document_title.clone());
         runtime.block_attrs = data.block_attrs.into_iter().collect();
         let total_blocks = runtime.index.total_count();
 

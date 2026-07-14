@@ -21,7 +21,8 @@ pub(in crate::gui::app) fn default_ai_provider() -> Arc<dyn AiProvider> {
 
 impl CditorV2View {
     pub(crate) fn invoke_empty_line_ai_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.readonly
+        if !self.ai_enabled
+            || self.readonly
             || self.ai_prompt.is_some()
             || self.slash_menu.is_some()
             || self.code_language_edit.is_some()
@@ -67,7 +68,7 @@ impl CditorV2View {
         presentation: AiRequestPresentation,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.readonly {
+        if !self.ai_enabled || self.readonly {
             return false;
         }
         let Some(block_id) = self.ready_runtime_ref().and_then(|runtime| {
@@ -102,6 +103,9 @@ impl CditorV2View {
         instruction: impl Into<String>,
         cx: &mut Context<Self>,
     ) -> bool {
+        if !self.ai_enabled {
+            return false;
+        }
         let instruction = instruction.into();
         let presentation = self
             .ai_prompt
@@ -238,7 +242,7 @@ impl CditorV2View {
             .and_then(|runtime| runtime.apply_ai_preview(mode));
         match result {
             Ok(true) => {
-                self.mark_dirty(cx);
+                self.mark_dirty_with_origin(crate::api::ChangeOrigin::Ai, cx);
                 cx.notify();
                 true
             }

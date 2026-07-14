@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{fmt, sync::Arc, time::Duration};
 
 use gpui::{AppContext, Context, Entity};
 
@@ -10,12 +10,52 @@ use cditor_storage_postgres::PostgresStorageError;
 use cditor_storage_postgres::block_on_postgres;
 
 use super::cold_start::{CditorColdStartPlan, load_runtime_from_options};
+use super::component::CditorComponent;
+use super::error::CditorError;
+use super::event::CditorEvent;
 use super::options::{CditorBackend, CditorOptions, WorkspaceId};
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Clone)]
 pub struct Cditor {
     options: CditorOptions,
+    ai_provider: Option<Arc<dyn cditor_ai::AiProvider>>,
+    ai_enabled: bool,
 }
+
+impl Default for Cditor {
+    fn default() -> Self {
+        Self {
+            options: CditorOptions::default(),
+            ai_provider: None,
+            ai_enabled: true,
+        }
+    }
+}
+
+impl fmt::Debug for Cditor {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CditorBuilder")
+            .field("options", &self.options)
+            .field(
+                "ai_provider",
+                &self.ai_provider.as_ref().map(|provider| provider.id()),
+            )
+            .field("ai_enabled", &self.ai_enabled)
+            .finish()
+    }
+}
+
+impl PartialEq for Cditor {
+    fn eq(&self, other: &Self) -> bool {
+        self.options == other.options
+            && self.ai_enabled == other.ai_enabled
+            && self.ai_provider.as_ref().map(|provider| provider.id())
+                == other.ai_provider.as_ref().map(|provider| provider.id())
+    }
+}
+
+impl Eq for Cditor {}
 
 impl Cditor {
     pub fn new() -> Self {
@@ -94,6 +134,18 @@ impl Cditor {
         self
     }
 
+    pub fn with_ai_provider(mut self, provider: Arc<dyn cditor_ai::AiProvider>) -> Self {
+        self.ai_provider = Some(provider);
+        self.ai_enabled = true;
+        self
+    }
+
+    pub fn without_ai(mut self) -> Self {
+        self.ai_provider = None;
+        self.ai_enabled = false;
+        self
+    }
+
     pub fn with_postgres_large_demo_seed(mut self, block_count: usize, force: bool) -> Self {
         self.options.seed_large_demo_to_postgres = true;
         self.options.seed_large_demo_block_count = block_count.max(1);
@@ -110,7 +162,9 @@ impl Cditor {
     }
 
     pub fn build_view(self, cx: &mut Context<CditorV2View>) -> CditorV2View {
-        match CditorColdStartPlan::from_options(&self.options) {
+        let ai_provider = self.ai_provider.clone();
+        let ai_enabled = self.ai_enabled;
+        let mut view = match CditorColdStartPlan::from_options(&self.options) {
             CditorColdStartPlan::Demo | CditorColdStartPlan::Memory => {
                 let runtime = match CditorColdStartPlan::from_options(&self.options) {
                     CditorColdStartPlan::Memory => DocumentRuntime::empty(),
@@ -153,11 +207,24 @@ impl Cditor {
                 self.options.readonly,
                 cx,
             ),
-        }
+        };
+        view.sdk_configure_ai(ai_provider, ai_enabled);
+        view
     }
 
     pub fn build_entity(self, cx: &mut gpui::App) -> Entity<CditorV2View> {
         cx.new(|cx| self.build_view(cx))
+    }
+
+    /// Builds the preferred SDK component pair.
+    pub fn build<C: AppContext>(self, cx: &mut C) -> Result<CditorComponent, CditorError> {
+        if let CditorColdStartPlan::Invalid { reason } =
+            CditorColdStartPlan::from_options(&self.options)
+        {
+            return Err(CditorError::InvalidInput(reason));
+        }
+        let view = cx.new(|cx| self.build_view(cx));
+        Ok(CditorComponent::from_view(view))
     }
 }
 
@@ -185,18 +252,29 @@ fn spawn_postgres_cold_start(options: CditorOptions, cx: &mut Context<CditorV2Vi
             });
             let _ = view.update(cx, |view, cx| {
                 view.apply_loaded_runtime_with_postgres_target(loaded.runtime, postgres_target);
+                if let Some(document) = view.sdk_document_info() {
+                    cx.emit(CditorEvent::Ready { document });
+                }
                 cx.notify();
             });
         }
         Ok(None) => {
             let _ = view.update(cx, |view, cx| {
                 view.apply_load_failed("PostgreSQL backend did not produce a runtime");
+                cx.emit(CditorEvent::LoadFailed {
+                    error: CditorError::Internal(
+                        "PostgreSQL backend did not produce a runtime".to_owned(),
+                    ),
+                });
                 cx.notify();
             });
         }
         Err(message) => {
             let _ = view.update(cx, |view, cx| {
-                view.apply_load_failed(message);
+                view.apply_load_failed(message.clone());
+                cx.emit(CditorEvent::LoadFailed {
+                    error: CditorError::Persistence(message),
+                });
                 cx.notify();
             });
         }
@@ -305,6 +383,24 @@ mod tests {
         let cditor = Cditor::new().with_autosave(10).without_autosave();
 
         assert_eq!(cditor.options().autosave_interval, None);
+    }
+
+    #[test]
+    fn cditor_builder_configures_and_disables_ai() {
+        let provider = Arc::new(cditor_ai::MockAiProvider::default());
+        let configured = Cditor::new().with_ai_provider(provider);
+        assert!(configured.ai_enabled);
+        assert_eq!(
+            configured
+                .ai_provider
+                .as_ref()
+                .map(|provider| provider.id()),
+            Some("mock")
+        );
+
+        let disabled = configured.without_ai();
+        assert!(!disabled.ai_enabled);
+        assert!(disabled.ai_provider.is_none());
     }
 
     #[test]
