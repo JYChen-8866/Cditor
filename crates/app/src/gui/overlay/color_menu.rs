@@ -7,6 +7,7 @@ use gpui::{
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
+use crate::gui::block_color_trace::trace as trace_block_color;
 
 pub const COLOR_MENU_WIDTH_PX: f32 = 220.0;
 pub const COLOR_MENU_DESIRED_HEIGHT_PX: f32 = 520.0;
@@ -233,6 +234,7 @@ pub fn render_color_menu(
                             theme,
                             view.clone(),
                             state.has_text_selection,
+                            state.block_id,
                             true,
                         ))
                         .child(section_divider(theme))
@@ -244,6 +246,7 @@ pub fn render_color_menu(
                     theme,
                     view.clone(),
                     state.has_text_selection,
+                    state.block_id,
                     false,
                 ))
                 .children(PaletteColor::ALL.into_iter().map(|color| {
@@ -254,6 +257,7 @@ pub fn render_color_menu(
                         theme,
                         view.clone(),
                         state.has_text_selection,
+                        state.block_id,
                         false,
                     )
                 }))
@@ -265,6 +269,7 @@ pub fn render_color_menu(
                     theme,
                     view.clone(),
                     state.has_text_selection,
+                    state.block_id,
                     false,
                 ))
                 .children(PaletteColor::ALL.into_iter().map(|color| {
@@ -275,6 +280,7 @@ pub fn render_color_menu(
                         theme,
                         view.clone(),
                         state.has_text_selection,
+                        state.block_id,
                         false,
                     )
                 })),
@@ -300,6 +306,14 @@ pub fn render_color_menu(
         .shadow_lg()
         .occlude()
         .overflow_hidden()
+        .on_hover({
+            let view = view.clone();
+            move |hovered, _window, cx| {
+                let _ = view.update(cx, |view, cx| {
+                    view.set_color_menu_hovered(*hovered, cx);
+                });
+            }
+        })
         .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
             cx.stop_propagation();
         })
@@ -318,6 +332,7 @@ fn render_color_action_row(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     has_text_selection: bool,
+    target_block_id: Option<cditor_core::ids::BlockId>,
     last_used: bool,
 ) -> AnyElement {
     let id = color_action_index(action) + usize::from(last_used) * 32;
@@ -339,8 +354,21 @@ fn render_color_action_row(
         .cursor_pointer()
         .hover(|style| style.bg(rgb(theme.hover_surface)))
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+            trace_block_color(
+                "menu.click",
+                format_args!(
+                    "target={:?} value={:?} has_text_selection={has_text_selection} captured_block={target_block_id:?}",
+                    action.target,
+                    action.value(),
+                ),
+            );
             let _ = view.update(cx, |view, cx| {
-                view.apply_color_from_toolbar(action, has_text_selection, cx);
+                view.apply_color_from_toolbar(
+                    action,
+                    has_text_selection,
+                    target_block_id,
+                    cx,
+                );
             });
             cx.stop_propagation();
         })

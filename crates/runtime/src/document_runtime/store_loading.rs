@@ -55,6 +55,7 @@ impl DocumentRuntime {
         options: DocumentRuntimeFromStoreOptions,
     ) -> PostgresStorageResult<(Self, DocumentRuntimeColdStartReport)> {
         let metadata = document_store.load_document_metadata(document_id).await?;
+        let block_attrs = document_store.load_block_attrs(document_id).await?;
         let runtime_document_id = runtime_document_id_from_pg(metadata.id).ok_or_else(|| {
             PostgresStorageError::CorruptData {
                 message: format!("document id {} is outside runtime namespace", metadata.id),
@@ -133,7 +134,7 @@ impl DocumentRuntime {
             });
         }
 
-        let runtime = Self::from_index_records_with_window(
+        let mut runtime = Self::from_index_records_with_window(
             runtime_document_id,
             records,
             loaded_payloads.records,
@@ -141,6 +142,7 @@ impl DocumentRuntime {
             f64::from(options.viewport_height),
             0..initial_window_end,
         );
+        runtime.block_attrs = block_attrs.into_iter().collect();
         let total_blocks = runtime.index.total_count();
 
         Ok((

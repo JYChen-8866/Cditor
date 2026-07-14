@@ -7,6 +7,17 @@ impl DocumentRuntime {
             .map(|payload| payload.content_version)
     }
 
+    pub fn block_kind(&self, block_id: BlockId) -> Option<RichBlockKind> {
+        self.payload_window
+            .get(block_id)
+            .map(|payload| payload.kind.clone())
+            .or_else(|| {
+                self.index
+                    .index_of(block_id)
+                    .map(|index| rich_block_kind_from_tag(self.index.kind_tags[index]))
+            })
+    }
+
     pub fn block_payload_record(&self, block_id: BlockId) -> Option<BlockPayloadRecord> {
         self.payload_window
             .get(block_id)
@@ -308,7 +319,7 @@ impl DocumentRuntime {
                         ),
                     );
                 }
-                let mut attrs = BlockAttrs::default();
+                let mut attrs = self.block_attrs.get(block_id).cloned().unwrap_or_default();
                 attrs.folded = self.visible_index.is_folded(*block_id);
                 ViewBlockSnapshot {
                     block_id: *block_id,

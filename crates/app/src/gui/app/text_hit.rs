@@ -109,23 +109,45 @@ impl CditorV2View {
     pub(in crate::gui::app) fn infer_document_viewport_origin(
         &self,
     ) -> Option<FallbackViewportOrigin> {
-        self.text_layouts.iter().find_map(|(block_id, cache)| {
-            let rect = self
-                .projected_block_rects
-                .iter()
-                .find(|rect| rect.block_id == *block_id)?;
-            let runtime = self.ready_runtime_ref()?;
-            if runtime.block_content_version(*block_id)? != cache.content_version {
-                return None;
-            }
-            Some(FallbackViewportOrigin {
-                x: f32::from(cache.bounds.left()) as f64 - rect.text_origin_x_in_block_px,
-                y: f32::from(cache.bounds.top()) as f64 - rect.document_top
-                    + runtime.scroll.global_scroll_top
-                    - rect.text_origin_y_in_block_px,
+        let runtime = self.ready_runtime_ref()?;
+        let focused = runtime.focused_block_id().and_then(|block_id| {
+            viewport_origin_for_block(
+                runtime,
+                &self.projected_block_rects,
+                &self.text_layouts,
+                block_id,
+            )
+        });
+        focused.or_else(|| {
+            self.projected_block_rects.iter().find_map(|rect| {
+                viewport_origin_for_block(
+                    runtime,
+                    &self.projected_block_rects,
+                    &self.text_layouts,
+                    rect.block_id,
+                )
             })
         })
     }
+}
+
+fn viewport_origin_for_block(
+    runtime: &DocumentRuntime,
+    rects: &[crate::gui::app::interaction::geometry::ProjectedBlockRect],
+    layouts: &std::collections::HashMap<BlockId, RichTextPlatformLayout>,
+    block_id: BlockId,
+) -> Option<FallbackViewportOrigin> {
+    let cache = layouts.get(&block_id)?;
+    let rect = rects.iter().find(|rect| rect.block_id == block_id)?;
+    if runtime.block_content_version(block_id)? != cache.content_version {
+        return None;
+    }
+    Some(FallbackViewportOrigin {
+        x: f32::from(cache.bounds.left()) as f64 - rect.text_origin_x_in_block_px,
+        y: f32::from(cache.bounds.top()) as f64 - rect.document_top
+            + runtime.scroll.global_scroll_top
+            - rect.text_origin_y_in_block_px,
+    })
 }
 
 pub(in crate::gui::app) fn table_cell_layout_cache_is_current(

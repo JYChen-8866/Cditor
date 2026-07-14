@@ -28,6 +28,32 @@ tokio = { version = "1", features = ["time"] }
 unicode-segmentation = "1.12"
 image = "0.25.10"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+lumis = { version = "0.12.0", default-features = false, features = [
+    "lang-bash",
+    "lang-c",
+    "lang-cpp",
+    "lang-csharp",
+    "lang-css",
+    "lang-diff",
+    "lang-dockerfile",
+    "lang-go",
+    "lang-html",
+    "lang-java",
+    "lang-javascript",
+    "lang-json",
+    "lang-kotlin",
+    "lang-markdown",
+    "lang-python",
+    "lang-rust",
+    "lang-scss",
+    "lang-sql",
+    "lang-swift",
+    "lang-toml",
+    "lang-tsx",
+    "lang-typescript",
+    "lang-yaml",
+    "lang-zsh",
+] }
 
 [dev-dependencies]
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["runtime_shaders"] }

@@ -7,6 +7,7 @@ use cditor_core::ids::BlockId;
 use crate::gui::app::cditor_v2_view::ai::default_ai_provider;
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, save_status_for_mode};
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
+use crate::gui::block::code_highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::gui::input::BlockDragSelectionController;
 use crate::gui::overlay::table::TableViewportMeasurement;
 use crate::gui::persistence::{
@@ -79,6 +80,7 @@ impl CditorV2View {
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
+            code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
@@ -87,6 +89,8 @@ impl CditorV2View {
             text_drag_selection: None,
             block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
+            code_theme_menu_block_id: None,
+            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
             slash_menu: None,
             toast: None,
             table_interaction_mode: GuiTableInteractionMode::Idle,
@@ -96,6 +100,7 @@ impl CditorV2View {
             gutter_toolbar_block_id: None,
             block_transform_menu_open: false,
             color_menu_open: false,
+            color_menu_hover_generation: 0,
             color_menu_scroll_handle: Default::default(),
             last_color_action: None,
             gutter_block_drag: None,
@@ -143,6 +148,7 @@ impl CditorV2View {
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
+            code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
@@ -151,6 +157,8 @@ impl CditorV2View {
             text_drag_selection: None,
             block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
+            code_theme_menu_block_id: None,
+            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
             slash_menu: None,
             toast: None,
             table_interaction_mode: GuiTableInteractionMode::Idle,
@@ -160,6 +168,7 @@ impl CditorV2View {
             gutter_toolbar_block_id: None,
             block_transform_menu_open: false,
             color_menu_open: false,
+            color_menu_hover_generation: 0,
             color_menu_scroll_handle: Default::default(),
             last_color_action: None,
             gutter_block_drag: None,
@@ -207,6 +216,7 @@ impl CditorV2View {
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
+            code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
@@ -215,6 +225,8 @@ impl CditorV2View {
             text_drag_selection: None,
             block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
+            code_theme_menu_block_id: None,
+            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
             slash_menu: None,
             toast: None,
             table_interaction_mode: GuiTableInteractionMode::Idle,
@@ -224,6 +236,7 @@ impl CditorV2View {
             gutter_toolbar_block_id: None,
             block_transform_menu_open: false,
             color_menu_open: false,
+            color_menu_hover_generation: 0,
             color_menu_scroll_handle: Default::default(),
             last_color_action: None,
             gutter_block_drag: None,
@@ -252,6 +265,7 @@ impl CditorV2View {
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();
+        self.code_highlights.clear();
         self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
@@ -259,6 +273,7 @@ impl CditorV2View {
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
+        self.code_theme_menu_block_id = None;
         self.slash_menu = None;
         self.toast = None;
         self.table_interaction_mode = GuiTableInteractionMode::Idle;
@@ -289,11 +304,13 @@ impl CditorV2View {
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.table_scroll_state.clear();
+        self.code_highlights.clear();
         self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
+        self.code_theme_menu_block_id = None;
         self.slash_menu = None;
         self.toast = None;
         self.table_interaction_mode = GuiTableInteractionMode::Idle;

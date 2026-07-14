@@ -198,8 +198,8 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
             10.0,
         )),
         RichBlockKind::Mermaid => BlockHeightRule::StableBox {
-            estimated_height: 220.0,
-            max_error_hint: 96.0,
+            estimated_height: 232.0,
+            max_error_hint: 1028.0,
         },
         RichBlockKind::Html => BlockHeightRule::TextLike(
             text_metrics(
@@ -556,6 +556,13 @@ mod tests {
         );
         assert!(estimate_kind_fallback_height(&RichBlockKind::Whiteboard).height >= 240.0);
         assert!(estimate_kind_fallback_height(&RichBlockKind::Database).height >= 160.0);
+    }
+
+    #[test]
+    fn mermaid_fallback_matches_the_loading_preview_box() {
+        let estimate = estimate_kind_fallback_height(&RichBlockKind::Mermaid);
+        assert_eq!(estimate.height, 232.0);
+        assert_eq!(estimate.confidence, HeightConfidence::Predictive);
     }
 
     #[test]

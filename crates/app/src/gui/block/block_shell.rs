@@ -12,6 +12,7 @@ use crate::gui::block::gutter::{GutterAddHandler, GutterMouseDownHandler, render
 use crate::gui::block::prefix::{
     FoldToggleHandler, TodoToggleHandler, render_block_content_prefix, render_block_prefix,
 };
+use crate::gui::block_color_trace::trace_render;
 use cditor_runtime::ViewBlockSnapshot;
 
 const NOTION_QUOTE_BAR_WIDTH_PX: f32 = 3.0;
@@ -60,10 +61,21 @@ pub fn block_shell(
     let chrome = BlockChromeStyle::from_snapshot(block, theme);
     let gutter_visible = should_show_gutter(hovered, action.action_root);
     let outer_background = outer_background_for_action(chrome.outer_background, theme, action);
-    let content_background =
-        content_background_for_action(chrome.content_background, theme, action);
+    let content_background = content_background_for_action(
+        chrome.content_background,
+        theme,
+        action,
+        block.attrs.background_color.is_some(),
+    );
     let shell_border = border_for_action(theme.surface, theme, action);
     let content_border = border_for_action(chrome.content_border, theme, action);
+    trace_render(
+        block.block_id,
+        &block.attrs,
+        chrome.text_color,
+        content_background,
+        action.action_active,
+    );
     div()
         .id(("v2-block", block.block_id))
         .w_full()
@@ -155,8 +167,9 @@ pub fn content_background_for_action(
     default_content_background: u32,
     theme: GuiTheme,
     action: BlockActionState,
+    has_custom_background: bool,
 ) -> u32 {
-    if action.action_active {
+    if action.action_active && !has_custom_background {
         theme.action_background
     } else {
         default_content_background
@@ -233,8 +246,15 @@ mod tests {
         };
         // Content background changes on action_active
         assert_eq!(
-            content_background_for_action(0x123456, theme, action),
+            content_background_for_action(0x123456, theme, action, false),
             theme.action_background
+        );
+        // Once a block has an explicit background, keep it visible while its
+        // gutter menu is active instead of immediately painting over it with
+        // the generic action tint.
+        assert_eq!(
+            content_background_for_action(0x123456, theme, action, true),
+            0x123456
         );
         // Outer background does NOT change on action_active (gutter stays uncolored)
         assert_eq!(
@@ -247,7 +267,7 @@ mod tests {
             theme.action_background
         );
         assert_eq!(
-            content_background_for_action(0x123456, theme, BlockActionState::default()),
+            content_background_for_action(0x123456, theme, BlockActionState::default(), false,),
             0x123456
         );
         assert_eq!(

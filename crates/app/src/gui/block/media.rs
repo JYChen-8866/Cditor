@@ -122,7 +122,7 @@ fn media_height_report_cache() -> &'static Mutex<HashMap<BlockId, (u64, u64)>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn schedule_rendered_media_height_report(
+pub(crate) fn schedule_rendered_media_height_report(
     view: Entity<CditorV2View>,
     block_id: BlockId,
     content_version: u64,
@@ -165,6 +165,12 @@ fn schedule_rendered_media_height_report(
             });
         })
         .detach();
+}
+
+pub(crate) fn invalidate_rendered_media_height_report(block_id: BlockId) {
+    if let Ok(mut cache) = media_height_report_cache().lock() {
+        cache.remove(&block_id);
+    }
 }
 
 fn natural_image_size_px(image: &RenderImage) -> (f32, f32) {

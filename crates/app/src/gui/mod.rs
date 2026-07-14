@@ -1,5 +1,6 @@
 pub mod app;
 pub mod block;
+pub(crate) mod block_color_trace;
 pub mod clipboard_assets;
 pub mod document;
 pub mod image_loader;

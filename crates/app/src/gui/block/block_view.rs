@@ -13,7 +13,9 @@ use crate::gui::block::paragraph::render_paragraph;
 use crate::gui::block::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
 };
-use crate::gui::block::{MermaidRenderCache, WhiteboardThumbnailCache, render_mermaid_block};
+use crate::gui::block::{
+    CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache, render_mermaid_block,
+};
 use crate::gui::input::{
     CodeLanguageEditState, focus_block_from_mouse, gutter_mouse_down_from_mouse,
     hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,
@@ -46,8 +48,11 @@ impl BlockView {
         table_reorder_preview: Option<TableReorderPreview>,
         table_range_selection: Option<TableCellRangeSelection>,
         code_language_edit: Option<&CodeLanguageEditState>,
+        code_theme_menu_open: bool,
+        code_highlight_theme: &'static str,
         suppress_document_text_input: bool,
         table_scroll_handle: Option<ScrollHandle>,
+        code_highlights: &CodeHighlightCache,
         mermaid_renders: &MermaidRenderCache,
         mermaid_show_source: bool,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
@@ -68,8 +73,11 @@ impl BlockView {
             table_reorder_preview,
             table_range_selection,
             code_language_edit,
+            code_theme_menu_open,
+            code_highlight_theme,
             suppress_document_text_input,
             table_scroll_handle,
+            code_highlights,
             mermaid_renders,
             mermaid_show_source,
             whiteboard_thumbnails,
@@ -152,8 +160,11 @@ fn render_kind_content(
     table_reorder_preview: Option<TableReorderPreview>,
     table_range_selection: Option<TableCellRangeSelection>,
     code_language_edit: Option<&CodeLanguageEditState>,
+    code_theme_menu_open: bool,
+    code_highlight_theme: &'static str,
     suppress_document_text_input: bool,
     table_scroll_handle: Option<ScrollHandle>,
+    code_highlights: &CodeHighlightCache,
     mermaid_renders: &MermaidRenderCache,
     mermaid_show_source: bool,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
@@ -173,6 +184,8 @@ fn render_kind_content(
             || (matches!(block.kind, RichBlockKind::Mermaid) && !mermaid_show_source),
         table_axis_selection,
         table_scroll_handle,
+        code_highlights,
+        code_highlight_theme,
         whiteboard_thumbnails,
         cx,
     );
@@ -187,6 +200,8 @@ fn render_kind_content(
                 theme,
                 language.as_deref(),
                 language_edit,
+                code_theme_menu_open,
+                code_highlight_theme,
                 action.action_active,
                 view.clone(),
                 code_language_focus,
@@ -204,11 +219,18 @@ fn render_kind_content(
             .into_any_element(),
         RichBlockKind::Mermaid => render_mermaid_block(
             block.block_id,
+            match &block.payload {
+                cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                    payload.content_version
+                }
+                _ => 0,
+            },
             content,
             mermaid_show_source,
             mermaid_renders,
             theme,
             view,
+            cx,
         ),
         RichBlockKind::RawMarkdown => div()
             .w_full()

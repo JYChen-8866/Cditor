@@ -50,6 +50,8 @@ impl Render for CditorV2View {
 
         let view = cx.entity();
         let code_language_edit = self.code_language_edit.clone();
+        let code_theme_menu_block_id = self.code_theme_menu_block_id;
+        let code_highlight_theme = self.code_highlight_theme;
         let mermaid_source_blocks = self.mermaid_source_blocks.clone();
         let embedded_ai_prompt = self.ai_prompt.as_ref().is_some_and(|prompt| {
             self.gutter_toolbar_block_id == Some(prompt.block_id)
@@ -64,6 +66,7 @@ impl Render for CditorV2View {
             self.readonly,
             self.slash_menu.is_some()
                 || code_language_edit.is_some()
+                || code_theme_menu_block_id.is_some()
                 || (self.ai_prompt.is_some() && !embedded_ai_prompt),
             window.viewport_size(),
             self.gutter_toolbar_block_id.filter(|_| {
@@ -308,6 +311,11 @@ impl Render for CditorV2View {
                         projection.render_window.block_range.clone(),
                     );
                 }
+                self.code_highlights.sync_visible_window(
+                    &projection,
+                    self.code_highlight_theme,
+                    cx,
+                );
                 self.mermaid_renders
                     .sync_visible_window(&projection, theme, cx);
                 self.whiteboard_thumbnails
@@ -393,8 +401,11 @@ impl Render for CditorV2View {
                         self.table_reorder_preview(),
                         table_range_selection,
                         code_language_edit.as_ref(),
+                        code_theme_menu_block_id,
+                        code_highlight_theme,
                         self.ai_prompt.is_some(),
                         &table_scroll_snapshots,
+                        &self.code_highlights,
                         &self.mermaid_renders,
                         &mermaid_source_blocks,
                         &self.whiteboard_thumbnails,
