@@ -1,3 +1,5 @@
+//! Code-block syntax highlighting and theme metadata.
+
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, OnceLock};

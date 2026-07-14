@@ -3,7 +3,7 @@ use gpui::{
 };
 
 use crate::gui::app::CditorV2View;
-use crate::gui::block::code_highlight::code_theme_item;
+use crate::gui::block::code::highlight::code_theme_item;
 use crate::gui::block::media::render_image_block;
 use crate::gui::block::placeholder::{
     render_empty_ai_hint, render_error, render_loading, render_placeholder,

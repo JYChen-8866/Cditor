@@ -1,7 +1,5 @@
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
-use crate::gui::block::code_highlight::code_theme_item;
-use crate::gui::block::code_toolbar::render_code_toolbar;
 use crate::gui::input::CodeLanguageEditState;
 use crate::gui::platform::EDITOR_MONO_FONT_FAMILY;
 use cditor_core::ids::BlockId;
@@ -9,6 +7,12 @@ use gpui::{
     AnyElement, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, div,
     px, rgb,
 };
+
+pub(crate) mod highlight;
+mod toolbar;
+
+use highlight::code_theme_item;
+use toolbar::render_code_toolbar;
 
 pub const V1_CODE_BLOCK_MIN_HEIGHT_PX: f32 = 92.0;
 pub const V1_CODE_BLOCK_RADIUS_PX: f32 = 3.0;

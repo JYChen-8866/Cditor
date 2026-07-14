@@ -35,8 +35,7 @@ mod block_actions;
 mod code_language;
 mod code_theme;
 mod folding;
-mod formatting_color;
-mod formatting_toolbar;
+mod formatting;
 mod platform_input;
 mod slash_menu;
 mod table_actions;
@@ -46,7 +45,7 @@ pub(in crate::gui::app) use super::persistence_bridge::save_status_for_mode;
 pub use super::state::CditorViewState;
 pub(crate) use crate::gui::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::gui::app) use block_actions::block_focus_offset_after_missed_hit_test;
-pub(in crate::gui::app) use formatting_toolbar::formatting_toolbar_state;
+pub(in crate::gui::app) use formatting::formatting_toolbar_state;
 pub(crate) use platform_input::GuiPlatformInputTarget;
 #[cfg(test)]
 pub(crate) use platform_input::platform_input_registration_allows;

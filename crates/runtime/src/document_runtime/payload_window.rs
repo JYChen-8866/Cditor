@@ -67,30 +67,6 @@ impl DocumentRuntime {
         }
     }
 
-    pub async fn load_payload_window_request(
-        payload_store: &PostgresPayloadStore,
-        request: PayloadWindowLoadRequest,
-    ) -> PostgresStorageResult<PayloadWindowLoadResult> {
-        let loaded = payload_store
-            .load_block_payloads(&request.block_ids)
-            .await?;
-        Ok(PayloadWindowLoadResult {
-            request,
-            records: loaded.records,
-            missing_block_ids: loaded.missing_block_ids,
-        })
-    }
-
-    pub async fn load_payload_window_from_store(
-        &mut self,
-        payload_store: &PostgresPayloadStore,
-        block_range: Range<usize>,
-    ) -> PostgresStorageResult<PayloadWindowApplyDecision> {
-        let request = self.plan_payload_window_load(block_range);
-        let result = Self::load_payload_window_request(payload_store, request).await?;
-        Ok(self.apply_payload_window_result(result))
-    }
-
     pub fn apply_payload_window_result(
         &mut self,
         result: PayloadWindowLoadResult,

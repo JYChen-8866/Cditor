@@ -4,6 +4,7 @@ pub mod options;
 
 pub use cditor::Cditor;
 pub use cold_start::{
-    CditorColdStartPlan, CditorPostgresStores, CditorRuntimeLoadResult, load_runtime_from_options,
+    CditorColdStartPlan, CditorPostgresStores, CditorRuntimeLoadResult, PostgresRuntimeLoadOptions,
+    load_runtime_from_options,
 };
 pub use options::{CditorBackend, CditorOptions, WorkspaceId};

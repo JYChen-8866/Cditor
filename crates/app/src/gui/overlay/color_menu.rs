@@ -7,7 +7,7 @@ use gpui::{
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
-use crate::gui::block_color_trace::trace as trace_block_color;
+use crate::gui::diagnostics::block_color::trace as trace_block_color;
 
 pub const COLOR_MENU_WIDTH_PX: f32 = 220.0;
 pub const COLOR_MENU_DESIRED_HEIGHT_PX: f32 = 520.0;

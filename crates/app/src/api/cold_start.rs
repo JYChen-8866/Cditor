@@ -1,11 +1,15 @@
 use sqlx::PgPool;
 
 use cditor_core::document::BlockIndexRecord;
+use cditor_core::layout::BlockLayoutMeta;
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind};
 use cditor_runtime::DocumentRuntime;
 use cditor_runtime::document_runtime::{
-    DocumentRuntimeColdStartReport, DocumentRuntimeFromStoreOptions,
+    DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,
 };
+use cditor_storage::DOCUMENT_INDEX_VISIBLE_VERSION;
+use cditor_storage::layout_cache::{CacheSource, LayoutCacheKey};
+use cditor_storage_postgres::types::runtime_document_id_from_pg;
 use cditor_storage_postgres::{
     DocumentRow, LargeDemoSeedOptions, PgDocumentId, PostgresDocumentStore,
     PostgresLayoutCacheStore, PostgresPayloadStore, PostgresPoolConfig, PostgresStorageError,
@@ -49,6 +53,34 @@ pub struct CditorRuntimeLoadResult {
     pub runtime: DocumentRuntime,
     pub report: DocumentRuntimeColdStartReport,
     pub postgres_pool: Option<PgPool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostgresRuntimeLoadOptions {
+    pub viewport_height: u32,
+    pub visible_index_version: i64,
+    pub initial_payload_window_blocks: usize,
+    pub layout_key: LayoutCacheKey,
+}
+
+impl Default for PostgresRuntimeLoadOptions {
+    fn default() -> Self {
+        Self {
+            viewport_height: 720,
+            visible_index_version: DOCUMENT_INDEX_VISIBLE_VERSION,
+            initial_payload_window_blocks: 64,
+            layout_key: LayoutCacheKey {
+                width_bucket: 10,
+                exact_width_px: 800,
+                content_version: 1,
+                attrs_version: 0,
+                style_version: 0,
+                font_version: 0,
+                theme_version: 0,
+                scale_factor_milli: 1000,
+            },
+        }
+    }
 }
 
 impl CditorColdStartPlan {
@@ -100,16 +132,110 @@ impl CditorPostgresStores {
     pub async fn load_runtime(
         &self,
         document_id: PgDocumentId,
-        options: DocumentRuntimeFromStoreOptions,
+        options: PostgresRuntimeLoadOptions,
     ) -> PostgresStorageResult<CditorRuntimeLoadResult> {
-        let (runtime, report) = DocumentRuntime::from_store(
-            document_id,
-            &self.document_store,
-            &self.payload_store,
-            &self.layout_store,
-            options,
+        let metadata = self
+            .document_store
+            .load_document_metadata(document_id)
+            .await?;
+        let block_attrs = self.document_store.load_block_attrs(document_id).await?;
+        let runtime_document_id = runtime_document_id_from_pg(metadata.id).ok_or_else(|| {
+            PostgresStorageError::CorruptData {
+                message: format!("document id {} is outside runtime namespace", metadata.id),
+            }
+        })?;
+        let structure_version = u64::try_from(metadata.structure_version).map_err(|_| {
+            PostgresStorageError::CorruptData {
+                message: format!(
+                    "document {} has negative structure_version {}",
+                    metadata.id, metadata.structure_version
+                ),
+            }
+        })?;
+
+        let snapshot_records = self
+            .document_store
+            .load_document_index_snapshot(
+                document_id,
+                options.visible_index_version,
+                metadata.structure_version,
+            )
+            .await?;
+        let (mut records, index_source) = match snapshot_records {
+            Some(records) => (records, DocumentRuntimeIndexSource::Snapshot),
+            None => (
+                self.document_store
+                    .load_block_index_records(document_id)
+                    .await?,
+                DocumentRuntimeIndexSource::Blocks,
+            ),
+        };
+
+        let cached_heights = self
+            .layout_store
+            .load_block_heights(
+                &records.iter().map(|record| record.id).collect::<Vec<_>>(),
+                options.layout_key,
+            )
+            .await?;
+        let mut layout_cache_hits = 0usize;
+        for record in &mut records {
+            if let Some(cached) = cached_heights.get(&record.id) {
+                layout_cache_hits += 1;
+                record.layout_meta = BlockLayoutMeta {
+                    block_id: record.id,
+                    estimated_height: cached.height,
+                    measured_height: (cached.source == CacheSource::ExactMatch)
+                        .then_some(cached.height),
+                    width_bucket: options.layout_key.width_bucket,
+                    layout_version: options.layout_key.content_version,
+                    dirty: cached.source != CacheSource::ExactMatch,
+                };
+            }
+        }
+
+        let initial_window_end = records.len().min(options.initial_payload_window_blocks);
+        let initial_block_ids = records
+            .iter()
+            .take(initial_window_end)
+            .map(|record| record.id)
+            .collect::<Vec<_>>();
+        let loaded_payloads = self
+            .payload_store
+            .load_block_payloads(&initial_block_ids)
+            .await?;
+        if !loaded_payloads.missing_block_ids.is_empty() {
+            let sample = loaded_payloads
+                .missing_block_ids
+                .iter()
+                .take(5)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(PostgresStorageError::CorruptData {
+                message: format!(
+                    "document {} is missing {} payloads in its initial window (sample block ids: {sample}); reseed or repair the document",
+                    metadata.id,
+                    loaded_payloads.missing_block_ids.len(),
+                ),
+            });
+        }
+
+        let (runtime, report) = DocumentRuntime::from_cold_start_data(
+            DocumentRuntimeColdStartData {
+                document_id: runtime_document_id,
+                document_title: metadata.title,
+                structure_version,
+                records,
+                block_attrs,
+                initial_payloads: loaded_payloads.records,
+                initial_payload_window_end: initial_window_end,
+                index_source,
+                layout_cache_hits,
+            },
+            f64::from(options.viewport_height),
         )
-        .await?;
+        .map_err(|message| PostgresStorageError::CorruptData { message })?;
         Ok(CditorRuntimeLoadResult {
             runtime,
             report,
@@ -248,12 +374,12 @@ async fn ensure_minimal_document_exists(
 
 const MIN_INTERACTIVE_COLD_START_PAYLOAD_BLOCKS: usize = 256;
 
-fn cold_start_options(options: &CditorOptions) -> DocumentRuntimeFromStoreOptions {
-    DocumentRuntimeFromStoreOptions {
+fn cold_start_options(options: &CditorOptions) -> PostgresRuntimeLoadOptions {
+    PostgresRuntimeLoadOptions {
         initial_payload_window_blocks: options
             .payload_window_size
             .max(MIN_INTERACTIVE_COLD_START_PAYLOAD_BLOCKS),
-        ..DocumentRuntimeFromStoreOptions::default()
+        ..PostgresRuntimeLoadOptions::default()
     }
 }
 

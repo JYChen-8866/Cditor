@@ -4,17 +4,17 @@
 
 当前 V2 的表格仍然会在回车、切换 block、点击其他位置后消失。前面已经补过多处防御逻辑，例如 `RichBlockKind::Table` 自动补 `BlockPayload::Table`、表格 block 没有 cell focus 时禁止普通文本输入、表格 cell 的按键优先级提前到 slash menu 之前。
 
-这些补丁可以覆盖一部分路径，但没有改变根因：V2 现在把表格当成普通 block payload 的一个分支，而旧版 `/Users/jychen/Desktop/Cditor/src` 把表格当成 block 内部的独立运行时。两者的状态模型不一样，所以 V2 很容易在 focus、projection、payload loading、保存回写之间出现一次短暂不一致，然后 UI 就把表格渲染成空 payload 或普通文本。
+这些补丁可以覆盖一部分路径，但没有改变根因：V2 现在把表格当成普通 block payload 的一个分支，而旧版 Cditor `src` 把表格当成 block 内部的独立运行时。两者的状态模型不一样，所以 V2 很容易在 focus、projection、payload loading、保存回写之间出现一次短暂不一致，然后 UI 就把表格渲染成空 payload 或普通文本。
 
 本文先梳理旧版和 V2 的实现思路，再给出按旧版方式重做 V2 表格的落地方案。
 
 ## 旧版实现
 
-旧版主要看 `/Users/jychen/Desktop/Cditor/src/editor2`。
+旧版主要参考其 `src/editor2`。
 
 ### Block 拥有表格运行时
 
-`/Users/jychen/Desktop/Cditor/src/editor2/block/entity.rs` 里，`CditorBlock` 同时持有持久化记录和表格运行时：
+旧版 `src/editor2/block/entity.rs` 里，`CditorBlock` 同时持有持久化记录和表格运行时：
 
 - `record: BlockRecord`
 - `table_runtime: Option<TableRuntime>`
@@ -33,7 +33,7 @@
 
 ### 表格渲染是稳定实体树
 
-`/Users/jychen/Desktop/Cditor/src/editor2/component/table/mod.rs` 的 `render_table_block` 直接读取 `block.table_runtime.as_ref()`。
+旧版 `src/editor2/component/table/mod.rs` 的 `render_table_block` 直接读取 `block.table_runtime.as_ref()`。
 
 渲染流程是：
 
@@ -47,7 +47,7 @@
 
 ### Slash 插入保证 kind/table 成对出现
 
-`/Users/jychen/Desktop/Cditor/src/editor2/runtime/indexed_document.rs` 的 slash 插入走 `apply_slash_menu_item`，核心是 `slash_replacement_record`：
+旧版 `src/editor2/runtime/indexed_document.rs` 的 slash 插入走 `apply_slash_menu_item`，核心是 `slash_replacement_record`：
 
 - 设置 `replacement.kind = kind`
 - 设置 `replacement.table = default_table_for_slash_insert(kind)`
@@ -120,7 +120,7 @@ V2 的表格焦点存在 `DocumentRuntime.focused_table_cell: Option<FocusedTabl
 
 ## 根本差异
 
-| 维度 | 旧版 `/Users/jychen/Desktop/Cditor/src` | V2 当前实现 |
+| 维度 | 旧版 Cditor `src` | V2 当前实现 |
 | --- | --- | --- |
 | 状态源 | `CditorBlock.record.table` + `table_runtime` | `BlockPayload::Table` + 全局 `focused_table_cell` |
 | UI identity | row/cell 都是稳定 entity | render 时从 payload 临时画 cell |
@@ -583,7 +583,7 @@ structure commands
 - `crates/app/src/gui/app/input/keyboard.rs`
 - `crates/app/src/gui/input/mouse.rs`
 - `crates/app/src/gui/overlay/slash_menu.rs`
-- `crates/app/src/gui/block/code_toolbar.rs`
+- `crates/app/src/gui/block/code/toolbar/mod.rs`
 
 完成标准：
 
@@ -599,7 +599,8 @@ PostgreSQL 保存不能写入中间态。table block 保存前要从 `TableRunti
 
 - `crates/store-postgres/src/stores/payload.rs`
 - `crates/runtime/src/document_runtime/payload_window.rs`
-- `crates/runtime/src/document_runtime/store_loading.rs`
+- `crates/app/src/api/cold_start.rs`
+- `crates/app/src/gui/app/persistence_bridge.rs`
 - app 层触发保存的 dirty snapshot
 
 规则：

@@ -815,11 +815,11 @@ runtime 同时维护 `document_selection`、`focused_text_selection`、`selected
 - [ ] **ARCH-SELECTION-03** GUI 仅保留 pointer gesture 暂态，完成 gesture 后提交 runtime selection transaction。
 - [ ] **ARCH-SELECTION-04** selection fragments、copy/cut/delete、toolbar、gutter highlight 全从统一 selection 派生。
 
-### 9.4 ARCH-PERSIST：GUI 层直接持有 Postgres 实现
+### 9.4 ARCH-PERSIST：组合根正确，但保存协调仍贴近 GUI
 
-`cditor-app` 直接依赖 `sqlx` 和 `cditor-storage-postgres`；`gui/persistence/postgres_saver.rs` 持有 `PgPool`、构造具体 store、从 runtime drain transaction 并组装 save batch。这不符合“UI 只消费 projection / editor -> runtime -> storage”的干净边界，也让白板每次 host dirty 更容易牵动根 view 状态。
+`cditor-app` 作为组合根直接依赖 `sqlx` 和 `cditor-storage-postgres` 是允许的；`cditor-runtime` 已改为只接收中立 cold-start 数据与 payload-window 结果。剩余问题是 `gui/persistence/postgres_saver.rs` 仍持有 `PgPool`、构造具体 store、从 runtime drain transaction 并组装 save batch，保存协调与根 View 生命周期耦合较紧。
 
-- [ ] **ARCH-PERSIST-01** 在 application/runtime service 层定义 `PersistenceCoordinator`，只依赖 storage traits。
+- [ ] **ARCH-PERSIST-01** 在 app service 层定义 `PersistenceCoordinator`，只向 GUI 暴露命令与状态投影。
 - [ ] **ARCH-PERSIST-02** Postgres adapter 留在 store-postgres；GUI 只发送 SaveRequested/Dirty 事件并消费 SaveStatus projection。
 - [ ] **ARCH-PERSIST-03** 保存队列按 dirty block/transaction 增量抓取，禁止 GUI 读取整个 loaded payload window。
 - [ ] **ARCH-PERSIST-04** 保存失败、重试、dirty pin、close flush 做 service 级集成测试。

@@ -1,7 +1,10 @@
 use super::*;
-use crate::{PostgresPoolConfig, create_pg_pool, pg_document_id_from_runtime, run_migrations};
+use crate::{
+    DocumentRow, PostgresPoolConfig, create_pg_pool, pg_document_id_from_runtime, run_migrations,
+};
 use cditor_core::rich_text::RichBlockKind;
 use cditor_core::rich_text::kind_tag_for_rich_block_kind;
+use sqlx::types::Uuid;
 
 fn test_database_url() -> String {
     std::env::var("CDITOR_TEST_DATABASE_URL")

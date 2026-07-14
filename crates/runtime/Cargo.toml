@@ -8,10 +8,3 @@ license.workspace = true
 cditor-ai = { path = "../ai" }
 cditor-core = { path = "../core" }
 cditor-editor = { path = "../editor" }
-cditor-storage = { path = "../store" }
-cditor-storage-postgres = { path = "../store-postgres" }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
-
-[dev-dependencies]
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

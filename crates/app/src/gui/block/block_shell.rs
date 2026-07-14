@@ -12,7 +12,7 @@ use crate::gui::block::gutter::{GutterAddHandler, GutterMouseDownHandler, render
 use crate::gui::block::prefix::{
     FoldToggleHandler, TodoToggleHandler, render_block_content_prefix, render_block_prefix,
 };
-use crate::gui::block_color_trace::trace_render;
+use crate::gui::diagnostics::block_color::trace_render;
 use cditor_runtime::ViewBlockSnapshot;
 
 const NOTION_QUOTE_BAR_WIDTH_PX: f32 = 3.0;

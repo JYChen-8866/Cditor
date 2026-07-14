@@ -3,6 +3,7 @@ use sqlx::types::Uuid;
 use cditor_core::demo_fixtures::{
     large_mixed_demo_index_records, large_mixed_demo_payload_records,
 };
+use cditor_storage::DOCUMENT_INDEX_VISIBLE_VERSION;
 
 use super::{
     DocumentRow, PgDocumentId, PostgresDocumentStore, PostgresPayloadStore, PostgresStorageError,
@@ -10,7 +11,6 @@ use super::{
 };
 
 const DEFAULT_PAYLOAD_SEED_BATCH_SIZE: usize = 1_000;
-const DOCUMENT_INDEX_VISIBLE_VERSION: i64 = 2;
 const DEMO_WORKSPACE_NAMESPACE: u128 = 0x9300_0000_0000_0000_0000_0000_0000_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -9,8 +9,8 @@ use cditor_core::document::BlockIndexRecord;
 use cditor_core::edit::EditTransaction;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockAttrs, BlockPayloadRecord};
-use cditor_runtime::DOCUMENT_INDEX_VISIBLE_VERSION;
 use cditor_runtime::DocumentRuntime;
+use cditor_storage::DOCUMENT_INDEX_VISIBLE_VERSION;
 use cditor_storage_postgres::{
     EditTransactionVersions, PgDocumentId, PostgresDocumentStore, PostgresPayloadStore,
     PostgresTransactionStore, pg_document_id_from_runtime,

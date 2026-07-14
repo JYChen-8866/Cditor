@@ -1,7 +1,6 @@
 use gpui::{AppContext, Context};
 
-use cditor_runtime::content::payload_window::PayloadWindowLoadRequest;
-use cditor_runtime::document_runtime::DocumentRuntime;
+use cditor_runtime::content::payload_window::{PayloadWindowLoadRequest, PayloadWindowLoadResult};
 use cditor_storage_postgres::PostgresPayloadStore;
 use cditor_storage_postgres::block_on_postgres;
 
@@ -74,9 +73,14 @@ impl CditorV2View {
         let failed_request = request.clone();
         let load_task = cx.background_spawn(async move {
             let store = PostgresPayloadStore::new(pool);
-            block_on_postgres(DocumentRuntime::load_payload_window_request(
-                &store, request,
-            ))
+            block_on_postgres(async move {
+                let loaded = store.load_block_payloads(&request.block_ids).await?;
+                Ok::<_, cditor_storage_postgres::PostgresStorageError>(PayloadWindowLoadResult {
+                    request,
+                    records: loaded.records,
+                    missing_block_ids: loaded.missing_block_ids,
+                })
+            })
             .and_then(|result| result.map_err(|error| error.to_string()))
         });
         cx.spawn(async move |view, cx| match load_task.await {

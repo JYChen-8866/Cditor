@@ -1,4 +1,6 @@
-# Cditor 模块拆分计划
+# Cditor 模块拆分计划（历史记录）
+
+> 本文记录 2026-07-06 的拆分过程，路径与依赖边界不代表当前实现。当前结构以 [`doc/architecture/project-structure.md`](../../architecture/project-structure.md) 为准。
 
 > 目标：降低巨石文件复杂度，同时不破坏 V2 大文档架构：Runtime 是真相，UI 只消费 projection，Postgres 异步保存，Input/IME hot path 不同步等待存储或重型 layout。
 
