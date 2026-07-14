@@ -82,13 +82,21 @@ impl DocumentRuntime {
     }
 
     pub fn from_rich_text_document(document: RichTextDocument, viewport_height: f64) -> Self {
-        Self::from_index_records(
+        let block_attrs = document
+            .blocks
+            .iter()
+            .filter(|block| block.attrs != BlockAttrs::default())
+            .map(|block| (block.id, block.attrs.clone()))
+            .collect();
+        let mut runtime = Self::from_index_records(
             document.id,
             document.index_records(),
             document.payload_records(),
             document.structure_version,
             viewport_height,
-        )
+        );
+        runtime.block_attrs = block_attrs;
+        runtime
     }
 
     pub(super) fn from_index_records(
@@ -219,6 +227,7 @@ impl DocumentRuntime {
             scroll,
             editing: None,
             payload_window,
+            block_attrs: HashMap::new(),
             table_runtimes,
             table_horizontal_scroll_offsets: HashMap::new(),
             text_models,

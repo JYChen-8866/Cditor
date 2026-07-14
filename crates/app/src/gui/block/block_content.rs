@@ -3,6 +3,7 @@ use gpui::{
 };
 
 use crate::gui::app::CditorV2View;
+use crate::gui::block::code_highlight::code_theme_item;
 use crate::gui::block::media::render_image_block;
 use crate::gui::block::placeholder::{
     render_empty_ai_hint, render_error, render_loading, render_placeholder,
@@ -11,7 +12,9 @@ use crate::gui::block::table::render_table_block;
 use crate::gui::block::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
 };
-use crate::gui::block::{WhiteboardThumbnailCache, render_whiteboard_thumbnail};
+use crate::gui::block::{
+    CodeHighlightCache, WhiteboardThumbnailCache, render_whiteboard_thumbnail,
+};
 use crate::gui::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::gui::text::{RichTextElement, RichTextLayoutInput};
 use crate::gui::{GuiTheme, rich_text::render_payload_text};
@@ -31,6 +34,8 @@ pub(crate) fn render_block_content(
     suppress_text_input: bool,
     table_selection: Option<TableAxisSelection>,
     table_scroll_handle: Option<ScrollHandle>,
+    code_highlights: &CodeHighlightCache,
+    code_highlight_theme: &'static str,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
 ) -> AnyElement {
@@ -74,19 +79,40 @@ pub(crate) fn render_block_content(
                     view,
                 );
             }
-            if let Some(input) = RichTextLayoutInput::from_snapshot(
+            if let Some(mut input) = RichTextLayoutInput::from_snapshot(
                 block,
                 f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX),
                 1,
                 1,
             ) {
+                if matches!(
+                    block.kind,
+                    cditor_core::rich_text::RichBlockKind::Code { .. }
+                ) && let Some(spans) = code_highlights.spans(block.block_id)
+                {
+                    input.spans = spans.to_vec();
+                }
                 let text_len = input.spans.iter().map(|span| span.text.len()).sum();
                 let selection_range = if block.selection_overlay {
                     None
                 } else {
                     text_selection_range(&block.selection_range, text_len)
                 };
-                let text_element = RichTextElement::new(input, theme)
+                let text_theme = if matches!(
+                    block.kind,
+                    cditor_core::rich_text::RichBlockKind::Code { .. }
+                ) {
+                    GuiTheme {
+                        code_text: code_theme_item(code_highlight_theme).foreground,
+                        ..theme
+                    }
+                } else {
+                    theme
+                };
+                let text_element = RichTextElement::new(input, text_theme)
+                    .with_base_text_color(
+                        block.attrs.color.as_deref().and_then(parse_block_hex_color),
+                    )
                     .with_caret(caret_for_text_input(
                         block.caret_offset,
                         suppress_text_input,
@@ -118,6 +144,13 @@ pub(crate) fn render_block_content(
         BlockPayloadView::Loading { .. } => render_loading(block, theme),
         BlockPayloadView::Error { message } => render_error(message, theme),
     }
+}
+
+fn parse_block_hex_color(value: &str) -> Option<u32> {
+    let hex = value.strip_prefix('#').unwrap_or(value);
+    (hex.len() == 6)
+        .then(|| u32::from_str_radix(hex, 16).ok())
+        .flatten()
 }
 
 fn should_show_empty_ai_hint(

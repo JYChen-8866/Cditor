@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, ScrollHandle, Styled, deferred, div, px, rgb,
+    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, deferred, div, px, rgb,
 };
 
 use crate::gui::GuiTheme;
@@ -230,12 +230,16 @@ fn render_color_trigger(
         }))
         .when(!state.color_enabled, |row| row.opacity(0.45))
         .when(state.color_enabled, |row| {
-            let hover_view = view.clone();
             let click_view = view.clone();
             row.cursor_pointer()
                 .hover(|style| style.bg(rgb(theme.hover_surface)))
-                .on_mouse_move(move |_event, _window, cx| {
-                    let _ = hover_view.update(cx, |view, cx| view.open_color_menu_from_gui(cx));
+                .on_hover({
+                    let view = view.clone();
+                    move |hovered, _window, cx| {
+                        let _ = view.update(cx, |view, cx| {
+                            view.set_color_menu_hovered(*hovered, cx);
+                        });
+                    }
                 })
                 .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
                     let _ = click_view.update(cx, |view, cx| view.open_color_menu_from_gui(cx));

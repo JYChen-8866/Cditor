@@ -5,14 +5,15 @@ use sqlx::{PgPool, Row};
 use cditor_core::document::{BlockIndexRecord, DocumentIndex};
 use cditor_core::ids::DocumentId;
 use cditor_core::layout::BlockLayoutMeta;
-use cditor_core::rich_text::{kind_tag_for_rich_block_kind, rich_block_kind_from_tag};
+use cditor_core::rich_text::{BlockAttrs, kind_tag_for_rich_block_kind, rich_block_kind_from_tag};
 use cditor_core::version::StructureVersion;
 use cditor_storage::traits::DocumentIndexStore;
 
 use crate::error::{PostgresStorageError, PostgresStorageResult};
 use crate::types::{
-    DocumentRow, PgBlockId, PgDocumentId, pg_block_id_from_runtime, rich_block_kind_from_db,
-    rich_block_kind_to_db, runtime_block_id_from_pg, runtime_document_id_from_pg,
+    DocumentRow, PgBlockId, PgDocumentId, decode_block_attrs, encode_block_attrs,
+    pg_block_id_from_runtime, rich_block_kind_from_db, rich_block_kind_to_db,
+    runtime_block_id_from_pg, runtime_document_id_from_pg,
 };
 
 #[derive(Debug, Clone)]
@@ -98,6 +99,75 @@ impl PostgresDocumentStore {
             layout_version: row.try_get("layout_version")?,
             schema_version: row.try_get("schema_version")?,
         })
+    }
+
+    pub async fn load_block_attrs(
+        &self,
+        document_id: PgDocumentId,
+    ) -> PostgresStorageResult<Vec<(cditor_core::ids::BlockId, BlockAttrs)>> {
+        sqlx::query(
+            r#"
+            SELECT block_attrs.block_id, block_attrs.attrs_json
+            FROM block_attrs
+            INNER JOIN blocks ON blocks.id = block_attrs.block_id
+            WHERE blocks.document_id = $1 AND blocks.deleted_at IS NULL
+            "#,
+        )
+        .bind(document_id)
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(|row| {
+            let pg_block_id: PgBlockId = row.try_get("block_id")?;
+            let block_id = runtime_block_id_from_pg(pg_block_id).ok_or_else(|| {
+                PostgresStorageError::CorruptData {
+                    message: format!("block attrs id {pg_block_id} is outside runtime namespace"),
+                }
+            })?;
+            let attrs = decode_block_attrs(row.try_get("attrs_json")?).map_err(|error| {
+                PostgresStorageError::CorruptData {
+                    message: format!("invalid attrs for block {block_id}: {error}"),
+                }
+            })?;
+            Ok((block_id, attrs))
+        })
+        .collect()
+    }
+
+    pub async fn save_block_attrs(
+        &self,
+        document_id: PgDocumentId,
+        attrs: &[(cditor_core::ids::BlockId, BlockAttrs)],
+    ) -> PostgresStorageResult<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query(
+            r#"
+            DELETE FROM block_attrs
+            USING blocks
+            WHERE block_attrs.block_id = blocks.id AND blocks.document_id = $1
+            "#,
+        )
+        .bind(document_id)
+        .execute(&mut *tx)
+        .await?;
+        for (block_id, value) in attrs {
+            let attrs_json =
+                encode_block_attrs(value).map_err(|error| PostgresStorageError::CorruptData {
+                    message: format!("cannot encode attrs for block {block_id}: {error}"),
+                })?;
+            sqlx::query(
+                r#"
+                INSERT INTO block_attrs (block_id, attrs_json, attrs_version, updated_at)
+                VALUES ($1, $2, 1, now())
+                "#,
+            )
+            .bind(pg_block_id_from_runtime(*block_id))
+            .bind(attrs_json)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     pub async fn save_block_index_records(

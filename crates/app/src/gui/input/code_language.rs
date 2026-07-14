@@ -70,6 +70,26 @@ impl CodeLanguageEditState {
         }
     }
 
+    pub fn new_dropdown_with_placement(
+        block_id: BlockId,
+        language: Option<&str>,
+        placement: CodeLanguagePopupPlacement,
+    ) -> Self {
+        let mut state = Self::new_with_placement(block_id, language, placement);
+        state.draft.clear();
+        state.caret_offset = 0;
+        state.selected_index = code_language_items()
+            .iter()
+            .position(|item| {
+                language
+                    .map(|language| item.value.eq_ignore_ascii_case(language))
+                    .unwrap_or_else(|| item.value == "plain text")
+            })
+            .unwrap_or(0);
+        state.keep_selected_item_visible(code_language_items().len());
+        state
+    }
+
     pub fn normalized_draft(&self) -> Option<String> {
         normalize_code_language(&self.draft)
     }
@@ -370,6 +390,20 @@ mod tests {
         state.replace_range(state.input_replacement_range(), "x");
         assert_eq!(state.draft, "rs-x");
         assert_eq!(state.normalized_draft().as_deref(), Some("rs-x"));
+    }
+
+    #[test]
+    fn language_dropdown_opens_unfiltered_with_current_language_selected() {
+        let state = CodeLanguageEditState::new_dropdown_with_placement(
+            1,
+            Some("typescript"),
+            CodeLanguagePopupPlacement::Below,
+        );
+
+        assert!(state.draft.is_empty());
+        assert_eq!(state.caret_offset, 0);
+        assert_eq!(state.selected_item().unwrap().value, "typescript");
+        assert_eq!(state.matching_items().len(), code_language_items().len());
     }
 
     #[test]

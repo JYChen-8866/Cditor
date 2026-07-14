@@ -50,6 +50,7 @@ pub struct RichTextElement {
     pub caret_offset: Option<usize>,
     pub marked_range: Option<Range<usize>>,
     pub selection_range: Option<Range<usize>>,
+    pub base_text_color: Option<u32>,
     pub input_handler: Option<RichTextInputHandler>,
 }
 
@@ -61,6 +62,7 @@ impl RichTextElement {
             caret_offset: None,
             marked_range: None,
             selection_range: None,
+            base_text_color: None,
             input_handler: None,
         }
     }
@@ -77,6 +79,11 @@ impl RichTextElement {
 
     pub fn with_selection_range(mut self, selection_range: Option<Range<usize>>) -> Self {
         self.selection_range = selection_range;
+        self
+    }
+
+    pub fn with_base_text_color(mut self, color: Option<u32>) -> Self {
+        self.base_text_color = color;
         self
     }
 
@@ -144,6 +151,7 @@ impl RichTextElement {
                 caret_offset: self.caret_offset,
                 marked_range: self.marked_range.clone(),
                 selection_range: self.selection_range.clone(),
+                base_text_color: self.base_text_color,
                 input_handler,
             }
             .into_any_element();
@@ -215,6 +223,7 @@ struct RichTextGpuiElement {
     caret_offset: Option<usize>,
     marked_range: Option<Range<usize>>,
     selection_range: Option<Range<usize>>,
+    base_text_color: Option<u32>,
     input_handler: RichTextInputHandler,
 }
 
@@ -261,6 +270,7 @@ impl Element for RichTextGpuiElement {
             &self.input.kind,
             self.marked_range.as_ref(),
             self.theme,
+            self.base_text_color,
             window,
         );
         let kind = self.input.kind.clone();
@@ -478,12 +488,13 @@ fn platform_text_runs(
     kind: &RichBlockKind,
     marked_range: Option<&Range<usize>>,
     theme: GuiTheme,
+    block_text_color: Option<u32>,
     window: &Window,
 ) -> Vec<TextRun> {
     let text = plain_text_from_spans(spans);
     let mut base_font = window.text_style().font();
     base_font.weight = base_font_weight_for_kind(kind, base_font.weight);
-    let base_text_color = text_color_for_kind(kind, theme);
+    let base_text_color = block_text_color.unwrap_or_else(|| text_color_for_kind(kind, theme));
     let base_color = Hsla::from(rgb(base_text_color));
     let completed_todo = is_completed_todo(kind);
     if spans.is_empty() {

@@ -42,6 +42,18 @@ impl BlockChromeStyle {
     pub fn from_snapshot(block: &ViewBlockSnapshot, theme: GuiTheme) -> Self {
         let kind_style = KindChromeStyle::from_kind(&block.kind, theme);
         let outer_background = theme.surface;
+        let block_background = block
+            .attrs
+            .background_color
+            .as_deref()
+            .and_then(parse_hex_color)
+            .unwrap_or(kind_style.background);
+        let block_text = block
+            .attrs
+            .color
+            .as_deref()
+            .and_then(parse_hex_color)
+            .unwrap_or(kind_style.text);
         Self {
             indent_px: block.chrome.list_info.depth as f32 * BLOCK_INDENT_STEP_PX,
             gutter_width_px: BLOCK_GUTTER_WIDTH_PX,
@@ -54,12 +66,19 @@ impl BlockChromeStyle {
             content_padding_right_px: kind_style.padding_right_px,
             content_radius_px: kind_style.radius_px,
             outer_background,
-            content_background: kind_style.background,
+            content_background: block_background,
             content_border: kind_style.border,
-            text_color: kind_style.text,
+            text_color: block_text,
             quote_bar: kind_style.quote_bar,
         }
     }
+}
+
+fn parse_hex_color(value: &str) -> Option<u32> {
+    let hex = value.strip_prefix('#').unwrap_or(value);
+    (hex.len() == 6)
+        .then(|| u32::from_str_radix(hex, 16).ok())
+        .flatten()
 }
 
 /// Prefixes rendered inside the block surface rather than in the marker lane.
@@ -238,6 +257,19 @@ mod tests {
         assert_eq!(style.gutter_width_px, 48.0);
         assert_eq!(style.marker_lane_width_px, 24.0);
         assert_eq!(style.content_prefix_width_px, 0.0);
+    }
+
+    #[test]
+    fn block_attrs_override_surface_and_base_text_colors() {
+        let mut snapshot = block(RichBlockKind::Paragraph, BlockChromeSnapshot::plain());
+        snapshot.attrs.color = Some("#d44c47".to_owned());
+        snapshot.attrs.background_color = Some("#fdebec".to_owned());
+
+        let style = BlockChromeStyle::from_snapshot(&snapshot, GuiTheme::light());
+
+        assert_eq!(style.text_color, 0xd44c47);
+        assert_eq!(style.content_background, 0xfdebec);
+        assert_eq!(style.outer_background, GuiTheme::light().surface);
     }
 
     #[test]

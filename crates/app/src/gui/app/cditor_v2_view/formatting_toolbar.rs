@@ -7,7 +7,7 @@ use crate::gui::block::chrome::block_content_left_px;
 use crate::gui::document::{DEFAULT_DOCUMENT_PAGE_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
 use crate::gui::overlay::{
     ActiveColor, BlockTransformAction, BlockTransformAvailability, ColorMenuAction,
-    FloatingToolbarState, InlineFormatAction, block_transform_menu_opens_left,
+    FloatingToolbarState, InlineFormatAction, PaletteColor, block_transform_menu_opens_left,
     block_transform_menu_top_offset, color_menu_geometry, floating_toolbar_position,
     left_aligned_floating_toolbar_position,
 };
@@ -90,8 +90,16 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
                                     0..payload.plain_text().len(),
                                     InlineFormatAction::Code,
                                 ),
-                                selected_spans_color(spans, range.clone(), InlineColorTarget::Text),
-                                selected_spans_color(spans, range, InlineColorTarget::Background),
+                                active_block_color(
+                                    payload.block_id,
+                                    runtime,
+                                    InlineColorTarget::Text,
+                                ),
+                                active_block_color(
+                                    payload.block_id,
+                                    runtime,
+                                    InlineColorTarget::Background,
+                                ),
                             )
                         })
                         .unwrap_or((
@@ -297,6 +305,24 @@ fn toolbar_spans_for_payload(payload: &BlockPayload) -> Option<&[InlineSpan]> {
     match payload {
         BlockPayload::RichText { spans } => Some(spans),
         _ => None,
+    }
+}
+
+fn active_block_color(
+    block_id: BlockId,
+    runtime: &DocumentRuntime,
+    target: InlineColorTarget,
+) -> ActiveColor {
+    let attrs = runtime.block_attrs(block_id);
+    let value = match target {
+        InlineColorTarget::Text => attrs.color.as_deref(),
+        InlineColorTarget::Background => attrs.background_color.as_deref(),
+    };
+    match value {
+        None => ActiveColor::Default,
+        Some(value) => PaletteColor::from_value(target, value)
+            .map(ActiveColor::Palette)
+            .unwrap_or(ActiveColor::Mixed),
     }
 }
 
@@ -537,6 +563,37 @@ mod tests {
         assert!(state.inline_format_enabled);
         assert!(state.color_enabled);
         assert!(state.block_transform_menu_open);
+    }
+
+    #[test]
+    fn gutter_toolbar_color_state_comes_from_block_attrs_not_inline_spans() {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![cditor_core::rich_text::BlockPayloadRecord::rich_text(
+                2,
+                RichBlockKind::Paragraph,
+                "text",
+            )],
+            720.0,
+        );
+        runtime
+            .set_inline_color_for_range(2, 0..4, InlineColorTarget::Text, Some("#337ea9"))
+            .unwrap();
+        runtime
+            .set_block_color(2, InlineColorTarget::Text, Some("#d44c47"))
+            .unwrap();
+        runtime
+            .set_block_color(2, InlineColorTarget::Background, Some("#fdebec"))
+            .unwrap();
+
+        assert_eq!(
+            active_block_color(2, &runtime, InlineColorTarget::Text),
+            ActiveColor::Palette(PaletteColor::Red)
+        );
+        assert_eq!(
+            active_block_color(2, &runtime, InlineColorTarget::Background),
+            ActiveColor::Palette(PaletteColor::Red)
+        );
     }
 
     #[test]

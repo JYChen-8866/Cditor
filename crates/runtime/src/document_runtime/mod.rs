@@ -1,4 +1,5 @@
 mod ai;
+mod block_attrs;
 mod capabilities;
 mod clipboard;
 mod composition;
@@ -127,6 +128,21 @@ fn table_trace_enabled() -> bool {
 fn trace_table(event: &str, details: impl std::fmt::Display) {
     if table_trace_enabled() {
         eprintln!("[cditor][table][runtime][{event}] {details}");
+    }
+}
+
+fn block_color_trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("CDITOR_TRACE_BLOCK_COLOR")
+            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false)
+    })
+}
+
+fn trace_block_color(event: &str, details: impl std::fmt::Display) {
+    if block_color_trace_enabled() {
+        eprintln!("[cditor][block-color][runtime][{event}] {details}");
     }
 }
 
