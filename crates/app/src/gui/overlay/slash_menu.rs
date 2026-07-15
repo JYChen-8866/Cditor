@@ -7,6 +7,7 @@ use gpui::{
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
+use crate::gui::menu_metrics::EditorViewport;
 
 pub const SLASH_MENU_VISIBLE_ITEMS: usize = 8;
 const SLASH_MENU_ROW_HEIGHT_PX: f32 = 48.0;
@@ -320,18 +321,17 @@ fn floor_char_boundary(text: &str, offset: usize) -> usize {
     offset
 }
 
-pub fn render_slash_menu(
+pub(crate) fn render_slash_menu(
     state: &SlashMenuState,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
-    viewport_width: f32,
-    viewport_height: f32,
+    viewport: EditorViewport,
 ) -> AnyElement {
     let items = state.visible_items();
     let total_items = items.len();
     let height = slash_menu_panel_height(total_items);
     let (x, y) =
-        slash_menu_panel_position(state.x, state.y, height, viewport_width, viewport_height);
+        slash_menu_panel_position(state.x, state.y, height, viewport.width, viewport.height);
     let mut panel = div()
         .absolute()
         .left(px(x))

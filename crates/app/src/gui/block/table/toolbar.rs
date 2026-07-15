@@ -15,16 +15,19 @@ use crate::gui::block::chrome::{
     BLOCK_GUTTER_WIDTH_PX, BLOCK_INDENT_STEP_PX, BLOCK_PREFIX_WIDTH_PX,
 };
 use crate::gui::input::SingleLineTextInputElement;
+use crate::gui::menu_metrics::{
+    MenuViewportBounds, SECONDARY_MENU_WIDTH_PX, secondary_menu_geometry,
+};
 #[cfg(test)]
 use cditor_core::rich_text::TableCellAlign;
 use cditor_runtime::{TableViewState, ViewBlockSnapshot};
 
 use super::menu::{
     TABLE_MENU_PADDING_PX, TABLE_MENU_ROW_HEIGHT_PX, TABLE_MENU_SEARCH_FONT_SIZE_PX,
-    TABLE_MENU_SEARCH_GAP_PX, TABLE_MENU_SEARCH_HEIGHT_PX, TABLE_MENU_WIDTH_PX,
-    TableBackgroundColor, TableMenuAction, TableMenuUiState, filter_table_menu_items,
-    table_axis_header_enabled, table_axis_menu_items, table_menu_action_enabled,
-    table_menu_panel_height, table_menu_position,
+    TABLE_MENU_SEARCH_GAP_PX, TABLE_MENU_SEARCH_HEIGHT_PX, TABLE_MENU_VIEWPORT_MARGIN_PX,
+    TABLE_MENU_WIDTH_PX, TableBackgroundColor, TableMenuAction, TableMenuUiState,
+    filter_table_menu_items, table_axis_header_enabled, table_axis_menu_items,
+    table_menu_action_enabled, table_menu_panel_height, table_menu_position,
 };
 use super::selection::{TableAxis, TableAxisSelection};
 use super::style::{
@@ -33,7 +36,6 @@ use super::style::{
 };
 
 const BLOCK_SHELL_OUTER_PADDING_Y_PX: f32 = 4.0;
-const TABLE_COLOR_SUBMENU_WIDTH_PX: f32 = 184.0;
 const TABLE_COLOR_SUBMENU_GAP_PX: f32 = 6.0;
 const TABLE_COLOR_SUBMENU_PADDING_PX: f32 = 6.0;
 
@@ -91,6 +93,7 @@ pub(crate) fn render_table_axis_toolbar(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
+    viewport: MenuViewportBounds,
 ) -> AnyElement {
     let items = filter_table_menu_items(&table_axis_menu_items(selection), menu_ui.query.as_str());
     let anchor = table_menu_anchor(selection, table_view);
@@ -102,10 +105,20 @@ pub(crate) fn render_table_axis_toolbar(
         table_view.width_px + TABLE_MENU_WIDTH_PX + 16.0,
         table_view.height_px + table_menu_panel_height(items.len()) + 48.0,
     );
+    let primary_left = (origin.x_px + menu_position.x).clamp(
+        viewport.left + TABLE_MENU_VIEWPORT_MARGIN_PX,
+        (viewport.right - TABLE_MENU_VIEWPORT_MARGIN_PX - TABLE_MENU_WIDTH_PX)
+            .max(viewport.left + TABLE_MENU_VIEWPORT_MARGIN_PX),
+    );
+    let primary_top = (origin.y_px + menu_position.y).clamp(
+        viewport.top + TABLE_MENU_VIEWPORT_MARGIN_PX,
+        (viewport.bottom - TABLE_MENU_VIEWPORT_MARGIN_PX - menu_position.height)
+            .max(viewport.top + TABLE_MENU_VIEWPORT_MARGIN_PX),
+    );
     let empty = items.is_empty();
     let mut primary_panel = div()
         .id(("table-axis-menu-primary", selection.block_id))
-        .relative()
+        .absolute()
         .w(px(TABLE_MENU_WIDTH_PX))
         .h(px(menu_position.height))
         .p(px(TABLE_MENU_PADDING_PX))
@@ -150,25 +163,39 @@ pub(crate) fn render_table_axis_toolbar(
         }));
     }
 
-    let submenu_top = table_background_submenu_top();
     let submenu_height = table_background_submenu_height();
-    let container_width = if menu_ui.color_submenu_open {
-        table_background_submenu_left() + TABLE_COLOR_SUBMENU_WIDTH_PX
-    } else {
-        TABLE_MENU_WIDTH_PX
-    };
-    let container_height = if menu_ui.color_submenu_open {
-        menu_position.height.max(submenu_top + submenu_height)
-    } else {
-        menu_position.height
-    };
+    let secondary = menu_ui.color_submenu_open.then(|| {
+        secondary_menu_geometry(
+            primary_left,
+            primary_top,
+            TABLE_MENU_WIDTH_PX,
+            menu_position.height,
+            SECONDARY_MENU_WIDTH_PX,
+            submenu_height,
+            viewport,
+            TABLE_COLOR_SUBMENU_GAP_PX,
+            TABLE_MENU_VIEWPORT_MARGIN_PX,
+        )
+    });
+    let container_left = secondary
+        .map(|menu| primary_left.min(menu.left))
+        .unwrap_or(primary_left);
+    let container_top = secondary
+        .map(|menu| primary_top.min(menu.top))
+        .unwrap_or(primary_top);
+    let container_right = secondary
+        .map(|menu| (primary_left + TABLE_MENU_WIDTH_PX).max(menu.left + SECONDARY_MENU_WIDTH_PX))
+        .unwrap_or(primary_left + TABLE_MENU_WIDTH_PX);
+    let container_bottom = secondary
+        .map(|menu| (primary_top + menu_position.height).max(menu.top + submenu_height))
+        .unwrap_or(primary_top + menu_position.height);
     let mut container = div()
         .id(("table-axis-menu", selection.block_id))
         .absolute()
-        .left(px(origin.x_px + menu_position.x))
-        .top(px(origin.y_px + menu_position.y))
-        .w(px(container_width))
-        .h(px(container_height))
+        .left(px(container_left))
+        .top(px(container_top))
+        .w(px(container_right - container_left))
+        .h(px(container_bottom - container_top))
         .on_mouse_down_out({
             let view = view.clone();
             move |_event, _window, cx| {
@@ -180,14 +207,18 @@ pub(crate) fn render_table_axis_toolbar(
         .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
             cx.stop_propagation();
         })
-        .child(primary_panel);
+        .child(
+            primary_panel
+                .left(px(primary_left - container_left))
+                .top(px(primary_top - container_top)),
+        );
 
-    if menu_ui.color_submenu_open {
+    if let Some(secondary) = secondary {
         container = container.child(render_table_background_submenu(
             theme,
             view,
-            table_background_submenu_left(),
-            table_background_submenu_top(),
+            secondary.left - container_left,
+            secondary.top - container_top,
         ));
     }
     container.into_any_element()
@@ -348,7 +379,7 @@ pub(super) fn render_table_background_submenu(
         .absolute()
         .left(px(left))
         .top(px(top))
-        .w(px(TABLE_COLOR_SUBMENU_WIDTH_PX))
+        .w(px(SECONDARY_MENU_WIDTH_PX))
         .p(px(TABLE_COLOR_SUBMENU_PADDING_PX))
         .flex()
         .flex_col()
@@ -399,17 +430,6 @@ pub(super) fn render_table_background_submenu(
                 .into_any_element()
         }))
         .into_any_element()
-}
-
-const fn table_background_submenu_left() -> f32 {
-    TABLE_MENU_WIDTH_PX + TABLE_COLOR_SUBMENU_GAP_PX
-}
-
-const fn table_background_submenu_top() -> f32 {
-    TABLE_MENU_PADDING_PX
-        + TABLE_MENU_SEARCH_HEIGHT_PX
-        + TABLE_MENU_SEARCH_GAP_PX
-        + TABLE_MENU_ROW_HEIGHT_PX
 }
 
 const fn table_background_submenu_height() -> f32 {
@@ -590,9 +610,32 @@ mod tests {
 
     #[test]
     fn table_color_submenu_has_a_visible_gap_and_stays_inside_menu_container() {
+        let viewport = MenuViewportBounds {
+            left: 120.0,
+            top: 80.0,
+            right: 1_020.0,
+            bottom: 680.0,
+        };
+        let submenu = secondary_menu_geometry(
+            240.0,
+            140.0,
+            TABLE_MENU_WIDTH_PX,
+            180.0,
+            SECONDARY_MENU_WIDTH_PX,
+            table_background_submenu_height(),
+            viewport,
+            TABLE_COLOR_SUBMENU_GAP_PX,
+            TABLE_MENU_VIEWPORT_MARGIN_PX,
+        );
+
         assert_eq!(
-            table_background_submenu_left() - TABLE_MENU_WIDTH_PX,
+            submenu.left - (240.0 + TABLE_MENU_WIDTH_PX),
             TABLE_COLOR_SUBMENU_GAP_PX
+        );
+        assert!(submenu.left >= viewport.left + TABLE_MENU_VIEWPORT_MARGIN_PX);
+        assert!(
+            submenu.left + SECONDARY_MENU_WIDTH_PX
+                <= viewport.right - TABLE_MENU_VIEWPORT_MARGIN_PX
         );
         assert_eq!(
             table_background_submenu_height(),

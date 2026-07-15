@@ -3,6 +3,7 @@ use gpui::Context;
 
 use crate::gui::app::cditor_v2_view::CditorV2View;
 use crate::gui::app::interaction::geometry::{FallbackViewportOrigin, ProjectedBlockRect};
+use crate::gui::menu_metrics::EditorViewport;
 use crate::gui::overlay::{SlashMenuCommand, SlashMenuItem, SlashMenuState};
 use crate::gui::persistence::EditorSaveStatus;
 use crate::gui::text::platform_range_bounds;
@@ -195,7 +196,10 @@ impl CditorV2View {
         if let Some(cache) = self.text_layouts.get(&block_id)
             && let Some(bounds) = platform_range_bounds(cache, caret..caret)
         {
-            return (f32::from(bounds.left()), f32::from(bounds.bottom()) + 4.0);
+            return self.window_anchor_to_editor_local(
+                f32::from(bounds.left()),
+                f32::from(bounds.bottom()) + 4.0,
+            );
         }
         let Some(viewport_origin) = self.infer_document_viewport_origin() else {
             return (120.0, 120.0);
@@ -206,18 +210,21 @@ impl CditorV2View {
         else {
             return (120.0, 120.0);
         };
-        self.projected_block_rects
+        let anchor = self
+            .projected_block_rects
             .iter()
             .find(|rect| rect.block_id == block_id)
             .map(|rect| slash_menu_fallback_anchor(rect, viewport_origin, scroll_top))
-            .unwrap_or((120.0, 120.0))
+            .unwrap_or((120.0, 120.0));
+        self.window_anchor_to_editor_local(anchor.0, anchor.1)
     }
 
     pub(super) fn ai_prompt_line_anchor(&self, block_id: BlockId, caret: usize) -> (f32, f32) {
         if let Some(cache) = self.text_layouts.get(&block_id)
             && let Some(bounds) = platform_range_bounds(cache, caret..caret)
         {
-            return (f32::from(bounds.left()), f32::from(bounds.top()));
+            return self
+                .window_anchor_to_editor_local(f32::from(bounds.left()), f32::from(bounds.top()));
         }
         let Some(viewport_origin) = self.infer_document_viewport_origin() else {
             return (120.0, 120.0);
@@ -228,11 +235,18 @@ impl CditorV2View {
         else {
             return (120.0, 120.0);
         };
-        self.projected_block_rects
+        let anchor = self
+            .projected_block_rects
             .iter()
             .find(|rect| rect.block_id == block_id)
             .map(|rect| ai_prompt_fallback_line_anchor(rect, viewport_origin, scroll_top))
-            .unwrap_or((120.0, 120.0))
+            .unwrap_or((120.0, 120.0));
+        self.window_anchor_to_editor_local(anchor.0, anchor.1)
+    }
+
+    fn window_anchor_to_editor_local(&self, x: f32, y: f32) -> (f32, f32) {
+        let bounds = self.editor_viewport_handle.bounds();
+        EditorViewport::from_measurement(bounds, bounds.size).window_point_to_local(x, y)
     }
 }
 

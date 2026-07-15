@@ -8,8 +8,9 @@ use gpui::{
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::diagnostics::block_color::trace as trace_block_color;
+use crate::gui::menu_metrics::SECONDARY_MENU_WIDTH_PX;
 
-pub const COLOR_MENU_WIDTH_PX: f32 = 220.0;
+pub const COLOR_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
 pub const COLOR_MENU_DESIRED_HEIGHT_PX: f32 = 520.0;
 const COLOR_MENU_MIN_HEIGHT_PX: f32 = 180.0;
 const COLOR_MENU_GAP_PX: f32 = 6.0;

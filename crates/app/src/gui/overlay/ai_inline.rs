@@ -18,6 +18,7 @@ use crate::gui::block::{
 use crate::gui::input::{
     AiPromptState, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement,
 };
+use crate::gui::menu_metrics::EditorViewport;
 use crate::gui::rich_text::render_wrapped_payload_text;
 use crate::gui::text::{RichTextPlatformLayout, platform_range_bounds};
 use cditor_core::rich_text::{
@@ -54,19 +55,18 @@ struct AiPromptGeometry {
     width: f32,
 }
 
-pub fn render_ai_prompt(
+pub(crate) fn render_ai_prompt(
     prompt: &AiPromptState,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
-    viewport_width: f32,
-    viewport_height: f32,
+    viewport: EditorViewport,
 ) -> AnyElement {
     let geometry = ai_prompt_geometry(
         f32::from(prompt.x),
         f32::from(prompt.y),
-        viewport_width,
-        viewport_height,
+        viewport.width,
+        viewport.height,
     );
     let can_submit = ai_prompt_can_submit(&prompt.draft);
     let panel = div()
@@ -192,8 +192,7 @@ pub(crate) fn render_ai_preview_overlay(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     scroll_handle: &ScrollHandle,
-    viewport_width: f32,
-    viewport_height: f32,
+    viewport: EditorViewport,
 ) -> Option<AnyElement> {
     let preview = preview?;
     let layout = layouts.get(&preview.block_id);
@@ -206,8 +205,9 @@ pub(crate) fn render_ai_preview_overlay(
                 platform_range_bounds(layout, preview.anchor_offset..preview.anchor_offset)
             })
         });
+    let text_anchor = text_anchor.map(|bounds| viewport.window_bounds_to_local(bounds));
     let anchor = preferred_ai_preview_anchor(preview.kind, text_anchor, block_anchor)?;
-    let geometry = ai_preview_geometry(anchor, preview.kind, viewport_width, viewport_height);
+    let geometry = ai_preview_geometry(anchor, preview.kind, viewport.width, viewport.height);
 
     let content = match &preview.status {
         AiPreviewStatus::Failed(message) => message.clone(),

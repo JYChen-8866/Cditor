@@ -69,6 +69,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) save_status: EditorSaveStatus,
     pub(in crate::gui::app) last_wheel_delta_y: f64,
     pub(in crate::gui::app) scroll_accumulator: ScrollAccumulator,
+    pub(in crate::gui::app) editor_viewport_handle: gpui::ScrollHandle,
     pub(in crate::gui::app) text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
