@@ -139,7 +139,21 @@ impl PostgresPayloadStore {
         }
 
         let mut tx = self.pool.begin().await?;
+        self.save_block_payloads_tx(&mut tx, document_id, records)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
 
+    pub(crate) async fn save_block_payloads_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        document_id: PgDocumentId,
+        records: &[BlockPayloadRecord],
+    ) -> PostgresStorageResult<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
         for record in records {
             let block_id = pg_block_id_from_runtime(record.block_id);
             let payload_json = encode_block_payload(&record.payload)?;
@@ -183,7 +197,7 @@ impl PostgresPayloadStore {
             .bind(document_id)
             .bind(&kind)
             .bind(content_version)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
 
             if updated_block.rows_affected() == 0 {
@@ -228,7 +242,7 @@ impl PostgresPayloadStore {
             .bind(content_version)
             .bind(byte_len)
             .bind(inline_run_count)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
 
             sqlx::query(
@@ -257,7 +271,7 @@ impl PostgresPayloadStore {
             .bind(&kind)
             .bind(&plain_text)
             .bind(content_version)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         }
 
@@ -280,10 +294,9 @@ impl PostgresPayloadStore {
         )
         .bind(document_id)
         .bind(max_content_version)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
 
-        tx.commit().await?;
         Ok(())
     }
 }

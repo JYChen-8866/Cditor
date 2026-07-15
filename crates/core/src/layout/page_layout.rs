@@ -5,6 +5,7 @@ use crate::layout::{BlockHeightIndex, HeightConfidence};
 
 pub const DEFAULT_MAX_PAGE_BLOCKS: usize = 1_000;
 pub const DEFAULT_TARGET_PAGE_HEIGHT: f64 = 30_000.0;
+pub const PAGE_POLICY_VERSION: u64 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PageLayout {
@@ -199,6 +200,46 @@ impl PageLayoutIndex {
         })
     }
 
+    pub fn from_cached_pages(
+        pages: Vec<PageLayout>,
+        policy: PagePolicy,
+        total_visible_blocks: usize,
+    ) -> Result<Self, PageLayoutIndexError> {
+        policy.validate()?;
+        for (expected_index, page) in pages.iter().enumerate() {
+            if page.page_index != expected_index {
+                return Err(PageLayoutIndexError::CachedPageIndexMismatch {
+                    expected: expected_index,
+                    actual: page.page_index,
+                });
+            }
+            validate_height(page.height)?;
+            if !page.measured_ratio.is_finite() || !(0.0..=1.0).contains(&page.measured_ratio) {
+                return Err(PageLayoutIndexError::InvalidMeasuredRatio(
+                    page.measured_ratio,
+                ));
+            }
+            if !page.max_error_hint.is_finite() || page.max_error_hint < 0.0 {
+                return Err(PageLayoutIndexError::InvalidMaxErrorHint(
+                    page.max_error_hint,
+                ));
+            }
+            if page.block_count == 0 {
+                return Err(PageLayoutIndexError::EmptyCachedPage {
+                    page: page.page_index,
+                });
+            }
+        }
+        let height_index = PageHeightFenwick::from_pages(&pages);
+        let index = Self {
+            policy,
+            pages,
+            height_index,
+        };
+        index.validate_covers_blocks(total_visible_blocks)?;
+        Ok(index)
+    }
+
     pub fn page_count(&self) -> usize {
         self.pages.len()
     }
@@ -299,7 +340,11 @@ impl PageLayoutIndex {
                     actual_start: page.block_start,
                 });
             }
-            expected_start += page.block_count;
+            expected_start = expected_start.checked_add(page.block_count).ok_or(
+                PageLayoutIndexError::CoverageOverflow {
+                    page: page.page_index,
+                },
+            )?;
         }
         if expected_start != total_visible_blocks {
             return Err(PageLayoutIndexError::CoverageTailMismatch {
@@ -450,6 +495,18 @@ pub enum PageLayoutIndexError {
         covered: usize,
         total: usize,
     },
+    CachedPageIndexMismatch {
+        expected: usize,
+        actual: usize,
+    },
+    EmptyCachedPage {
+        page: usize,
+    },
+    CoverageOverflow {
+        page: usize,
+    },
+    InvalidMeasuredRatio(f32),
+    InvalidMaxErrorHint(f64),
 }
 
 impl Display for PageLayoutIndexError {
@@ -474,6 +531,25 @@ impl Display for PageLayoutIndexError {
                 formatter,
                 "page coverage tail mismatch: covered {covered}, total {total}"
             ),
+            Self::CachedPageIndexMismatch { expected, actual } => write!(
+                formatter,
+                "cached page index mismatch: expected {expected}, actual {actual}"
+            ),
+            Self::EmptyCachedPage { page } => {
+                write!(formatter, "cached page {page} contains no blocks")
+            }
+            Self::CoverageOverflow { page } => {
+                write!(
+                    formatter,
+                    "cached page {page} block coverage overflows usize"
+                )
+            }
+            Self::InvalidMeasuredRatio(ratio) => {
+                write!(formatter, "invalid measured ratio: {ratio}")
+            }
+            Self::InvalidMaxErrorHint(error) => {
+                write!(formatter, "invalid max error hint: {error}")
+            }
         }
     }
 }
@@ -552,29 +628,30 @@ mod tests {
     }
 
     #[test]
-    fn random_page_height_updates_keep_total_height_correct() {
-        let mut rng = Lcg::new(0xA11CE);
-        let height_index = BlockHeightIndex::new((0..1_000).map(|index| {
-            HeightEstimate::new((index % 37 + 1) as f64, HeightConfidence::Default, 0.0)
-        }))
-        .unwrap();
-        let mut page_index = PageLayoutIndex::from_block_height_index(
-            &height_index,
-            PagePolicy {
-                max_blocks: 17,
-                target_height: 1_000.0,
-                ..PagePolicy::default()
-            },
-        )
-        .unwrap();
+    fn cached_pages_require_contiguous_valid_coverage() {
+        let pages = vec![PageLayout {
+            page_index: 0,
+            block_start: 0,
+            block_count: 2,
+            height: 48.0,
+            measured_ratio: 1.0,
+            confidence: HeightConfidence::Exact,
+            max_error_hint: 0.0,
+            dirty: false,
+        }];
+        let cached =
+            PageLayoutIndex::from_cached_pages(pages.clone(), PagePolicy::default(), 2).unwrap();
+        assert_eq!(cached.total_height(), 48.0);
 
-        for _ in 0..1_000 {
-            let page = rng.next_usize(page_index.page_count());
-            let new_height = (rng.next_usize(2_000) + 1) as f64;
-            page_index.update_page_height(page, new_height).unwrap();
-            let expected: f64 = page_index.pages.iter().map(|page| page.height).sum();
-            assert_eq!(page_index.total_height(), expected);
-        }
+        let error =
+            PageLayoutIndex::from_cached_pages(pages, PagePolicy::default(), 3).unwrap_err();
+        assert!(matches!(
+            error,
+            PageLayoutIndexError::CoverageTailMismatch {
+                covered: 2,
+                total: 3
+            }
+        ));
     }
 
     #[test]
@@ -600,87 +677,8 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn page_policy_splits_by_cost_text_inline_runs_and_complex_blocks() {
-        let estimates = [
-            PageBlockEstimate {
-                height: 10.0,
-                confidence: HeightConfidence::Predictive,
-                max_error_hint: 1.0,
-                estimated_cost: 5,
-                text_bytes: 10,
-                inline_runs: 10,
-                is_complex: false,
-            },
-            PageBlockEstimate {
-                height: 10.0,
-                confidence: HeightConfidence::Predictive,
-                max_error_hint: 1.0,
-                estimated_cost: 6,
-                text_bytes: 10,
-                inline_runs: 10,
-                is_complex: false,
-            },
-            PageBlockEstimate {
-                height: 10.0,
-                confidence: HeightConfidence::Predictive,
-                max_error_hint: 1.0,
-                estimated_cost: 1,
-                text_bytes: 100,
-                inline_runs: 10,
-                is_complex: true,
-            },
-            PageBlockEstimate {
-                height: 10.0,
-                confidence: HeightConfidence::Predictive,
-                max_error_hint: 1.0,
-                estimated_cost: 1,
-                text_bytes: 10,
-                inline_runs: 100,
-                is_complex: true,
-            },
-        ];
-
-        let page_index = PageLayoutIndex::from_block_estimates(
-            estimates,
-            PagePolicy {
-                max_blocks: 10,
-                target_height: 1_000.0,
-                max_estimated_cost: 10,
-                max_text_bytes: 110,
-                max_inline_runs: 110,
-                max_complex_blocks: 1,
-            },
-        )
-        .unwrap();
-
-        assert_eq!(page_index.page_count(), 3);
-        page_index.validate_covers_blocks(4).unwrap();
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    struct Lcg(u64);
-
-    impl Lcg {
-        const fn new(seed: u64) -> Self {
-            Self(seed)
-        }
-
-        fn next_u64(&mut self) -> u64 {
-            self.0 = self
-                .0
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            self.0
-        }
-
-        fn next_usize(&mut self, upper_bound: usize) -> usize {
-            if upper_bound == 0 {
-                0
-            } else {
-                (self.next_u64() as usize) % upper_bound
-            }
-        }
-    }
 }
+
+#[cfg(test)]
+#[path = "page_layout_property_tests.rs"]
+mod property_tests;

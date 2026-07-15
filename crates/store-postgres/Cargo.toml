@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+async-trait = "0.1"
 cditor-core = { path = "../core" }
 cditor-storage = { path = "../store" }
 serde = { version = "1", features = ["derive"] }

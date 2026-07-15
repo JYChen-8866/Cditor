@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-ai"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "async-channel 2.5.0",
  "dotenvy",
@@ -958,7 +958,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-app"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "async-trait",
  "cditor-ai",
@@ -967,6 +967,7 @@ dependencies = [
  "cditor-runtime",
  "cditor-storage",
  "cditor-storage-postgres",
+ "cditor-storage-sqlite",
  "ding-board",
  "gpui",
  "gpui_platform",
@@ -977,13 +978,14 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "tempfile",
  "tokio",
  "unicode-segmentation",
 ]
 
 [[package]]
 name = "cditor-core"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -992,7 +994,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-editor"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "cditor-core",
  "unicode-segmentation",
@@ -1000,7 +1002,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-runtime"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "cditor-ai",
  "cditor-core",
@@ -1009,20 +1011,38 @@ dependencies = [
 
 [[package]]
 name = "cditor-storage"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
+ "async-trait",
  "cditor-core",
+ "tokio",
 ]
 
 [[package]]
 name = "cditor-storage-postgres"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
+ "async-trait",
  "cditor-core",
  "cditor-storage",
  "serde",
  "serde_json",
  "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "cditor-storage-sqlite"
+version = "0.2.5"
+dependencies = [
+ "async-trait",
+ "cditor-core",
+ "cditor-storage",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
  "tokio",
  "uuid",
 ]
@@ -3827,6 +3847,7 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]

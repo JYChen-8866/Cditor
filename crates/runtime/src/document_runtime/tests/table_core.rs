@@ -161,6 +161,49 @@ fn table_cell_arrow_navigation_updates_focus_and_input_session() {
 }
 
 #[test]
+fn table_cell_shift_arrows_extend_runtime_text_selection_without_leaving_cell() {
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
+
+    runtime.focus_table_cell_at_offset(10, 0, 1, 0).unwrap();
+    assert!(runtime.extend_focused_table_cell_selection_right().unwrap());
+    assert_eq!(
+        runtime.focused_table_cell_selection_state(),
+        Some((10, 0, 1, 0..1, false, None))
+    );
+    assert!(runtime.extend_focused_table_cell_selection_left().unwrap());
+    assert_eq!(
+        runtime.focused_table_cell_selection_state(),
+        Some((10, 0, 1, 0..0, false, None))
+    );
+    runtime.focus_table_cell_at_offset(10, 0, 1, 1).unwrap();
+    assert!(runtime.extend_focused_table_cell_selection_left().unwrap());
+    assert_eq!(
+        runtime.focused_table_cell_selection_state(),
+        Some((10, 0, 1, 0..1, true, None))
+    );
+    assert_eq!(runtime.focused_table_cell_offset(), Some((10, 0, 1, 0)));
+}
+
+#[test]
+fn table_cell_mouse_selection_normalizes_unicode_offsets_in_runtime() {
+    let mut payload = sample_table_payload();
+    let BlockPayload::Table(table) = &mut payload.payload else {
+        unreachable!();
+    };
+    table.rows[1].cells[0] = cditor_core::rich_text::TableCellPayload::plain("中文");
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![payload], 720.0);
+
+    runtime.focus_table_cell_at_offset(10, 1, 0, 0).unwrap();
+    assert!(runtime.set_focused_table_cell_text_selection(0, 4).unwrap());
+    let (_, _, _, selection, reversed, marked) =
+        runtime.focused_table_cell_selection_state().unwrap();
+    assert_eq!(selection, 0..3);
+    assert!(!reversed);
+    assert_eq!(marked, None);
+    assert_eq!(runtime.input_session_selected_range(), Some(0..3));
+}
+
+#[test]
 fn table_cell_tab_navigation_updates_focus_and_input_session() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
 

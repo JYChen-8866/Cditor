@@ -4,6 +4,8 @@ Cditor is a large-document rich text editor built with Rust and GPUI. It is desi
 
 The project is under active ongoing development. Its core architecture, runtime, tables, Markdown support, IME integration, clipboard handling, media assets, Mermaid rendering, whiteboard embedding, inline AI, and PostgreSQL storage have all been implemented and tested. All production readiness and performance acceptance criteria are defined in the [Large-Document Architecture](doc/large-document-rich-text-architecture.md), [Implementation Status](doc/large-document-rich-text-implementation-status.md), and corresponding acceptance documents.
 
+For embedding Cditor into another GPUI application, see the [Cditor Component API and Integration Guide](doc/guides/cditor-component-integration.md).
+
 ## Core Capabilities
 - Lightweight indexing, paginated height modeling, and windowed rendering for 100,000-level Blocks
 - Document state, selections, layout heights, and virtual scroll states decoupled from UI Entities

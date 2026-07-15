@@ -7,14 +7,24 @@ use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::gui::block::table::menu::{
     TableBackgroundColor, TableMenuAction, filter_table_menu_items, table_axis_menu_items,
 };
-use crate::gui::block::table::{TableAxis, TableAxisSelection, TableCellRangeSelection};
+use crate::gui::block::table::{
+    TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
+};
 
 impl CditorV2View {
     pub(crate) fn dismiss_table_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
         if !self.table_interaction_mode.is_menu_open() {
             return false;
         }
-        self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        self.table_interaction_mode = self
+            .table_interaction_mode
+            .cell_selection()
+            .map(|selection| GuiTableInteractionMode::EditingCell {
+                block_id: selection.block_id,
+                row: selection.row,
+                col: selection.col,
+            })
+            .unwrap_or(GuiTableInteractionMode::Idle);
         self.table_menu_ui = Default::default();
         cx.notify();
         true
@@ -24,10 +34,44 @@ impl CditorV2View {
         self.table_interaction_mode.axis_selection()
     }
 
+    pub(in crate::gui::app) fn projected_table_axis_visual_selection(
+        &self,
+    ) -> Option<TableAxisSelection> {
+        self.table_interaction_mode.visual_axis_selection()
+    }
+
     pub(in crate::gui::app) fn projected_table_range_selection(
         &self,
     ) -> Option<TableCellRangeSelection> {
         self.table_interaction_mode.range_selection()
+    }
+
+    pub(in crate::gui::app) fn projected_table_cell_selection(&self) -> Option<TableCellSelection> {
+        self.table_interaction_mode.cell_selection()
+    }
+
+    pub(crate) fn open_table_cell_menu_from_gui(
+        &mut self,
+        block_id: BlockId,
+        row: usize,
+        col: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        window.focus(&self.focus, cx);
+        let already_focused = self
+            .ready_runtime_ref()
+            .and_then(|runtime| runtime.focused_table_cell_offset())
+            .is_some_and(|(focused_block_id, focused_row, focused_col, _)| {
+                (focused_block_id, focused_row, focused_col) == (block_id, row, col)
+            });
+        if !already_focused && let Some(runtime) = self.ready_runtime() {
+            let _ = runtime.focus_table_cell(block_id, row, col);
+        }
+        self.table_interaction_mode =
+            GuiTableInteractionMode::CellMenu(TableCellSelection::new(block_id, row, col));
+        self.table_menu_ui = Default::default();
+        cx.notify();
     }
 
     pub(crate) fn focus_table_cell_from_gui(
@@ -40,6 +84,7 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus, cx);
+        self.text_drag_selection = None;
         self.table_interaction_mode = GuiTableInteractionMode::EditingCell { block_id, row, col };
         let offset = position.and_then(|position| {
             self.text_offset_for_table_cell_at_position(block_id, row, col, position)
@@ -81,7 +126,7 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(crate) fn begin_table_cell_range_selection_from_gui(
+    pub(crate) fn begin_table_cell_text_selection_from_gui(
         &mut self,
         block_id: BlockId,
         row: usize,
@@ -91,63 +136,68 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         self.focus_table_cell_from_gui(block_id, row, col, position, window, cx);
-        let selection = TableCellRangeSelection::new(block_id, row, col, row, col);
-        self.table_interaction_mode = GuiTableInteractionMode::SelectingRange(selection);
+        let anchor_offset = self
+            .ready_runtime_ref()
+            .and_then(|runtime| runtime.focused_table_cell_offset())
+            .filter(|(focused_block_id, focused_row, focused_col, _)| {
+                (*focused_block_id, *focused_row, *focused_col) == (block_id, row, col)
+            })
+            .map(|(_, _, _, offset)| offset)
+            .unwrap_or(0);
+        self.table_interaction_mode = GuiTableInteractionMode::SelectingCellText {
+            block_id,
+            row,
+            col,
+            anchor_offset,
+        };
     }
 
-    pub(crate) fn update_table_cell_range_selection_from_gui(
+    pub(crate) fn update_table_cell_text_selection_from_gui(
         &mut self,
         block_id: BlockId,
         row: usize,
         col: usize,
+        position: Point<Pixels>,
         cx: &mut Context<Self>,
     ) {
-        let (GuiTableInteractionMode::SelectingRange(anchor)
-        | GuiTableInteractionMode::RangeSelected(anchor)) = self.table_interaction_mode
+        let GuiTableInteractionMode::SelectingCellText {
+            block_id: anchor_block_id,
+            row: anchor_row,
+            col: anchor_col,
+            anchor_offset,
+        } = self.table_interaction_mode
         else {
             return;
         };
-        if anchor.block_id != block_id {
+        if (anchor_block_id, anchor_row, anchor_col) != (block_id, row, col) {
             return;
         }
-        let selection =
-            TableCellRangeSelection::new(block_id, anchor.anchor_row, anchor.anchor_col, row, col);
-        self.table_interaction_mode = if selection.is_multi_cell() {
-            GuiTableInteractionMode::RangeSelected(selection)
-        } else {
-            GuiTableInteractionMode::SelectingRange(selection)
+        let Some(focus_offset) =
+            self.text_offset_for_table_cell_at_position(block_id, row, col, position)
+        else {
+            return;
         };
-        cx.notify();
-    }
-
-    pub(in crate::gui::app) fn finish_table_cell_range_selection_drag(&mut self) {
-        if let GuiTableInteractionMode::SelectingRange(selection) = self.table_interaction_mode {
-            self.table_interaction_mode = if selection.is_multi_cell() {
-                GuiTableInteractionMode::RangeSelected(selection)
-            } else {
-                GuiTableInteractionMode::Idle
-            };
+        let changed = self
+            .ready_runtime()
+            .and_then(|runtime| {
+                runtime
+                    .set_focused_table_cell_text_selection(anchor_offset, focus_offset)
+                    .ok()
+            })
+            .unwrap_or(false);
+        if changed {
+            cx.notify();
         }
     }
 
-    pub(crate) fn select_table_axis_from_gui(
-        &mut self,
-        block_id: BlockId,
-        axis: TableAxis,
-        index: usize,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        window.focus(&self.focus, cx);
-        self.clear_gutter_action();
-        self.text_drag_selection = None;
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            runtime.focus_block(block_id);
+    pub(in crate::gui::app) fn finish_table_cell_text_selection_drag(&mut self) {
+        if let GuiTableInteractionMode::SelectingCellText {
+            block_id, row, col, ..
+        } = self.table_interaction_mode
+        {
+            self.table_interaction_mode =
+                GuiTableInteractionMode::EditingCell { block_id, row, col };
         }
-        let selection = TableAxisSelection::new(block_id, axis, index);
-        self.table_interaction_mode = GuiTableInteractionMode::AxisSelected(selection);
-        self.table_menu_ui = Default::default();
-        cx.notify();
     }
 
     pub(crate) fn confirm_table_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
@@ -197,7 +247,7 @@ impl CditorV2View {
         open: bool,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.table_interaction_mode.axis_selection().is_none() {
+        if self.selected_table_range().is_none() {
             return false;
         }
         if self.table_menu_ui.color_submenu_open == open {
@@ -406,6 +456,14 @@ impl CditorV2View {
     }
 
     pub(in crate::gui::app) fn selected_table_range(&self) -> Option<(BlockId, TableRange)> {
+        if let Some(selection) = self.projected_table_cell_selection() {
+            let range = self.ready_runtime_ref()?.table_cell_selection_range(
+                selection.block_id,
+                selection.row,
+                selection.col,
+            )?;
+            return Some((selection.block_id, range));
+        }
         if let Some(selection) = self.projected_table_range_selection() {
             let runtime = self.ready_runtime_ref()?;
             return runtime

@@ -27,7 +27,7 @@ use crate::gui::overlay::SlashMenuState;
 use crate::gui::overlay::WhiteboardEditorSession;
 
 use crate::gui::persistence::{
-    EditorSaveStatus, PayloadWindowLoadScheduler, PostgresPersistenceState,
+    EditorSaveStatus, PayloadWindowLoadScheduler, StoragePersistenceState,
 };
 use crate::gui::text::RichTextPlatformLayout;
 use cditor_runtime::DocumentRuntime;
@@ -102,9 +102,9 @@ pub struct CditorV2View {
     pub(in crate::gui::app) table_reorder_drag: Option<GuiTableReorderDrag>,
     pub(in crate::gui::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
     pub(in crate::gui::app) projected_block_rects: Vec<ProjectedBlockRect>,
-    pub(in crate::gui::app) postgres_persistence: PostgresPersistenceState,
+    pub(in crate::gui::app) storage_persistence: StoragePersistenceState,
     pub(in crate::gui::app) payload_window_load_scheduler: PayloadWindowLoadScheduler,
-    pub(in crate::gui::app) autosave_interval: Duration,
+    pub(in crate::gui::app) autosave_interval: Option<Duration>,
     pub(in crate::gui::app) platform_input_target: Option<GuiPlatformInputTarget>,
 }
 

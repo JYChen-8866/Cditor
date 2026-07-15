@@ -2,11 +2,37 @@ use super::*;
 
 impl DocumentRuntime {
     pub fn move_focused_table_cell_left(&mut self) -> Result<bool, String> {
-        self.move_focused_table_cell_horizontally(false)
+        self.move_focused_table_cell_horizontally(false, false)
     }
 
     pub fn move_focused_table_cell_right(&mut self) -> Result<bool, String> {
-        self.move_focused_table_cell_horizontally(true)
+        self.move_focused_table_cell_horizontally(true, false)
+    }
+
+    pub fn extend_focused_table_cell_selection_left(&mut self) -> Result<bool, String> {
+        self.move_focused_table_cell_horizontally(false, true)
+    }
+
+    pub fn extend_focused_table_cell_selection_right(&mut self) -> Result<bool, String> {
+        self.move_focused_table_cell_horizontally(true, true)
+    }
+
+    pub fn extend_focused_table_cell_selection_to_offset(
+        &mut self,
+        focus_offset: usize,
+    ) -> Result<bool, String> {
+        let Some(focused) = self.focused_table_cell else {
+            return Ok(false);
+        };
+        let selected_range = focused.selected_range();
+        let anchor = if selected_range.is_empty() {
+            focused.offset
+        } else if focused.selection_reversed {
+            selected_range.end
+        } else {
+            selected_range.start
+        };
+        self.set_focused_table_cell_text_selection(anchor, focus_offset)
     }
 
     pub fn move_focused_table_cell_up(&mut self) -> Result<bool, String> {
@@ -40,7 +66,11 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    fn move_focused_table_cell_horizontally(&mut self, forward: bool) -> Result<bool, String> {
+    fn move_focused_table_cell_horizontally(
+        &mut self,
+        forward: bool,
+        extend_selection: bool,
+    ) -> Result<bool, String> {
         let Some(focused) = self.focused_table_cell else {
             return Ok(false);
         };
@@ -55,8 +85,15 @@ impl DocumentRuntime {
             previous_grapheme_boundary(&text, caret)
         };
         if next != caret {
-            self.focus_table_cell_at_offset(focused.block_id, focused.row, focused.col, next)?;
+            if extend_selection {
+                self.extend_focused_table_cell_selection_to_offset(next)?;
+            } else {
+                self.focus_table_cell_at_offset(focused.block_id, focused.row, focused.col, next)?;
+            }
             return Ok(true);
+        }
+        if extend_selection {
+            return Ok(false);
         }
         let Some((row, col)) = self.adjacent_table_cell_position(
             focused.block_id,

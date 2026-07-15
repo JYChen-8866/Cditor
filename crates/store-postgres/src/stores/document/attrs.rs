@@ -51,6 +51,18 @@ impl PostgresDocumentStore {
         attrs: &[(BlockId, BlockAttrs)],
     ) -> PostgresStorageResult<()> {
         let mut tx = self.pool.begin().await?;
+        self.save_block_attrs_tx(&mut tx, document_id, attrs)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn save_block_attrs_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        document_id: PgDocumentId,
+        attrs: &[(BlockId, BlockAttrs)],
+    ) -> PostgresStorageResult<()> {
         sqlx::query(
             r#"
             DELETE FROM block_attrs
@@ -59,7 +71,7 @@ impl PostgresDocumentStore {
             "#,
         )
         .bind(document_id)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
         for (block_id, value) in attrs {
             let attrs_json =
@@ -74,10 +86,9 @@ impl PostgresDocumentStore {
             )
             .bind(pg_block_id_from_runtime(*block_id))
             .bind(attrs_json)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         }
-        tx.commit().await?;
         Ok(())
     }
 }

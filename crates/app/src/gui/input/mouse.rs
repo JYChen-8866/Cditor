@@ -32,7 +32,7 @@ pub fn focus_table_cell_from_mouse(
     });
 }
 
-pub fn begin_table_cell_range_selection_from_mouse(
+pub fn begin_table_cell_text_selection_from_mouse(
     view: &Entity<CditorV2View>,
     block_id: BlockId,
     row: usize,
@@ -43,7 +43,7 @@ pub fn begin_table_cell_range_selection_from_mouse(
 ) {
     let position = event.position;
     view.update(cx, |view, cx| {
-        view.begin_table_cell_range_selection_from_gui(
+        view.begin_table_cell_text_selection_from_gui(
             block_id,
             row,
             col,
@@ -54,7 +54,7 @@ pub fn begin_table_cell_range_selection_from_mouse(
     });
 }
 
-pub fn update_table_cell_range_selection_from_mouse(
+pub fn update_table_cell_text_selection_from_mouse(
     view: &Entity<CditorV2View>,
     block_id: BlockId,
     row: usize,
@@ -65,8 +65,9 @@ pub fn update_table_cell_range_selection_from_mouse(
     if !event.dragging() {
         return;
     }
+    let position = event.position;
     view.update(cx, |view, cx| {
-        view.update_table_cell_range_selection_from_gui(block_id, row, col, cx);
+        view.update_table_cell_text_selection_from_gui(block_id, row, col, position, cx);
     });
 }
 

@@ -90,6 +90,11 @@ impl CditorV2View {
             })
             .or_else(|| {
                 self.table_interaction_mode
+                    .cell_selection()
+                    .map(|_| GuiPlatformInputTarget::None)
+            })
+            .or_else(|| {
+                self.table_interaction_mode
                     .axis_selection()
                     .map(|selection| GuiPlatformInputTarget::table_menu_query(selection.block_id))
             });

@@ -9,14 +9,16 @@ pub(super) const V1_TABLE_CELL_MIN_WIDTH_PX: f32 = 120.0;
 pub(super) const V1_TABLE_CELL_PADDING_X_PX: f32 = 10.0;
 pub(super) const V1_TABLE_CELL_PADDING_Y_PX: f32 = NOTION_TABLE_CELL_PADDING_Y_PX as f32;
 pub(super) const V1_TABLE_EMPTY_PADDING_PX: f32 = 8.0;
-pub(super) const TABLE_AXIS_HANDLE_SIZE_PX: f32 = 16.0;
+pub(super) const TABLE_AXIS_HANDLE_SIZE_PX: f32 = 14.0;
 pub(super) const TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX: f32 = 22.0;
-pub(super) const TABLE_AXIS_ROW_HANDLE_LEFT_PX: f32 = -28.0;
-pub(super) const TABLE_AXIS_COLUMN_HANDLE_TOP_PX: f32 = -15.0;
+pub(super) const TABLE_AXIS_HANDLE_RADIUS_PX: f32 = 5.0;
+pub(super) const TABLE_AXIS_ROW_HANDLE_LEFT_PX: f32 = -TABLE_AXIS_HANDLE_SIZE_PX / 2.0;
+pub(super) const TABLE_AXIS_COLUMN_HANDLE_TOP_PX: f32 = -TABLE_AXIS_HANDLE_SIZE_PX / 2.0;
 pub(super) const TABLE_CELL_GUTTER_SIZE_PX: f32 = 14.0;
-pub(super) const TABLE_CELL_GUTTER_THICKNESS_PX: f32 = 2.0;
 pub(super) const TABLE_ACTIVE_CELL_BORDER_WIDTH_PX: f32 = 2.0;
-pub(super) const TABLE_ACTIVE_CELL_RADIUS_PX: f32 = 0.0;
+pub(super) const TABLE_CELL_GUTTER_THICKNESS_PX: f32 = TABLE_ACTIVE_CELL_BORDER_WIDTH_PX;
+pub(super) const TABLE_CELL_GUTTER_INDICATOR_LONG_EDGE_PX: f32 = 14.0;
+pub(super) const TABLE_CELL_GUTTER_SEGMENT_GAP_PX: f32 = 3.0;
 #[allow(dead_code)]
 pub(super) const TABLE_RESIZE_HANDLE_THICKNESS_PX: f32 = 8.0;
 #[allow(dead_code)]
@@ -86,6 +88,24 @@ mod tests {
             0xfdebec
         );
     }
+
+    #[test]
+    fn selected_axis_gutter_keeps_its_active_color_while_hovered() {
+        let theme = GuiTheme::light();
+
+        assert_eq!(
+            table_axis_handle_hover_background(theme, true),
+            table_axis_handle_background(theme, true)
+        );
+        assert_eq!(
+            table_axis_handle_hover_background(theme, true),
+            table_active_border_color(theme)
+        );
+        assert_eq!(
+            table_axis_handle_hover_background(theme, false),
+            theme.action_hover_background
+        );
+    }
 }
 
 pub(super) fn table_selected_cell_background(theme: GuiTheme) -> u32 {
@@ -104,16 +124,20 @@ pub(super) fn table_axis_handle_foreground(theme: GuiTheme, selected: bool) -> u
     if selected { theme.surface } else { theme.muted }
 }
 
+pub(super) fn table_axis_handle_hover_background(theme: GuiTheme, selected: bool) -> u32 {
+    if selected {
+        table_axis_handle_background(theme, true)
+    } else {
+        theme.action_hover_background
+    }
+}
+
 pub(super) fn table_surface_background(theme: GuiTheme) -> u32 {
     theme.surface
 }
 
 pub(super) fn table_border_color(theme: GuiTheme) -> u32 {
     theme.border
-}
-
-pub(super) fn table_cell_border_color(theme: GuiTheme, _selected: bool) -> u32 {
-    table_border_color(theme)
 }
 
 pub(super) fn table_header_background(theme: GuiTheme) -> u32 {

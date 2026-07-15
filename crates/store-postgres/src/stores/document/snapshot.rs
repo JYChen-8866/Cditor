@@ -17,6 +17,27 @@ impl PostgresDocumentStore {
         structure_version: i64,
         records: &[BlockIndexRecord],
     ) -> PostgresStorageResult<()> {
+        let mut tx = self.pool.begin().await?;
+        self.save_document_index_snapshot_tx(
+            &mut tx,
+            document_id,
+            visible_index_version,
+            structure_version,
+            records,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn save_document_index_snapshot_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        document_id: PgDocumentId,
+        visible_index_version: i64,
+        structure_version: i64,
+        records: &[BlockIndexRecord],
+    ) -> PostgresStorageResult<()> {
         let snapshot = DbDocumentIndexSnapshot {
             records: records
                 .iter()
@@ -57,7 +78,7 @@ impl PostgresDocumentStore {
         .bind(structure_version)
         .bind(snapshot_bytes)
         .bind(block_count)
-        .execute(&self.pool)
+        .execute(&mut **tx)
         .await?;
 
         Ok(())

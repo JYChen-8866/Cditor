@@ -6,12 +6,13 @@ use gpui::{
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
+use crate::gui::block::chrome::{
+    BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX,
+    BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
+};
 #[cfg(test)]
 use crate::gui::block::chrome::{
     BLOCK_GUTTER_WIDTH_PX, BLOCK_INDENT_STEP_PX, BLOCK_PREFIX_WIDTH_PX,
-};
-use crate::gui::block::chrome::{
-    BLOCK_ROW_GAP_PX, BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
 };
 use crate::gui::input::SingleLineTextInputElement;
 #[cfg(test)]
@@ -32,7 +33,6 @@ use super::style::{
 };
 
 const BLOCK_SHELL_OUTER_PADDING_Y_PX: f32 = 4.0;
-const BLOCK_CONTENT_BORDER_WIDTH_PX: f32 = 1.0;
 const TABLE_COLOR_SUBMENU_WIDTH_PX: f32 = 184.0;
 const TABLE_COLOR_SUBMENU_GAP_PX: f32 = 6.0;
 const TABLE_COLOR_SUBMENU_PADDING_PX: f32 = 6.0;
@@ -66,6 +66,7 @@ pub(crate) fn table_content_editor_origin(
     let chrome = BlockChromeStyle::from_snapshot(block, theme);
     TableToolbarEditorOrigin {
         x_px: BLOCK_SHELL_OUTER_PADDING_X_PX
+            + BLOCK_SHELL_BORDER_WIDTH_PX
             + chrome.indent_px
             + chrome.gutter_width_px
             + BLOCK_ROW_GAP_PX
@@ -74,6 +75,7 @@ pub(crate) fn table_content_editor_origin(
             + chrome.content_padding_left_px
             + chrome.content_prefix_width_px,
         y_px: block_top_px
+            + BLOCK_SHELL_BORDER_WIDTH_PX
             + BLOCK_SHELL_OUTER_PADDING_Y_PX
             + BLOCK_CONTENT_BORDER_WIDTH_PX
             + chrome.content_padding_y_px,
@@ -181,7 +183,12 @@ pub(crate) fn render_table_axis_toolbar(
         .child(primary_panel);
 
     if menu_ui.color_submenu_open {
-        container = container.child(render_table_background_submenu(theme, view));
+        container = container.child(render_table_background_submenu(
+            theme,
+            view,
+            table_background_submenu_left(),
+            table_background_submenu_top(),
+        ));
     }
     container.into_any_element()
 }
@@ -330,12 +337,17 @@ fn render_header_toggle(active: bool, enabled: bool, theme: GuiTheme) -> AnyElem
         .into_any_element()
 }
 
-fn render_table_background_submenu(theme: GuiTheme, view: Entity<CditorV2View>) -> AnyElement {
+pub(super) fn render_table_background_submenu(
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    left: f32,
+    top: f32,
+) -> AnyElement {
     div()
         .id("table-background-submenu")
         .absolute()
-        .left(px(table_background_submenu_left()))
-        .top(px(table_background_submenu_top()))
+        .left(px(left))
+        .top(px(top))
         .w(px(TABLE_COLOR_SUBMENU_WIDTH_PX))
         .p(px(TABLE_COLOR_SUBMENU_PADDING_PX))
         .flex()
@@ -536,6 +548,7 @@ mod tests {
 
     fn depth_two_table_editor_x_px() -> f32 {
         BLOCK_SHELL_OUTER_PADDING_X_PX
+            + BLOCK_SHELL_BORDER_WIDTH_PX
             + 2.0 * BLOCK_INDENT_STEP_PX
             + BLOCK_GUTTER_WIDTH_PX
             + BLOCK_ROW_GAP_PX
@@ -554,16 +567,16 @@ mod tests {
             ),
             TableMenuAnchor {
                 left: 169.0,
-                top: -15.0,
-                height: 16.0,
+                top: TABLE_AXIS_COLUMN_HANDLE_TOP_PX,
+                height: TABLE_AXIS_HANDLE_SIZE_PX,
             }
         );
         assert_eq!(
             table_menu_anchor(TableAxisSelection::new(7, TableAxis::Row, 1), &table_view),
             TableMenuAnchor {
-                left: -28.0,
+                left: TABLE_AXIS_ROW_HANDLE_LEFT_PX,
                 top: 43.0,
-                height: 22.0,
+                height: TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
             }
         );
 
@@ -597,7 +610,7 @@ mod tests {
             origin,
             TableToolbarEditorOrigin {
                 x_px: depth_two_table_editor_x_px(),
-                y_px: 129.0,
+                y_px: 130.0,
             }
         );
     }
@@ -611,7 +624,7 @@ mod tests {
             origin,
             TableToolbarEditorOrigin {
                 x_px: depth_two_table_editor_x_px(),
-                y_px: 129.0,
+                y_px: 130.0,
             }
         );
     }

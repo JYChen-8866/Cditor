@@ -75,23 +75,35 @@ impl PostgresTransactionStore {
         versions: EditTransactionVersions,
     ) -> PostgresStorageResult<()> {
         let mut tx = self.pool.begin().await?;
-        self.insert_edit_transaction(&mut tx, document_id, transaction, &versions)
+        self.save_edit_transaction_tx(&mut tx, document_id, transaction, &versions)
             .await?;
-        self.maybe_insert_large_undo_snapshot(&mut tx, document_id, transaction)
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn save_edit_transaction_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        document_id: PgDocumentId,
+        transaction: &EditTransaction,
+        versions: &EditTransactionVersions,
+    ) -> PostgresStorageResult<()> {
+        self.insert_edit_transaction(tx, document_id, transaction, versions)
             .await?;
-        self.enqueue_fts_update_task(&mut tx, document_id, transaction)
+        self.maybe_insert_large_undo_snapshot(tx, document_id, transaction)
+            .await?;
+        self.enqueue_fts_update_task(tx, document_id, transaction)
             .await?;
         if let Some(identity) = self.sync_identity {
             PostgresSyncOutboxStore::insert_local_transaction_outbox_tx(
-                &mut tx,
+                tx,
                 document_id,
                 transaction,
-                &versions,
+                versions,
                 identity,
             )
             .await?;
         }
-        tx.commit().await?;
         Ok(())
     }
 

@@ -6,7 +6,8 @@ use gpui::{
 
 use crate::gui::GuiTheme;
 use crate::gui::block::chrome::{
-    BLOCK_ROW_GAP_PX, BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
+    BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX,
+    BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
 };
 use crate::gui::block::gutter::{GutterAddHandler, GutterMouseDownHandler, render_block_gutter};
 use crate::gui::block::prefix::{
@@ -79,7 +80,7 @@ pub fn block_shell(
     div()
         .id(("v2-block", block.block_id))
         .w_full()
-        .border_1()
+        .border(px(BLOCK_SHELL_BORDER_WIDTH_PX))
         .border_color(rgb(shell_border))
         .bg(rgb(outer_background))
         .text_color(rgb(chrome.text_color))
@@ -125,7 +126,9 @@ pub fn block_shell(
                                     .min_h(px(chrome.content_min_height_px))
                                     .rounded(px(chrome.content_radius_px))
                                     .bg(rgb(content_background))
-                                    .when(chrome.quote_bar.is_none(), |this| this.border_1())
+                                    .when(chrome.quote_bar.is_none(), |this| {
+                                        this.border(px(BLOCK_CONTENT_BORDER_WIDTH_PX))
+                                    })
                                     .border_color(rgb(content_border))
                                     // Keep the historical 4px quote geometry slot so caret/hit-test
                                     // origins stay stable, while drawing the visible Notion bar at 3px.

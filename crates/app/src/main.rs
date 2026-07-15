@@ -73,6 +73,12 @@ fn cditor_from_env() -> CditorBuilder {
     let seed_block_count = env_usize("CDITOR_SEED_LARGE_DEMO_BLOCKS")
         .unwrap_or(cditor_app::runtime::LARGE_MIXED_DEMO_BLOCKS);
 
+    if let Some(sqlite_path) = env::var_os("CDITOR_SQLITE_PATH") {
+        return cditor
+            .with_document_id(env_u64("CDITOR_DOCUMENT_ID").unwrap_or(1))
+            .with_sqlite_path(sqlite_path);
+    }
+
     match (
         env::var("CDITOR_DATABASE_URL").ok(),
         env_u64("CDITOR_DOCUMENT_ID"),

@@ -111,6 +111,25 @@ fn select_all_command_expands_from_focused_block_to_entire_document() {
         ]
     );
     assert_eq!(runtime.focused_block_id(), Some(2));
+    assert!(runtime.has_entire_document_text_selection());
+}
+
+#[test]
+fn entire_document_selection_query_rejects_partial_cross_block_ranges() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "first"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "last"),
+        ],
+        720.0,
+    );
+
+    runtime.set_document_text_selection(1, 1, 2, 4).unwrap();
+    assert!(!runtime.has_entire_document_text_selection());
+
+    runtime.set_document_text_selection(2, 4, 1, 0).unwrap();
+    assert!(runtime.has_entire_document_text_selection());
 }
 
 #[test]

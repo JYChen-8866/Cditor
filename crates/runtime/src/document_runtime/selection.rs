@@ -413,6 +413,37 @@ impl DocumentRuntime {
             .is_some_and(|selection| !selection.is_caret())
     }
 
+    pub fn has_entire_document_text_selection(&self) -> bool {
+        let Some(selection) = self
+            .document_selection
+            .and_then(|selection| selection.normalize(&self.index).ok())
+        else {
+            return false;
+        };
+        let Some(first_block_id) = self.index.block_ids.first().copied() else {
+            return false;
+        };
+        let Some(last_block_id) = self.index.block_ids.last().copied() else {
+            return false;
+        };
+        let Some(last_offset) = self
+            .text_models
+            .get(&last_block_id)
+            .map(PieceTableTextModel::len)
+            .or_else(|| {
+                self.payload_window
+                    .get(last_block_id)
+                    .map(|payload| payload.plain_text().len())
+            })
+        else {
+            return false;
+        };
+        selection.start.block_id == first_block_id
+            && selection.start.offset == 0
+            && selection.end.block_id == last_block_id
+            && selection.end.offset == last_offset
+    }
+
     pub fn document_text_selection_fragments(&self) -> Option<Vec<DocumentTextSelectionFragment>> {
         let selection = self.document_selection?.normalize(&self.index).ok()?;
         if selection.start.block_id == selection.end.block_id

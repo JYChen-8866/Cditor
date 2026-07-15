@@ -15,6 +15,19 @@ pub(crate) struct TableAxisSelection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TableCellSelection {
+    pub block_id: BlockId,
+    pub row: usize,
+    pub col: usize,
+}
+
+impl TableCellSelection {
+    pub(crate) fn new(block_id: BlockId, row: usize, col: usize) -> Self {
+        Self { block_id, row, col }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TableCellRangeSelection {
     pub block_id: BlockId,
     pub anchor_row: usize,
@@ -25,6 +38,7 @@ pub(crate) struct TableCellRangeSelection {
 }
 
 impl TableCellRangeSelection {
+    #[allow(dead_code)]
     pub(crate) fn new(
         block_id: BlockId,
         anchor_row: usize,

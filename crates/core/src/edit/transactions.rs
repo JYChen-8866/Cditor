@@ -3,8 +3,9 @@ use crate::rich_text::{
     InlineSpan, TableCellAlign, TableCellPayload, TableColumnPayload, TablePayload, TableRange,
     TableRowPayload, TableTrackSize,
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EditOperation {
     InsertText {
         block_id: BlockId,
@@ -58,7 +59,7 @@ pub enum EditOperation {
     Table(TableEditOperation),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TableEditOperation {
     SetCellText {
         block_id: BlockId,
@@ -193,7 +194,7 @@ impl EditOperation {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EditTransactionKind {
     Typing,
     CompositionCommit,
@@ -205,7 +206,7 @@ pub enum EditTransactionKind {
     BlockStructureChange,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EditTransaction {
     pub id: TransactionId,
     pub ops: Vec<EditOperation>,

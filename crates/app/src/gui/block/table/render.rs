@@ -13,6 +13,7 @@ use cditor_core::rich_text::{InlineSpan, TableCellAlign, plain_text_from_spans};
 use cditor_runtime::{TableCellPosition, TableViewState};
 
 use super::cell::{is_active_cell, render_table_cell};
+use super::grid::render_table_grid;
 use super::reorder::TableReorderPreview;
 use super::resize::TableResizePreview;
 use super::selection::{TableAxisSelection, TableCellRangeSelection};
@@ -66,8 +67,6 @@ pub(crate) fn render_table_block(
                 .w(px(table_view.width_px))
                 .h(px(table_view.height_px))
                 .rounded(px(V1_TABLE_RADIUS_PX))
-                .border_1()
-                .border_color(rgb(table_border_color(theme)))
                 .bg(rgb(table_surface_background(theme)))
                 .overflow_hidden()
                 .children(table_view.visible_cells.iter().map(|cell| {
@@ -101,7 +100,8 @@ pub(crate) fn render_table_block(
                         view.clone(),
                         block_id,
                     )
-                })),
+                }))
+                .child(render_table_grid(table_view, theme)),
         );
 
     // Always wrap in a horizontally scrollable viewport that fills the available

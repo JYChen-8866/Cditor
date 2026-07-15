@@ -289,10 +289,7 @@ impl Render for CditorV2View {
             .text_color(rgb(theme.text));
 
         let mut pending_table_scroll_offsets = Vec::new();
-        let postgres_payload_pool = self
-            .postgres_persistence
-            .target()
-            .map(|target| target.pool.clone());
+        let payload_storage_session = self.storage_persistence.session().cloned();
         let mut pending_payload_window_load = None;
         let mut pending_payload_window_range = None;
 
@@ -314,7 +311,7 @@ impl Render for CditorV2View {
                 let projection = runtime.projection_for_window_planned();
                 let has_missing_payloads = projection.render_window.is_placeholder()
                     || projection.blocks.iter().any(|block| block.placeholder);
-                if postgres_payload_pool.is_some() && has_missing_payloads {
+                if payload_storage_session.is_some() && has_missing_payloads {
                     pending_payload_window_range =
                         Some(projection.render_window.block_range.clone());
                 }
@@ -331,7 +328,9 @@ impl Render for CditorV2View {
                 let scrollbar_visual = runtime.scrollbar_visual_state(scrollbar_policy);
                 self.projected_block_rects = projected_block_rects_from_projection(&projection);
                 let drag_overlay = self.block_drag_overlay_snapshot();
-                let table_axis_selection = self.projected_table_axis_selection();
+                let table_axis_selection = self.projected_table_axis_visual_selection();
+                let table_axis_menu_selection = self.projected_table_axis_selection();
+                let table_cell_selection = self.projected_table_cell_selection();
                 let table_range_selection = self.projected_table_range_selection();
                 let block_action = DocumentBlockActionProjection {
                     action_block_id: self.action_block_id,
@@ -401,6 +400,8 @@ impl Render for CditorV2View {
                         drag_overlay,
                         block_action,
                         table_axis_selection,
+                        table_axis_menu_selection,
+                        table_cell_selection,
                         &self.table_menu_ui,
                         self.readonly,
                         self.image_resize_preview(),
@@ -476,8 +477,8 @@ impl Render for CditorV2View {
                 }
             }
         }
-        if let (Some(pool), Some(block_range)) =
-            (postgres_payload_pool, pending_payload_window_range)
+        if let (Some(session), Some(block_range)) =
+            (payload_storage_session, pending_payload_window_range)
         {
             let activated_resident_window = self.ready_runtime().is_some_and(|runtime| {
                 runtime.activate_payload_window_if_resident(block_range.clone())
@@ -497,13 +498,13 @@ impl Render for CditorV2View {
                         });
                     }
                     crate::gui::persistence::PayloadWindowLoadSchedule::WakeAfter(delay) => {
-                        self.schedule_postgres_payload_window_wake(delay, cx);
+                        self.schedule_storage_payload_window_wake(delay, cx);
                     }
                     crate::gui::persistence::PayloadWindowLoadSchedule::WakeAlreadyScheduled => {}
                 }
             }
             if let Some(request) = pending_payload_window_load {
-                self.load_postgres_payload_window(pool, request, cx);
+                self.load_storage_payload_window(session, request, cx);
             }
         }
         if let Some(toolbar) = formatting_toolbar {

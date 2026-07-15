@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-pub const POSTGRES_VIEWPORT_LOAD_DEBOUNCE: Duration = Duration::from_millis(75);
-pub const POSTGRES_VIEWPORT_LOAD_TIMEOUT: Duration = Duration::from_secs(15);
+pub const STORAGE_VIEWPORT_LOAD_DEBOUNCE: Duration = Duration::from_millis(75);
+pub const STORAGE_VIEWPORT_LOAD_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PayloadWindowLoadSchedule {
@@ -23,7 +23,7 @@ impl PayloadWindowLoadScheduler {
             return PayloadWindowLoadSchedule::DispatchNow;
         };
         let elapsed = now.saturating_duration_since(last_dispatched_at);
-        if elapsed >= POSTGRES_VIEWPORT_LOAD_DEBOUNCE {
+        if elapsed >= STORAGE_VIEWPORT_LOAD_DEBOUNCE {
             self.last_dispatched_at = Some(now);
             self.wake_scheduled = false;
             return PayloadWindowLoadSchedule::DispatchNow;
@@ -32,7 +32,7 @@ impl PayloadWindowLoadScheduler {
             return PayloadWindowLoadSchedule::WakeAlreadyScheduled;
         }
         self.wake_scheduled = true;
-        PayloadWindowLoadSchedule::WakeAfter(POSTGRES_VIEWPORT_LOAD_DEBOUNCE - elapsed)
+        PayloadWindowLoadSchedule::WakeAfter(STORAGE_VIEWPORT_LOAD_DEBOUNCE - elapsed)
     }
 
     pub(crate) fn wake(&mut self) {
@@ -68,9 +68,9 @@ mod tests {
 
         scheduler.wake();
         assert_eq!(
-            scheduler.request(start + POSTGRES_VIEWPORT_LOAD_DEBOUNCE),
+            scheduler.request(start + STORAGE_VIEWPORT_LOAD_DEBOUNCE),
             PayloadWindowLoadSchedule::DispatchNow
         );
-        assert!(POSTGRES_VIEWPORT_LOAD_TIMEOUT > POSTGRES_VIEWPORT_LOAD_DEBOUNCE);
+        assert!(STORAGE_VIEWPORT_LOAD_TIMEOUT > STORAGE_VIEWPORT_LOAD_DEBOUNCE);
     }
 }

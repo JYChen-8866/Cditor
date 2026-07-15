@@ -1,6 +1,6 @@
 use gpui::Context;
 
-use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState, TableCellLayoutKey};
 use crate::gui::app::input_trace::trace_input;
 use crate::gui::image_preview::close_active_preview_if_escape_enabled;
 use crate::gui::input::{AiPromptEditAction, CodeLanguageEditAction, GuiInputCommand};
@@ -73,6 +73,16 @@ impl CditorV2View {
                 }
                 _ => {}
             }
+        }
+
+        if self.table_interaction_mode.cell_selection().is_some() {
+            if matches!(action, BoundInputAction::Cancel) {
+                self.dismiss_table_menu_from_gui(cx);
+            }
+            // The compact cell menu has no text field. While it is open, all
+            // keyboard input is consumed so it cannot edit the cell behind it.
+            cx.stop_propagation();
+            return;
         }
 
         if self.table_interaction_mode.axis_selection().is_some() {
@@ -260,15 +270,32 @@ impl CditorV2View {
     fn handle_bound_table_cell_action(
         &mut self,
         action: BoundInputAction,
-        cx: &mut Context<Self>,
+        _cx: &mut Context<Self>,
     ) -> bool {
+        let vertical_selection_target = match action {
+            BoundInputAction::MoveUp {
+                extend_selection: true,
+            } => table_cell_vertical_selection_target(
+                &self.table_cell_layouts,
+                self.ready_runtime_ref(),
+                -1,
+            ),
+            BoundInputAction::MoveDown {
+                extend_selection: true,
+            } => table_cell_vertical_selection_target(
+                &self.table_cell_layouts,
+                self.ready_runtime_ref(),
+                1,
+            ),
+            _ => None,
+        };
         let CditorViewState::Ready(runtime) = &mut self.state else {
             return false;
         };
         if runtime.focused_table_cell_offset().is_none() {
             return false;
         }
-        let changed = match action {
+        match action {
             BoundInputAction::Cancel => {
                 runtime.blur_table_cell();
                 false
@@ -276,24 +303,43 @@ impl CditorV2View {
             BoundInputAction::Tab { backwards } => runtime
                 .move_focused_table_cell_tab(backwards)
                 .unwrap_or(false),
-            BoundInputAction::MoveLeft { .. } => {
-                runtime.move_focused_table_cell_left().unwrap_or(false)
+            BoundInputAction::MoveLeft {
+                extend_selection: true,
+            } => runtime
+                .extend_focused_table_cell_selection_left()
+                .unwrap_or(false),
+            BoundInputAction::MoveLeft {
+                extend_selection: false,
+            } => runtime.move_focused_table_cell_left().unwrap_or(false),
+            BoundInputAction::MoveRight {
+                extend_selection: true,
+            } => runtime
+                .extend_focused_table_cell_selection_right()
+                .unwrap_or(false),
+            BoundInputAction::MoveRight {
+                extend_selection: false,
+            } => runtime.move_focused_table_cell_right().unwrap_or(false),
+            BoundInputAction::MoveUp {
+                extend_selection: true,
             }
-            BoundInputAction::MoveRight { .. } => {
-                runtime.move_focused_table_cell_right().unwrap_or(false)
-            }
-            BoundInputAction::MoveUp { .. } => {
-                runtime.move_focused_table_cell_up().unwrap_or(false)
-            }
-            BoundInputAction::MoveDown { .. } => {
-                runtime.move_focused_table_cell_down().unwrap_or(false)
-            }
+            | BoundInputAction::MoveDown {
+                extend_selection: true,
+            } => vertical_selection_target
+                .and_then(|target| {
+                    runtime
+                        .extend_focused_table_cell_selection_to_offset(target)
+                        .ok()
+                })
+                .unwrap_or(false),
+            BoundInputAction::MoveUp {
+                extend_selection: false,
+            } => runtime.move_focused_table_cell_up().unwrap_or(false),
+            BoundInputAction::MoveDown {
+                extend_selection: false,
+            } => runtime.move_focused_table_cell_down().unwrap_or(false),
             _ => return false,
         };
         self.slash_menu = None;
-        if changed {
-            self.mark_dirty(cx);
-        }
         true
     }
 
@@ -311,6 +357,33 @@ impl CditorV2View {
                     matches!(payload.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
                 })
     }
+}
+
+fn table_cell_vertical_selection_target(
+    layouts: &std::collections::HashMap<
+        TableCellLayoutKey,
+        crate::gui::text::RichTextPlatformLayout,
+    >,
+    runtime: Option<&DocumentRuntime>,
+    direction: i32,
+) -> Option<usize> {
+    let runtime = runtime?;
+    let (block_id, row, col, caret) = runtime.focused_table_cell_offset()?;
+    let cache = layouts.get(&TableCellLayoutKey { block_id, row, col })?;
+    if cache.content_version != runtime.block_content_version(block_id)? {
+        return None;
+    }
+    let bounds = crate::gui::text::platform_range_bounds(cache, caret..caret)?;
+    let target = gpui::point(
+        bounds.left() + bounds.size.width / 2.0,
+        bounds.top() + cache.line_height * direction as f32,
+    );
+    let next = crate::gui::text::platform_index_for_point(cache, target);
+    Some(if next == caret {
+        if direction < 0 { 0 } else { cache.text.len() }
+    } else {
+        next
+    })
 }
 
 fn command_for_bound_action(action: BoundInputAction) -> GuiInputCommand {

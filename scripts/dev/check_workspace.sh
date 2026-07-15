@@ -5,6 +5,7 @@ cd "$(dirname "$0")/../.."
 
 ./scripts/dev/check_structure.sh
 ./scripts/dev/check_release_profile.sh
+./scripts/dev/test_run_editor_scripts.sh
 
 printf 'Checking formatting...\n'
 cargo fmt --all -- --check

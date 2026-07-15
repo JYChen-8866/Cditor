@@ -99,5 +99,14 @@ mod tests {
             },
             &runtime,
         ));
+        assert!(!platform_input_registration_allows(
+            Some(GuiPlatformInputTarget::None),
+            GuiPlatformInputTarget::TableCell {
+                block_id: 2,
+                row: 0,
+                col: 0,
+            },
+            &runtime,
+        ));
     }
 }

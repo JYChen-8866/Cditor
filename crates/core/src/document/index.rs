@@ -6,6 +6,7 @@ use std::fmt::{Display, Formatter};
 use crate::ids::{BlockId, DocumentId};
 use crate::layout::BlockLayoutMeta;
 use crate::version::StructureVersion;
+use serde::{Deserialize, Serialize};
 
 pub type BlockKindTag = u16;
 pub type BlockFlags = u32;
@@ -19,7 +20,7 @@ pub trait DocumentIndexStore {
     fn document_structure_version(&self, document_id: DocumentId) -> StructureVersion;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BlockIndexRecord {
     pub id: BlockId,
     pub parent_id: Option<BlockId>,

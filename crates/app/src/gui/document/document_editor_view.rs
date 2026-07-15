@@ -11,10 +11,12 @@ use crate::gui::app::cditor_v2_view::TableScrollSnapshot;
 use crate::gui::block::table::menu::TableMenuUiState;
 use crate::gui::block::{
     BlockActionState, BlockDragOverlaySnapshot, BlockView, CodeHighlightCache, MermaidRenderCache,
-    TableAxis, TableAxisSelection, TableCellRangeSelection, TableReorderPreview,
-    TableResizePreview, WhiteboardThumbnailCache, render_block_drag_overlay,
-    render_table_axis_overlays, render_table_axis_toolbar, render_table_resize_overlays,
-    table_axis_track_sizes, table_content_editor_origin, table_toolbar_editor_origin,
+    TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
+    TableChromeOverlays, TableReorderPreview, TableResizePreview, WhiteboardThumbnailCache,
+    render_block_drag_overlay, render_table_axis_overlays, render_table_axis_toolbar,
+    render_table_cell_menu, render_table_chrome_viewport, render_table_resize_overlays,
+    table_axis_track_sizes, table_chrome_viewport_origins, table_content_editor_origin,
+    table_toolbar_editor_origin,
 };
 use crate::gui::document::DocumentSurface;
 use crate::gui::input::CodeLanguageEditState;
@@ -101,6 +103,8 @@ impl DocumentEditorView {
         drag_overlay: Option<BlockDragOverlaySnapshot>,
         action: DocumentBlockActionProjection,
         table_axis_selection: Option<TableAxisSelection>,
+        table_axis_menu_selection: Option<TableAxisSelection>,
+        table_cell_selection: Option<TableCellSelection>,
         table_menu_ui: &TableMenuUiState,
         readonly: bool,
         image_resize_preview: Option<(BlockId, f32)>,
@@ -136,8 +140,12 @@ impl DocumentEditorView {
                         table_toolbar_editor_origin(block, document_top as f32, self.theme);
                     let row_track_sizes = table_axis_track_sizes(table_view, TableAxis::Row);
                     let column_track_sizes = table_axis_track_sizes(table_view, TableAxis::Column);
-                    // Scrollbar first so that axis overlays (gutters) render on top.
-                    if let Some(scroll_snapshot) = table_scroll_snapshots.get(&block.block_id)
+                    let scroll_snapshot = table_scroll_snapshots.get(&block.block_id);
+                    let viewport_width_px = scroll_snapshot
+                        .and_then(|snapshot| snapshot.viewport_measurement)
+                        .map(|measurement| measurement.viewport_width_px)
+                        .unwrap_or(table_view.width_px);
+                    if let Some(scroll_snapshot) = scroll_snapshot
                         && let Some(measurement) = scroll_snapshot.viewport_measurement
                         && let Some(scrollbar) = render_table_horizontal_scrollbar(
                             block.block_id,
@@ -152,26 +160,41 @@ impl DocumentEditorView {
                     {
                         table_overlay_elements.push(scrollbar);
                     }
-                    table_overlay_elements.extend(render_table_axis_overlays(
+                    let chrome_origins = table_chrome_viewport_origins();
+                    let mut table_chrome = TableChromeOverlays {
+                        viewport: render_table_resize_overlays(
+                            block.block_id,
+                            table_view,
+                            chrome_origins.viewport,
+                            self.theme,
+                            view.clone(),
+                        ),
+                        ..Default::default()
+                    };
+                    let axis_chrome = render_table_axis_overlays(
                         block.block_id,
                         table_view,
                         table_axis_selection,
                         table_range_selection,
                         table_view.focused_cell,
+                        table_cell_selection,
                         &row_track_sizes,
                         &column_track_sizes,
-                        content_origin,
+                        chrome_origins,
                         self.theme,
                         view.clone(),
-                    ));
-                    table_overlay_elements.extend(render_table_resize_overlays(
-                        block.block_id,
-                        table_view,
+                    );
+                    table_chrome.viewport.extend(axis_chrome.viewport);
+                    table_chrome.top_edge.extend(axis_chrome.top_edge);
+                    table_chrome.left_edge.extend(axis_chrome.left_edge);
+                    table_chrome.right_edge.extend(axis_chrome.right_edge);
+                    table_overlay_elements.push(render_table_chrome_viewport(
                         content_origin,
-                        self.theme,
-                        view.clone(),
+                        viewport_width_px,
+                        table_view.height_px,
+                        table_chrome,
                     ));
-                    if let Some(selection) = table_axis_selection
+                    if let Some(selection) = table_axis_menu_selection
                         .filter(|selection| selection.block_id == block.block_id)
                     {
                         table_overlay_elements.push(render_table_axis_toolbar(
@@ -184,6 +207,20 @@ impl DocumentEditorView {
                             view.clone(),
                             focus.clone(),
                         ));
+                    }
+                    if let Some(selection) = table_cell_selection
+                        .filter(|selection| selection.block_id == block.block_id)
+                        && let Some(menu) = render_table_cell_menu(
+                            selection,
+                            table_view,
+                            content_origin,
+                            table_menu_ui,
+                            readonly,
+                            self.theme,
+                            view.clone(),
+                        )
+                    {
+                        table_overlay_elements.push(menu);
                     }
                     if let Some(reorder_preview) = render_table_reorder_preview_overlay(
                         block.block_id,

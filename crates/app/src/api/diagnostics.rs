@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, PartialEq)]
 pub struct CditorDiagnostics {
+    pub storage_backend: Option<cditor_storage::StorageBackendKind>,
     pub document_blocks: usize,
     pub loaded_payloads: usize,
     pub rendered_blocks: usize,

@@ -18,7 +18,7 @@ pub struct PayloadCachePolicy {
 }
 
 impl PayloadCachePolicy {
-    pub const fn postgres_default() -> Self {
+    pub const fn persistent_default() -> Self {
         Self {
             max_entries: DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES,
             max_estimated_bytes: DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES,
@@ -28,7 +28,7 @@ impl PayloadCachePolicy {
 
 impl Default for PayloadCachePolicy {
     fn default() -> Self {
-        Self::postgres_default()
+        Self::persistent_default()
     }
 }
 

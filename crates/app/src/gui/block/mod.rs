@@ -24,10 +24,11 @@ pub(crate) use code::highlight::CodeHighlightCache;
 pub use drag_overlay::{BlockDragOverlaySnapshot, render_block_drag_overlay};
 pub(crate) use mermaid::{MermaidRenderCache, render_mermaid_block};
 pub(crate) use table::{
-    TableAxis, TableAxisSelection, TableCellRangeSelection, TableReorderPreview,
-    TableResizePreview, render_table_axis_overlays, render_table_axis_toolbar,
-    render_table_resize_overlays, table_axis_track_sizes, table_content_editor_origin,
-    table_toolbar_editor_origin,
+    TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
+    TableChromeOverlays, TableReorderPreview, TableResizePreview, render_table_axis_overlays,
+    render_table_axis_toolbar, render_table_cell_menu, render_table_chrome_viewport,
+    render_table_resize_overlays, table_axis_track_sizes, table_chrome_viewport_origins,
+    table_content_editor_origin, table_toolbar_editor_origin,
 };
 pub(crate) use whiteboard::{
     WhiteboardThumbnailCache, render_whiteboard_thumbnail, whiteboard_style_fn,
