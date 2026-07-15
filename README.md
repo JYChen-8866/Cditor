@@ -1,4 +1,5 @@
 # Cditor
+<img width="1920" height="1140" alt="image" src="https://github.com/user-attachments/assets/7224e1ec-a13a-4d0c-987c-75d3db81289a" />
 
 Cditor is a large-document rich text editor built with Rust and GPUI. It is designed to support 100,000-level Blocks, sophisticated rich text, cross-page selections, stable virtual scrolling, and PostgreSQL persistence.
 
