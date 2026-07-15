@@ -19,7 +19,9 @@ use crate::gui::block::{
     table_toolbar_editor_origin,
 };
 use crate::gui::document::DocumentSurface;
+use crate::gui::document::{DEFAULT_DOCUMENT_CONTENT_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
 use crate::gui::input::CodeLanguageEditState;
+use crate::gui::menu_metrics::MenuViewportBounds;
 use crate::gui::overlay::render_editor_overlays;
 use crate::gui::overlay::table::{
     render_table_horizontal_scrollbar, render_table_reorder_preview_overlay,
@@ -106,6 +108,8 @@ impl DocumentEditorView {
         table_axis_menu_selection: Option<TableAxisSelection>,
         table_cell_selection: Option<TableCellSelection>,
         table_menu_ui: &TableMenuUiState,
+        editor_viewport_width_px: f32,
+        editor_viewport_height_px: f32,
         readonly: bool,
         image_resize_preview: Option<(BlockId, f32)>,
         table_resize_preview: Option<TableResizePreview>,
@@ -123,6 +127,11 @@ impl DocumentEditorView {
         cx: &mut App,
     ) -> AnyElement {
         let block_view = BlockView::new(self.theme);
+        let menu_viewport = document_overlay_menu_viewport(
+            editor_viewport_width_px,
+            editor_viewport_height_px,
+            projection.scroll.global_scroll_top,
+        );
         let mut block_y = 0.0;
         let mut table_overlay_elements = Vec::new();
         let mut block_elements = projection
@@ -206,6 +215,7 @@ impl DocumentEditorView {
                             self.theme,
                             view.clone(),
                             focus.clone(),
+                            menu_viewport,
                         ));
                     }
                     if let Some(selection) = table_cell_selection
@@ -214,6 +224,7 @@ impl DocumentEditorView {
                             selection,
                             table_view,
                             content_origin,
+                            menu_viewport,
                             table_menu_ui,
                             readonly,
                             self.theme,
@@ -317,6 +328,22 @@ impl DocumentEditorView {
     }
 }
 
+fn document_overlay_menu_viewport(
+    editor_width_px: f32,
+    editor_height_px: f32,
+    scroll_top: f64,
+) -> MenuViewportBounds {
+    let content_left = ((editor_width_px - DEFAULT_DOCUMENT_CONTENT_WIDTH_PX) / 2.0).max(0.0);
+    let left = -content_left;
+    let top = scroll_top as f32 - DEFAULT_DOCUMENT_TOP_INSET_PX;
+    MenuViewportBounds {
+        left,
+        top,
+        right: left + editor_width_px,
+        bottom: top + editor_height_px,
+    }
+}
+
 fn render_down_placer(
     top: f64,
     height: f64,
@@ -394,5 +421,25 @@ mod tests {
     #[test]
     fn overlay_block_top_includes_virtual_window_prefix_height() {
         assert_eq!(document_block_top(8_000.0, 128.0), 8_128.0);
+    }
+
+    #[test]
+    fn menu_viewport_is_expressed_in_centered_document_overlay_coordinates() {
+        let viewport = document_overlay_menu_viewport(1_200.0, 800.0, 0.0);
+
+        assert_eq!(viewport.left, -170.0);
+        assert_eq!(viewport.right, 1_030.0);
+        assert_eq!(viewport.top, -32.0);
+        assert_eq!(viewport.bottom, 768.0);
+    }
+
+    #[test]
+    fn menu_viewport_tracks_document_scroll_and_narrow_hosts() {
+        let viewport = document_overlay_menu_viewport(700.0, 500.0, 240.0);
+
+        assert_eq!(viewport.left, 0.0);
+        assert_eq!(viewport.right, 700.0);
+        assert_eq!(viewport.top, 208.0);
+        assert_eq!(viewport.bottom, 708.0);
     }
 }

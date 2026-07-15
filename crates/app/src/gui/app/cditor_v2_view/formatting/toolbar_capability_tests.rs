@@ -32,7 +32,7 @@ fn complex_block_gutter_menu_disables_unsupported_text_and_ai_actions() {
         &HashMap::new(),
         false,
         false,
-        size(px(900.0), px(700.0)),
+        crate::gui::menu_metrics::EditorViewport::from_size(size(px(900.0), px(700.0))),
         Some(1),
         false,
         false,

@@ -1,6 +1,6 @@
 use gpui::{
-    Bounds, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Render, Styled,
-    Window, div, point, px, rgb, size,
+    Bounds, Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Window, div, point, px, rgb, size,
 };
 
 use crate::gui::GuiTheme;
@@ -23,6 +23,7 @@ use crate::gui::input::actions::{
     SelectUp, SoftLineBreak, Tab, ToggleBold, ToggleInlineCode, ToggleItalic, ToggleUnderline,
     Undo,
 };
+use crate::gui::menu_metrics::EditorViewport;
 use crate::gui::overlay::table::{table_hscroll_scroll_max, table_hscroll_track_width};
 use crate::gui::overlay::{
     render_ai_preview_overlay, render_ai_prompt, render_floating_toolbar, render_slash_menu,
@@ -50,6 +51,11 @@ impl Render for CditorV2View {
         self.sdk_emit_selection_if_changed(cx);
         self.begin_platform_input_registration_frame();
 
+        let editor_viewport = EditorViewport::from_measurement(
+            self.editor_viewport_handle.bounds(),
+            window.viewport_size(),
+        );
+
         let view = cx.entity();
         let code_language_edit = self.code_language_edit.clone();
         let code_theme_menu_block_id = self.code_theme_menu_block_id;
@@ -70,7 +76,7 @@ impl Render for CditorV2View {
                 || code_language_edit.is_some()
                 || code_theme_menu_block_id.is_some()
                 || (self.ai_prompt.is_some() && !embedded_ai_prompt),
-            window.viewport_size(),
+            editor_viewport,
             self.gutter_toolbar_block_id.filter(|_| {
                 self.gutter_block_drag
                     .is_none_or(|drag| !drag.exceeded_threshold)
@@ -92,6 +98,8 @@ impl Render for CditorV2View {
         let mut root = div()
             .id("cditor-v2-root")
             .relative()
+            .overflow_hidden()
+            .track_scroll(&self.editor_viewport_handle)
             .key_context(CDITOR_KEY_CONTEXT)
             .track_focus(&self.focus)
             .on_action(cx.listener(|view, _: &Newline, _window, cx| {
@@ -295,9 +303,8 @@ impl Render for CditorV2View {
 
         match &mut self.state {
             CditorViewState::Ready(runtime) => {
-                let viewport_height = (f32::from(window.viewport_size().height)
-                    - DEFAULT_DOCUMENT_TOP_INSET_PX)
-                    .max(1.0) as f64;
+                let viewport_height =
+                    (editor_viewport.height - DEFAULT_DOCUMENT_TOP_INSET_PX).max(1.0) as f64;
                 let _ = runtime.sync_viewport_height(viewport_height);
                 self.scroll_accumulator
                     .maybe_mark_idle(std::time::Instant::now());
@@ -403,6 +410,8 @@ impl Render for CditorV2View {
                         table_axis_menu_selection,
                         table_cell_selection,
                         &self.table_menu_ui,
+                        editor_viewport.width,
+                        editor_viewport.height,
                         self.readonly,
                         self.image_resize_preview(),
                         self.table_resize_preview(),
@@ -436,7 +445,7 @@ impl Render for CditorV2View {
                                 block_height,
                                 metrics.origin_x_in_block_px,
                                 metrics.width_px,
-                                f32::from(window.viewport_size().width),
+                                editor_viewport.width,
                                 projection.scroll.global_scroll_top,
                             )
                         });
@@ -451,8 +460,7 @@ impl Render for CditorV2View {
                     theme,
                     view.clone(),
                     &self.ai_preview_scroll_handle,
-                    f32::from(window.viewport_size().width),
-                    f32::from(window.viewport_size().height),
+                    editor_viewport,
                 ) {
                     root = root.child(ai_preview);
                 }
@@ -521,25 +529,16 @@ impl Render for CditorV2View {
             root = root.child(preview_overlay);
         }
         if let Some(menu) = self.slash_menu.as_ref() {
-            let viewport = window.viewport_size();
-            root = root.child(render_slash_menu(
-                menu,
-                theme,
-                cx.entity(),
-                f32::from(viewport.width),
-                f32::from(viewport.height),
-            ));
+            root = root.child(render_slash_menu(menu, theme, cx.entity(), editor_viewport));
         }
         if !embedded_ai_prompt {
             if let Some(prompt) = self.ai_prompt.as_ref() {
-                let viewport = window.viewport_size();
                 root = root.child(render_ai_prompt(
                     prompt,
                     theme,
                     cx.entity(),
                     self.ai_prompt_focus.clone(),
-                    f32::from(viewport.width),
-                    f32::from(viewport.height),
+                    editor_viewport,
                 ));
             }
         }

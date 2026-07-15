@@ -6,6 +6,7 @@ use crate::gui::input::{
     CodeLanguageEditAction, CodeLanguageEditKeyResult, CodeLanguageEditState,
     CodeLanguagePopupPlacement, apply_code_language_action,
 };
+use crate::gui::menu_metrics::EditorViewport;
 
 impl CditorV2View {
     pub(crate) fn toggle_code_language_dropdown_from_gui(
@@ -51,7 +52,11 @@ impl CditorV2View {
         self.code_theme_menu_block_id = None;
         window.focus(&self.code_language_focus, cx);
         self.platform_input_target = Some(GuiPlatformInputTarget::code_language(block_id));
-        let placement = code_language_popup_placement(pointer_y_px, window);
+        let viewport = EditorViewport::from_measurement(
+            self.editor_viewport_handle.bounds(),
+            window.viewport_size(),
+        );
+        let placement = code_language_popup_placement(pointer_y_px, viewport);
         self.code_language_edit = Some(CodeLanguageEditState::new_dropdown_with_placement(
             block_id, language, placement,
         ));
@@ -154,16 +159,53 @@ impl CditorV2View {
     }
 }
 
-fn code_language_popup_placement(pointer_y_px: f32, window: &Window) -> CodeLanguagePopupPlacement {
+fn code_language_popup_placement(
+    pointer_y_px: f32,
+    viewport: EditorViewport,
+) -> CodeLanguagePopupPlacement {
     const POPUP_MARGIN_PX: f32 = 12.0;
     const POPUP_ESTIMATED_HEIGHT_PX: f32 = 300.0;
 
-    let viewport_height = f32::from(window.viewport_size().height);
-    let below = viewport_height - pointer_y_px - POPUP_MARGIN_PX;
-    let above = pointer_y_px - POPUP_MARGIN_PX;
+    let (_, local_y) = viewport.window_point_to_local(0.0, pointer_y_px);
+    let below = viewport.height - local_y - POPUP_MARGIN_PX;
+    let above = local_y - POPUP_MARGIN_PX;
     if below < POPUP_ESTIMATED_HEIGHT_PX && above > below {
         CodeLanguagePopupPlacement::Above
     } else {
         CodeLanguagePopupPlacement::Below
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn embedded_editor_viewport() -> EditorViewport {
+        EditorViewport {
+            window_left: 180.0,
+            window_top: 220.0,
+            width: 900.0,
+            height: 600.0,
+        }
+    }
+
+    #[test]
+    fn language_popup_uses_editor_local_space_below_pointer() {
+        let viewport = embedded_editor_viewport();
+
+        assert_eq!(
+            code_language_popup_placement(320.0, viewport),
+            CodeLanguagePopupPlacement::Below
+        );
+    }
+
+    #[test]
+    fn language_popup_flips_above_near_editor_bottom_even_in_offset_host() {
+        let viewport = embedded_editor_viewport();
+
+        assert_eq!(
+            code_language_popup_placement(760.0, viewport),
+            CodeLanguagePopupPlacement::Above
+        );
     }
 }

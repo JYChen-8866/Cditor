@@ -6,10 +6,11 @@ use gpui::{
 
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
+use crate::gui::menu_metrics::SECONDARY_MENU_WIDTH_PX;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{CalloutVariant, RichBlockKind};
 
-pub const BLOCK_TRANSFORM_MENU_WIDTH_PX: f32 = 220.0;
+pub const BLOCK_TRANSFORM_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
 const BLOCK_TRANSFORM_MENU_HEIGHT_PX: f32 = 372.0;
 const BLOCK_TRANSFORM_MENU_GAP_PX: f32 = 6.0;
 const PRIMARY_TOOLBAR_WIDTH_PX: f32 = 194.0;

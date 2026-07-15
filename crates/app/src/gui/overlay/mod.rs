@@ -27,9 +27,8 @@ pub use floating_toolbar::{
 pub use selection_overlay::{
     SelectionOverlayFragment, render_selection_overlay, selection_overlay_fragments,
 };
-pub use slash_menu::{
-    SlashMenuCommand, SlashMenuItem, SlashMenuState, render_slash_menu, slash_query_before_caret,
-};
+pub(crate) use slash_menu::render_slash_menu;
+pub use slash_menu::{SlashMenuCommand, SlashMenuItem, SlashMenuState, slash_query_before_caret};
 pub use toast::{GuiToast, render_toast};
 pub(crate) use whiteboard_editor::{WhiteboardEditorSession, render_whiteboard_editor};
 
