@@ -1,7 +1,8 @@
 use crate::ids::BlockId;
 use crate::version::LayoutVersionNumber;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BlockLayoutMeta {
     pub block_id: BlockId,
     pub estimated_height: f64,

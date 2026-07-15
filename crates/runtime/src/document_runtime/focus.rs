@@ -254,6 +254,51 @@ impl DocumentRuntime {
         Ok(())
     }
 
+    pub fn set_focused_table_cell_text_selection(
+        &mut self,
+        anchor_offset: usize,
+        focus_offset: usize,
+    ) -> Result<bool, String> {
+        let Some(focused) = self.focused_table_cell else {
+            return Ok(false);
+        };
+        let text = self
+            .table_cell_plain_text(focused.block_id, focused.row, focused.col)
+            .ok_or_else(|| {
+                format!(
+                    "missing table cell {}:{} in block {}",
+                    focused.row, focused.col, focused.block_id
+                )
+            })?;
+        let anchor_offset = normalized_grapheme_offset(&text, anchor_offset);
+        let focus_offset = normalized_grapheme_offset(&text, focus_offset);
+        let selected_range = anchor_offset.min(focus_offset)..anchor_offset.max(focus_offset);
+        let selection_reversed = focus_offset < anchor_offset;
+        let changed = focused.selected_range() != selected_range
+            || focused.selection_reversed != selection_reversed
+            || focused.offset != focus_offset;
+
+        if let Some(cell) = self.focused_table_cell.as_mut() {
+            *cell = cell
+                .with_selected_range(selected_range.clone(), selection_reversed)
+                .with_marked_range(None);
+        }
+        if let Some(editing) = self.editing.as_mut() {
+            editing.set_input_target(InputTarget::TableCell {
+                block_id: focused.block_id,
+                row: focused.row,
+                col: focused.col,
+            });
+            if selected_range.is_empty() {
+                editing.set_collapsed_selection(focus_offset);
+            } else {
+                editing.set_selected_range(selected_range, selection_reversed);
+            }
+            editing.clear_composition();
+        }
+        Ok(changed)
+    }
+
     pub fn set_caret_offset(&mut self, block_id: BlockId, offset: usize) -> Result<(), String> {
         if self.focused_block_id() != Some(block_id) {
             self.focus_block(block_id);

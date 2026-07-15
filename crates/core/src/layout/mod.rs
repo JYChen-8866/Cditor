@@ -29,6 +29,6 @@ pub use height_index::{
     HeightEstimate,
 };
 pub use page_layout::{
-    PageBlockEstimate, PageHeightChange, PageLayout, PageLayoutIndex, PageLayoutIndexError,
-    PageOffsetHit, PagePolicy,
+    PAGE_POLICY_VERSION, PageBlockEstimate, PageHeightChange, PageLayout, PageLayoutIndex,
+    PageLayoutIndexError, PageOffsetHit, PagePolicy,
 };

@@ -4,13 +4,14 @@ use std::path::PathBuf;
 
 use crate::document::{BlockIndexRecord, DocumentIndex, VisibleDocumentIndex};
 use crate::ids::BlockId;
+use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
 pub type TransactionId = u64;
 pub type SnapshotId = u64;
 pub type TextOffset = usize;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ScrollAnchor {
     pub block_id: BlockId,
     pub offset_in_block: f64,

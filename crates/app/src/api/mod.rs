@@ -16,7 +16,7 @@ pub use builder::CditorBuilder;
 pub use cditor::Cditor;
 pub use cold_start::{
     CditorColdStartPlan, CditorPostgresStores, CditorRuntimeLoadResult, PostgresRuntimeLoadOptions,
-    load_runtime_from_options,
+    StorageRuntimeLoadOptions, load_runtime_from_options,
 };
 pub use command::{
     BlockTransform, CditorCommand, CommandDescriptor, CommandOutcome, CommandState, SlashItem,
@@ -37,7 +37,9 @@ pub use import_export::{
     AttachmentExportMode, ExportFormat, ExportReport, ExportWarning, ImportReport, ImportWarning,
     MarkdownExportOptions, MarkdownImportOptions,
 };
-pub use options::{CditorBackend, CditorOptions, WorkspaceId};
+pub use options::{
+    CditorBackend, CditorOptions, SqliteDurability, SqliteStorageOptions, WorkspaceId,
+};
 pub use providers::{
     AiProvider, AiProviderError, AiRequest, AiRequestId, AiTaskKind, AssetDescriptor, AssetError,
     AssetInput, AssetProvider, AssetRef, CditorExtension, CditorHostDelegate, FilePickerRequest,

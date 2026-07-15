@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Cditor — 为大文档而生的原生富文本编辑器。10 万级 Block，依然流畅。">
+  <meta name="theme-color" content="#f3f1ea">
+  <title>Cditor — 大文档，自然流动</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Cditor 首页">
+      <span class="brand-mark">C</span><span>Cditor</span>
+    </a>
+    <nav class="nav" aria-label="主导航">
+      <a href="#product">产品</a><a href="#engine">架构</a><a href="#open-source">开源</a>
+    </nav>
+    <a class="nav-cta" href="#start">开始构建 <span>↗</span></a>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="hero-copy reveal">
+        <div class="eyebrow"><span></span> Built in Rust · Powered by GPUI</div>
+        <h1>大文档，<br><em>自然流动。</em></h1>
+        <p class="hero-lede">为复杂知识与长期创作打造的原生富文本编辑器。即使面对 <strong>100,000</strong> 个内容块，思考也不必等待。</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#start">在本地运行 <span>→</span></a>
+          <a class="button text-button" href="#product">探索 Cditor <span>↓</span></a>
+        </div>
+      </div>
+
+      <div class="editor-wrap reveal" id="product">
+        <div class="editor-glow"></div>
+        <div class="editor-window">
+          <div class="editor-topbar">
+            <div class="traffic"><i></i><i></i><i></i></div>
+            <div class="doc-path">Workspace / Product vision</div>
+            <button class="share-button">Share</button>
+          </div>
+          <div class="editor-body">
+            <aside class="sidebar">
+              <div class="side-brand"><span class="avatar">J</span><b>Juno Space</b><span>⌄</span></div>
+              <div class="side-search">⌕ <span>Quick search</span><kbd>⌘ K</kbd></div>
+              <p>SPACE</p>
+              <div class="side-item active"><span>◈</span> Product vision</div>
+              <div class="side-item"><span>◇</span> Roadmap</div>
+              <div class="side-item"><span>□</span> Design system</div>
+              <div class="side-item"><span>⌁</span> Research</div>
+              <p>FAVORITES</p>
+              <div class="side-item"><span>✦</span> Launch notes</div>
+            </aside>
+            <article class="document">
+              <div class="document-meta">PRODUCT / STRATEGY</div>
+              <h2>Build tools that<br>keep up with thought.</h2>
+              <p>Ideas rarely arrive in tidy pages. They branch, connect, and grow. Our editor should feel invisible—even when the document becomes enormous.</p>
+              <div class="callout"><span>✦</span><div><b>North star</b><br>Every interaction stays immediate, regardless of scale.</div></div>
+              <h3>Principles</h3>
+              <div class="principle-grid">
+                <div><span>01</span><b>Local first</b><p>Your work stays close and responds instantly.</p></div>
+                <div><span>02</span><b>Native speed</b><p>Render only what matters in this moment.</p></div>
+                <div><span>03</span><b>Open core</b><p>An engine anyone can inspect and extend.</p></div>
+              </div>
+              <div class="cursor-tag"><i></i> You</div>
+            </article>
+            <div class="minimap"><span></span><span></span><span></span><span></span><span></span><i></i></div>
+          </div>
+          <div class="editor-status"><span><i></i> All changes saved</span><span>42,819 blocks&nbsp;&nbsp;·&nbsp;&nbsp;60 FPS</span></div>
+        </div>
+      </div>
+
+      <div class="proof-strip reveal">
+        <p>为规模而设计</p>
+        <div><strong>100K</strong><span>BLOCKS</span></div>
+        <div><strong>&lt; 16<small>ms</small></strong><span>P99 INPUT</span></div>
+        <div><strong>∞</strong><span>CANVAS</span></div>
+        <div><strong>UTF</strong><span>CJK + IME</span></div>
+      </div>
+    </section>
+
+    <section class="manifesto shell reveal">
+      <p class="section-index">01 — THE EDITOR</p>
+      <h2>不是又一个网页编辑器。<br><span>是安静、强大、贴近思考的工作界面。</span></h2>
+    </section>
+
+    <section class="feature-bento shell">
+      <article class="feature feature-large reveal">
+        <div class="feature-copy"><span class="feature-num">01</span><h3>复杂内容，<br>仍然清晰。</h3><p>表格、代码、图片、Mermaid 与白板，都在同一份文档里自然协作。</p></div>
+        <div class="table-demo" aria-label="项目表格示意">
+          <div class="table-head"><span>Feature</span><span>Status</span><span>Owner</span></div>
+          <div><span>Native tables</span><span><i class="green"></i> Shipped</span><span><b class="mini-avatar purple">AL</b></span></div>
+          <div><span>Inline AI</span><span><i class="amber"></i> In progress</span><span><b class="mini-avatar orange">MC</b></span></div>
+          <div><span>Whiteboard</span><span><i class="green"></i> Shipped</span><span><b class="mini-avatar blue">YK</b></span></div>
+        </div>
+      </article>
+
+      <article class="feature feature-dark reveal">
+        <div class="feature-copy"><span class="feature-num">02</span><h3>AI，就在<br>文字旁边。</h3><p>流式生成、就地改写、随时取消。AI 是工具，不是打断。</p></div>
+        <div class="ai-demo">
+          <div class="selected-text">The editor should feel invisible.</div>
+          <div class="ai-pop"><div><span class="spark">✦</span><b>Ask Cditor AI</b><kbd>⌘ ↵</kbd></div><p class="typing">Make this more concise<span></span></p><div class="suggestions"><span>Improve writing</span><span>Summarize</span><span>Translate</span></div></div>
+        </div>
+      </article>
+
+      <article class="feature feature-scroll reveal">
+        <div class="feature-copy"><span class="feature-num">03</span><h3>十万 Block，<br>只渲染此刻。</h3><p>窗口化渲染与稳定滚动锚点，让巨型文档也轻盈。</p></div>
+        <div class="scroll-visual"><div class="doc-lines"></div><div class="viewport"><span>LIVE VIEWPORT</span></div><div class="scroll-rail"><i></i></div></div>
+      </article>
+    </section>
+
+    <section class="engine shell" id="engine">
+      <div class="engine-head reveal"><p class="section-index">02 — UNDER THE HOOD</p><h2>快，不是感觉。<br><em>是架构。</em></h2><p>UI 只是当前视口的投影。文档、选择、布局与滚动状态独立存在于编辑器内核。</p></div>
+      <div class="architecture reveal">
+        <div class="arch-core"><span>C</span><b>EDITOR<br>KERNEL</b><small>Source of truth</small></div>
+        <div class="arch-ring ring-one"></div><div class="arch-ring ring-two"></div>
+        <div class="arch-node n1"><i></i><b>Document Index</b><small>100K blocks</small></div>
+        <div class="arch-node n2"><i></i><b>Virtual Layout</b><small>Stable anchors</small></div>
+        <div class="arch-node n3"><i></i><b>GPUI Projection</b><small>Visible window</small></div>
+        <div class="arch-node n4"><i></i><b>PostgreSQL</b><small>Persistent state</small></div>
+      </div>
+      <div class="tech-row reveal"><span>RUST</span><span>GPUI</span><span>POSTGRESQL</span><span>MERMAID</span><span>OPENAI</span></div>
+    </section>
+
+    <section class="open-source" id="open-source">
+      <div class="shell open-grid">
+        <div class="reveal"><p class="section-index">03 — OPEN BY DESIGN</p><h2>你的工具，<br>应该经得起检视。</h2></div>
+        <div class="open-copy reveal"><p>Cditor 的核心架构、性能预算和验收标准全部开放。阅读源码，运行测试，或者把它变成你自己的编辑器。</p><div class="license"><span>↗</span><div><b>Dual licensed</b><small>Apache 2.0 / GPL 3.0</small></div></div></div>
+      </div>
+    </section>
+
+    <section class="start shell reveal" id="start">
+      <div><p class="section-index">START BUILDING</p><h2>让文档追上<br><em>你的思考。</em></h2></div>
+      <div class="terminal">
+        <div class="terminal-bar"><span></span><span></span><span></span><b>TERMINAL</b></div>
+        <div class="terminal-line"><span>$</span><code id="command">cargo run -p cditor-app</code><button id="copyButton" aria-label="复制命令">复制</button></div>
+        <p><i></i> Launches with in-memory storage. No database required.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer><div class="shell footer-inner"><a class="brand" href="#top"><span class="brand-mark">C</span><span>Cditor</span></a><p>Native tools for unbounded thought.</p><p>© 2026 Cditor</p></div></footer>
+  <script src="script.js"></script>
+</body>
+</html>

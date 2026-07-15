@@ -1,12 +1,13 @@
 use super::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TextAffinity {
     Upstream,
     Downstream,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextPosition {
     pub block_id: BlockId,
     pub offset: TextOffset,
@@ -23,7 +24,7 @@ impl TextPosition {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentSelection {
     pub anchor: TextPosition,
     pub focus: TextPosition,

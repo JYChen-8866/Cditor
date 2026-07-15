@@ -6,7 +6,7 @@ use gpui::{
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::input::{
-    begin_table_cell_range_selection_from_mouse, update_table_cell_range_selection_from_mouse,
+    begin_table_cell_text_selection_from_mouse, update_table_cell_text_selection_from_mouse,
 };
 use cditor_core::ids::BlockId;
 #[cfg(test)]
@@ -15,10 +15,8 @@ use cditor_runtime::{TableCellPosition, TableVisibleCell};
 
 use super::selection::{TableAxisSelection, TableCellRangeSelection};
 use super::style::{
-    TABLE_ACTIVE_CELL_BORDER_WIDTH_PX, TABLE_ACTIVE_CELL_RADIUS_PX, V1_TABLE_CELL_PADDING_X_PX,
-    V1_TABLE_CELL_PADDING_Y_PX, table_active_border_color, table_cell_background,
-    table_cell_border_color, table_cell_hover_background, table_cell_line_height,
-    table_selected_cell_background,
+    V1_TABLE_CELL_PADDING_X_PX, V1_TABLE_CELL_PADDING_Y_PX, table_cell_background,
+    table_cell_hover_background, table_cell_line_height, table_selected_cell_background,
 };
 
 pub(super) fn render_table_cell(
@@ -34,7 +32,6 @@ pub(super) fn render_table_cell(
     let row_index = cell.position.row;
     let cell_index = cell.position.col;
     let active = is_active_cell(focused_cell, row_index, cell_index);
-    let multi_cell_range = table_range_selection.is_some_and(|s| s.is_multi_cell());
     let range_selected = table_range_selection
         .map(|selection| selection.selects_cell(block_id, row_index, cell_index))
         .unwrap_or(false);
@@ -60,9 +57,6 @@ pub(super) fn render_table_cell(
                 .min_h(table_cell_line_height())
                 .px(px(V1_TABLE_CELL_PADDING_X_PX))
                 .py(px(V1_TABLE_CELL_PADDING_Y_PX))
-                .border_r_1()
-                .border_b_1()
-                .border_color(rgb(table_cell_border_color(theme, range_selected)))
                 .bg(rgb(if selected {
                     if range_selected {
                         table_selected_cell_background(theme)
@@ -77,7 +71,7 @@ pub(super) fn render_table_cell(
                 })
                 .cursor_text()
                 .on_mouse_down(gpui::MouseButton::Left, move |event, window, cx| {
-                    begin_table_cell_range_selection_from_mouse(
+                    begin_table_cell_text_selection_from_mouse(
                         &focus_view,
                         block_id,
                         row_index,
@@ -89,7 +83,7 @@ pub(super) fn render_table_cell(
                     cx.stop_propagation();
                 })
                 .on_mouse_move(move |event, _window, cx| {
-                    update_table_cell_range_selection_from_mouse(
+                    update_table_cell_text_selection_from_mouse(
                         &range_hover_view,
                         block_id,
                         row_index,
@@ -98,20 +92,7 @@ pub(super) fn render_table_cell(
                         cx,
                     );
                 })
-                .child(content)
-                .when(active && !multi_cell_range, |this| {
-                    this.child(
-                        div()
-                            .absolute()
-                            .left(px(0.0))
-                            .top(px(0.0))
-                            .w_full()
-                            .h_full()
-                            .rounded(px(TABLE_ACTIVE_CELL_RADIUS_PX))
-                            .border(px(TABLE_ACTIVE_CELL_BORDER_WIDTH_PX))
-                            .border_color(rgb(table_active_border_color(theme))),
-                    )
-                }),
+                .child(content),
         )
         .into_any_element()
 }

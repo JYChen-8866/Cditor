@@ -40,7 +40,19 @@ impl PostgresDocumentStore {
         structure_version: i64,
     ) -> PostgresStorageResult<()> {
         let mut tx = self.pool.begin().await?;
+        self.save_block_index_records_tx(&mut tx, document_id, records, structure_version)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
 
+    pub(crate) async fn save_block_index_records_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        document_id: PgDocumentId,
+        records: &[BlockIndexRecord],
+        structure_version: i64,
+    ) -> PostgresStorageResult<()> {
         let block_ids: Vec<PgBlockId> = records
             .iter()
             .map(|record| pg_block_id_from_runtime(record.id))
@@ -97,7 +109,7 @@ impl PostgresDocumentStore {
             .bind(kind)
             .bind(flags_to_i32(record.flags)?)
             .bind(structure_version)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         }
 
@@ -111,7 +123,7 @@ impl PostgresDocumentStore {
             )
             .bind(document_id)
             .bind(structure_version)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         } else {
             sqlx::query(
@@ -124,7 +136,7 @@ impl PostgresDocumentStore {
             .bind(document_id)
             .bind(&block_ids)
             .bind(structure_version)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
         }
 
@@ -137,10 +149,9 @@ impl PostgresDocumentStore {
         )
         .bind(document_id)
         .bind(structure_version)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
 
-        tx.commit().await?;
         Ok(())
     }
 

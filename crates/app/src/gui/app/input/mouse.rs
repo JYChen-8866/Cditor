@@ -116,7 +116,7 @@ impl CditorV2View {
         if self.commit_gutter_block_drag(cx) {
             cx.stop_propagation();
         }
-        self.finish_table_cell_range_selection_drag();
+        self.finish_table_cell_text_selection_drag();
         self.finish_gui_scrollbar_drag(cx);
         self.finish_text_drag_selection();
         self.finish_block_drag_selection();

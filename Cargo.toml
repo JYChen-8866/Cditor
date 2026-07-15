@@ -8,12 +8,13 @@ members = [
     "crates/runtime",
     "crates/store",
     "crates/store-postgres",
+    "crates/store-sqlite",
 ]
 default-members = ["crates/app"]
 resolver = "3"
 
 [workspace.package]
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 license = "GPL-3.0-or-later"
 

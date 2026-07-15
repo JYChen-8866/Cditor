@@ -40,6 +40,9 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
     if runtime.ai_session_snapshot().is_some() {
         return None;
     }
+    if runtime.has_entire_document_text_selection() {
+        return None;
+    }
     if let Some(block_id) = gutter_toolbar_block_id {
         let rect = projected_block_rects
             .iter()
@@ -433,6 +436,46 @@ mod tests {
         assert!(state.ai_enabled);
         assert!(!state.show_delete);
         assert_eq!(state.block_id, Some(2));
+    }
+
+    #[test]
+    fn entire_document_selection_suppresses_every_floating_toolbar_source() {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![
+                cditor_core::rich_text::BlockPayloadRecord::rich_text(
+                    1,
+                    RichBlockKind::Paragraph,
+                    "first",
+                ),
+                cditor_core::rich_text::BlockPayloadRecord::rich_text(
+                    2,
+                    RichBlockKind::Paragraph,
+                    "last",
+                ),
+            ],
+            720.0,
+        );
+        runtime.focus_block_at_offset(2, 2).unwrap();
+        assert!(runtime.select_all_command());
+        assert!(runtime.select_all_command());
+
+        assert!(
+            formatting_toolbar_state(
+                Some(&runtime),
+                &HashMap::new(),
+                false,
+                false,
+                size(px(900.0), px(700.0)),
+                Some(2),
+                true,
+                true,
+                None,
+                &[],
+                0.0,
+            )
+            .is_none()
+        );
     }
 
     #[test]

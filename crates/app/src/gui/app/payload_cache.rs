@@ -6,15 +6,15 @@ use cditor_runtime::PayloadCachePolicy;
 use super::cditor_v2_view::{CditorV2View, CditorViewState};
 
 impl CditorV2View {
-    pub(in crate::gui::app) fn trim_postgres_payload_cache(&mut self) {
-        if !self.postgres_persistence.is_enabled() {
+    pub(in crate::gui::app) fn trim_persistent_payload_cache(&mut self) {
+        if !self.storage_persistence.is_enabled() {
             return;
         }
         let pins = self.payload_cache_ui_pins();
         let CditorViewState::Ready(runtime) = &mut self.state else {
             return;
         };
-        let report = runtime.trim_payload_cache(PayloadCachePolicy::postgres_default(), pins);
+        let report = runtime.trim_payload_cache(PayloadCachePolicy::persistent_default(), pins);
         for block_id in report.evicted_block_ids {
             self.text_layouts.remove(&block_id);
             self.table_cell_layouts

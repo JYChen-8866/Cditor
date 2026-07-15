@@ -1,3 +1,4 @@
+pub mod adapter;
 pub mod demo_seed;
 pub mod error;
 pub mod migrations;
@@ -10,6 +11,7 @@ pub mod types;
 #[cfg(test)]
 mod postgres_integration;
 
+pub use adapter::PostgresDocumentStorage;
 pub use demo_seed::{LargeDemoSeedOptions, LargeDemoSeedReport, ensure_large_mixed_demo_seeded};
 pub use error::{PostgresStorageError, PostgresStorageResult};
 pub use migrations::{INITIAL_SCHEMA_MIGRATION, INITIAL_SCHEMA_VERSION, run_migrations};

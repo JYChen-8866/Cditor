@@ -1,9 +1,6 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
 
-cd "$(dirname "$0")/../.."
+SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 
-echo "Starting Cditor minimal editor..."
-export CDITOR_TRACE_TABLE="${CDITOR_TRACE_TABLE:-0}"
-export CDITOR_DATABASE_URL="${CDITOR_DATABASE_URL:-postgres://cditor:cditor@localhost:5432/cditor_dev}"
-cargo run -p cditor-app
+exec "$SCRIPT_DIR/run_editor_postgres.sh" "$@"

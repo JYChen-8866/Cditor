@@ -1,13 +1,15 @@
 use std::fmt;
 
-use gpui::{App, WeakEntity};
+use gpui::{App, Task, WeakEntity};
 
 use crate::gui::CditorV2View;
 
 use super::{
     command::{CditorCommand, CommandOutcome, CommandState},
     diagnostics::CditorDiagnostics,
-    document::{CloseGuard, DocumentInfo, DocumentSelection, SaveStatus, ScrollAlignment},
+    document::{
+        CloseGuard, DocumentInfo, DocumentSelection, SaveReport, SaveStatus, ScrollAlignment,
+    },
     error::CditorError,
 };
 
@@ -117,6 +119,18 @@ impl CditorHandle {
                 failed_operations: 0,
                 can_close_safely: true,
             })
+    }
+
+    pub fn save(&self, cx: &mut App) -> Task<Result<SaveReport, CditorError>> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_save(cx))
+            .unwrap_or_else(|_| Task::ready(Err(CditorError::ComponentDropped)))
+    }
+
+    pub fn flush(&self, cx: &mut App) -> Task<Result<SaveReport, CditorError>> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_flush(cx))
+            .unwrap_or_else(|_| Task::ready(Err(CditorError::ComponentDropped)))
     }
 
     pub fn diagnostics(&self, cx: &App) -> Result<CditorDiagnostics, CditorError> {

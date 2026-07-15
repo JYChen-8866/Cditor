@@ -20,6 +20,7 @@ struct TableResizeTrack {
     index: usize,
     start_px: f32,
     size_px: f32,
+    cross_start_px: f32,
     extent_px: f32,
 }
 
@@ -57,13 +58,13 @@ fn render_table_resize_handle(
             this.left(px(
                 origin.x_px + track.edge_px() - TABLE_RESIZE_HANDLE_THICKNESS_PX / 2.0
             ))
-            .top(px(origin.y_px))
+            .top(px(origin.y_px + track.cross_start_px))
             .w(px(TABLE_RESIZE_HANDLE_THICKNESS_PX))
             .h(px(track.extent_px))
             .cursor_col_resize()
         })
         .when(track.axis == TableAxis::Row, |this| {
-            this.left(px(origin.x_px))
+            this.left(px(origin.x_px + track.cross_start_px))
                 .top(px(
                     origin.y_px + track.edge_px() - TABLE_RESIZE_HANDLE_THICKNESS_PX / 2.0
                 ))
@@ -120,9 +121,73 @@ fn resize_handle_line(track: TableResizeTrack, color: u32) -> AnyElement {
 }
 
 fn column_resize_tracks(table_view: &TableViewState) -> Vec<TableResizeTrack> {
+    let exclusion = focused_cell_resize_exclusion(table_view);
     (0..table_view.col_count)
         .filter_map(|index| resize_track(table_view, TableAxis::Column, index))
+        .flat_map(|track| {
+            let excluded_range = exclusion
+                .filter(|exclusion| exclusion.includes_column_edge(track.index))
+                .map(|exclusion| exclusion.start_px..exclusion.end_px);
+            resize_track_segments(track, excluded_range)
+        })
         .collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct FocusedCellResizeExclusion {
+    first_column_edge: usize,
+    last_column_edge: usize,
+    start_px: f32,
+    end_px: f32,
+}
+
+impl FocusedCellResizeExclusion {
+    fn includes_column_edge(self, index: usize) -> bool {
+        index >= self.first_column_edge && index <= self.last_column_edge
+    }
+}
+
+fn focused_cell_resize_exclusion(
+    table_view: &TableViewState,
+) -> Option<FocusedCellResizeExclusion> {
+    let focused = table_view.focused_cell?;
+    let cell = table_view
+        .visible_cells
+        .iter()
+        .find(|cell| cell.position == focused)?;
+    Some(FocusedCellResizeExclusion {
+        first_column_edge: focused.col,
+        last_column_edge: focused.col.checked_add(cell.col_span.saturating_sub(1))?,
+        start_px: cell.y_px.max(0.0),
+        end_px: (cell.y_px + cell.height_px).min(table_view.height_px),
+    })
+}
+
+fn resize_track_segments(
+    track: TableResizeTrack,
+    excluded_range: Option<std::ops::Range<f32>>,
+) -> Vec<TableResizeTrack> {
+    let Some(excluded_range) = excluded_range else {
+        return vec![track];
+    };
+    let track_end = track.cross_start_px + track.extent_px;
+    let excluded_start = excluded_range.start.clamp(track.cross_start_px, track_end);
+    let excluded_end = excluded_range.end.clamp(excluded_start, track_end);
+    let mut segments = Vec::with_capacity(2);
+    if excluded_start > track.cross_start_px {
+        segments.push(TableResizeTrack {
+            extent_px: excluded_start - track.cross_start_px,
+            ..track
+        });
+    }
+    if excluded_end < track_end {
+        segments.push(TableResizeTrack {
+            cross_start_px: excluded_end,
+            extent_px: track_end - excluded_end,
+            ..track
+        });
+    }
+    segments
 }
 
 #[allow(dead_code)]
@@ -153,6 +218,7 @@ fn resize_track(
         index,
         start_px,
         size_px,
+        cross_start_px: 0.0,
         extent_px: match axis {
             TableAxis::Column => table_view.height_px,
             TableAxis::Row => table_view.width_px,
@@ -189,6 +255,7 @@ mod tests {
                 index: 0,
                 start_px: 0.0,
                 size_px: 120.0,
+                cross_start_px: 0.0,
                 extent_px: 72.0
             }
         );
@@ -239,6 +306,46 @@ mod tests {
         assert_eq!(columns.len(), 2);
         assert_eq!(columns[0].edge_px(), 120.0);
         assert_eq!(columns[1].edge_px(), 240.0);
+    }
+
+    #[test]
+    fn focused_cell_removes_resize_hitboxes_only_from_its_own_rows() {
+        let mut table_view = table_view_with_two_by_two_cells();
+        table_view.focused_cell = Some(TableCellPosition { row: 0, col: 0 });
+        let columns = column_resize_tracks(&table_view);
+
+        let focused_edge_segments = columns
+            .iter()
+            .filter(|track| track.index == 0)
+            .copied()
+            .collect::<Vec<_>>();
+        assert_eq!(focused_edge_segments.len(), 1);
+        assert_eq!(focused_edge_segments[0].cross_start_px, 36.0);
+        assert_eq!(focused_edge_segments[0].extent_px, 36.0);
+        assert!(columns.iter().any(|track| {
+            track.index == 1 && track.cross_start_px == 0.0 && track.extent_px == 72.0
+        }));
+    }
+
+    #[test]
+    fn focused_merged_cell_excludes_every_boundary_inside_its_surface() {
+        let mut table_view = table_view_with_two_by_two_cells();
+        table_view.visible_cells = vec![TableVisibleCell {
+            position: TableCellPosition { row: 0, col: 0 },
+            row_span: 2,
+            col_span: 2,
+            x_px: 0.0,
+            y_px: 0.0,
+            width_px: 240.0,
+            height_px: 72.0,
+            header: false,
+            spans: Vec::new(),
+            align: cditor_core::rich_text::TableCellAlign::Left,
+            background_color: None,
+        }];
+        table_view.focused_cell = Some(TableCellPosition { row: 0, col: 0 });
+
+        assert!(column_resize_tracks(&table_view).is_empty());
     }
 
     fn table_view_with_two_by_two_cells() -> TableViewState {

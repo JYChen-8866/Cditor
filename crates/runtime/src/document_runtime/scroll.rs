@@ -24,7 +24,7 @@ impl DocumentRuntime {
         self.scroll
             .set_viewport_height(viewport_height)
             .map_err(|error| error.to_string())?;
-        let total_height = self.scroll_extent_height(self.height_index.total_height());
+        let total_height = self.scroll_extent_height(self.page_layout.total_height());
         self.scroll
             .set_model_total_height(total_height)
             .map_err(|error| error.to_string())?;

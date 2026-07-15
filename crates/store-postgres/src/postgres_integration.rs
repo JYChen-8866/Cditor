@@ -3,16 +3,23 @@ mod tests {
     use sqlx::types::Uuid;
 
     use crate::{
-        DocumentRow, EditTransactionVersions, PostgresDocumentStore, PostgresFtsStore,
-        PostgresLayoutCacheStore, PostgresPayloadStore, PostgresPoolConfig,
+        DocumentRow, EditTransactionVersions, PostgresDocumentStorage, PostgresDocumentStore,
+        PostgresFtsStore, PostgresLayoutCacheStore, PostgresPayloadStore, PostgresPoolConfig,
         PostgresTransactionStore, create_pg_pool, pg_document_id_from_runtime, run_migrations,
     };
     use cditor_core::document::BlockIndexRecord;
     use cditor_core::edit::EditTransaction;
-    use cditor_core::layout::{HeightConfidence, HeightEstimate};
+    use cditor_core::layout::{
+        HeightConfidence, HeightEstimate, PAGE_POLICY_VERSION, PageLayout, PageLayoutIndex,
+        PagePolicy,
+    };
     use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind};
     use cditor_storage::layout_cache::{BlockLayoutRow, CacheSource, LayoutCacheKey};
     use cditor_storage::optimistic_persistence::{OptimisticPersistenceManager, PersistenceState};
+    use cditor_storage::{
+        DOCUMENT_INDEX_VISIBLE_VERSION, DocumentStorage, LoadDocumentRequest,
+        StoragePageLayoutSnapshot, StorageSaveBatch,
+    };
 
     struct IntegrationStores {
         document: PostgresDocumentStore,
@@ -127,6 +134,19 @@ mod tests {
         }
     }
 
+    fn runtime_layout_key() -> LayoutCacheKey {
+        LayoutCacheKey {
+            width_bucket: 10,
+            exact_width_px: 800,
+            content_version: 1,
+            attrs_version: 0,
+            style_version: 0,
+            font_version: 0,
+            theme_version: 0,
+            scale_factor_milli: 1_000,
+        }
+    }
+
     #[tokio::test]
     #[ignore = "requires docker compose postgres_test and CDITOR_TEST_DATABASE_URL"]
     async fn postgres_integration_demo_document_save_open_edit_and_reopen() {
@@ -189,6 +209,199 @@ mod tests {
             reopened.records[0].plain_text(),
             "hello postgres integration edited"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires docker compose postgres_test and CDITOR_TEST_DATABASE_URL"]
+    async fn postgres_aggregate_commit_rolls_back_structure_when_payload_fails() {
+        let stores = stores().await;
+        let runtime_document_id = unique_runtime_document_id(135_000);
+        let block_base = runtime_document_id * 10;
+        let document = seed_demo_document(&stores, runtime_document_id, block_base).await;
+        let original_records = stores
+            .document
+            .load_block_index_records(document.id)
+            .await
+            .unwrap();
+        let mut changed_records = original_records.clone();
+        changed_records.push(BlockIndexRecord::new(
+            block_base + 99,
+            None,
+            0,
+            paragraph_tag(),
+            0,
+        ));
+        let invalid_payload = BlockPayloadRecord::rich_text(
+            block_base + 100,
+            RichBlockKind::Paragraph,
+            "missing block must abort the aggregate transaction",
+        );
+        let layout_key = runtime_layout_key();
+        let page_layout = PageLayoutIndex::from_cached_pages(
+            vec![PageLayout {
+                page_index: 0,
+                block_start: 0,
+                block_count: changed_records.len(),
+                height: 144.0,
+                measured_ratio: 1.0,
+                confidence: HeightConfidence::Exact,
+                max_error_hint: 0.0,
+                dirty: false,
+            }],
+            PagePolicy::default(),
+            changed_records.len(),
+        )
+        .unwrap();
+        let page_layout_snapshot = StoragePageLayoutSnapshot::from_page_layout(
+            DOCUMENT_INDEX_VISIBLE_VERSION,
+            2,
+            layout_key,
+            PAGE_POLICY_VERSION,
+            &page_layout,
+            &changed_records
+                .iter()
+                .map(|record| record.id)
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let storage = PostgresDocumentStorage::from_pool(stores.document.pool().clone());
+
+        let result = storage
+            .commit(StorageSaveBatch {
+                document_id: runtime_document_id,
+                layout_key: Some(layout_key),
+                payloads: vec![invalid_payload],
+                index_records: changed_records,
+                structure_version: 2,
+                transactions: Vec::new(),
+                block_attrs: Vec::new(),
+                page_layout_snapshot: Some(page_layout_snapshot),
+            })
+            .await;
+        assert!(result.is_err());
+
+        let metadata = stores
+            .document
+            .load_document_metadata(document.id)
+            .await
+            .unwrap();
+        let records = stores
+            .document
+            .load_block_index_records(document.id)
+            .await
+            .unwrap();
+        assert_eq!(metadata.structure_version, 1);
+        assert_eq!(records, original_records);
+        assert!(
+            !stores
+                .document
+                .has_document_index_snapshot(
+                    document.id,
+                    cditor_storage::DOCUMENT_INDEX_VISIBLE_VERSION,
+                    2,
+                )
+                .await
+                .unwrap()
+        );
+        let saved_page_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM page_layout WHERE document_id = $1 AND structure_version = 2",
+        )
+        .bind(document.id)
+        .fetch_one(stores.document.pool())
+        .await
+        .unwrap();
+        assert_eq!(saved_page_count, 0);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires docker compose postgres_test and CDITOR_TEST_DATABASE_URL"]
+    async fn postgres_aggregate_adapter_round_trips_page_layout_snapshot() {
+        let stores = stores().await;
+        let runtime_document_id = unique_runtime_document_id(136_000);
+        let block_base = runtime_document_id * 10;
+        let mut document = document_row(runtime_document_id);
+        document.workspace_id = Uuid::from_u128(1);
+        stores
+            .document
+            .save_document_metadata(&document)
+            .await
+            .unwrap();
+        stores
+            .document
+            .save_block_index_records(document.id, &demo_records(block_base), 1)
+            .await
+            .unwrap();
+        stores
+            .payload
+            .save_block_payloads(document.id, &demo_payloads(block_base))
+            .await
+            .unwrap();
+        let records = demo_records(block_base);
+        let visible_ids = records.iter().map(|record| record.id).collect::<Vec<_>>();
+        let layout_key = runtime_layout_key();
+        let page_layout = PageLayoutIndex::from_cached_pages(
+            vec![PageLayout {
+                page_index: 0,
+                block_start: 0,
+                block_count: records.len(),
+                height: 222.0,
+                measured_ratio: 1.0,
+                confidence: HeightConfidence::Exact,
+                max_error_hint: 0.0,
+                dirty: false,
+            }],
+            PagePolicy::default(),
+            records.len(),
+        )
+        .unwrap();
+        let snapshot = StoragePageLayoutSnapshot::from_page_layout(
+            DOCUMENT_INDEX_VISIBLE_VERSION,
+            2,
+            layout_key,
+            PAGE_POLICY_VERSION,
+            &page_layout,
+            &visible_ids,
+        )
+        .unwrap();
+        let storage = PostgresDocumentStorage::from_pool(stores.document.pool().clone());
+        storage
+            .commit(StorageSaveBatch {
+                document_id: runtime_document_id,
+                layout_key: Some(layout_key),
+                payloads: Vec::new(),
+                index_records: records,
+                structure_version: 2,
+                transactions: Vec::new(),
+                block_attrs: Vec::new(),
+                page_layout_snapshot: Some(snapshot),
+            })
+            .await
+            .unwrap();
+
+        let loaded = storage
+            .load_document(LoadDocumentRequest {
+                document_id: runtime_document_id,
+                workspace_id: 1,
+                initial_payload_window_blocks: 3,
+                visible_index_version: DOCUMENT_INDEX_VISIBLE_VERSION,
+                layout_key,
+                page_policy_version: PAGE_POLICY_VERSION,
+            })
+            .await
+            .unwrap();
+        let restored = loaded
+            .page_layout_snapshot
+            .unwrap()
+            .to_page_layout_index(
+                DOCUMENT_INDEX_VISIBLE_VERSION,
+                2,
+                layout_key,
+                PAGE_POLICY_VERSION,
+                PagePolicy::default(),
+                &visible_ids,
+            )
+            .unwrap();
+        assert_eq!(restored.total_height(), 222.0);
     }
 
     #[tokio::test]

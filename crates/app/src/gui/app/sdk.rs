@@ -1,12 +1,12 @@
-use gpui::{Context, EventEmitter, Window};
+use gpui::{AppContext, Context, EventEmitter, Task, Window};
 
 use crate::api::{
     Affinity, BlockTransform, CditorCommand, CditorDiagnostics, CditorError, CditorEvent,
     ChangeOrigin, CloseGuard, CommandOutcome, CommandState, DocumentInfo, DocumentPosition,
-    DocumentSelection, SaveStatus, ScrollAlignment, TextOffset,
+    DocumentSelection, SaveReport, SaveStatus, ScrollAlignment, TextOffset,
 };
 use crate::gui::app::CditorV2View;
-use crate::gui::persistence::EditorSaveStatus;
+use crate::gui::persistence::{EditorSaveStatus, PersistenceBarrierKind};
 
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
@@ -43,7 +43,7 @@ impl CditorV2View {
             EditorSaveStatus::Clean
         };
         if !readonly && self.dirty {
-            self.postgres_persistence.schedule(cx);
+            self.storage_persistence.schedule(cx);
         }
         cx.notify();
     }
@@ -130,7 +130,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn sdk_close_guard(&self) -> CloseGuard {
-        let saving = self.postgres_persistence.is_saving();
+        let saving = self.storage_persistence.is_saving();
         let failed_operations =
             usize::from(matches!(self.save_status, EditorSaveStatus::Failed(_)));
         CloseGuard {
@@ -141,14 +141,56 @@ impl CditorV2View {
         }
     }
 
+    pub(crate) fn sdk_save(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<SaveReport, CditorError>> {
+        self.sdk_persistence_barrier(PersistenceBarrierKind::Save, cx)
+    }
+
+    pub(crate) fn sdk_flush(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<SaveReport, CditorError>> {
+        self.sdk_persistence_barrier(PersistenceBarrierKind::Flush, cx)
+    }
+
+    fn sdk_persistence_barrier(
+        &mut self,
+        kind: PersistenceBarrierKind,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<SaveReport, CditorError>> {
+        if self.readonly {
+            return Task::ready(Err(CditorError::Readonly));
+        }
+        let Some(revision) = self.ready_runtime_ref().map(|runtime| runtime.revision()) else {
+            return Task::ready(Err(CditorError::NotReady));
+        };
+        if !self.storage_persistence.is_enabled() {
+            return Task::ready(Err(CditorError::Unsupported(
+                "save and flush require a persistent storage backend".to_owned(),
+            )));
+        }
+
+        let receiver = self.storage_persistence.request_barrier(kind, revision);
+        self.flush_storage_persistence(cx);
+        cx.background_spawn(
+            async move { receiver.await.unwrap_or(Err(CditorError::ComponentDropped)) },
+        )
+    }
+
     pub(crate) fn sdk_diagnostics(&self) -> Result<CditorDiagnostics, CditorError> {
         let runtime = self.ready_runtime_ref().ok_or(CditorError::NotReady)?;
         Ok(CditorDiagnostics {
+            storage_backend: self
+                .storage_persistence
+                .session()
+                .map(|session| session.backend_kind()),
             document_blocks: runtime.document_block_count(),
             loaded_payloads: runtime.loaded_payload_count(),
             rendered_blocks: self.projected_block_rects.len(),
             pending_layout_tasks: runtime.pending_layout_task_count(),
-            pending_saves: self.postgres_persistence.pending_operation_count(),
+            pending_saves: self.storage_persistence.pending_operation_count(),
             dirty_blocks: runtime.dirty_payload_count(),
             estimated_document_height: runtime.estimated_document_height(),
             memory_estimate_bytes: u64::try_from(runtime.estimated_payload_memory_bytes())

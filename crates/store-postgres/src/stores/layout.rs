@@ -17,6 +17,8 @@ use crate::types::{
     runtime_block_id_from_pg,
 };
 
+mod page_snapshot;
+
 #[derive(Debug, Clone)]
 pub struct PostgresLayoutCacheStore {
     pool: PgPool,

@@ -3,17 +3,15 @@ use std::{fmt, sync::Arc, time::Duration};
 use gpui::{AppContext, Context, Entity};
 
 use crate::gui::CditorV2View;
-use crate::gui::persistence::PostgresPersistenceTarget;
 use cditor_core::ids::DocumentId;
 use cditor_runtime::DocumentRuntime;
-use cditor_storage_postgres::PostgresStorageError;
-use cditor_storage_postgres::block_on_postgres;
+use cditor_storage::{StorageError, block_on_storage};
 
 use super::cold_start::{CditorColdStartPlan, load_runtime_from_options};
 use super::component::CditorComponent;
 use super::error::CditorError;
 use super::event::CditorEvent;
-use super::options::{CditorBackend, CditorOptions, WorkspaceId};
+use super::options::{CditorBackend, CditorOptions, SqliteStorageOptions, WorkspaceId};
 
 #[derive(Clone)]
 pub struct Cditor {
@@ -94,6 +92,18 @@ impl Cditor {
 
     pub fn with_postgres_pool(mut self, pool: sqlx::PgPool) -> Self {
         self.options.backend = CditorBackend::PostgresPool { pool };
+        self
+    }
+
+    pub fn with_sqlite_path(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.options.backend = CditorBackend::Sqlite {
+            options: SqliteStorageOptions::file(path),
+        };
+        self
+    }
+
+    pub fn with_sqlite_options(mut self, options: SqliteStorageOptions) -> Self {
+        self.options.backend = CditorBackend::Sqlite { options };
         self
     }
 
@@ -183,11 +193,15 @@ impl Cditor {
                 self.options.readonly,
                 cx,
             ),
-            CditorColdStartPlan::PostgresUrl { document_id, .. }
-            | CditorColdStartPlan::PostgresPool { document_id } => {
-                spawn_postgres_cold_start(self.options.clone(), cx);
+            plan @ (CditorColdStartPlan::Sqlite { .. }
+            | CditorColdStartPlan::PostgresUrl { .. }
+            | CditorColdStartPlan::PostgresPool { .. }) => {
+                let label = plan
+                    .persistent_label()
+                    .unwrap_or_else(|| "persistent document".to_owned());
+                spawn_storage_cold_start(self.options.clone(), cx);
                 CditorV2View::loading_with_options(
-                    format!("PostgreSQL document {document_id} is loading in background"),
+                    format!("{label} is loading in background"),
                     self.options.debug_overlay,
                     self.options.readonly,
                     self.options.autosave_interval,
@@ -228,14 +242,14 @@ impl Cditor {
     }
 }
 
-fn spawn_postgres_cold_start(options: CditorOptions, cx: &mut Context<CditorV2View>) {
-    let timeout = postgres_cold_start_timeout(&options);
+fn spawn_storage_cold_start(options: CditorOptions, cx: &mut Context<CditorV2View>) {
+    let timeout = storage_cold_start_timeout(&options);
     let load_task = cx.background_spawn(async move {
-        block_on_postgres(async move {
+        block_on_storage(async move {
             tokio::time::timeout(timeout, load_runtime_from_options(&options))
                 .await
-                .map_err(|_| PostgresStorageError::Timeout {
-                    operation: "PostgreSQL document cold start",
+                .map_err(|_| StorageError::Timeout {
+                    operation: "document storage cold start",
                     timeout,
                 })?
         })
@@ -244,14 +258,11 @@ fn spawn_postgres_cold_start(options: CditorOptions, cx: &mut Context<CditorV2Vi
 
     cx.spawn(async move |view, cx| match load_task.await {
         Ok(Some(loaded)) => {
-            let postgres_target = loaded.postgres_pool.map(|pool| {
-                PostgresPersistenceTarget::from_runtime_document_id(
-                    loaded.runtime.document_id,
-                    pool,
-                )
-            });
             let _ = view.update(cx, |view, cx| {
-                view.apply_loaded_runtime_with_postgres_target(loaded.runtime, postgres_target);
+                view.apply_loaded_runtime_with_storage(
+                    loaded.runtime,
+                    Some(loaded.storage_session),
+                );
                 if let Some(document) = view.sdk_document_info() {
                     cx.emit(CditorEvent::Ready { document });
                 }
@@ -260,10 +271,10 @@ fn spawn_postgres_cold_start(options: CditorOptions, cx: &mut Context<CditorV2Vi
         }
         Ok(None) => {
             let _ = view.update(cx, |view, cx| {
-                view.apply_load_failed("PostgreSQL backend did not produce a runtime");
+                view.apply_load_failed("storage backend did not produce a runtime");
                 cx.emit(CditorEvent::LoadFailed {
                     error: CditorError::Internal(
-                        "PostgreSQL backend did not produce a runtime".to_owned(),
+                        "storage backend did not produce a runtime".to_owned(),
                     ),
                 });
                 cx.notify();
@@ -282,7 +293,7 @@ fn spawn_postgres_cold_start(options: CditorOptions, cx: &mut Context<CditorV2Vi
     .detach();
 }
 
-fn postgres_cold_start_timeout(options: &CditorOptions) -> Duration {
+fn storage_cold_start_timeout(options: &CditorOptions) -> Duration {
     if options.seed_large_demo_to_postgres {
         Duration::from_secs(30 * 60)
     } else {
@@ -300,6 +311,10 @@ mod tests {
 
         assert_eq!(cditor.options().backend, CditorBackend::Demo);
         assert_eq!(cditor.options().payload_window_size, 128);
+        assert_eq!(
+            cditor.options().autosave_interval,
+            Some(Duration::from_millis(250))
+        );
         assert!(!cditor.options().debug_overlay);
     }
 
@@ -337,18 +352,29 @@ mod tests {
     }
 
     #[test]
+    fn cditor_builder_sets_sqlite_backend_options() {
+        let cditor = Cditor::new()
+            .with_document_id(42)
+            .with_sqlite_path("workspace.cditor.db");
+
+        assert_eq!(
+            cditor.options().backend,
+            CditorBackend::Sqlite {
+                options: SqliteStorageOptions::file("workspace.cditor.db")
+            }
+        );
+    }
+
+    #[test]
     fn postgres_seed_gets_a_longer_cold_start_deadline() {
         let normal = Cditor::new().into_options();
         let seeded = Cditor::new()
             .with_postgres_large_demo_seed(100_000, false)
             .into_options();
 
+        assert_eq!(storage_cold_start_timeout(&normal), Duration::from_secs(90));
         assert_eq!(
-            postgres_cold_start_timeout(&normal),
-            Duration::from_secs(90)
-        );
-        assert_eq!(
-            postgres_cold_start_timeout(&seeded),
+            storage_cold_start_timeout(&seeded),
             Duration::from_secs(30 * 60)
         );
     }

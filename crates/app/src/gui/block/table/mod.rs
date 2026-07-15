@@ -1,5 +1,11 @@
+mod active_border;
+mod axis_grip;
 mod cell;
+mod cell_gutter;
+mod cell_handle;
+mod cell_menu;
 mod chrome;
+mod grid;
 pub(crate) mod menu;
 mod render;
 mod reorder;
@@ -9,7 +15,11 @@ mod style;
 mod text;
 mod toolbar;
 
-pub(crate) use chrome::render_table_axis_overlays;
+pub(crate) use cell_menu::render_table_cell_menu;
+pub(crate) use chrome::{
+    TableChromeOverlays, render_table_axis_overlays, render_table_chrome_viewport,
+    table_chrome_viewport_origins,
+};
 pub(crate) use render::render_table_block;
 pub(crate) use reorder::{
     TableReorderPreview, table_axis_track_sizes, table_reorder_indicator_edge_px_for_preview,
@@ -17,7 +27,9 @@ pub(crate) use reorder::{
 pub(crate) use resize::{
     TableResizePreview, render_table_resize_overlays, table_resize_indicator_edge_px,
 };
-pub(crate) use selection::{TableAxis, TableAxisSelection, TableCellRangeSelection};
+pub(crate) use selection::{
+    TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
+};
 pub(crate) use style::TABLE_RESIZE_INDICATOR_THICKNESS_PX;
 pub(crate) use toolbar::{
     TableToolbarEditorOrigin, render_table_axis_toolbar, table_content_editor_origin,
@@ -55,8 +67,8 @@ mod tests {
     use super::style::{
         TABLE_ACTIVE_CELL_BORDER_WIDTH_PX, V1_TABLE_CELL_MIN_WIDTH_PX, V1_TABLE_CELL_PADDING_X_PX,
         V1_TABLE_CELL_PADDING_Y_PX, V1_TABLE_RADIUS_PX, table_active_border_color,
-        table_border_color, table_cell_background, table_cell_border_color, table_cell_line_height,
-        table_cell_text_size, table_header_background, table_style_color, table_surface_background,
+        table_border_color, table_cell_background, table_cell_line_height, table_cell_text_size,
+        table_header_background, table_style_color, table_surface_background,
     };
 
     #[test]
@@ -132,11 +144,10 @@ mod tests {
     }
 
     #[test]
-    fn table_cell_border_remains_visible_during_selection_and_editing() {
+    fn projected_table_grid_keeps_the_theme_border_color() {
         let theme = GuiTheme::light();
 
-        assert_eq!(table_cell_border_color(theme, false), theme.border);
-        assert_eq!(table_cell_border_color(theme, true), theme.border);
+        assert_eq!(table_border_color(theme), theme.border);
     }
 
     #[test]
@@ -153,6 +164,10 @@ mod tests {
         let theme = GuiTheme::light();
 
         assert_eq!(TABLE_ACTIVE_CELL_BORDER_WIDTH_PX, 2.0);
+        assert_eq!(
+            super::style::TABLE_CELL_GUTTER_THICKNESS_PX,
+            TABLE_ACTIVE_CELL_BORDER_WIDTH_PX
+        );
         assert_eq!(table_active_border_color(theme), theme.table_active_border);
     }
 

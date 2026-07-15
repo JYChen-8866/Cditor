@@ -426,6 +426,17 @@ impl DocumentRuntime {
         self.pending_structure_transactions.drain(..).collect()
     }
 
+    pub fn restore_pending_structure_transactions(
+        &mut self,
+        mut transactions: Vec<EditTransaction>,
+    ) {
+        if transactions.is_empty() {
+            return;
+        }
+        transactions.append(&mut self.pending_structure_transactions);
+        self.pending_structure_transactions = transactions;
+    }
+
     pub fn move_block_subtree_before(
         &mut self,
         block_id: BlockId,

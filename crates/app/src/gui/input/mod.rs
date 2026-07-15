@@ -17,10 +17,10 @@ pub use code_language::{
 };
 pub use command::GuiInputCommand;
 pub use mouse::{
-    BlockDragSelectionController, begin_table_cell_range_selection_from_mouse,
+    BlockDragSelectionController, begin_table_cell_text_selection_from_mouse,
     focus_block_from_mouse, focus_table_cell_from_mouse, gutter_mouse_down_from_mouse,
     hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,
-    update_table_cell_range_selection_from_mouse,
+    update_table_cell_text_selection_from_mouse,
 };
 pub use single_line::{
     SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement, single_line_input_max_x,

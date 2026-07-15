@@ -31,7 +31,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.readonly || track_sizes_px.get(index).is_none() {
+        if track_sizes_px.get(index).is_none() {
             return;
         }
         window.focus(&self.focus, cx);
@@ -42,9 +42,13 @@ impl CditorV2View {
         self.image_resize_drag = None;
         self.table_resize_drag = None;
         self.table_hscroll_drag = None;
-        self.table_interaction_mode = GuiTableInteractionMode::AxisSelected(
-            crate::gui::block::table::TableAxisSelection::new(block_id, axis, index),
-        );
+        self.table_interaction_mode = GuiTableInteractionMode::Reordering {
+            block_id,
+            axis,
+            from_index: index,
+            target_index: index,
+            active: false,
+        };
         self.hovered_block_id = Some(block_id);
         self.action_block_id = Some(block_id);
         self.table_reorder_drag = Some(GuiTableReorderDrag {
@@ -79,6 +83,9 @@ impl CditorV2View {
         position: Point<Pixels>,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.readonly {
+            return self.table_reorder_drag.is_some();
+        }
         let Some(mut drag) = self.table_reorder_drag.take() else {
             return false;
         };
@@ -103,11 +110,12 @@ impl CditorV2View {
         self.action_block_id = self
             .action_block_id
             .filter(|action_block_id| *action_block_id != drag.block_id);
-        if matches!(self.table_interaction_mode, GuiTableInteractionMode::Reordering { block_id, .. } if block_id == drag.block_id)
-        {
-            self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        self.table_interaction_mode = table_reorder_release_mode(&drag);
+        if !drag.exceeded_threshold {
+            cx.notify();
+            return true;
         }
-        if !drag.exceeded_threshold || drag.from_index == drag.target_index {
+        if drag.from_index == drag.target_index {
             cx.notify();
             return true;
         }
@@ -141,14 +149,18 @@ fn table_reorder_pointer(axis: TableAxis, position: Point<Pixels>) -> f32 {
 }
 
 fn table_reorder_interaction_mode(drag: &GuiTableReorderDrag) -> GuiTableInteractionMode {
+    GuiTableInteractionMode::Reordering {
+        block_id: drag.block_id,
+        axis: drag.axis,
+        from_index: drag.from_index,
+        target_index: drag.target_index,
+        active: drag.exceeded_threshold,
+    }
+}
+
+fn table_reorder_release_mode(drag: &GuiTableReorderDrag) -> GuiTableInteractionMode {
     if drag.exceeded_threshold {
-        GuiTableInteractionMode::Reordering {
-            block_id: drag.block_id,
-            axis: drag.axis,
-            from_index: drag.from_index,
-            target_index: drag.target_index,
-            active: true,
-        }
+        GuiTableInteractionMode::Idle
     } else {
         GuiTableInteractionMode::AxisSelected(crate::gui::block::table::TableAxisSelection::new(
             drag.block_id,
@@ -204,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn click_keeps_axis_selected_until_drag_threshold_is_crossed() {
+    fn pressed_gutter_stays_in_reorder_mode_without_opening_the_menu() {
         let mut drag = GuiTableReorderDrag {
             block_id: 7,
             axis: TableAxis::Column,
@@ -217,6 +229,16 @@ mod tests {
 
         assert_eq!(
             table_reorder_interaction_mode(&drag),
+            GuiTableInteractionMode::Reordering {
+                block_id: 7,
+                axis: TableAxis::Column,
+                from_index: 1,
+                target_index: 1,
+                active: false,
+            }
+        );
+        assert_eq!(
+            table_reorder_release_mode(&drag),
             GuiTableInteractionMode::AxisSelected(
                 crate::gui::block::table::TableAxisSelection::new(7, TableAxis::Column, 1,),
             )
@@ -226,5 +248,9 @@ mod tests {
             table_reorder_interaction_mode(&drag),
             GuiTableInteractionMode::Reordering { active: true, .. }
         ));
+        assert_eq!(
+            table_reorder_release_mode(&drag),
+            GuiTableInteractionMode::Idle
+        );
     }
 }

@@ -27,6 +27,7 @@ pub struct DocumentRuntimeColdStartReport {
     pub payloads_loaded: usize,
     pub payloads_missing: usize,
     pub layout_cache_hits: usize,
+    pub page_layout_cache_hit: bool,
 }
 
 impl DocumentRuntime {
@@ -155,8 +156,27 @@ impl DocumentRuntime {
                 payloads_loaded,
                 payloads_missing: 0,
                 layout_cache_hits,
+                page_layout_cache_hit: false,
             },
         ))
+    }
+
+    pub fn apply_cached_page_layout(&mut self, page_layout: PageLayoutIndex) -> Result<(), String> {
+        if page_layout.policy != self.page_layout.policy {
+            return Err("cached page layout policy does not match the runtime policy".to_owned());
+        }
+        page_layout
+            .validate_covers_blocks(self.visible_index.total_visible_count())
+            .map_err(|error| error.to_string())?;
+        let total_height = self.scroll_extent_height(page_layout.total_height());
+        self.page_layout = page_layout;
+        self.scroll
+            .set_model_total_height(total_height)
+            .map_err(|error| error.to_string())?;
+        self.scroll
+            .set_displayed_total_height(total_height)
+            .map_err(|error| error.to_string())?;
+        Ok(())
     }
 }
 
@@ -207,6 +227,7 @@ mod tests {
         assert_eq!(report.total_blocks, 3);
         assert_eq!(report.payloads_loaded, 2);
         assert_eq!(report.layout_cache_hits, 1);
+        assert!(!report.page_layout_cache_hit);
     }
 
     #[test]
