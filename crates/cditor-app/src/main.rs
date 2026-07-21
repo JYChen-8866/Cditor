@@ -41,6 +41,7 @@ fn main() {
 
     let app = gpui_platform::application();
     app.run(move |cx: &mut App| {
+        cditor_editor::input::actions::bind_cditor_keys(cx);
         cx.activate(true);
         cx.open_window(
             WindowOptions {
