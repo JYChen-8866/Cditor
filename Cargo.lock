@@ -957,32 +957,54 @@ dependencies = [
 ]
 
 [[package]]
-name = "cditor-app"
+name = "cditor-api"
 version = "0.2.6"
 dependencies = [
  "async-trait",
  "cditor-ai",
  "cditor-core",
- "cditor-editor",
+ "cditor-editor-core",
  "cditor-runtime",
  "cditor-storage",
  "cditor-storage-postgres",
  "cditor-storage-sqlite",
- "cditor-text",
+ "cditor-theme",
  "ding-board",
  "gpui",
- "gpui_platform",
- "image",
- "lumis",
- "mermaid_render",
- "reqwest",
  "serde",
  "serde_json",
  "sqlx",
- "swash",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
+name = "cditor-app"
+version = "0.2.6"
+dependencies = [
+ "cditor-api",
+ "cditor-core",
+ "cditor-editor",
+ "cditor-editor-core",
+ "cditor-runtime",
+ "cditor-storage",
+ "cditor-storage-postgres",
+ "cditor-storage-sqlite",
+ "gpui",
+ "gpui_platform",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
- "unicode-segmentation",
+]
+
+[[package]]
+name = "cditor-collaboration"
+version = "0.2.6"
+dependencies = [
+ "cditor-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1000,10 +1022,45 @@ dependencies = [
 name = "cditor-editor"
 version = "0.2.6"
 dependencies = [
+ "cditor-ai",
+ "cditor-api",
+ "cditor-core",
+ "cditor-editor-core",
+ "cditor-runtime",
+ "cditor-storage",
+ "cditor-text",
+ "cditor-theme",
+ "ding-board",
+ "gpui",
+ "gpui_platform",
+ "image",
+ "lumis",
+ "mermaid_render",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "swash",
+ "tokio",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "cditor-editor-core"
+version = "0.2.6"
+dependencies = [
  "cditor-core",
  "serde",
  "serde_json",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "cditor-import-export"
+version = "0.2.6"
+dependencies = [
+ "cditor-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1012,7 +1069,7 @@ version = "0.2.6"
 dependencies = [
  "cditor-ai",
  "cditor-core",
- "cditor-editor",
+ "cditor-editor-core",
  "serde",
  "serde_json",
  "unicode-segmentation",
@@ -1059,6 +1116,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cditor-test-support"
+version = "0.2.6"
+dependencies = [
+ "cditor-core",
+ "cditor-editor-core",
+ "cditor-runtime",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cditor-text"
 version = "0.2.6"
 dependencies = [
@@ -1072,6 +1140,22 @@ dependencies = [
  "sha2",
  "skrifa 0.43.2",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "cditor-theme"
+version = "0.2.6"
+dependencies = [
+ "cditor-theme-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "cditor-theme-types"
+version = "0.2.6"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -1307,15 +1391,6 @@ name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
-name = "convert_case"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "affbf0190ed2caf063e3def54ff444b449371d55c58e513a95ab98eca50adb49"
 dependencies = [
  "unicode-segmentation",
 ]
@@ -1774,7 +1849,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
 dependencies = [
- "convert_case 0.10.0",
+ "convert_case",
  "proc-macro2",
  "quote",
  "rustc_version",
@@ -2839,7 +2914,6 @@ dependencies = [
  "anyhow",
  "async-channel 2.5.0",
  "async-task",
- "backtrace",
  "bindgen",
  "bitflags 2.13.0",
  "block",
@@ -2883,7 +2957,6 @@ dependencies = [
  "pollster 0.4.0",
  "postage",
  "profiling",
- "proptest",
  "rand 0.9.4",
  "raw-window-handle",
  "refineable",
@@ -4272,9 +4345,9 @@ dependencies = [
 
 [[package]]
 name = "matrixmultiply"
-version = "0.3.10"
+version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a06de3016e9fae57a36fd14dba131fccf49f74b40b7fbdb472f96e361ec71a08"
+checksum = "3f607c237553f086e7043417a51df26b2eb899d3caff94e6a67592ff992fedc7"
 dependencies = [
  "autocfg",
  "rawpointer",
@@ -5632,7 +5705,6 @@ dependencies = [
  "bit-vec 0.8.0",
  "bitflags 2.13.0",
  "num-traits",
- "proptest-macro",
  "rand 0.9.4",
  "rand_chacha 0.9.0",
  "rand_xorshift",
@@ -5640,17 +5712,6 @@ dependencies = [
  "rusty-fork",
  "tempfile",
  "unarray",
-]
-
-[[package]]
-name = "proptest-macro"
-version = "0.5.0"
-source = "git+https://github.com/proptest-rs/proptest?rev=3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b#3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b"
-dependencies = [
- "convert_case 0.11.0",
- "proc-macro2",
- "quote",
- "syn 2.0.118",
 ]
 
 [[package]]

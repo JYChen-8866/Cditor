@@ -409,7 +409,7 @@ fn queued_measured_heights_do_not_apply_until_flush() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let before_scroll_top = runtime.scroll.global_scroll_top;
     let before_total_height = runtime.height_index.total_height();
@@ -432,7 +432,7 @@ fn flush_measured_heights_restores_anchor_once_for_batched_changes() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let before = runtime.scroll.global_scroll_top;
 
@@ -468,7 +468,7 @@ fn flush_below_viewport_heights_does_not_move_scroll_top() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let before = runtime.scroll.global_scroll_top;
 
@@ -484,7 +484,7 @@ fn wheel_scroll_height_flush_preserves_user_scroll_top_without_bounce() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     runtime.scroll_by_delta(-64.0).unwrap();
     let before_scroll_top = runtime.scroll.global_scroll_top;
@@ -514,7 +514,7 @@ fn scrollbar_drag_freezes_displayed_total_and_defers_anchor_restore() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let policy = ScrollbarPolicy {
         track_height: 720.0,
@@ -625,7 +625,7 @@ fn projection_window_spacer_heights_sum_to_total() {
         .scroll
         .scroll_to_global_offset(
             middle_offset,
-            cditor_editor::scroll::ScrollOrigin::ProgrammaticVirtualScroll,
+            cditor_editor_core::scroll::ScrollOrigin::ProgrammaticVirtualScroll,
         )
         .unwrap();
 

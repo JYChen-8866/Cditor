@@ -5,7 +5,7 @@ use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineMark, InlineSpan, RichBlockKind, TableCellPayload,
 };
-use cditor_editor::scroll::CaretAnchor;
+use cditor_editor_core::scroll::CaretAnchor;
 
 use super::DocumentRuntime;
 

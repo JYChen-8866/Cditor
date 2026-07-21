@@ -46,7 +46,7 @@ fn move_block_subtree_commit_preserves_scroll_top_and_total_height() {
     ]);
     runtime
         .scroll
-        .scroll_to_global_offset(96.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(96.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let before_scroll_top = runtime.scroll.global_scroll_top;
     let before_total_height = runtime.height_index.total_height();

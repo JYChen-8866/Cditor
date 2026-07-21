@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use cditor_core::ids::{BlockId, DocumentId};
-use cditor_editor::scroll::{
+use cditor_editor_core::scroll::{
     BlockScrollResolver, LayoutPx, ResolvedBlockScrollTarget, ScrollPrecision,
 };
 

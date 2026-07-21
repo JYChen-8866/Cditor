@@ -4,7 +4,7 @@ use crate::{
     CompositionState, EditingSession, InputHotPathConfig, PieceTableTextModel,
     SingleCharInputHotPath,
 };
-use cditor_editor::scroll::CaretAnchor;
+use cditor_editor_core::scroll::CaretAnchor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditingAcceptanceScenario {

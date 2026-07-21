@@ -4,7 +4,7 @@ use std::ops::Range;
 use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_core::layout::HeightConfidence;
 use cditor_core::version::{SnapshotIdentity, SnapshotIdentityMismatch};
-use cditor_editor::scroll::VirtualScrollTarget;
+use cditor_editor_core::scroll::VirtualScrollTarget;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AsyncLayoutVersion {
@@ -309,7 +309,7 @@ impl Default for AsyncVersionController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cditor_editor::scroll::ScrollPrecision;
+    use cditor_editor_core::scroll::ScrollPrecision;
 
     #[test]
     fn generation_mismatch_stores_only_a_historical_hint() {

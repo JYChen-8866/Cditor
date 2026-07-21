@@ -211,7 +211,7 @@ fn text_undo_redo_restore_semantic_viewport_anchors() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let anchor_block = runtime
         .target_for_global_offset(runtime.scroll.global_scroll_top)
@@ -222,7 +222,7 @@ fn text_undo_redo_restore_semantic_viewport_anchors() {
 
     runtime
         .scroll
-        .scroll_to_global_offset(6_400.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(6_400.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     assert!(runtime.undo_focused_block().unwrap());
     let anchor_index = runtime
@@ -243,7 +243,7 @@ fn text_undo_anchor_survives_height_changes_above_the_viewport() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let anchor = runtime
         .target_for_global_offset(runtime.scroll.global_scroll_top)
@@ -255,7 +255,7 @@ fn text_undo_anchor_survives_height_changes_above_the_viewport() {
     assert!(runtime.flush_pending_height_corrections().unwrap());
     runtime
         .scroll
-        .scroll_to_global_offset(100.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(100.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     assert!(runtime.undo_focused_block().unwrap());
 
@@ -275,7 +275,7 @@ fn structure_undo_redo_restore_their_semantic_viewport_anchors() {
     runtime.focus_block_at_offset(500, 0).unwrap();
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let before_anchor = runtime
         .target_for_global_offset(runtime.scroll.global_scroll_top)
@@ -288,7 +288,7 @@ fn structure_undo_redo_restore_their_semantic_viewport_anchors() {
     assert_ne!(before_anchor.block_id, after_anchor.block_id);
     runtime
         .scroll
-        .scroll_to_global_offset(6_400.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(6_400.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
 
     assert!(runtime.undo_focused_block().unwrap());

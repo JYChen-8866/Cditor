@@ -115,13 +115,13 @@ use cditor_core::rich_text::{
     markdown_inline_shortcut_spans, parse_callout_marker, parse_markdown_document,
     plain_text_from_spans, rich_block_kind_from_tag,
 };
-use cditor_editor::debug_overlay::DebugOverlaySnapshot;
-use cditor_editor::scroll::{
+use cditor_editor_core::debug_overlay::DebugOverlaySnapshot;
+use cditor_editor_core::scroll::{
     CaretAnchor, HeightCorrectionPriority, PendingHeightCorrection, ScrollOrigin, ScrollbarDragEnd,
     ScrollbarDragSession, ScrollbarDragUpdate, ScrollbarPolicy, ScrollbarVisualState,
     VirtualScrollState,
 };
-use cditor_editor::window::{
+use cditor_editor_core::window::{
     PlaceholderWindow, RenderWindow, ScrollDirection, WindowPlanDecision, WindowPlanRequest,
     WindowPlanner, WindowPlannerPolicy,
 };

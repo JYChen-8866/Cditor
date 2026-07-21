@@ -5,9 +5,9 @@ use cditor_core::layout::BlockLayoutMeta;
 use cditor_core::rich_text::{
     BlockAttrs, BlockPayloadView, InlineSpan, RichBlockKind, TableCellAlign, TablePayload,
 };
-use cditor_editor::debug_overlay::DebugOverlaySnapshot;
-use cditor_editor::scroll::VirtualScrollState;
-use cditor_editor::window::RenderWindow;
+use cditor_editor_core::debug_overlay::DebugOverlaySnapshot;
+use cditor_editor_core::scroll::VirtualScrollState;
+use cditor_editor_core::window::RenderWindow;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditorViewProjection {

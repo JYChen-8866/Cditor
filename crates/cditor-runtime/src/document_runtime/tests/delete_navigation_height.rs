@@ -350,7 +350,7 @@ fn measured_height_above_viewport_restores_viewport_top_anchor() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let before = runtime.scroll.global_scroll_top;
 
@@ -365,7 +365,7 @@ fn measured_height_below_viewport_does_not_move_scroll_top() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
         .scroll
-        .scroll_to_global_offset(3_200.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(3_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let before = runtime.scroll.global_scroll_top;
 

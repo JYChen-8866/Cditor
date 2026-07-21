@@ -218,11 +218,11 @@ impl DocumentRuntime {
                 .get(page_hit.page_index)
                 .is_some_and(|page| page.confidence == HeightConfidence::Exact)
         {
-            cditor_editor::scroll::ScrollPrecision::Exact
+            cditor_editor_core::scroll::ScrollPrecision::Exact
         } else if confidence == HeightConfidence::Exact {
-            cditor_editor::scroll::ScrollPrecision::LocalExact
+            cditor_editor_core::scroll::ScrollPrecision::LocalExact
         } else {
-            cditor_editor::scroll::ScrollPrecision::Estimated
+            cditor_editor_core::scroll::ScrollPrecision::Estimated
         };
         Some(GlobalScrollTarget {
             global_scroll_top: clamped,

@@ -434,7 +434,7 @@ impl DocumentRuntime {
             height: placeholder_height,
             target_anchor: self
                 .target_for_global_offset(self.scroll.global_scroll_top)
-                .map(|target| cditor_editor::scroll::ScrollAnchor {
+                .map(|target| cditor_editor_core::scroll::ScrollAnchor {
                     block_id: target.block_id,
                     offset_in_block: target.offset_in_block,
                     viewport_y: 0.0,

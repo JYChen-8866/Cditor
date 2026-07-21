@@ -1,10 +1,10 @@
 use std::time::Instant;
 
 use cditor_core::layout::HeightChange;
-use cditor_editor::scroll::{
+use cditor_editor_core::scroll::{
     ScrollDeltaMode, ScrollDevice, ScrollInput, ScrollOrigin, ScrollPhase,
 };
-use cditor_editor::{RegressionGateConfig, ScrollTraceFrame, ScrollTraceReplay, TraceInput};
+use cditor_editor_core::{RegressionGateConfig, ScrollTraceFrame, ScrollTraceReplay, TraceInput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrollAcceptanceScenario {
@@ -197,7 +197,7 @@ fn wheel_frames(
             .with_total_heights(2_400_000.0, 2_400_000.0)
             .with_frame_cost(frame_cost_ms)
             .with_anchor(
-                cditor_editor::scroll::ScrollAnchor {
+                cditor_editor_core::scroll::ScrollAnchor {
                     block_id: index as u64 + 1,
                     offset_in_block: 0.0,
                     viewport_y: 0.0,
@@ -231,7 +231,7 @@ fn scrollbar_drag_frames() -> Vec<ScrollTraceFrame> {
         .with_total_heights(model_total_height, frozen_total_height)
         .with_frame_cost(6.0)
         .with_anchor(
-            cditor_editor::scroll::ScrollAnchor {
+            cditor_editor_core::scroll::ScrollAnchor {
                 block_id: index as u64 + 1,
                 offset_in_block: 0.0,
                 viewport_y: 0.0,

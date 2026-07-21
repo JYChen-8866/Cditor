@@ -18,7 +18,7 @@ fn planned_window_hysteresis_keeps_boundary_window_stable() {
         .scroll
         .scroll_to_global_offset(
             first_page_height - 10.0,
-            cditor_editor::scroll::ScrollOrigin::UserWheel,
+            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
         )
         .unwrap();
     let initial = runtime.current_page_window_planned();
@@ -26,7 +26,7 @@ fn planned_window_hysteresis_keeps_boundary_window_stable() {
         .scroll
         .scroll_to_global_offset(
             first_page_height + 10.0,
-            cditor_editor::scroll::ScrollOrigin::UserWheel,
+            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
         )
         .unwrap();
     let near_boundary = runtime.current_page_window_planned();
@@ -43,7 +43,7 @@ fn planned_window_keeps_focused_page_pinned() {
     let offset = runtime.page_layout.offset_of_page(target_page).unwrap();
     runtime
         .scroll
-        .scroll_to_global_offset(offset, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(offset, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
 
     let planned = runtime.current_page_window_planned();
@@ -111,7 +111,7 @@ fn scrollbar_drag_projects_the_target_placeholder_for_live_loading() {
 
     runtime
         .scroll
-        .scroll_to_global_offset(20_000.0, cditor_editor::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(20_000.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let policy = ScrollbarPolicy::default();
     runtime.begin_scrollbar_drag(policy);
