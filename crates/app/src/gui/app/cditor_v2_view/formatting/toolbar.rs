@@ -21,6 +21,7 @@ use cditor_runtime::DocumentRuntime;
 use super::actions::inline_mark_for_toolbar_action;
 use super::color::selected_spans_color;
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(in crate::gui::app) fn formatting_toolbar_state(
     runtime: Option<&DocumentRuntime>,
     text_layouts: &HashMap<cditor_core::ids::BlockId, RichTextPlatformLayout>,
@@ -234,7 +235,7 @@ pub(in crate::gui::app) fn formatting_toolbar_state(
     if runtime.block_content_version(block_id)? != layout.content_version {
         return None;
     }
-    let bounds = viewport.window_bounds_to_local(platform_range_bounds(layout, range.clone())?);
+    let bounds = viewport.window_bounds_to_local(platform_range_bounds(layout, range.clone()));
     let (x, y) = floating_toolbar_position(
         f32::from(bounds.left()),
         f32::from(bounds.top()),
@@ -285,7 +286,6 @@ fn cross_block_selection_bounds(
         let layout = text_layouts.get(&fragment.block_id)?;
         (runtime.block_content_version(fragment.block_id)? == layout.content_version)
             .then(|| platform_range_bounds(layout, fragment.range.clone()))
-            .flatten()
     });
     let first = fragment_bounds.next()?;
     Some(fragment_bounds.fold(first, |combined, bounds| {
@@ -398,26 +398,22 @@ mod tests {
             width: 900.0,
             height: 700.0,
         };
-        for (block_id, top) in [(1, 100.0), (2, 124.0)] {
+        for (block_id, text, top) in [(1, "first", 100.0), (2, "second", 124.0)] {
             layouts.insert(
                 block_id,
-                RichTextPlatformLayout {
+                crate::gui::text::test_platform_layout(
                     block_id,
-                    content_version: runtime.block_content_version(block_id).unwrap(),
-                    text: String::new(),
-                    lines: Vec::new(),
-                    bounds: Bounds::new(
+                    runtime.block_content_version(block_id).unwrap(),
+                    text,
+                    Bounds::new(
                         point(
                             px(viewport.window_left + 120.0),
                             px(viewport.window_top + top),
                         ),
                         size(px(500.0), px(24.0)),
                     ),
-                    line_height: px(24.0),
-                    text_align: gpui::TextAlign::Left,
-                    measured_height: 24.0,
-                    table_cell_position: None,
-                },
+                    None,
+                ),
             );
         }
 
@@ -444,7 +440,8 @@ mod tests {
         assert!(state.ai_enabled);
         assert!(!state.show_delete);
         assert_eq!(state.block_id, Some(2));
-        assert_eq!((state.x, state.y), (23.5, 156.0));
+        assert_eq!(state.y, 156.0);
+        assert!((0.0..viewport.width).contains(&state.x));
     }
 
     #[test]

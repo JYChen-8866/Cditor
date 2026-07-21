@@ -4,6 +4,7 @@ use gpui::{
 
 use crate::gui::app::CditorV2View;
 use crate::gui::block::code::highlight::code_theme_item;
+use crate::gui::block::collection::render_collection_block;
 use crate::gui::block::media::render_image_block;
 use crate::gui::block::placeholder::{
     render_empty_ai_hint, render_error, render_loading, render_placeholder,
@@ -22,6 +23,7 @@ use cditor_core::edit::SelectionRange;
 use cditor_core::rich_text::{BlockPayload, BlockPayloadView};
 use cditor_runtime::ViewBlockSnapshot;
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_block_content(
     block: &ViewBlockSnapshot,
     theme: GuiTheme,
@@ -45,6 +47,7 @@ pub(crate) fn render_block_content(
                 return render_table_block(
                     block.block_id,
                     payload.content_version,
+                    block.layout.layout_version,
                     table_view,
                     theme,
                     block.marked_range.clone(),
@@ -64,10 +67,23 @@ pub(crate) fn render_block_content(
                 return render_image_block(
                     block.block_id,
                     payload.content_version,
+                    block.layout.layout_version,
                     image,
                     theme,
                     view,
+                    focus,
                     image_resize_preview_width_px,
+                    cx,
+                );
+            }
+            if let BlockPayload::Collection(collection) = &payload.payload {
+                return render_collection_block(
+                    block.block_id,
+                    block.layout.layout_version,
+                    collection,
+                    theme,
+                    view,
+                    focus,
                     cx,
                 );
             }
@@ -117,6 +133,11 @@ pub(crate) fn render_block_content(
                         block.caret_offset,
                         suppress_text_input,
                     ))
+                    .with_caret_affinity(
+                        block
+                            .caret_affinity
+                            .unwrap_or(cditor_core::edit::TextAffinity::Downstream),
+                    )
                     .with_marked_range(block.marked_range.clone())
                     .with_selection_range(selection_range)
                     .with_input_handler(

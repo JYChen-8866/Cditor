@@ -1,0 +1,27 @@
+[package]
+name = "cditor-text"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+accesskit = "=0.24.1"
+cditor-core = { path = "../core" }
+fontique = "=0.11.0"
+parley = { version = "=0.11.0", features = ["accesskit", "complex-scripts", "system"] }
+sha2 = "0.10"
+skrifa = "=0.43.2"
+unicode-segmentation = "1.12"
+
+[dev-dependencies]
+proptest = { git = "https://github.com/proptest-rs/proptest", rev = "3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bench]]
+name = "text_layout"
+harness = false
+
+[[bench]]
+name = "segmented_layout"
+harness = false

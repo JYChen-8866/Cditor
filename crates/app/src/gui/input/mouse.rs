@@ -12,8 +12,9 @@ pub fn focus_block_from_mouse(
     cx: &mut App,
 ) {
     let position = event.position;
+    let click_count = event.click_count;
     view.update(cx, |view, cx| {
-        view.focus_block_from_gui_at_position(block_id, position, window, cx);
+        view.focus_block_from_gui_at_position(block_id, position, click_count, window, cx);
     });
 }
 
@@ -42,12 +43,13 @@ pub fn begin_table_cell_text_selection_from_mouse(
     cx: &mut App,
 ) {
     let position = event.position;
+    let click_count = event.click_count;
     view.update(cx, |view, cx| {
         view.begin_table_cell_text_selection_from_gui(
             block_id,
             row,
             col,
-            Some(position),
+            Some((position, click_count)),
             window,
             cx,
         );

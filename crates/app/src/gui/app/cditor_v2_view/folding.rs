@@ -2,6 +2,8 @@ use gpui::{Context, Window};
 
 use cditor_core::ids::BlockId;
 
+use crate::api::{CditorCommand, CommandOutcomeStatus, CommandSource};
+
 use super::CditorV2View;
 
 impl CditorV2View {
@@ -15,15 +17,28 @@ impl CditorV2View {
             return false;
         }
         window.focus(&self.focus, cx);
-        let result = self
-            .ready_runtime()
-            .ok_or_else(|| "runtime is not ready".to_owned())
-            .and_then(|runtime| {
-                runtime.focus_block_at_offset(block_id, 0)?;
-                runtime.toggle_block_fold(block_id)
-            });
+        let command = self.ready_runtime_ref().and_then(|runtime| {
+            matches!(
+                runtime.block_kind(block_id),
+                Some(cditor_core::rich_text::RichBlockKind::Heading { .. })
+            )
+            .then(|| {
+                if runtime.is_block_folded(block_id) {
+                    CditorCommand::UnfoldHeading
+                } else {
+                    CditorCommand::FoldHeading
+                }
+            })
+        });
+        let Some(command) = command else {
+            return false;
+        };
+        if let Some(runtime) = self.ready_runtime() {
+            let _ = runtime.focus_block_at_offset(block_id, 0);
+        }
+        let result = self.dispatch_command(command, CommandSource::Toolbar, cx);
         match result {
-            Ok(true) => {
+            Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied => {
                 let visible_blocks = self
                     .ready_runtime_ref()
                     .map(|runtime| {
@@ -37,13 +52,13 @@ impl CditorV2View {
                     .unwrap_or_default();
                 self.text_layouts
                     .retain(|candidate, _| visible_blocks.contains(candidate));
-                self.mark_dirty(cx);
                 cx.notify();
                 true
             }
-            Ok(false) => false,
+            Ok(_) => false,
             Err(error) => {
-                self.save_status = crate::gui::persistence::EditorSaveStatus::Failed(error);
+                self.save_status =
+                    crate::gui::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

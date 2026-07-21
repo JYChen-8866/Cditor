@@ -143,6 +143,7 @@ mod tests {
             visible_cells: vec![visible_cell(0, 0, 0.0), visible_cell(0, 1, 120.0)],
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_affinity: None,
             focused_cell_selection_range: None,
         }
     }

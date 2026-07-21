@@ -1,7 +1,27 @@
 use super::*;
 
+/// (block, row, col, selected range, reversed, marked range)
+pub type TableCellSelectionState = (
+    BlockId,
+    usize,
+    usize,
+    Range<usize>,
+    bool,
+    Option<Range<usize>>,
+);
+
 impl DocumentRuntime {
     pub fn focus_block(&mut self, block_id: BlockId) {
+        if let Err(error) = self.try_focus_block(block_id) {
+            trace_input(
+                "focus_block.rejected",
+                format_args!("block={block_id} error={error}"),
+            );
+        }
+    }
+
+    pub fn try_focus_block(&mut self, block_id: BlockId) -> Result<(), String> {
+        self.break_typing_coalescing();
         let previous_focus = self.focused_block_id();
         self.hydrate_payload_runtime_state(block_id);
 
@@ -13,6 +33,26 @@ impl DocumentRuntime {
             .unwrap_or(RichBlockKind::Paragraph);
 
         let input_capability = cditor_core::block::BlockInputCapability::for_kind(&kind);
+        let input_target = match input_capability {
+            cditor_core::block::BlockInputCapability::Text(_) => {
+                InputTarget::BlockText { block_id }
+            }
+            cditor_core::block::BlockInputCapability::TableCell => {
+                InputTarget::BlockChrome { block_id }
+            }
+            cditor_core::block::BlockInputCapability::ComplexBlock => {
+                InputTarget::ComplexBlock { block_id }
+            }
+            cditor_core::block::BlockInputCapability::Atomic
+            | cditor_core::block::BlockInputCapability::None => {
+                InputTarget::BlockChrome { block_id }
+            }
+        };
+        if self.prepare_input_focus_transition(input_target)?
+            == CompositionFocusTransition::PreservedSameSurface
+        {
+            return Ok(());
+        }
 
         let text_len = self
             .text_models
@@ -29,41 +69,26 @@ impl DocumentRuntime {
 
         self.selected_block_ids.clear();
         self.document_selection = None;
+        self.visual_caret_position = None;
         self.focused_text_selection = None;
         self.focused_table_cell = None;
+        self.focused_inner_selection = None;
 
-        let mut editing = EditingSession::start(
+        let session_id = self.allocate_input_session_id();
+        let mut editing = EditingSession::start_with_session_id(
             block_id,
             self.payload_window
                 .get(block_id)
                 .map(|payload| payload.content_version)
                 .unwrap_or(1),
+            text_len,
             CaretAnchor {
                 block_id,
-                text_offset: text_len as u64,
                 caret_rect_y_in_block: 0.0,
                 viewport_y: 120.0,
             },
+            session_id,
         );
-
-        // Set input target based on block capability
-        let input_target = match input_capability {
-            cditor_core::block::BlockInputCapability::Text(_) => {
-                InputTarget::BlockText { block_id }
-            }
-            cditor_core::block::BlockInputCapability::TableCell => {
-                // For tables, default to block-level focus.
-                // Table cell focus is established by focus_table_cell.
-                InputTarget::BlockChrome { block_id }
-            }
-            cditor_core::block::BlockInputCapability::ComplexBlock => {
-                InputTarget::ComplexBlock { block_id }
-            }
-            cditor_core::block::BlockInputCapability::Atomic
-            | cditor_core::block::BlockInputCapability::None => {
-                InputTarget::BlockChrome { block_id }
-            }
-        };
 
         editing.set_input_target(input_target);
 
@@ -76,6 +101,7 @@ impl DocumentRuntime {
         }
 
         self.editing = Some(editing);
+        Ok(())
     }
 
     pub fn focused_block_id(&self) -> Option<BlockId> {
@@ -101,7 +127,31 @@ impl DocumentRuntime {
         self.editing
             .as_ref()
             .filter(|editing| editing.block_id == block_id)
-            .map(|editing| editing.caret_anchor.text_offset as usize)
+            .map(EditingSession::focus_offset)
+    }
+
+    pub fn caret_position_for_block(&self, block_id: BlockId) -> Option<TextPosition> {
+        let offset = self.caret_offset_for_block(block_id)?;
+        let content_version = self.block_content_version(block_id)?;
+        Some(
+            self.visual_caret_position
+                .filter(|state| {
+                    state.position.block_id == block_id
+                        && state.position.offset == offset
+                        && state.content_version == content_version
+                })
+                .map(|state| state.position)
+                .unwrap_or_else(|| TextPosition::downstream(block_id, offset)),
+        )
+    }
+
+    pub(super) fn remember_visual_caret(&mut self, position: TextPosition) {
+        self.visual_caret_position =
+            self.block_content_version(position.block_id)
+                .map(|content_version| VisualCaretPosition {
+                    position,
+                    content_version,
+                });
     }
 
     pub fn focus_block_at_offset(
@@ -118,49 +168,66 @@ impl DocumentRuntime {
         row: usize,
         col: usize,
     ) -> Result<(), String> {
+        self.break_typing_coalescing();
         self.hydrate_payload_runtime_state(block_id);
         let payload_content_version = self
             .payload_window
             .get(block_id)
             .map(|payload| payload.content_version)
             .ok_or_else(|| format!("missing payload for block {block_id}"))?;
-        let table = self
-            .table_runtime(block_id)
-            .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
-            .table();
-        let (row, col) = table
-            .cell_origin(row, col)
-            .ok_or_else(|| format!("missing table cell {row}:{col} in block {block_id}"))?;
-        let cell = table
-            .rows
-            .get(row)
-            .and_then(|row| row.cells.get(col))
-            .ok_or_else(|| format!("missing table cell {row}:{col} in block {block_id}"))?;
-        let text_len = cditor_core::rich_text::plain_text_from_spans(&cell.spans).len();
+        let (row, col, text_len, row_count, col_count) = {
+            let table = self
+                .table_runtime(block_id)
+                .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
+                .table();
+            let (row, col) = table
+                .cell_origin(row, col)
+                .ok_or_else(|| format!("missing table cell {row}:{col} in block {block_id}"))?;
+            let cell = table
+                .rows
+                .get(row)
+                .and_then(|row| row.cells.get(col))
+                .ok_or_else(|| format!("missing table cell {row}:{col} in block {block_id}"))?;
+            (
+                row,
+                col,
+                cditor_core::rich_text::plain_text_from_spans(&cell.spans).len(),
+                table.rows.len(),
+                table.rows.get(row).map(|row| row.cells.len()).unwrap_or(0),
+            )
+        };
+        let input_target = InputTarget::TableCell { block_id, row, col };
+        if self.prepare_input_focus_transition(input_target)?
+            == CompositionFocusTransition::PreservedSameSurface
+        {
+            return Ok(());
+        }
         trace_table(
             "focus_table_cell",
             format_args!(
                 "block={block_id} row={row} col={col} text_len={text_len} rows={} cols={} content_version={}",
-                table.rows.len(),
-                table.rows.get(row).map(|row| row.cells.len()).unwrap_or(0),
-                payload_content_version
+                row_count, col_count, payload_content_version
             ),
         );
         self.selected_block_ids.clear();
         self.document_selection = None;
+        self.visual_caret_position = None;
         self.focused_text_selection = None;
         self.focused_table_cell = Some(FocusedTableCell::collapsed(block_id, row, col, text_len));
-        let mut editing = EditingSession::start(
+        self.focused_inner_selection = None;
+        let session_id = self.allocate_input_session_id();
+        let mut editing = EditingSession::start_with_session_id(
             block_id,
             payload_content_version,
+            text_len,
             CaretAnchor {
                 block_id,
-                text_offset: text_len as u64,
                 caret_rect_y_in_block: 0.0,
                 viewport_y: 120.0,
             },
+            session_id,
         );
-        editing.set_input_target(InputTarget::TableCell { block_id, row, col });
+        editing.set_input_target(input_target);
         editing.set_collapsed_selection(text_len);
         self.editing = Some(editing);
         Ok(())
@@ -174,21 +241,32 @@ impl DocumentRuntime {
         })
     }
 
+    pub(super) fn allocate_input_session_id(&mut self) -> u64 {
+        let session_id = self.next_input_session_id;
+        self.next_input_session_id = self.next_input_session_id.saturating_add(1);
+        session_id
+    }
+
     pub fn focused_table_cell_offset(&self) -> Option<(BlockId, usize, usize, usize)> {
         self.focused_table_cell
             .map(|cell| (cell.block_id, cell.row, cell.col, cell.offset))
     }
 
-    pub fn focused_table_cell_selection_state(
+    pub fn focused_table_cell_text_position(
         &self,
-    ) -> Option<(
-        BlockId,
-        usize,
-        usize,
-        Range<usize>,
-        bool,
-        Option<Range<usize>>,
-    )> {
+    ) -> Option<(BlockId, usize, usize, usize, TextAffinity)> {
+        self.focused_table_cell.map(|cell| {
+            (
+                cell.block_id,
+                cell.row,
+                cell.col,
+                cell.offset,
+                cell.affinity,
+            )
+        })
+    }
+
+    pub fn focused_table_cell_selection_state(&self) -> Option<TableCellSelectionState> {
         self.focused_table_cell.map(|cell| {
             (
                 cell.block_id,
@@ -202,19 +280,34 @@ impl DocumentRuntime {
     }
 
     pub fn blur_table_cell(&mut self) -> bool {
+        match self.try_blur_table_cell() {
+            Ok(blurred) => blurred,
+            Err(error) => {
+                trace_input("blur_table_cell.rejected", error);
+                false
+            }
+        }
+    }
+
+    pub fn try_blur_table_cell(&mut self) -> Result<bool, String> {
+        self.break_typing_coalescing();
+        let Some(focused) = self.focused_table_cell else {
+            return Ok(false);
+        };
+        let next_target = InputTarget::BlockChrome {
+            block_id: focused.block_id,
+        };
+        self.prepare_input_focus_transition(next_target)?;
         let Some(focused) = self.focused_table_cell.take() else {
-            return false;
+            return Ok(false);
         };
         if let Some(editing) = self.editing.as_mut()
             && editing.block_id == focused.block_id
         {
-            editing.set_input_target(InputTarget::BlockText {
-                block_id: focused.block_id,
-            });
+            editing.set_input_target(next_target);
             editing.set_collapsed_selection(0);
-            editing.clear_composition();
         }
-        true
+        Ok(true)
     }
 
     pub fn focus_table_cell_at_offset(
@@ -225,6 +318,9 @@ impl DocumentRuntime {
         offset: usize,
     ) -> Result<(), String> {
         self.focus_table_cell(block_id, row, col)?;
+        if self.active_composition().is_some() {
+            return Ok(());
+        }
         let Some(focused) = self.focused_table_cell else {
             return Ok(());
         };
@@ -259,6 +355,7 @@ impl DocumentRuntime {
         anchor_offset: usize,
         focus_offset: usize,
     ) -> Result<bool, String> {
+        self.break_typing_coalescing();
         let Some(focused) = self.focused_table_cell else {
             return Ok(false);
         };
@@ -299,28 +396,62 @@ impl DocumentRuntime {
         Ok(changed)
     }
 
-    pub fn set_caret_offset(&mut self, block_id: BlockId, offset: usize) -> Result<(), String> {
-        if self.focused_block_id() != Some(block_id) {
-            self.focus_block(block_id);
+    pub fn set_focused_table_cell_text_selection_position(
+        &mut self,
+        anchor_offset: usize,
+        focus_offset: usize,
+        focus_affinity: TextAffinity,
+    ) -> Result<bool, String> {
+        let changed = self.set_focused_table_cell_text_selection(anchor_offset, focus_offset)?;
+        if let Some(cell) = self.focused_table_cell.as_mut() {
+            *cell = cell.with_affinity(focus_affinity);
         }
-        let model = self
-            .text_models
-            .get(&block_id)
-            .ok_or_else(|| format!("missing text model for block {block_id}"))?;
-        let offset = normalized_grapheme_offset(model.text(), offset);
+        Ok(changed)
+    }
+
+    pub fn set_caret_offset(&mut self, block_id: BlockId, offset: usize) -> Result<(), String> {
+        let input_target = InputTarget::BlockText { block_id };
+        if self
+            .editing
+            .as_ref()
+            .is_some_and(|editing| editing.input_target == input_target)
+            && self.prepare_input_focus_transition(input_target)?
+                == CompositionFocusTransition::PreservedSameSurface
+        {
+            return Ok(());
+        }
+        self.break_typing_coalescing();
+        if self
+            .editing
+            .as_ref()
+            .is_none_or(|editing| editing.input_target != input_target)
+        {
+            self.try_focus_block(block_id)?;
+        }
+        let (offset, text_len) = {
+            let model = self
+                .text_models
+                .get(&block_id)
+                .ok_or_else(|| format!("missing text model for block {block_id}"))?;
+            (
+                normalized_grapheme_offset(model.text(), offset),
+                model.len(),
+            )
+        };
         let previous_caret = self.caret_offset_for_block(block_id);
         let editing = self.editing.as_mut().expect("editing session exists");
         editing.set_input_target(InputTarget::BlockText { block_id });
         editing.set_collapsed_selection(offset);
         self.document_selection = None;
+        self.remember_visual_caret(TextPosition::downstream(block_id, offset));
         self.focused_text_selection = None;
         self.focused_table_cell = None;
+        self.focused_inner_selection = None;
         trace_input(
             "set_caret_offset",
             format_args!(
                 "block={block_id} requested_offset={} clamped_offset={offset} previous_caret={previous_caret:?} text_len={}",
-                offset,
-                model.len()
+                offset, text_len
             ),
         );
         Ok(())

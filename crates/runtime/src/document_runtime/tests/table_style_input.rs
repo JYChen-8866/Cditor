@@ -349,6 +349,7 @@ fn table_composition_preview_without_cell_focus_keeps_projection_payload_table()
             preview_text: "中".to_owned(),
             selected_range_start: None,
             selected_range_end: None,
+            base_selection: Default::default(),
         })
         .unwrap();
 

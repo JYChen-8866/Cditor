@@ -1,9 +1,0 @@
-[package]
-name = "cditor-editor"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-[dependencies]
-cditor-core = { path = "../core" }
-unicode-segmentation = "1.12"

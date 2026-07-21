@@ -1,9 +1,3 @@
-use gpui::prelude::FluentBuilder;
-use gpui::{
-    AnyElement, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Styled, div, px, rgb,
-};
-
 use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::block::chrome::{
@@ -21,6 +15,11 @@ use crate::gui::menu_metrics::{
 #[cfg(test)]
 use cditor_core::rich_text::TableCellAlign;
 use cditor_runtime::{TableViewState, ViewBlockSnapshot};
+use gpui::prelude::FluentBuilder;
+use gpui::{
+    AnyElement, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Styled, div, px, rgb,
+};
 
 use super::menu::{
     TABLE_MENU_PADDING_PX, TABLE_MENU_ROW_HEIGHT_PX, TABLE_MENU_SEARCH_FONT_SIZE_PX,
@@ -34,24 +33,20 @@ use super::style::{
     TABLE_AXIS_COLUMN_HANDLE_TOP_PX, TABLE_AXIS_HANDLE_SIZE_PX, TABLE_AXIS_ROW_HANDLE_LEFT_PX,
     TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
 };
-
 const BLOCK_SHELL_OUTER_PADDING_Y_PX: f32 = 4.0;
 const TABLE_COLOR_SUBMENU_GAP_PX: f32 = 6.0;
 const TABLE_COLOR_SUBMENU_PADDING_PX: f32 = 6.0;
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TableToolbarEditorOrigin {
     pub x_px: f32,
     pub y_px: f32,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct TableMenuAnchor {
     left: f32,
     top: f32,
     height: f32,
 }
-
 pub(crate) fn table_toolbar_editor_origin(
     block: &ViewBlockSnapshot,
     block_top_px: f32,
@@ -84,6 +79,7 @@ pub(crate) fn table_content_editor_origin(
     }
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_table_axis_toolbar(
     selection: TableAxisSelection,
     table_view: &TableViewState,
@@ -199,7 +195,7 @@ pub(crate) fn render_table_axis_toolbar(
         .on_mouse_down_out({
             let view = view.clone();
             move |_event, _window, cx| {
-                let _ = view.update(cx, |view, cx| {
+                view.update(cx, |view, cx| {
                     view.dismiss_table_menu_from_gui(cx);
                 });
             }
@@ -292,7 +288,7 @@ fn render_table_menu_row(
             let view = view.clone();
             move |_event, _window, cx| {
                 if enabled {
-                    let _ = view.update(cx, |view, cx| {
+                    view.update(cx, |view, cx| {
                         view.set_table_background_submenu_open_from_gui(
                             action == TableMenuAction::BackgroundColor,
                             cx,
@@ -303,7 +299,7 @@ fn render_table_menu_row(
         })
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             if enabled {
-                let _ = view.update(cx, |view, cx| {
+                view.update(cx, |view, cx| {
                     view.apply_selected_table_menu_action_from_gui(action, cx);
                 });
             }
@@ -406,7 +402,7 @@ pub(super) fn render_table_background_submenu(
                 .cursor_pointer()
                 .hover(move |style| style.bg(rgb(theme.hover_surface)))
                 .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-                    let _ = row_view.update(cx, |view, cx| {
+                    row_view.update(cx, |view, cx| {
                         view.set_selected_table_background_from_gui(color, cx);
                     });
                     cx.stop_propagation();
@@ -438,13 +434,9 @@ const fn table_background_submenu_height() -> f32 {
 }
 
 fn table_menu_action_color(action: TableMenuAction, theme: GuiTheme) -> u32 {
-    if matches!(
-        action,
-        TableMenuAction::DeleteRow | TableMenuAction::DeleteColumn
-    ) {
-        theme.danger
-    } else {
-        theme.text
+    match action {
+        TableMenuAction::DeleteRow | TableMenuAction::DeleteColumn => theme.danger,
+        _ => theme.text,
     }
 }
 
@@ -557,6 +549,7 @@ mod tests {
             selection_overlay: false,
             focused: false,
             caret_offset: None,
+            caret_affinity: None,
             marked_range: None,
             table_view: None,
             focused_table_cell: None,
@@ -697,6 +690,7 @@ mod tests {
             }],
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_affinity: None,
             focused_cell_selection_range: None,
         }
     }

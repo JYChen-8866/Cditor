@@ -19,6 +19,14 @@ actions!(
         SelectRight,
         SelectUp,
         SelectDown,
+        MoveToPreviousWord,
+        MoveToNextWord,
+        SelectToPreviousWord,
+        SelectToNextWord,
+        MoveToDocumentStart,
+        MoveToDocumentEnd,
+        SelectToDocumentStart,
+        SelectToDocumentEnd,
         MoveToLineStart,
         MoveToLineEnd,
         SelectToLineStart,
@@ -88,6 +96,14 @@ pub fn bind_cditor_keys(cx: &mut App) {
         KeyBinding::new("shift-delete", Cut, context),
         KeyBinding::new("secondary-insert", Copy, context),
         KeyBinding::new("shift-insert", Paste, context),
+        KeyBinding::new("ctrl-left", MoveToPreviousWord, context),
+        KeyBinding::new("ctrl-right", MoveToNextWord, context),
+        KeyBinding::new("ctrl-shift-left", SelectToPreviousWord, context),
+        KeyBinding::new("ctrl-shift-right", SelectToNextWord, context),
+        KeyBinding::new("ctrl-home", MoveToDocumentStart, context),
+        KeyBinding::new("ctrl-end", MoveToDocumentEnd, context),
+        KeyBinding::new("ctrl-shift-home", SelectToDocumentStart, context),
+        KeyBinding::new("ctrl-shift-end", SelectToDocumentEnd, context),
     ]);
     #[cfg(target_os = "macos")]
     cx.bind_keys([
@@ -104,6 +120,14 @@ pub fn bind_cditor_keys(cx: &mut App) {
         KeyBinding::new("secondary-right", MoveToLineEnd, context),
         KeyBinding::new("secondary-shift-left", SelectToLineStart, context),
         KeyBinding::new("secondary-shift-right", SelectToLineEnd, context),
+        KeyBinding::new("alt-left", MoveToPreviousWord, context),
+        KeyBinding::new("alt-right", MoveToNextWord, context),
+        KeyBinding::new("alt-shift-left", SelectToPreviousWord, context),
+        KeyBinding::new("alt-shift-right", SelectToNextWord, context),
+        KeyBinding::new("secondary-up", MoveToDocumentStart, context),
+        KeyBinding::new("secondary-down", MoveToDocumentEnd, context),
+        KeyBinding::new("secondary-shift-up", SelectToDocumentStart, context),
+        KeyBinding::new("secondary-shift-down", SelectToDocumentEnd, context),
     ]);
 }
 
@@ -118,5 +142,18 @@ mod tests {
         assert!(parsed.modifiers.platform && !parsed.modifiers.control);
         #[cfg(not(target_os = "macos"))]
         assert!(parsed.modifiers.control && !parsed.modifiers.platform);
+    }
+
+    #[test]
+    fn native_word_navigation_modifier_parses_on_each_platform() {
+        #[cfg(target_os = "macos")]
+        let parsed = Keystroke::parse("alt-shift-left").unwrap();
+        #[cfg(not(target_os = "macos"))]
+        let parsed = Keystroke::parse("ctrl-shift-left").unwrap();
+        assert!(parsed.modifiers.shift);
+        #[cfg(target_os = "macos")]
+        assert!(parsed.modifiers.alt && !parsed.modifiers.control);
+        #[cfg(not(target_os = "macos"))]
+        assert!(parsed.modifiers.control);
     }
 }

@@ -1,6 +1,8 @@
 use cditor_core::ids::BlockId;
+#[cfg(test)]
 use cditor_core::rich_text::InlineMark;
 
+use crate::api::{BlockTransform, CditorCommand, CommandOutcomeStatus, CommandSource};
 use crate::gui::overlay::{BlockTransformAction, InlineFormatAction};
 
 use super::super::CditorV2View;
@@ -28,31 +30,32 @@ impl CditorV2View {
         if self.readonly {
             return false;
         }
-        let mark = inline_mark_for_toolbar_action(action);
         let gutter_block_id = (!has_text_selection).then_some(self.gutter_toolbar_block_id);
-        let changed = self
-            .ready_runtime()
-            .and_then(|runtime| {
-                let Some(block_id) = gutter_block_id.flatten() else {
-                    return runtime.toggle_inline_mark_on_selection(mark).ok();
-                };
-                let text_len = runtime
-                    .block_payload_record(block_id)
-                    .map(|payload| payload.plain_text().len())?;
-                if text_len == 0 {
-                    return Some(false);
-                }
-                runtime
-                    .set_document_text_selection(block_id, 0, block_id, text_len)
-                    .ok()?;
-                runtime.toggle_inline_mark_on_selection(mark).ok()
-            })
-            .unwrap_or(false);
-        if changed {
-            self.mark_dirty(cx);
-            cx.notify();
+        if let Some(block_id) = gutter_block_id.flatten() {
+            let prepared = self
+                .ready_runtime()
+                .and_then(|runtime| {
+                    let text_len = runtime
+                        .block_payload_record(block_id)
+                        .map(|payload| payload.plain_text().len())?;
+                    if text_len == 0 {
+                        return Some(false);
+                    }
+                    runtime
+                        .set_document_text_selection(block_id, 0, block_id, text_len)
+                        .ok()?;
+                    Some(true)
+                })
+                .unwrap_or(false);
+            if !prepared {
+                return false;
+            }
         }
-        changed
+        let command = command_for_inline_format(action);
+        matches!(
+            self.dispatch_command(command, CommandSource::Toolbar, cx),
+            Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied
+        )
     }
 
     pub(crate) fn transform_block_from_toolbar(
@@ -64,24 +67,29 @@ impl CditorV2View {
         if self.readonly {
             return false;
         }
-        let result = self
+        let focused = self
             .ready_runtime()
             .ok_or_else(|| "runtime is not ready".to_owned())
             .and_then(|runtime| {
                 if runtime.focused_block_id() != Some(block_id) {
                     runtime.focus_block_at_offset(block_id, 0)?;
                 }
-                runtime.convert_focused_block_kind(action.kind())
+                Ok(())
             });
-        match result {
-            Ok(true) => {
-                self.mark_dirty(cx);
-                cx.notify();
-                true
-            }
-            Ok(false) => false,
+        if let Err(error) = focused {
+            self.save_status = crate::gui::persistence::EditorSaveStatus::Failed(error);
+            cx.notify();
+            return false;
+        }
+        match self.dispatch_command(
+            CditorCommand::TransformBlock(BlockTransform::Kind(action.kind())),
+            CommandSource::Toolbar,
+            cx,
+        ) {
+            Ok(outcome) => outcome.status == CommandOutcomeStatus::Applied,
             Err(error) => {
-                self.save_status = crate::gui::persistence::EditorSaveStatus::Failed(error);
+                self.save_status =
+                    crate::gui::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }
@@ -89,6 +97,7 @@ impl CditorV2View {
     }
 }
 
+#[cfg(test)]
 pub(super) fn inline_mark_for_toolbar_action(action: InlineFormatAction) -> InlineMark {
     match action {
         InlineFormatAction::Bold => InlineMark::Bold,
@@ -96,5 +105,32 @@ pub(super) fn inline_mark_for_toolbar_action(action: InlineFormatAction) -> Inli
         InlineFormatAction::Underline => InlineMark::Underline,
         InlineFormatAction::Strike => InlineMark::Strike,
         InlineFormatAction::Code => InlineMark::Code,
+    }
+}
+
+fn command_for_inline_format(action: InlineFormatAction) -> CditorCommand {
+    match action {
+        InlineFormatAction::Bold => CditorCommand::ToggleBold,
+        InlineFormatAction::Italic => CditorCommand::ToggleItalic,
+        InlineFormatAction::Underline => CditorCommand::ToggleUnderline,
+        InlineFormatAction::Strike => CditorCommand::ToggleStrike,
+        InlineFormatAction::Code => CditorCommand::ToggleInlineCode,
+    }
+}
+
+#[cfg(test)]
+mod command_tests {
+    use super::*;
+
+    #[test]
+    fn toolbar_actions_map_to_the_same_commands_as_keyboard_and_sdk() {
+        assert_eq!(
+            command_for_inline_format(InlineFormatAction::Bold),
+            CditorCommand::ToggleBold
+        );
+        assert_eq!(
+            command_for_inline_format(InlineFormatAction::Strike),
+            CditorCommand::ToggleStrike
+        );
     }
 }

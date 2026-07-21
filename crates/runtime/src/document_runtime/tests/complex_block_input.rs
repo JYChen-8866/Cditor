@@ -144,6 +144,27 @@ fn test_mermaid_source_focuses_as_text_and_enter_inserts_newline() {
 }
 
 #[test]
+fn html_enter_inserts_newline_in_source_instead_of_splitting_block() {
+    let source = "<div>value</div>";
+    let mut runtime = runtime_with_single_payload(
+        RichBlockKind::Html,
+        BlockPayload::Html {
+            html: source.to_owned(),
+            sanitized: true,
+        },
+    );
+    runtime.focus_block_at_offset(1, 5).unwrap();
+
+    runtime.handle_enter().unwrap();
+
+    assert_eq!(runtime.index.block_ids, vec![1]);
+    assert_eq!(
+        runtime.block_payload_record(1).unwrap().plain_text(),
+        "<div>\nvalue</div>"
+    );
+}
+
+#[test]
 fn test_image_block_enter_does_not_split() {
     let mut runtime = DocumentRuntime::from_payloads(
         1,
@@ -156,7 +177,7 @@ fn test_image_block_enter_does_not_split() {
                 payload: BlockPayload::Image(ImagePayload {
                     source: "https://example.com/image.png".to_string(),
                     alt: "Test Image".to_string(),
-                    caption: "".to_string(),
+                    caption: "".into(),
                     display_width_ratio_milli: None,
                 }),
             },
@@ -178,6 +199,40 @@ fn test_image_block_enter_does_not_split() {
     let img_index = runtime.index.index_of(img_id).unwrap();
     let next_id = runtime.index.block_ids.get(img_index + 1).copied();
     assert!(next_id.is_some());
+}
+
+#[test]
+fn atomic_block_delete_is_typed_and_undo_restores_payload() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "before"),
+            BlockPayloadRecord {
+                block_id: 2,
+                content_version: 1,
+                kind: RichBlockKind::Image,
+                payload: BlockPayload::Image(ImagePayload {
+                    source: "asset.png".to_owned(),
+                    alt: "asset".to_owned(),
+                    ..Default::default()
+                }),
+            },
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "after"),
+        ],
+        720.0,
+    );
+    runtime.focus_block(2);
+
+    assert!(runtime.delete_backward().unwrap());
+    assert_eq!(runtime.index.block_ids, vec![1, 3]);
+    assert_eq!(runtime.focused_block_id(), Some(1));
+
+    assert!(runtime.undo_focused_block().unwrap());
+    assert_eq!(runtime.index.block_ids, vec![1, 2, 3]);
+    assert!(matches!(
+        runtime.block_payload_record(2).unwrap().payload,
+        BlockPayload::Image(_)
+    ));
 }
 
 #[test]

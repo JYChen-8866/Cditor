@@ -15,26 +15,36 @@ pub struct DocumentRuntime {
     pub payload_window: PayloadWindow,
     /// Sparse, block-level visual attributes. Inline marks remain in payload spans.
     pub(super) block_attrs: HashMap<BlockId, BlockAttrs>,
+    /// Collection data is owned separately from the hosting block payload so
+    /// record edits do not serialize the collection schema or every record.
+    pub(super) collection_records: HashMap<CollectionId, Vec<CollectionRecordSnapshot>>,
+    pub(super) comment_threads: HashMap<CommentThreadId, CommentThreadSnapshot>,
+    pub(super) assets: HashMap<AssetId, AssetSnapshot>,
+    pub(super) block_asset_ids: HashMap<BlockId, BTreeSet<AssetId>>,
     pub(super) table_runtimes: HashMap<BlockId, TableRuntime>,
     pub(super) table_horizontal_scroll_offsets: HashMap<BlockId, f32>,
     pub(super) text_models: HashMap<BlockId, PieceTableTextModel>,
     pub(super) selected_block_ids: HashSet<BlockId>,
     pub(super) list_projection_cache: ListProjectionCache,
     pub(super) document_selection: Option<DocumentSelection>,
+    pub(super) visual_caret_position: Option<VisualCaretPosition>,
     pub(super) ai_session: Option<RuntimeAiSession>,
     pub(super) next_ai_request_id: u64,
     pub(super) focused_text_selection: Option<FocusedTextSelection>,
     pub(super) focused_table_cell: Option<FocusedTableCell>,
+    pub(super) focused_inner_selection: Option<FocusedInnerSelection>,
     pub(super) undo_stacks: HashMap<BlockId, Vec<TextSnapshot>>,
     pub(super) redo_stacks: HashMap<BlockId, Vec<TextSnapshot>>,
-    pub(super) structure_undo_stack: Vec<StructureMoveUndoStep>,
-    pub(super) structure_redo_stack: Vec<StructureMoveUndoStep>,
-    pub(super) paste_undo_stack: Vec<StructurePasteUndoStep>,
-    pub(super) paste_redo_stack: Vec<StructurePasteUndoStep>,
+    pub(super) external_undo_stack: UndoStack,
+    pub(super) typing_undo_group: Option<TypingUndoGroup>,
+    pub(super) pending_typing_undo: Option<TypingUndoRequest>,
+    pub(super) typing_mark_override: Option<TypingMarkOverride>,
     pub(super) undo_events: Vec<RuntimeUndoEvent>,
     pub(super) redo_events: Vec<RuntimeUndoEvent>,
     pub(super) pending_structure_transactions: Vec<EditTransaction>,
+    pub(super) last_committed_transaction_id: Option<u64>,
     pub(super) next_transaction_id: u64,
+    pub(super) next_input_session_id: u64,
     pub(super) hot_path: SingleCharInputHotPath,
     pub(super) payload_window_generation: u64,
     pub(super) window_planner: WindowPlanner,
@@ -53,34 +63,37 @@ pub(super) struct PendingMeasuredHeight {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct VisualCaretPosition {
+    pub(super) position: TextPosition,
+    pub(super) content_version: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct TypingUndoGroup {
+    pub(super) surface_id: cditor_core::ids::SurfaceId,
+    pub(super) next_offset: usize,
+    pub(super) last_input_at: Instant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct TypingUndoRequest {
+    pub(super) surface_id: cditor_core::ids::SurfaceId,
+    pub(super) offset: usize,
+    pub(super) started_at: Instant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct TypingMarkOverride {
+    pub(super) surface_id: SurfaceId,
+    pub(super) offset: usize,
+    pub(super) marks: Vec<InlineMark>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum EnterSplitMode {
     InheritV1Kind,
     #[cfg_attr(not(test), allow(dead_code))]
     ForceParagraph,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct StructureMoveUndoStep {
-    pub(super) block_id: BlockId,
-    pub(super) old_parent_id: Option<BlockId>,
-    pub(super) old_sibling_index: usize,
-    pub(super) new_parent_id: Option<BlockId>,
-    pub(super) new_sibling_index: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct StructurePasteUndoStep {
-    pub(super) current_block_id: BlockId,
-    pub(super) before_current_record: BlockIndexRecord,
-    pub(super) before_current_payload: BlockPayloadRecord,
-    pub(super) after_current_record: BlockIndexRecord,
-    pub(super) after_current_payload: BlockPayloadRecord,
-    pub(super) inserted_records: Vec<BlockIndexRecord>,
-    pub(super) inserted_payloads: Vec<BlockPayloadRecord>,
-    pub(super) deleted_records: Vec<BlockIndexRecord>,
-    pub(super) deleted_payloads: Vec<BlockPayloadRecord>,
-    pub(super) before_focus: Option<(BlockId, usize)>,
-    pub(super) after_focus: Option<(BlockId, usize)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,11 +102,19 @@ pub(super) struct FocusedTableCell {
     pub(super) row: usize,
     pub(super) col: usize,
     pub(super) offset: usize,
+    pub(super) affinity: TextAffinity,
     pub(super) selected_range_start: usize,
     pub(super) selected_range_end: usize,
     pub(super) selection_reversed: bool,
     pub(super) marked_range_start: Option<usize>,
     pub(super) marked_range_end: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct FocusedInnerSelection {
+    pub(super) block_id: BlockId,
+    pub(super) anchor: InnerSelectionAnchor,
+    pub(super) focus: InnerSelectionAnchor,
 }
 
 impl FocusedTableCell {
@@ -103,6 +124,7 @@ impl FocusedTableCell {
             row,
             col,
             offset,
+            affinity: TextAffinity::Downstream,
             selected_range_start: offset,
             selected_range_end: offset,
             selection_reversed: false,
@@ -132,6 +154,12 @@ impl FocusedTableCell {
         self.selected_range_start = selected_range.start;
         self.selected_range_end = selected_range.end;
         self.selection_reversed = selection_reversed;
+        self.affinity = TextAffinity::Downstream;
+        self
+    }
+
+    pub(super) fn with_affinity(mut self, affinity: TextAffinity) -> Self {
+        self.affinity = affinity;
         self
     }
 
@@ -145,8 +173,7 @@ impl FocusedTableCell {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RuntimeUndoEvent {
     Text(BlockId),
-    StructureMove,
-    StructurePaste,
+    ExternalTransaction,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -167,4 +194,14 @@ pub(super) struct TextSnapshot {
     pub(super) payload: BlockPayload,
     pub(super) content_version: u64,
     pub(super) focused_table_cell: Option<FocusedTableCell>,
+    pub(super) input_target: Option<InputTarget>,
+    pub(super) selected_range: Option<Range<usize>>,
+    pub(super) selection_reversed: bool,
+    pub(super) scroll: UndoScrollSnapshot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct UndoScrollSnapshot {
+    pub(super) anchor: Option<cditor_core::edit::ScrollAnchor>,
+    pub(super) fallback_global_scroll_top: f64,
 }

@@ -571,7 +571,11 @@ mod tests {
         assert_eq!(transaction.kind, EditTransactionKind::Paste);
         assert!(matches!(
             &transaction.ops[0],
-            EditOperation::InsertBlocks { index: 0, blocks } if blocks.len() == 10_000
+            EditOperation::InsertBlocks {
+                index: 0,
+                blocks,
+                payloads,
+            } if blocks.len() == 10_000 && payloads.is_empty()
         ));
         assert_eq!(result.progress.phase, PastePipelinePhase::Completed);
     }

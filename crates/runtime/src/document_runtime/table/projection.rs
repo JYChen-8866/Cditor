@@ -5,6 +5,7 @@ pub(in crate::document_runtime) fn table_view_state_from_payload(
     table: &cditor_core::rich_text::TablePayload,
     focused_cell: Option<TableCellPosition>,
     focused_cell_offset: Option<usize>,
+    focused_cell_affinity: Option<TextAffinity>,
     focused_cell_selection_range: Option<Range<usize>>,
     horizontal_scroll_offset_px: f32,
 ) -> TableViewState {
@@ -43,6 +44,7 @@ pub(in crate::document_runtime) fn table_view_state_from_payload(
         visible_cells,
         focused_cell,
         focused_cell_offset,
+        focused_cell_affinity,
         focused_cell_selection_range,
     }
 }

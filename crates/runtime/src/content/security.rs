@@ -209,11 +209,8 @@ fn strip_block(
         result.push_str(&html[cursor..start]);
         removed_count += 1;
         if let Some(decision) = decision.clone() {
-            match decision.action {
-                ExternalResourceAction::Placeholder => {
-                    result.push_str(&format!("<div data-cditor-placeholder=\"{}\"></div>", tag));
-                }
-                _ => {}
+            if decision.action == ExternalResourceAction::Placeholder {
+                result.push_str(&format!("<div data-cditor-placeholder=\"{}\"></div>", tag));
             }
             decisions.push(decision);
         }
@@ -347,9 +344,8 @@ fn sanitize_tag(
             continue;
         }
         if is_url_attr(&attr.name) {
-            match sanitize_url_attr(&tag.name, attr, policy, decisions) {
-                Some(attr) => attrs.push(attr),
-                None => {}
+            if let Some(attr) = sanitize_url_attr(&tag.name, attr, policy, decisions) {
+                attrs.push(attr)
             }
         } else {
             attrs.push(attr);

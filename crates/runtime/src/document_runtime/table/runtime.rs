@@ -50,35 +50,6 @@ impl TableRuntime {
         Some(self.revision)
     }
 
-    pub(in crate::document_runtime) fn replace_cell_spans(
-        &mut self,
-        row: usize,
-        col: usize,
-        range: Range<usize>,
-        inserted: &[InlineSpan],
-    ) -> Result<bool, String> {
-        let (row, col) = self
-            .table
-            .cell_origin(row, col)
-            .ok_or_else(|| format!("missing table cell {row}:{col}"))?;
-        let cell = self
-            .table
-            .rows
-            .get_mut(row)
-            .and_then(|row| row.cells.get_mut(col))
-            .ok_or_else(|| format!("missing table cell {row}:{col}"))?;
-        let text = plain_text_from_spans(&cell.spans);
-        let range = safe_char_range(&text, range);
-        let next = replace_rich_text_spans_with_spans(&cell.spans, range, inserted);
-        if next == cell.spans {
-            return Ok(false);
-        }
-        cell.spans = next;
-        self.revision = self.revision.saturating_add(1);
-        self.dirty = true;
-        Ok(true)
-    }
-
     pub(in crate::document_runtime) fn merge_cells(
         &mut self,
         range: TableRange,
@@ -97,19 +68,6 @@ impl TableRuntime {
         col: usize,
     ) -> Result<bool, String> {
         let changed = self.table.split_cell(row, col)?;
-        if changed {
-            self.revision = self.revision.saturating_add(1);
-            self.dirty = true;
-        }
-        Ok(changed)
-    }
-
-    pub(in crate::document_runtime) fn set_cell_align(
-        &mut self,
-        range: TableRange,
-        align: TableCellAlign,
-    ) -> Result<bool, String> {
-        let changed = self.table.set_cell_align(range, align)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -157,32 +115,6 @@ impl TableRuntime {
         table: &cditor_core::rich_text::TablePayload,
     ) -> Result<bool, String> {
         let changed = self.table.paste_table_at(row, col, table)?;
-        if changed {
-            self.revision = self.revision.saturating_add(1);
-            self.dirty = true;
-        }
-        Ok(changed)
-    }
-
-    pub(in crate::document_runtime) fn set_row_height(
-        &mut self,
-        row: usize,
-        height: TableTrackSize,
-    ) -> Result<bool, String> {
-        let changed = self.table.set_row_height(row, height)?;
-        if changed {
-            self.revision = self.revision.saturating_add(1);
-            self.dirty = true;
-        }
-        Ok(changed)
-    }
-
-    pub(in crate::document_runtime) fn set_column_width(
-        &mut self,
-        col: usize,
-        width: TableTrackSize,
-    ) -> Result<bool, String> {
-        let changed = self.table.set_column_width(col, width)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;

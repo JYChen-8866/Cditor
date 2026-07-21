@@ -14,6 +14,7 @@ runtime-shaders = ["gpui_platform/runtime_shaders"]
 async-trait = "0.1"
 cditor-ai = { path = "../ai" }
 cditor-core = { path = "../core" }
+cditor-text = { path = "../text" }
 ding-board = { path = "../ding-board" }
 cditor-editor = { path = "../editor" }
 cditor-runtime = { path = "../runtime" }
@@ -25,6 +26,7 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee3
 mermaid_render = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+swash = "0.2.9"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
 tokio = { version = "1", features = ["sync", "time"] }
 unicode-segmentation = "1.12"

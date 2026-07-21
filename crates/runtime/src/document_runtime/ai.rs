@@ -293,16 +293,18 @@ impl DocumentRuntime {
             RuntimeAiTarget::InlineCaret(position) => {
                 self.focus_block_at_offset(position.block_id, position.offset)?;
                 if session.preview_kind == AiPreviewKind::AssistantPanel {
-                    if self.insert_markdown_content(&session.preview)? {
+                    if looks_like_markdown_paste(&session.preview)
+                        && self.insert_ai_markdown_content(&session.preview)?
+                    {
                         true
                     } else {
-                        self.replace_text_in_focused_range(
+                        self.replace_text_from_ai(
                             Some(position.offset..position.offset),
                             &session.preview,
                         )?
                     }
                 } else {
-                    self.replace_text_in_focused_range(
+                    self.replace_text_from_ai(
                         Some(position.offset..position.offset),
                         &session.preview,
                     )?
@@ -315,10 +317,12 @@ impl DocumentRuntime {
                 match mode {
                     AiApplyMode::InsertAfter => {
                         self.focus_block_at_offset(normalized.end.block_id, normalized.end.offset)?;
-                        if self.insert_markdown_content(&session.preview)? {
+                        if looks_like_markdown_paste(&session.preview)
+                            && self.insert_ai_markdown_content(&session.preview)?
+                        {
                             true
                         } else {
-                            self.replace_text_in_focused_range(
+                            self.replace_text_from_ai(
                                 Some(normalized.end.offset..normalized.end.offset),
                                 &session.preview,
                             )?
@@ -333,14 +337,16 @@ impl DocumentRuntime {
                             normalized.end.block_id,
                             normalized.end.offset,
                         )?;
-                        if self.insert_markdown_content(&session.preview)? {
+                        if looks_like_markdown_paste(&session.preview)
+                            && self.insert_ai_markdown_content(&session.preview)?
+                        {
                             true
                         } else {
                             self.focus_block_at_offset(
                                 normalized.start.block_id,
                                 normalized.start.offset,
                             )?;
-                            self.replace_text_in_focused_range(
+                            self.replace_text_from_ai(
                                 Some(normalized.start.offset..normalized.end.offset),
                                 &session.preview,
                             )?
@@ -348,7 +354,9 @@ impl DocumentRuntime {
                     }
                     AiApplyMode::Replace => {
                         self.document_selection = Some(selection);
-                        if self.insert_markdown_content(&session.preview)? {
+                        if looks_like_markdown_paste(&session.preview)
+                            && self.insert_ai_markdown_content(&session.preview)?
+                        {
                             true
                         } else {
                             self.apply_cross_block_ai_replacement(selection, &session.preview)?
@@ -531,85 +539,112 @@ impl DocumentRuntime {
         selection: DocumentSelection,
         replacement: &str,
     ) -> Result<bool, String> {
-        self.document_selection = Some(selection);
         let normalized = selection
             .normalize(&self.index)
             .map_err(|error| format!("{error:?}"))?;
         let start_block_id = normalized.start.block_id;
-        let before_current_record = self.index_record_for_block(start_block_id)?;
-        let before_current_payload = self
+        let start_index = self
+            .index
+            .index_of(start_block_id)
+            .ok_or_else(|| "AI selection start block is missing".to_owned())?;
+        let end_index = self
+            .index
+            .index_of(normalized.end.block_id)
+            .ok_or_else(|| "AI selection end block is missing".to_owned())?;
+        let delete_range = start_index + 1..end_index + 1;
+        let records = self.index_records();
+        super::transaction_apply_structure::ensure_complete_subtrees(
+            &records,
+            delete_range.clone(),
+        )?;
+        let before_current = self
             .payload_window
             .get(start_block_id)
             .cloned()
             .ok_or_else(|| format!("missing payload for block {start_block_id}"))?;
-        let before_focus = self
-            .focused_block_id()
-            .map(|block_id| (block_id, self.caret_offset_for_block(block_id).unwrap_or(0)));
-        let Some((_block_id, deleted_records, deleted_payloads)) =
-            self.collapse_cross_block_selection_for_paste()?
+        let end_payload = self
+            .payload_window
+            .get(normalized.end.block_id)
+            .cloned()
+            .ok_or_else(|| format!("missing payload for block {}", normalized.end.block_id))?;
+        let (
+            BlockPayload::RichText { spans: start_spans },
+            BlockPayload::RichText { spans: end_spans },
+        ) = (&before_current.payload, &end_payload.payload)
         else {
             return Ok(false);
         };
-        let collapsed = self
-            .text_models
-            .get(&start_block_id)
-            .ok_or_else(|| format!("missing text model for block {start_block_id}"))?
-            .text()
-            .to_owned();
-        let offset = safe_char_range(
-            &collapsed,
-            normalized.start.offset.min(collapsed.len())
-                ..normalized.start.offset.min(collapsed.len()),
+        let start_text = plain_text_from_spans(start_spans);
+        let end_text = plain_text_from_spans(end_spans);
+        let start = safe_char_range(
+            &start_text,
+            normalized.start.offset..normalized.start.offset,
         )
         .start;
-        let mut next = String::with_capacity(collapsed.len().saturating_add(replacement.len()));
-        next.push_str(&collapsed[..offset]);
-        next.push_str(replacement);
-        next.push_str(&collapsed[offset..]);
-        self.replace_text_in_block_with_plain(start_block_id, next)?;
-        self.focus_block_at_offset(start_block_id, offset + replacement.len())?;
-        self.document_selection = None;
-        self.focused_text_selection = None;
-        let after_current_record = self.index_record_for_block(start_block_id)?;
-        let after_current_payload = self
-            .payload_window
-            .get(start_block_id)
-            .cloned()
-            .ok_or_else(|| format!("missing payload for block {start_block_id}"))?;
-        let after_focus = Some((start_block_id, offset + replacement.len()));
-        self.record_structure_paste(StructurePasteUndoStep {
-            current_block_id: start_block_id,
-            before_current_record,
-            before_current_payload,
-            after_current_record,
-            after_current_payload,
-            inserted_records: Vec::new(),
-            inserted_payloads: Vec::new(),
-            deleted_records,
-            deleted_payloads,
-            before_focus,
-            after_focus,
-        });
-        self.queue_ai_apply_transaction(start_block_id);
+        let end = safe_char_range(&end_text, normalized.end.offset..normalized.end.offset).start;
+        let mut next_spans = slice_rich_text_spans(start_spans, 0..start);
+        next_spans.push(InlineSpan::plain(replacement));
+        next_spans.extend(slice_rich_text_spans(end_spans, end..end_text.len()));
+        merge_inline_spans(&mut next_spans);
+        let after_payload = BlockPayload::RichText { spans: next_spans };
+        let deleted_records = records[delete_range.clone()].to_vec();
+        let deleted_payloads = deleted_records
+            .iter()
+            .map(|record| {
+                self.payload_window
+                    .get(record.id)
+                    .cloned()
+                    .ok_or_else(|| format!("missing AI selection payload {}", record.id))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let caret = start.saturating_add(replacement.len());
+        self.apply_local_structure_transaction(
+            EditTransactionKind::AiApply,
+            cditor_core::edit::ChangeOrigin::Ai,
+            vec![
+                EditOperation::Block(cditor_core::edit::BlockEditOperation::ReplacePayload {
+                    block_id: start_block_id,
+                    before_kind: before_current.kind.clone(),
+                    before_payload: before_current.payload.clone(),
+                    after_kind: before_current.kind.clone(),
+                    after_payload: after_payload.clone(),
+                }),
+                EditOperation::DeleteBlockRange {
+                    range: delete_range.clone(),
+                },
+            ],
+            vec![
+                EditOperation::InsertBlocks {
+                    index: delete_range.start,
+                    blocks: deleted_records,
+                    payloads: deleted_payloads,
+                },
+                EditOperation::Block(cditor_core::edit::BlockEditOperation::ReplacePayload {
+                    block_id: start_block_id,
+                    before_kind: before_current.kind.clone(),
+                    before_payload: after_payload,
+                    after_kind: before_current.kind,
+                    after_payload: before_current.payload,
+                }),
+            ],
+            vec![
+                TransactionPrecondition::StructureVersion(self.structure_version()),
+                TransactionPrecondition::BlockContentVersion {
+                    block_id: start_block_id,
+                    version: before_current.content_version,
+                },
+            ],
+            Some(selection),
+            Some(DocumentSelection::caret(TextPosition {
+                block_id: start_block_id,
+                offset: caret,
+                affinity: TextAffinity::Downstream,
+            })),
+            self.selected_block_ids_snapshot(),
+            Vec::new(),
+        )?;
+        self.focus_block_at_offset(start_block_id, caret)?;
         Ok(true)
-    }
-
-    fn queue_ai_apply_transaction(&mut self, block_id: BlockId) {
-        let transaction_id = self.next_transaction_id;
-        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
-        self.pending_structure_transactions
-            .push(EditTransaction::new(
-                transaction_id,
-                EditTransactionKind::AiApply,
-                transaction_id,
-                vec![EditOperation::DeleteBlockRange { range: 0..0 }],
-                vec![EditOperation::InsertBlock {
-                    index: self.index.index_of(block_id).unwrap_or(0),
-                    block: self
-                        .index_record_for_block(block_id)
-                        .unwrap_or_else(|_| BlockIndexRecord::new(block_id, None, 0, 0, 0)),
-                }],
-            ));
     }
 }
 

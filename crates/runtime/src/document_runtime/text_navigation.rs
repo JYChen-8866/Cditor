@@ -1,6 +1,79 @@
 use super::*;
 
 impl DocumentRuntime {
+    pub fn move_focused_caret_by_word(
+        &mut self,
+        forward: bool,
+        extend_selection: bool,
+    ) -> Result<bool, String> {
+        let Some(surface_id) = self.focused_text_surface_id() else {
+            return Ok(false);
+        };
+        let snapshot = self
+            .text_surface_snapshot(surface_id)
+            .ok_or_else(|| format!("missing text surface {surface_id:?}"))?;
+        let text = snapshot.plain_text();
+        let caret = self
+            .text_surface_caret_offset(surface_id)
+            .unwrap_or(text.len());
+        let target = word_boundary(&text, caret, forward);
+        self.move_focused_text_surface_to_offset(
+            surface_id,
+            target,
+            TextAffinity::Downstream,
+            extend_selection,
+        )
+    }
+
+    pub fn move_caret_to_document_boundary(
+        &mut self,
+        to_end: bool,
+        extend_selection: bool,
+    ) -> Result<bool, String> {
+        let Some(target_id) = (if to_end {
+            self.index.block_ids.last().copied()
+        } else {
+            self.index.block_ids.first().copied()
+        }) else {
+            return Ok(false);
+        };
+        let target_offset = if to_end {
+            self.text_models
+                .get(&target_id)
+                .map(PieceTableTextModel::len)
+                .or_else(|| {
+                    self.payload_window
+                        .get(target_id)
+                        .map(|payload| payload.plain_text().len())
+                })
+                .ok_or_else(|| format!("document boundary payload {target_id} is not hydrated"))?
+        } else {
+            0
+        };
+        let previous = self.focused_block_id().zip(
+            self.focused_block_id()
+                .and_then(|block_id| self.caret_offset_for_block(block_id)),
+        );
+        let anchor = if extend_selection {
+            self.document_selection
+                .map(|selection| selection.anchor)
+                .or_else(|| {
+                    previous.map(|(block_id, offset)| TextPosition::downstream(block_id, offset))
+                })
+        } else {
+            None
+        };
+        self.focus_block_at_offset(target_id, target_offset)?;
+        if let Some(anchor) = anchor {
+            self.document_selection = Some(DocumentSelection {
+                anchor,
+                focus: TextPosition::downstream(target_id, target_offset),
+            });
+            self.focused_text_selection = None;
+        }
+        Ok(previous != Some((target_id, target_offset)) || extend_selection)
+    }
+
     /// Move the caret to the logical line boundary used by native Home/End.
     /// This works for rich-text blocks, code/quote soft lines, and table cells,
     /// and preserves Shift-selection semantics on every platform.
@@ -100,6 +173,7 @@ impl DocumentRuntime {
         offset: usize,
         extend_selection: bool,
     ) -> Result<bool, String> {
+        self.break_typing_coalescing();
         if self.focused_block_id() != Some(block_id) {
             return Ok(false);
         }
@@ -110,7 +184,7 @@ impl DocumentRuntime {
         let previous = self
             .editing
             .as_ref()
-            .map(|editing| editing.caret_anchor.text_offset as usize)
+            .map(EditingSession::focus_offset)
             .unwrap_or_else(|| model.len())
             .min(model.len());
         let previous = normalized_grapheme_offset(model.text(), previous);
@@ -154,11 +228,37 @@ impl DocumentRuntime {
         Ok(previous != offset || extend_selection)
     }
 
+    pub fn move_focused_caret_to_text_position(
+        &mut self,
+        position: TextPosition,
+        extend_selection: bool,
+    ) -> Result<bool, String> {
+        let previous_selection = self.document_selection_snapshot();
+        let changed = self.move_focused_caret_to_offset(
+            position.block_id,
+            position.offset,
+            extend_selection,
+        )?;
+        let offset = self
+            .caret_offset_for_block(position.block_id)
+            .unwrap_or(position.offset);
+        let position = TextPosition { offset, ..position };
+        self.remember_visual_caret(position);
+        if extend_selection && let Some(selection) = self.document_selection.as_mut() {
+            if let Some(previous) = previous_selection {
+                selection.anchor.affinity = previous.anchor.affinity;
+            }
+            selection.focus = position;
+        }
+        Ok(changed || position.affinity != TextAffinity::Downstream)
+    }
+
     fn move_caret_horizontally(
         &mut self,
         forward: bool,
         extend_selection: bool,
     ) -> Result<bool, String> {
+        self.break_typing_coalescing();
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -169,7 +269,7 @@ impl DocumentRuntime {
         let caret = self
             .editing
             .as_ref()
-            .map(|editing| editing.caret_anchor.text_offset as usize)
+            .map(EditingSession::focus_offset)
             .unwrap_or_else(|| model.len())
             .min(model.len());
         let caret = normalized_grapheme_offset(model.text(), caret);
@@ -312,5 +412,43 @@ fn logical_line_boundary(text: &str, caret: usize, to_end: bool) -> usize {
             .find(|(_, ch)| matches!(ch, '\r' | '\n' | '\u{2028}' | '\u{2029}'))
             .map(|(index, ch)| index + ch.len_utf8())
             .unwrap_or(0)
+    }
+}
+
+fn word_boundary(text: &str, caret: usize, forward: bool) -> usize {
+    use unicode_segmentation::UnicodeSegmentation;
+
+    let caret = normalized_grapheme_offset(text, caret);
+    if forward {
+        text.unicode_word_indices()
+            .find_map(|(start, word)| {
+                let end = start + word.len();
+                (end > caret).then_some(end)
+            })
+            .unwrap_or(text.len())
+    } else {
+        text.unicode_word_indices()
+            .take_while(|(start, _)| *start < caret)
+            .map(|(start, _)| start)
+            .last()
+            .unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+mod word_tests {
+    use super::word_boundary;
+
+    #[test]
+    fn unicode_word_boundaries_cross_punctuation_cjk_and_emoji_without_byte_splits() {
+        let text = "hello, 世界 👩‍💻 rust";
+        assert_eq!(word_boundary(text, 0, true), 5);
+        let cjk_start = text.find('世').unwrap();
+        let first_cjk_end = cjk_start + '世'.len_utf8();
+        let cjk_end = cjk_start + "世界".len();
+        assert_eq!(word_boundary(text, 5, true), first_cjk_end);
+        let rust_start = text.find("rust").unwrap();
+        assert_eq!(word_boundary(text, text.len(), false), rust_start);
+        assert_eq!(word_boundary(text, cjk_end, false), first_cjk_end);
     }
 }

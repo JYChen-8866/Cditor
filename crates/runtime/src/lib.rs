@@ -52,8 +52,12 @@ pub use content::security::{
 };
 pub use document_runtime::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
-    AiStreamApplyResult, DocumentRuntime, DocumentTextSelectionFragment, RichTextSelectionSnapshot,
-    RuntimeAiTarget, TableClipboardSnapshot,
+    AiStreamApplyResult, CompositionFocusTransition, DocumentRuntime,
+    DocumentTextSelectionFragment, RichTextDelta, RichTextSelectionSnapshot, RuntimeAiTarget,
+    RuntimeTextSurface, SelectionMaterializationApplyDecision, SelectionMaterializationRequest,
+    TableClipboardSnapshot, TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult,
+    TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot, TextSurfaceSnapshotIdentity,
+    TransactionApplyError,
 };
 pub use editing::composition::{
     CompositionCancelResult, CompositionCommitResult, CompositionController, CompositionError,
@@ -65,8 +69,9 @@ pub use editing::hot_path::{
     LayoutDirtyReason, PieceTableTextModel, ScheduledAsyncTask, SingleCharInputHotPath,
 };
 pub use editing::session::{
-    CaretGeometryVersion, CompositionState, EditingPriority, EditingSession, EditingSessionError,
-    InputTarget, LayoutCachePin, TextLayoutVersion,
+    CaretGeometryVersion, CompositionBaseSelection, CompositionState, EditingPriority,
+    EditingSession, EditingSessionError, InputSessionIdentity, InputTarget, LayoutCachePin,
+    TextLayoutVersion,
 };
 pub use projection::list::{
     BlockListProjectionEntry, ListProjectionCache, project_block_list_entry,

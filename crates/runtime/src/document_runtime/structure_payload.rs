@@ -17,8 +17,14 @@ pub(super) fn payload_for_converted_kind(kind: &RichBlockKind, text: String) -> 
         | RichBlockKind::File
         | RichBlockKind::Attachment
         | RichBlockKind::MindMap
-        | RichBlockKind::Embed
-        | RichBlockKind::Database => BlockPayload::Empty,
+        | RichBlockKind::Embed => BlockPayload::Empty,
+        RichBlockKind::Database => {
+            BlockPayload::Collection(cditor_core::rich_text::CollectionPayload {
+                collection_id: 0,
+                title: cditor_core::rich_text::RichTextContent::plain(text),
+                ..Default::default()
+            })
+        }
         _ => BlockPayload::RichText {
             spans: vec![InlineSpan::plain(text)],
         },

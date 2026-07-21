@@ -43,4 +43,4 @@ document `1`，并支持下列覆盖变量：
 脚本会显式清除另一个后端的选择变量，避免 shell 中遗留的环境变量选错后端。
 `CDITOR_DRY_RUN=1` 可仅验证配置而不启动 GUI；PostgreSQL URL 的值不会输出到终端。
 
-`check_structure.sh` 检查非白板源码的 700 行上限、废弃的 `crates/engine` 路径和系统元数据；`check_workspace.sh` 会先执行该检查，再运行格式、编译和测试。
+`check_structure.sh` 检查非白板源码的 700 行上限、废弃路径、Core/Runtime/GPUI 依赖边界，以及 Parley 只能由 `cditor-text` 直接使用；`check_workspace.sh` 会先执行该检查，再运行格式、编译和测试。

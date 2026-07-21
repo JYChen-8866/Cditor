@@ -23,9 +23,11 @@ use super::style::{
 use super::text::TableCellTextElement;
 use super::trace_table;
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_table_block(
     block_id: BlockId,
     content_version: u64,
+    layout_version: u64,
     table_view: &TableViewState,
     theme: GuiTheme,
     marked_range: Option<Range<usize>>,
@@ -78,9 +80,13 @@ pub(crate) fn render_table_block(
                     let content = render_table_cell_content(
                         block_id,
                         content_version,
+                        layout_version,
                         cell.spans.clone(),
                         active,
                         table_view.focused_cell_offset,
+                        table_view
+                            .focused_cell_affinity
+                            .unwrap_or(cditor_core::edit::TextAffinity::Downstream),
                         table_view.focused_cell_selection_range.clone(),
                         marked_range.clone(),
                         cell.header,
@@ -130,12 +136,15 @@ pub(crate) fn render_table_block(
         .into_any_element()
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 fn render_table_cell_content(
     block_id: BlockId,
     content_version: u64,
+    layout_version: u64,
     spans: Vec<InlineSpan>,
     active: bool,
     focused_cell_offset: Option<usize>,
+    focused_cell_affinity: cditor_core::edit::TextAffinity,
     selected_range: Option<Range<usize>>,
     marked_range: Option<Range<usize>>,
     header: bool,
@@ -160,10 +169,12 @@ fn render_table_cell_content(
     TableCellTextElement::new(
         block_id,
         content_version,
+        layout_version,
         position,
-        text,
+        spans,
         active,
         focused_cell_offset,
+        focused_cell_affinity,
         active.then_some(selected_range).flatten(),
         active.then_some(marked_range).flatten(),
         header,

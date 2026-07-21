@@ -21,6 +21,7 @@ pub(in crate::gui::app) struct GuiTableResizeDrag {
 }
 
 impl CditorV2View {
+    #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
     pub(crate) fn start_table_resize_from_gui(
         &mut self,
         block_id: BlockId,
@@ -84,16 +85,8 @@ impl CditorV2View {
         }
         drag.current_size_px = next_size;
         self.table_resize_drag = Some(drag);
-        // Apply the column width in real-time so the table re-renders during drag.
-        let size = TableTrackSize::Px(next_size.round().clamp(1.0, u16::MAX as f32) as u16);
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            match drag.axis {
-                TableAxis::Column => {
-                    let _ = runtime.set_table_column_width(drag.block_id, drag.index, size);
-                }
-                TableAxis::Row => {}
-            }
-        }
+        // Preview remains UI-transient. Mouse-up commits exactly one Runtime
+        // transaction; rendering consumes `table_resize_preview` meanwhile.
         cx.notify();
         true
     }
@@ -109,15 +102,23 @@ impl CditorV2View {
         }
         let size =
             TableTrackSize::Px(drag.current_size_px.round().clamp(1.0, u16::MAX as f32) as u16);
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let result = match drag.axis {
-                TableAxis::Row => runtime.set_table_row_height(drag.block_id, drag.index, size),
-                TableAxis::Column => {
-                    runtime.set_table_column_width(drag.block_id, drag.index, size)
-                }
-            };
+        let commit = match &mut self.state {
+            CditorViewState::Ready(runtime) => {
+                let result = match drag.axis {
+                    TableAxis::Row => runtime.set_table_row_height(drag.block_id, drag.index, size),
+                    TableAxis::Column => {
+                        runtime.set_table_column_width(drag.block_id, drag.index, size)
+                    }
+                };
+                Some((result, runtime.revision()))
+            }
+            _ => None,
+        };
+        if let Some((result, revision)) = commit {
             match result {
-                Ok(true) => self.mark_dirty(cx),
+                Ok(true) => {
+                    self.mark_dirty_at_revision(crate::api::ChangeOrigin::User, revision, cx)
+                }
                 Ok(false) => {}
                 Err(error) => {
                     self.save_status = EditorSaveStatus::Failed(error);

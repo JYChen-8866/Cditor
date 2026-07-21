@@ -38,6 +38,7 @@ pub const V1_CODE_COPY_ICON_OFFSET_PX: f32 = 4.0;
 pub const V1_CODE_THEME_POPUP_WIDTH_PX: f32 = 220.0;
 pub const V1_CODE_THEME_ROW_HEIGHT_PX: f32 = 34.0;
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub fn render_code_toolbar(
     block_id: BlockId,
     theme: GuiTheme,
@@ -154,7 +155,7 @@ fn render_language_editor(
                 }))
                 .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
                 .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-                    let _ = input_view.update(cx, |view, cx| {
+                    input_view.update(cx, |view, cx| {
                         view.toggle_code_language_dropdown_from_gui(
                             block_id,
                             current_language.as_deref(),
@@ -211,6 +212,7 @@ fn render_language_editor(
         .into_any_element()
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 fn render_language_suggestions(
     block_id: BlockId,
     theme: GuiTheme,
@@ -387,9 +389,7 @@ fn code_language_panel_height(total_suggestions: usize) -> f32 {
 }
 
 fn code_language_list_height(total_suggestions: usize) -> f32 {
-    total_suggestions
-        .min(CODE_LANGUAGE_VISIBLE_SUGGESTIONS)
-        .max(1) as f32
+    total_suggestions.clamp(1, CODE_LANGUAGE_VISIBLE_SUGGESTIONS) as f32
         * code_language_suggestion_row_height()
 }
 
@@ -485,7 +485,7 @@ fn render_language_suggestion_row(
         )
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             let value = value.clone();
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.select_code_language_from_gui(block_id, value, cx);
             });
             cx.stop_propagation();
@@ -509,7 +509,7 @@ fn render_copy_button(
         .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
         .child(render_copy_icon(theme))
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.copy_code_block_from_gui(block_id, cx);
             });
             cx.stop_propagation();

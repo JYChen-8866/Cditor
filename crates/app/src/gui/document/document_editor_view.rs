@@ -95,6 +95,7 @@ impl DocumentEditorView {
         Self { theme }
     }
 
+    #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
     pub(crate) fn render(
         &self,
         projection: &EditorViewProjection,
@@ -359,7 +360,7 @@ fn render_down_placer(
         .h(px(height as f32))
         .cursor_text()
         .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.focus_down_placer_from_gui(window, cx);
             });
             cx.stop_propagation();

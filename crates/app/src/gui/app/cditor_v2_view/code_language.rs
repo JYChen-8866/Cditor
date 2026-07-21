@@ -1,6 +1,7 @@
 use cditor_core::ids::BlockId;
 use gpui::{Context, Window};
 
+use crate::api::{CditorCommand, CommandOutcomeStatus, CommandSource};
 use crate::gui::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::gui::input::{
     CodeLanguageEditAction, CodeLanguageEditKeyResult, CodeLanguageEditState,
@@ -50,6 +51,9 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         self.code_theme_menu_block_id = None;
+        if !self.commit_document_composition_before_external_focus(cx) {
+            return;
+        }
         window.focus(&self.code_language_focus, cx);
         self.platform_input_target = Some(GuiPlatformInputTarget::code_language(block_id));
         let viewport = EditorViewport::from_measurement(
@@ -71,18 +75,17 @@ impl CditorV2View {
         {
             self.platform_input_target = None;
         }
-        let changed = self
-            .ready_runtime()
-            .and_then(|runtime| {
-                runtime
-                    .set_code_block_language(edit.block_id, edit.normalized_draft())
-                    .ok()
-            })
-            .unwrap_or(false);
-        if changed {
-            self.mark_dirty(cx);
-        }
-        changed
+        matches!(
+            self.dispatch_command(
+                CditorCommand::SetCodeLanguage {
+                    block_id: edit.block_id,
+                    language: edit.normalized_draft(),
+                },
+                CommandSource::Toolbar,
+                cx,
+            ),
+            Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied
+        )
     }
 
     pub(crate) fn select_code_language_from_gui(
@@ -91,6 +94,9 @@ impl CditorV2View {
         language: String,
         cx: &mut Context<Self>,
     ) {
+        if !self.commit_document_composition_before_external_focus(cx) {
+            return;
+        }
         self.code_language_edit = Some(CodeLanguageEditState {
             block_id,
             original: String::new(),

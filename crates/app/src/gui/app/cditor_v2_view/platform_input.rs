@@ -1,8 +1,9 @@
-use cditor_core::ids::BlockId;
+use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_runtime::{DocumentRuntime, InputTarget};
 
 use crate::gui::app::cditor_v2_view::CditorV2View;
 use crate::gui::app::input_trace::trace_input;
+use crate::gui::text::TextPlatformLayoutIdentity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GuiPlatformInputTarget {
@@ -13,6 +14,12 @@ pub(crate) enum GuiPlatformInputTarget {
         block_id: BlockId,
         row: usize,
         col: usize,
+    },
+    ImageCaption {
+        block_id: BlockId,
+    },
+    CollectionTitle {
+        block_id: BlockId,
     },
     CodeLanguage {
         block_id: BlockId,
@@ -32,6 +39,8 @@ impl GuiPlatformInputTarget {
         match target {
             InputTarget::BlockText { block_id } => Self::BlockText { block_id },
             InputTarget::TableCell { block_id, row, col } => Self::TableCell { block_id, row, col },
+            InputTarget::ImageCaption { block_id } => Self::ImageCaption { block_id },
+            InputTarget::CollectionTitle { block_id } => Self::CollectionTitle { block_id },
             // Complex blocks and block chrome don't need platform text input
             InputTarget::ComplexBlock { .. } | InputTarget::BlockChrome { .. } => Self::None,
         }
@@ -53,6 +62,8 @@ impl GuiPlatformInputTarget {
         match self {
             Self::BlockText { block_id }
             | Self::TableCell { block_id, .. }
+            | Self::ImageCaption { block_id }
+            | Self::CollectionTitle { block_id }
             | Self::CodeLanguage { block_id }
             | Self::AiPrompt { block_id }
             | Self::TableMenuQuery { block_id } => block_id,
@@ -75,10 +86,57 @@ impl GuiPlatformInputTarget {
     pub(crate) fn matches_runtime_target(self, target: InputTarget) -> bool {
         self == Self::from_runtime_target(target)
     }
+
+    pub(crate) fn from_surface_id(surface_id: SurfaceId) -> Option<Self> {
+        match surface_id {
+            SurfaceId::Block(block_id) => Some(Self::BlockText { block_id }),
+            SurfaceId::TableCell {
+                block_id,
+                row,
+                column,
+            } => Some(Self::TableCell {
+                block_id,
+                row,
+                col: column,
+            }),
+            SurfaceId::ImageCaption { block_id } => Some(Self::ImageCaption { block_id }),
+            SurfaceId::CollectionTitle { block_id } => Some(Self::CollectionTitle { block_id }),
+            SurfaceId::Ephemeral { .. } => None,
+        }
+    }
 }
 
 impl CditorV2View {
+    pub(crate) fn commit_document_composition_before_external_focus(
+        &mut self,
+        cx: &mut gpui::Context<Self>,
+    ) -> bool {
+        let result = self
+            .ready_runtime()
+            .map(|runtime| runtime.commit_composition_before_external_focus())
+            .unwrap_or(Ok(false));
+        match result {
+            Ok(true) => {
+                trace_input("external_focus.composition_committed", "changed=true");
+                self.mark_dirty(cx);
+                true
+            }
+            Ok(false) => true,
+            Err(error) => {
+                trace_input(
+                    "external_focus.composition_commit_failed",
+                    format_args!("error={error}"),
+                );
+                self.save_status = crate::gui::persistence::EditorSaveStatus::Failed(error);
+                cx.notify();
+                false
+            }
+        }
+    }
+
     pub(in crate::gui::app) fn begin_platform_input_registration_frame(&mut self) {
+        self.platform_input_session_identity = None;
+        self.platform_input_layout_identity = None;
         self.platform_input_target = self
             .ai_prompt
             .as_ref()
@@ -103,6 +161,7 @@ impl CditorV2View {
     pub(crate) fn register_platform_input_target(
         &mut self,
         target: GuiPlatformInputTarget,
+        layout_identity: TextPlatformLayoutIdentity,
     ) -> bool {
         let Some(runtime) = self.ready_runtime_ref() else {
             return false;
@@ -119,8 +178,17 @@ impl CditorV2View {
             );
             return false;
         }
+        let input_session_identity = runtime.input_session_identity();
         self.platform_input_target = Some(target);
+        self.platform_input_session_identity = input_session_identity;
+        self.platform_input_layout_identity = Some(layout_identity);
         true
+    }
+
+    pub(crate) fn registered_platform_input_session_identity(
+        &self,
+    ) -> Option<cditor_runtime::InputSessionIdentity> {
+        self.platform_input_session_identity
     }
 }
 
@@ -141,4 +209,67 @@ pub(crate) fn platform_input_registration_allows(
     runtime
         .input_session_target()
         .is_some_and(|runtime_target| target.matches_runtime_target(runtime_target))
+}
+
+#[cfg(test)]
+mod tests {
+    use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
+    use gpui::{AppContext, TestAppContext};
+
+    use super::*;
+
+    fn composing_runtime() -> DocumentRuntime {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                "ab",
+            )],
+            720.0,
+        );
+        runtime.focus_block_at_offset(1, 1).unwrap();
+        runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
+        runtime
+    }
+
+    #[gpui::test]
+    fn external_focus_helper_commits_document_composition_and_marks_dirty(cx: &mut TestAppContext) {
+        let view = cx.new(|cx| CditorV2View::from_runtime(composing_runtime(), false, cx));
+
+        view.update(cx, |view, cx| {
+            assert!(view.commit_document_composition_before_external_focus(cx));
+            assert!(view.dirty);
+            let runtime = view.ready_runtime_ref().unwrap();
+            assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "a中b");
+            assert!(runtime.active_composition().is_none());
+        });
+    }
+
+    #[gpui::test]
+    fn external_focus_helper_rejects_stale_commit_without_losing_composition(
+        cx: &mut TestAppContext,
+    ) {
+        let view = cx.new(|cx| CditorV2View::from_runtime(composing_runtime(), false, cx));
+
+        view.update(cx, |view, cx| {
+            view.ready_runtime()
+                .unwrap()
+                .payload_window
+                .payloads
+                .get_mut(&1)
+                .unwrap()
+                .content_version += 1;
+
+            assert!(!view.commit_document_composition_before_external_focus(cx));
+            assert!(!view.dirty);
+            assert!(matches!(
+                view.save_status,
+                crate::gui::persistence::EditorSaveStatus::Failed(_)
+            ));
+            let runtime = view.ready_runtime_ref().unwrap();
+            assert!(runtime.editing.as_ref().unwrap().composition.is_some());
+            assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ab");
+        });
+    }
 }

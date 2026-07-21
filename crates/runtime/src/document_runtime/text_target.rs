@@ -25,7 +25,9 @@ impl DocumentRuntime {
             .or_else(|| self.input_session_selected_range())
             .or_else(|| match target {
                 InputTarget::BlockText { .. } => self.focused_text_selection_range(),
-                InputTarget::TableCell { .. } => None,
+                InputTarget::TableCell { .. }
+                | InputTarget::ImageCaption { .. }
+                | InputTarget::CollectionTitle { .. } => None,
                 // Complex blocks and block chrome don't have text selection
                 InputTarget::ComplexBlock { .. } | InputTarget::BlockChrome { .. } => None,
             })
@@ -40,6 +42,11 @@ impl DocumentRuntime {
                             cell.block_id == block_id && cell.row == row && cell.col == col
                         })
                         .map(|cell| cell.offset)
+                        .unwrap_or(text.len()),
+                    InputTarget::ImageCaption { .. } | InputTarget::CollectionTitle { .. } => self
+                        .editing
+                        .as_ref()
+                        .map(EditingSession::focus_offset)
                         .unwrap_or(text.len()),
                     // Complex blocks and block chrome have no caret
                     InputTarget::ComplexBlock { .. } | InputTarget::BlockChrome { .. } => {
@@ -79,6 +86,10 @@ impl DocumentRuntime {
             InputTarget::TableCell { block_id, row, col } => {
                 self.table_cell_plain_text(block_id, row, col)
             }
+            InputTarget::ImageCaption { .. } | InputTarget::CollectionTitle { .. } => target
+                .surface_id()
+                .and_then(|surface_id| self.text_surface_base_snapshot(surface_id))
+                .map(|snapshot| snapshot.plain_text()),
             // Complex blocks and block chrome don't have editable text
             InputTarget::ComplexBlock { .. } | InputTarget::BlockChrome { .. } => None,
         }

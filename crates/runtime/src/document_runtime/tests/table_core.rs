@@ -50,6 +50,15 @@ fn focused_table_cell_persists_selection_marked_range_and_direction() {
         runtime.focused_table_cell_selection_state(),
         Some((10, 0, 1, 1..1, false, None))
     );
+    assert!(
+        runtime
+            .set_focused_table_cell_text_selection_position(1, 0, TextAffinity::Upstream)
+            .unwrap()
+    );
+    assert_eq!(
+        runtime.focused_table_cell_selection_state(),
+        Some((10, 0, 1, 0..1, true, None))
+    );
 
     runtime
         .begin_or_update_composition_with_selection(10, 0..1, "中", Some(0.."中".len()))
@@ -64,7 +73,14 @@ fn focused_table_cell_persists_selection_marked_range_and_direction() {
     runtime.cancel_composition();
     assert_eq!(
         runtime.focused_table_cell_selection_state(),
-        Some((10, 0, 1, 0.."中".len(), false, None))
+        Some((10, 0, 1, 0..1, true, None))
+    );
+    assert!(runtime.input_session_selection_reversed());
+    assert_eq!(
+        runtime
+            .focused_table_cell_text_position()
+            .map(|position| position.4),
+        Some(TextAffinity::Upstream)
     );
 
     runtime
@@ -405,6 +421,38 @@ fn table_selection_axis_and_cell_predicates_are_block_scoped() {
     assert!(runtime.table_column_selection_range(10, 2).is_none());
     assert!(runtime.table_cell_selection_range(10, 2, 0).is_none());
     assert!(runtime.table_row_selection_range(11, 1).is_none());
+}
+
+#[test]
+fn unified_selection_preserves_table_cell_inner_anchor_and_direction() {
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
+    runtime.focus_table_cell_at_offset(10, 1, 1, 1).unwrap();
+    let cell = runtime.focused_table_cell.unwrap();
+    runtime.focused_table_cell = Some(cell.with_selected_range(0..1, true));
+
+    let selection = runtime.unified_document_selection_snapshot().unwrap();
+    assert_eq!(
+        selection.anchor,
+        cditor_core::edit::SelectionEndpoint::Inner {
+            block_id: 10,
+            anchor: cditor_core::edit::InnerSelectionAnchor::TableCell {
+                row: 1,
+                col: 1,
+                offset: 1,
+            },
+        }
+    );
+    assert_eq!(
+        selection.focus,
+        cditor_core::edit::SelectionEndpoint::Inner {
+            block_id: 10,
+            anchor: cditor_core::edit::InnerSelectionAnchor::TableCell {
+                row: 1,
+                col: 1,
+                offset: 0,
+            },
+        }
+    );
 }
 
 #[test]

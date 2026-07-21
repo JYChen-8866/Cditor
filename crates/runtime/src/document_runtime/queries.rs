@@ -9,6 +9,10 @@ impl DocumentRuntime {
         self.revision
     }
 
+    pub fn last_committed_transaction_id(&self) -> Option<u64> {
+        self.last_committed_transaction_id
+    }
+
     /// Records a committed content change at the document-kernel boundary.
     pub fn note_content_changed(&mut self) -> u64 {
         self.revision = self.revision.saturating_add(1);
@@ -43,6 +47,11 @@ impl DocumentRuntime {
         self.pending_measured_heights.len()
     }
 
+    pub fn block_layout_version(&self, block_id: BlockId) -> Option<u64> {
+        let index = self.index.index_of(block_id)?;
+        Some(self.index.layout_meta[index].layout_version)
+    }
+
     pub fn estimated_document_height(&self) -> f64 {
         self.height_index.total_height()
     }
@@ -53,11 +62,13 @@ impl DocumentRuntime {
 
     pub fn document_selection_snapshot(&self) -> Option<DocumentSelection> {
         self.document_selection.or_else(|| {
-            let block_id = self.focused_block_id()?;
-            let offset = self.caret_offset_for_block(block_id)?;
-            Some(DocumentSelection::caret(TextPosition::downstream(
-                block_id, offset,
-            )))
+            let editing = self.editing.as_ref()?;
+            let InputTarget::BlockText { block_id } = editing.input_target else {
+                return None;
+            };
+            Some(DocumentSelection::caret(
+                self.caret_position_for_block(block_id)?,
+            ))
         })
     }
 }
@@ -90,5 +101,31 @@ mod tests {
 
         runtime.undo_focused_block().unwrap();
         assert!(runtime.can_redo());
+    }
+
+    #[test]
+    fn block_layout_version_reads_the_authoritative_index_identity() {
+        let mut runtime = DocumentRuntime::empty();
+        runtime.index.layout_meta[0].layout_version = 37;
+
+        assert_eq!(runtime.block_layout_version(1), Some(37));
+        assert_eq!(runtime.block_layout_version(999), None);
+    }
+
+    #[test]
+    fn complex_block_focus_does_not_fabricate_a_text_selection_snapshot() {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord {
+                block_id: 1,
+                content_version: 1,
+                kind: RichBlockKind::Whiteboard,
+                payload: default_whiteboard_payload(),
+            }],
+            720.0,
+        );
+        runtime.focus_block(1);
+
+        assert!(runtime.document_selection_snapshot().is_none());
     }
 }

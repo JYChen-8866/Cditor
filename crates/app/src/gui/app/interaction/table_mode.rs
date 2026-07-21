@@ -1,3 +1,4 @@
+use cditor_core::edit::TextAffinity;
 use cditor_core::ids::BlockId;
 
 use crate::gui::block::table::{
@@ -18,6 +19,7 @@ pub(in crate::gui::app) enum GuiTableInteractionMode {
         row: usize,
         col: usize,
         anchor_offset: usize,
+        anchor_affinity: TextAffinity,
     },
     #[allow(dead_code)]
     SelectingRange(TableCellRangeSelection),
@@ -155,6 +157,7 @@ mod tests {
                 row: 0,
                 col: 1,
                 anchor_offset: 2,
+                anchor_affinity: TextAffinity::Downstream,
             }
             .is_dragging()
         );

@@ -19,6 +19,7 @@ use super::style::{
     table_cell_hover_background, table_cell_line_height, table_selected_cell_background,
 };
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(super) fn render_table_cell(
     cell: &TableVisibleCell,
     content: AnyElement,

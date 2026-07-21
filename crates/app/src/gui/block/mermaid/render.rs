@@ -35,6 +35,7 @@ struct MermaidPreviewGeometry {
     block_height_px: f64,
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_mermaid_block(
     block_id: BlockId,
     content_version: u64,
@@ -99,7 +100,7 @@ pub(crate) fn render_mermaid_block(
                         .hover(|style| style.bg(rgb(theme.hover_surface)))
                         .child(if show_source { "预览" } else { "源码" })
                         .on_mouse_down(gpui::MouseButton::Left, move |_event, _window, cx| {
-                            let _ = toggle_view.update(cx, |view, cx| {
+                            toggle_view.update(cx, |view, cx| {
                                 view.toggle_mermaid_source_from_gui(block_id, cx);
                             });
                             cx.stop_propagation();

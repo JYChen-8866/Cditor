@@ -83,10 +83,12 @@ pub fn fixture_100k_one_line_blocks(document_id: DocumentId) -> AcceptanceFixtur
         document_id,
         100_000,
         |index| HeightEstimate::new(24.0 + (index % 3) as f64, HeightConfidence::Historical, 2.0),
-        100_000 * 48,
-        0,
-        0,
-        TextProfile::plain(),
+        FixtureContentStats {
+            payload_bytes_hint: 100_000 * 48,
+            media_blocks: 0,
+            complex_blocks: 0,
+            text_profile: TextProfile::plain(),
+        },
     )
 }
 
@@ -103,10 +105,12 @@ pub fn fixture_100k_uneven_heights(document_id: DocumentId) -> AcceptanceFixture
             };
             HeightEstimate::new(height, HeightConfidence::Predictive, height * 0.5)
         },
-        100_000 * 64,
-        0,
-        0,
-        TextProfile::plain(),
+        FixtureContentStats {
+            payload_bytes_hint: 100_000 * 64,
+            media_blocks: 0,
+            complex_blocks: 0,
+            text_profile: TextProfile::plain(),
+        },
     )
 }
 
@@ -119,10 +123,12 @@ pub fn fixture_image_dense(document_id: DocumentId) -> AcceptanceFixture {
             let height = if index % 2 == 0 { 240.0 } else { 32.0 };
             HeightEstimate::new(height, HeightConfidence::Predictive, 120.0)
         },
-        20_000 * 128,
-        10_000,
-        10_000,
-        TextProfile::plain(),
+        FixtureContentStats {
+            payload_bytes_hint: 20_000 * 128,
+            media_blocks: 10_000,
+            complex_blocks: 10_000,
+            text_profile: TextProfile::plain(),
+        },
     )
 }
 
@@ -132,10 +138,12 @@ pub fn fixture_10mb_code_block(document_id: DocumentId) -> AcceptanceFixture {
         document_id,
         1,
         |_| HeightEstimate::new(500_000.0 * 18.0 + 16.0, HeightConfidence::Predictive, 180.0),
-        10 * 1024 * 1024,
-        0,
-        1,
-        TextProfile::plain(),
+        FixtureContentStats {
+            payload_bytes_hint: 10 * 1024 * 1024,
+            media_blocks: 0,
+            complex_blocks: 1,
+            text_profile: TextProfile::plain(),
+        },
     )
 }
 
@@ -145,10 +153,12 @@ pub fn fixture_50k_row_table(document_id: DocumentId) -> AcceptanceFixture {
         document_id,
         1,
         |_| HeightEstimate::new(32.0 + 50_000.0 * 28.0, HeightConfidence::Predictive, 280.0),
-        50_000 * 64,
-        0,
-        1,
-        TextProfile::plain(),
+        FixtureContentStats {
+            payload_bytes_hint: 50_000 * 64,
+            media_blocks: 0,
+            complex_blocks: 1,
+            text_profile: TextProfile::plain(),
+        },
     )
 }
 
@@ -164,13 +174,15 @@ pub fn fixture_emoji_cjk_bidi(document_id: DocumentId) -> AcceptanceFixture {
                 4.0,
             )
         },
-        100_000 * 96,
-        0,
-        0,
-        TextProfile {
-            has_emoji: true,
-            has_cjk: true,
-            has_bidi: true,
+        FixtureContentStats {
+            payload_bytes_hint: 100_000 * 96,
+            media_blocks: 0,
+            complex_blocks: 0,
+            text_profile: TextProfile {
+                has_emoji: true,
+                has_cjk: true,
+                has_bidi: true,
+            },
         },
     )
 }
@@ -223,16 +235,27 @@ impl TextProfile {
     }
 }
 
+/// Non-height fixture stats, grouped to keep the builder signature small.
+struct FixtureContentStats {
+    payload_bytes_hint: usize,
+    media_blocks: usize,
+    complex_blocks: usize,
+    text_profile: TextProfile,
+}
+
 fn build_linear_fixture(
     kind: AcceptanceFixtureKind,
     document_id: DocumentId,
     block_count: usize,
     estimate: impl Fn(usize) -> HeightEstimate,
-    payload_bytes_hint: usize,
-    media_blocks: usize,
-    complex_blocks: usize,
-    text_profile: TextProfile,
+    stats: FixtureContentStats,
 ) -> AcceptanceFixture {
+    let FixtureContentStats {
+        payload_bytes_hint,
+        media_blocks,
+        complex_blocks,
+        text_profile,
+    } = stats;
     let mut records = Vec::with_capacity(block_count);
     let mut height_estimates = Vec::with_capacity(block_count);
     for index in 0..block_count {

@@ -199,9 +199,9 @@ pub(crate) fn render_ai_preview_overlay(
     let text_anchor = preview
         .replacement_range
         .clone()
-        .and_then(|range| layout.and_then(|layout| platform_range_bounds(layout, range)))
+        .and_then(|range| layout.map(|layout| platform_range_bounds(layout, range)))
         .or_else(|| {
-            layout.and_then(|layout| {
+            layout.map(|layout| {
                 platform_range_bounds(layout, preview.anchor_offset..preview.anchor_offset)
             })
         });
@@ -237,7 +237,7 @@ pub(crate) fn render_ai_preview_overlay(
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
         .on_scroll_wheel(move |_event, _window, cx| {
-            let _ = scroll_view.update(cx, |_view, cx| cx.notify());
+            scroll_view.update(cx, |_view, cx| cx.notify());
         })
         .child(render_ai_preview_content(&content, theme));
     let actions = div()

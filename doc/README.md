@@ -1,14 +1,16 @@
 # Documentation Index
 
-文档以 [大文档富文本架构](large-document-rich-text-architecture.md) 为最高设计基线。新增实现应先确认文档状态，避免把历史迁移方案当成当前结构。
+文档以 [成熟 Notion 类编辑器总体设计与重构总计划](architecture/cditor-mature-notion-editor-master-design.md) 为目标架构；[大文档富文本架构](large-document-rich-text-architecture.md) 是其性能与虚拟化基础。新增实现应先确认文档状态，避免把历史迁移方案当成当前结构。
 
 ## 当前架构与状态
 
+- [成熟 Notion 类编辑器总体设计与重构总计划](architecture/cditor-mature-notion-editor-master-design.md)
 - [大文档富文本架构](large-document-rich-text-architecture.md)
 - [大文档实现状态](large-document-rich-text-implementation-status.md)
 - [当前工程结构](architecture/project-structure.md)
 - [V2 GUI 架构](architecture/v2-rich-text-editor-gui-architecture.md)
 - [数据库实现方案](architecture/database-implementation-plan.md)
+- [SQLite/PostgreSQL 双后端设计](architecture/sqlite-postgres-dual-backend-design.md)
 - [PostgreSQL 最小编辑器](architecture/minimal-postgres-editor.md)
 - [远程 PostgreSQL](architecture/remote-postgres.md)
 - [白板集成架构](whiteboard-integration-architecture.md)
@@ -25,12 +27,17 @@
 - [大文档任务清单](plans/large-document-rich-text-task-list.md)
 - [表格功能计划](plans/notion-table-feature-plan.md)
 - [表格交互重设计](plans/notion-table-interaction-redesign.md)
+- [编辑器重构验收基线](acceptance/2026-07-16-editor-refactor-baseline.md)
+- [cditor-text 性能基准报告](acceptance/2026-07-16-cditor-text-benchmark.md)
 - [表格手动验收](acceptance/table-manual-acceptance.md)
 - [表格完成总结](acceptance/table-completion-summary.md)
 - [架构原型](prototypes/)
 
 ## 重构设计
 
+- [Parley 编辑器架构重设计](parley-editor-architecture-redesign.md)
+- [Parley 0.11 能力审计](parley-0.11-capability-audit.md)
+- [Parley 文本布局迁移](parley-text-layout-migration.md)
 - [骨架屏加载计划](refactor/skeleton-loading-plan.md)
 
 ## 历史迁移资料

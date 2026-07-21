@@ -188,9 +188,10 @@ mod tests {
 
     #[test]
     fn table_range_selection_selects_normalized_cell_rectangle() {
-        let range = Some(TableCellRangeSelection::new(7, 2, 2, 1, 1));
+        let selection = TableCellRangeSelection::new(7, 2, 2, 1, 1);
+        let range = Some(selection);
 
-        assert!(range.unwrap().is_multi_cell());
+        assert!(selection.is_multi_cell());
         assert!(cell_selected(None, range, 7, 1, 1));
         assert!(cell_selected(None, range, 7, 2, 2));
         assert!(!cell_selected(None, range, 7, 0, 1));

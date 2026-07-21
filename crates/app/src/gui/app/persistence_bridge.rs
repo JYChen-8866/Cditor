@@ -1,32 +1,327 @@
 use gpui::{AppContext, Context};
 
 use cditor_runtime::content::payload_window::{PayloadWindowLoadRequest, PayloadWindowLoadResult};
+use cditor_runtime::{SelectionMaterializationApplyDecision, SelectionMaterializationRequest};
 use cditor_storage::{StorageError, StorageSession, block_on_storage};
 
 use crate::api::{CditorError, CditorEvent, ChangeOrigin};
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::gui::input::GuiInputCommand;
 use crate::gui::persistence::{
     EditorSaveStatus, STORAGE_VIEWPORT_LOAD_TIMEOUT, mark_dirty_and_schedule_save,
     save_storage_batch,
 };
 
 impl CditorV2View {
+    pub(crate) fn schedule_selection_materialization(
+        &mut self,
+        command: GuiInputCommand,
+        request: SelectionMaterializationRequest,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.selection_materialization_in_flight.is_some() {
+            return true;
+        }
+        let Some(session) = self.storage_persistence.session().cloned() else {
+            return false;
+        };
+        self.selection_materialization_in_flight = Some((request.clone(), command));
+        let load_request = request.clone();
+        let load_task = cx.background_spawn(async move {
+            block_on_storage(async move {
+                let loaded = tokio::time::timeout(
+                    STORAGE_VIEWPORT_LOAD_TIMEOUT,
+                    session.load_payloads(&load_request.block_ids),
+                )
+                .await
+                .map_err(|_| StorageError::Timeout {
+                    operation: "selection payload materialization",
+                    timeout: STORAGE_VIEWPORT_LOAD_TIMEOUT,
+                })??;
+                Ok::<_, StorageError>((loaded.records, loaded.missing_block_ids))
+            })
+            .and_then(|result| result.map_err(|error| error.to_string()))
+        });
+        cx.spawn(async move |view, cx| {
+            let result = load_task.await;
+            let _ = view.update(cx, |view, cx| {
+                let still_current_operation = view
+                    .selection_materialization_in_flight
+                    .as_ref()
+                    .is_some_and(|(pending, pending_command)| {
+                        pending == &request && *pending_command == command
+                    });
+                if !still_current_operation {
+                    return;
+                }
+                view.selection_materialization_in_flight = None;
+                let should_replay = match result {
+                    Ok((records, missing_block_ids)) if missing_block_ids.is_empty() => {
+                        view.ready_runtime().is_some_and(|runtime| {
+                            runtime.apply_selection_materialization_result(
+                                &request,
+                                records,
+                                &missing_block_ids,
+                            ) == SelectionMaterializationApplyDecision::Applied
+                                && runtime.selection_materialization_request().is_none()
+                        })
+                    }
+                    Ok((records, missing_block_ids)) => {
+                        if let Some(runtime) = view.ready_runtime() {
+                            runtime.apply_selection_materialization_result(
+                                &request,
+                                records,
+                                &missing_block_ids,
+                            );
+                        }
+                        false
+                    }
+                    Err(_) => false,
+                };
+                if should_replay {
+                    view.execute_gui_input_command_handler(command, cx);
+                }
+                view.trim_persistent_payload_cache();
+                cx.notify();
+            });
+        })
+        .detach();
+        true
+    }
+
+    pub(crate) fn execute_history_action(
+        &mut self,
+        origin: ChangeOrigin,
+        redo: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, CditorError> {
+        if self.readonly {
+            return Err(CditorError::Readonly);
+        }
+        let runtime = self.ready_runtime().ok_or(CditorError::NotReady)?;
+        let result = if redo {
+            runtime.redo_focused_block()
+        } else {
+            runtime.undo_focused_block()
+        };
+        match result {
+            Ok(changed) => {
+                if changed {
+                    self.mark_dirty_with_origin(origin, cx);
+                    cx.notify();
+                }
+                Ok(changed)
+            }
+            Err(error) => {
+                let reference = self.ready_runtime_ref().and_then(|runtime| {
+                    if redo {
+                        runtime.pending_redo_hydration()
+                    } else {
+                        runtime.pending_undo_hydration()
+                    }
+                });
+                let Some(reference) = reference else {
+                    return Err(CditorError::Internal(error));
+                };
+                self.schedule_history_hydration(reference, origin, redo, cx)?;
+                Ok(false)
+            }
+        }
+    }
+
+    fn schedule_history_hydration(
+        &mut self,
+        reference: cditor_core::edit::ExternalUndoBlobRef,
+        origin: ChangeOrigin,
+        redo: bool,
+        cx: &mut Context<Self>,
+    ) -> Result<(), CditorError> {
+        let key = (reference.snapshot_id, redo);
+        if self.history_hydration_in_flight == Some(key) {
+            return Ok(());
+        }
+        if self.history_hydration_in_flight.is_some() {
+            return Err(CditorError::Internal(
+                "another undo or redo hydration is already running".to_owned(),
+            ));
+        }
+        let session = self.storage_persistence.session().cloned().ok_or_else(|| {
+            CditorError::Unsupported(
+                "external undo hydration requires persistent storage".to_owned(),
+            )
+        })?;
+        self.history_hydration_in_flight = Some(key);
+        cx.emit(CditorEvent::HistoryHydrationStarted {
+            snapshot_id: reference.snapshot_id,
+            redo,
+        });
+        let hydrate_task = cx.background_spawn(async move {
+            let result = block_on_storage(session.load_undo_blob(&reference))
+                .and_then(|result| result.map_err(|error| error.to_string()));
+            (reference, result)
+        });
+        cx.spawn(async move |view, cx| {
+            let (reference, result) = hydrate_task.await;
+            let _ = view.update(cx, |view, cx| {
+                view.history_hydration_in_flight = None;
+                let replay = match result {
+                    Ok(transaction) => match view.ready_runtime() {
+                        Some(runtime) => {
+                            if !runtime.hydrate_external_undo(reference.snapshot_id, transaction) {
+                                Err("undo reference changed while hydrating".to_owned())
+                            } else if redo {
+                                runtime.redo_focused_block()
+                            } else {
+                                runtime.undo_focused_block()
+                            }
+                        }
+                        None => Err("editor runtime is no longer ready".to_owned()),
+                    },
+                    Err(error) => Err(error),
+                };
+                match replay {
+                    Ok(true) => {
+                        view.mark_dirty_with_origin(origin, cx);
+                        cx.emit(CditorEvent::HistoryHydrationSucceeded {
+                            snapshot_id: reference.snapshot_id,
+                            redo,
+                        });
+                    }
+                    Ok(false) => cx.emit(CditorEvent::HistoryHydrationFailed {
+                        snapshot_id: reference.snapshot_id,
+                        redo,
+                        error: CditorError::Internal(
+                            "hydrated history action did not apply".to_owned(),
+                        ),
+                    }),
+                    Err(error) => cx.emit(CditorEvent::HistoryHydrationFailed {
+                        snapshot_id: reference.snapshot_id,
+                        redo,
+                        error: CditorError::Persistence(error),
+                    }),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        Ok(())
+    }
+
     pub(crate) fn mark_dirty(&mut self, cx: &mut Context<Self>) {
-        self.mark_dirty_with_origin(ChangeOrigin::Local, cx);
+        self.mark_dirty_with_origin(ChangeOrigin::User, cx);
     }
 
     pub(crate) fn mark_dirty_with_origin(&mut self, origin: ChangeOrigin, cx: &mut Context<Self>) {
-        let was_dirty = self.dirty;
-        self.dirty = true;
         let revision = self
             .ready_runtime()
             .map(|runtime| runtime.note_content_changed())
             .unwrap_or_default();
+        self.mark_dirty_at_revision(origin, revision, cx);
+    }
+
+    pub(crate) fn mark_dirty_at_revision(
+        &mut self,
+        origin: ChangeOrigin,
+        revision: u64,
+        cx: &mut Context<Self>,
+    ) {
+        let was_dirty = self.dirty;
+        self.dirty = true;
         mark_dirty_and_schedule_save(&mut self.storage_persistence, &mut self.save_status, cx);
+        self.schedule_external_undo_spill(cx);
+        self.schedule_external_undo_cleanup(cx);
         cx.emit(CditorEvent::ContentChanged { revision, origin });
         if !was_dirty {
             cx.emit(CditorEvent::DirtyChanged { dirty: true });
         }
+    }
+
+    fn schedule_external_undo_spill(&mut self, cx: &mut Context<Self>) {
+        if self.undo_spill_in_flight {
+            return;
+        }
+        let Some(session) = self.storage_persistence.session().cloned() else {
+            return;
+        };
+        let Some(job) = self
+            .ready_runtime()
+            .and_then(|runtime| runtime.begin_external_undo_spill())
+        else {
+            return;
+        };
+        self.undo_spill_in_flight = true;
+        let spill_task = cx.background_spawn(async move {
+            let result = block_on_storage(session.write_undo_blob(
+                job.snapshot_id,
+                job.block_count,
+                &job.transaction,
+            ))
+            .and_then(|result| result.map_err(|error| error.to_string()));
+            (job, result)
+        });
+        cx.spawn(async move |view, cx| {
+            let (job, result) = spill_task.await;
+            let _ = view.update(cx, |view, cx| {
+                view.undo_spill_in_flight = false;
+                if let Some(runtime) = view.ready_runtime() {
+                    match result {
+                        Ok(reference) => {
+                            let orphaned = reference.clone();
+                            if let Err(job) = runtime.complete_external_undo_spill(job, reference) {
+                                let _ = runtime.abort_external_undo_spill(job);
+                                runtime.restore_orphaned_external_undo_blobs([orphaned]);
+                            }
+                        }
+                        Err(_) => {
+                            let _ = runtime.abort_external_undo_spill(job);
+                        }
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn schedule_external_undo_cleanup(&mut self, cx: &mut Context<Self>) {
+        if self.undo_cleanup_in_flight {
+            return;
+        }
+        let Some(session) = self.storage_persistence.session().cloned() else {
+            return;
+        };
+        let references = self
+            .ready_runtime()
+            .map(|runtime| runtime.drain_orphaned_external_undo_blobs())
+            .unwrap_or_default();
+        if references.is_empty() {
+            return;
+        }
+        self.undo_cleanup_in_flight = true;
+        let cleanup_task = cx.background_spawn(async move {
+            let mut failed = Vec::new();
+            for reference in references {
+                let result = block_on_storage(session.delete_undo_blob(reference.snapshot_id))
+                    .and_then(|result| result.map_err(|error| error.to_string()));
+                if result.is_err() {
+                    failed.push(reference);
+                }
+            }
+            failed
+        });
+        cx.spawn(async move |view, cx| {
+            let failed = cleanup_task.await;
+            let _ = view.update(cx, |view, cx| {
+                view.undo_cleanup_in_flight = false;
+                if !failed.is_empty()
+                    && let Some(runtime) = view.ready_runtime()
+                {
+                    runtime.restore_orphaned_external_undo_blobs(failed);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     pub(crate) fn flush_storage_persistence(&mut self, cx: &mut Context<Self>) {
@@ -131,8 +426,12 @@ impl CditorV2View {
 
         self.storage_persistence.begin_backend_flush();
         let flush_task = cx.background_spawn(async move {
-            block_on_storage(session.flush())
-                .and_then(|result| result.map_err(|error| error.to_string()))
+            block_on_storage(async move {
+                session.flush().await?;
+                session.prune_undo_blobs(100).await?;
+                Ok::<(), StorageError>(())
+            })
+            .and_then(|result| result.map_err(|error| error.to_string()))
         });
         cx.spawn(async move |view, cx| {
             let result = flush_task.await.map_err(CditorError::Persistence);

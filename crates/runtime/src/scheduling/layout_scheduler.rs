@@ -204,11 +204,7 @@ impl LayoutScheduler {
                 continue;
             }
 
-            loop {
-                let Some(task) = self.pop_front(lane) else {
-                    break;
-                };
-
+            while let Some(task) = self.pop_front(lane) {
                 if self.should_defer_for_interaction(&task) {
                     let id = task.id;
                     self.push_front(lane, task);

@@ -2,35 +2,54 @@ mod ai;
 mod block_attrs;
 mod capabilities;
 mod clipboard;
+mod clipboard_blocks;
 mod cold_start;
+mod columns;
 mod composition;
 mod constructors;
+mod domain_state;
 mod focus;
+mod focus_transition;
 mod folding;
+mod format_transaction;
 mod inline_color;
 mod inline_format;
 mod layout_heights;
+mod local_transaction;
 mod markdown_paste;
+mod markdown_transaction;
 mod media;
 mod payload_cache;
 mod payload_hydration;
 mod payload_window;
+mod platform_text_edit;
 mod projection;
 mod queries;
 mod scroll;
 mod selection;
+mod selection_materialization;
+mod selection_transaction;
+mod selection_unified;
+mod slash_command;
 mod state;
 mod structure_delete;
 mod structure_edit;
 mod structure_index;
+mod structure_insert;
 mod structure_move;
 mod structure_payload;
-mod structure_transactions;
 mod table;
 mod text_edit;
 mod text_navigation;
 mod text_payload;
+mod text_surface;
 mod text_target;
+mod transaction_apply;
+mod transaction_apply_domain;
+mod transaction_apply_domain_validation;
+mod transaction_apply_payload;
+mod transaction_apply_structure;
+mod typing_marks;
 mod undo_redo;
 mod whiteboard;
 
@@ -41,7 +60,16 @@ pub use ai::{
 pub use cold_start::{
     DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,
 };
+pub use focus_transition::CompositionFocusTransition;
 pub use selection::DocumentTextSelectionFragment;
+pub use selection_materialization::{
+    SelectionMaterializationApplyDecision, SelectionMaterializationRequest,
+};
+pub use text_surface::{
+    RichTextDelta, RuntimeTextSurface, TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult,
+    TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot, TextSurfaceSnapshotIdentity,
+};
+pub use transaction_apply::{AppliedTransaction, TransactionApplyError};
 
 use self::{selection::FocusedTextSelection, table::TableRuntime};
 
@@ -49,7 +77,7 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     ops::Range,
     sync::OnceLock,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use super::{
@@ -60,15 +88,18 @@ use crate::content::payload_window::{
     PayloadWindowApplyDecision, PayloadWindowLoadRequest, PayloadWindowLoadResult,
 };
 use crate::{
-    CompositionState, EditingSession, InputTarget, ListProjectionCache, PayloadWindow,
-    PieceTableTextModel, SingleCharInputHotPath,
+    CompositionBaseSelection, CompositionState, EditingSession, InputSessionIdentity, InputTarget,
+    ListProjectionCache, PayloadWindow, PieceTableTextModel, SingleCharInputHotPath,
 };
 use cditor_core::document::{BlockIndexRecord, DocumentIndex, VisibleDocumentIndex};
 use cditor_core::edit::{
-    DocumentSelection, EditOperation, EditTransaction, EditTransactionKind, InternalTextOffset,
-    SelectionRange, TextOffsetMap, TextPosition,
+    AssetSnapshot, CollectionRecordSnapshot, CommentThreadSnapshot, DocumentSelection,
+    EditOperation, EditTransaction, EditTransactionKind, InnerSelectionAnchor, InternalTextOffset,
+    ScrollAnchor, SelectionRange, TableEditOperation, TextAffinity, TextEditOperation,
+    TextOffsetMap, TextPosition, TransactionPermission, TransactionPermissionSet,
+    TransactionPrecondition, UndoStack,
 };
-use cditor_core::ids::{BlockId, DocumentId};
+use cditor_core::ids::{AssetId, BlockId, CollectionId, CommentThreadId, DocumentId, SurfaceId};
 use cditor_core::layout::{
     BlockHeightIndex, BlockLayoutMeta, DEFAULT_LAYOUT_WIDTH_PX, HeightConfidence, HeightEstimate,
     IMAGE_BLOCK_ESTIMATED_HEIGHT_PX, PageLayoutIndex, PagePolicy, estimate_block_height,
@@ -143,20 +174,22 @@ fn trace_block_color(event: &str, details: impl std::fmt::Display) {
 pub use selection::RichTextSelectionSnapshot;
 pub use state::{DocumentRuntime, GlobalScrollTarget};
 use state::{
-    EnterSplitMode, FocusedTableCell, PendingMeasuredHeight, RuntimeUndoEvent,
-    StructureMoveUndoStep, StructurePasteUndoStep, TextSnapshot,
+    EnterSplitMode, FocusedTableCell, PendingMeasuredHeight, RuntimeUndoEvent, TextSnapshot,
+    TypingMarkOverride, TypingUndoGroup, TypingUndoRequest, UndoScrollSnapshot,
+    VisualCaretPosition,
 };
 pub use table::TableClipboardSnapshot;
 
 use inline_color::set_color_mark_for_range;
+use local_transaction::{LocalBlockOperationsTransaction, LocalInsertBlocksTransaction};
 use table::{default_table_payload, ensure_table_payload_for_kind};
 use text_payload::{
-    append_plain_text_to_payload, backspace_at_start_resets_kind_to_paragraph,
+    append_plain_text_to_payload, backspace_at_start_resets_kind_to_paragraph, merge_inline_spans,
     newline_sibling_kind_for_v1, next_grapheme_boundary, payload_for_kind_from_plain_text,
     prepend_plain_text_to_payload, previous_char_boundary, previous_grapheme_boundary,
-    replace_rich_text_spans_with_spans, safe_char_range, slice_rich_text_spans,
-    split_payload_for_enter, sync_payload_from_model_after_replace, text_payload_for_existing,
-    toggle_mark_for_range, uses_soft_tab,
+    replace_rich_text_spans_preserving_marks, replace_rich_text_spans_with_spans, safe_char_range,
+    slice_rich_text_spans, split_payload_for_enter, sync_payload_from_model_after_replace,
+    text_payload_for_existing, toggle_mark_for_range, uses_soft_tab,
 };
 use text_target::{FocusedTextEdit, normalized_grapheme_offset, normalized_grapheme_range};
 use whiteboard::default_whiteboard_payload;
@@ -191,6 +224,47 @@ fn sync_text_model_for_payload(
 
 fn normalize_payload_record_for_kind(mut record: BlockPayloadRecord) -> BlockPayloadRecord {
     record.payload = table::ensure_table_payload_for_kind(&record.kind, record.payload);
+    if matches!(record.kind, RichBlockKind::Database) {
+        record.payload = match record.payload {
+            BlockPayload::Collection(mut collection) => {
+                if collection.collection_id == 0 {
+                    let title = collection.title.plain_text();
+                    let active_view_id = collection.active_view_id;
+                    let mut normalized = cditor_core::rich_text::CollectionPayload::for_block(
+                        record.block_id,
+                        title,
+                    );
+                    if !collection.properties.is_empty() {
+                        normalized.properties = std::mem::take(&mut collection.properties);
+                    }
+                    if !collection.views.is_empty() {
+                        normalized.views = std::mem::take(&mut collection.views);
+                    }
+                    normalized.active_view_id = active_view_id
+                        .filter(|view_id| {
+                            normalized.views.iter().any(|view| view.view_id == *view_id)
+                        })
+                        .or_else(|| normalized.views.first().map(|view| view.view_id));
+                    normalized.schema_version = collection.schema_version.max(1);
+                    BlockPayload::Collection(normalized)
+                } else {
+                    collection.active_view_id = collection
+                        .active_view_id
+                        .filter(|view_id| {
+                            collection.views.iter().any(|view| view.view_id == *view_id)
+                        })
+                        .or_else(|| collection.views.first().map(|view| view.view_id));
+                    BlockPayload::Collection(collection)
+                }
+            }
+            other => {
+                BlockPayload::Collection(cditor_core::rich_text::CollectionPayload::for_block(
+                    record.block_id,
+                    other.plain_text(),
+                ))
+            }
+        };
+    }
     record
 }
 
@@ -212,59 +286,6 @@ fn log_runtime_timing(label: &str, start: Instant, count: Option<usize>) {
             eprintln!("[cditor][timing] {label} count={count} elapsed_ms={elapsed_ms:.2}");
         } else {
             eprintln!("[cditor][timing] {label} elapsed_ms={elapsed_ms:.2}");
-        }
-    }
-}
-
-fn record_index_of(records: &[BlockIndexRecord], block_id: BlockId) -> Option<usize> {
-    records.iter().position(|record| record.id == block_id)
-}
-
-fn record_subtree_end(records: &[BlockIndexRecord], index: usize) -> usize {
-    let depth = records[index].depth;
-    let mut end = index + 1;
-    while end < records.len() && records[end].depth > depth {
-        end += 1;
-    }
-    end
-}
-
-fn insertion_index_for_parent_sibling(
-    records: &[BlockIndexRecord],
-    parent_id: Option<BlockId>,
-    sibling_index: usize,
-) -> usize {
-    let direct_children = records
-        .iter()
-        .enumerate()
-        .filter_map(|(index, record)| (record.parent_id == parent_id).then_some((index, record.id)))
-        .collect::<Vec<_>>();
-    if let Some((index, _)) = direct_children.get(sibling_index).copied() {
-        return index;
-    }
-    if let Some((index, _)) = direct_children.last().copied() {
-        return record_subtree_end(records, index);
-    }
-    parent_id
-        .and_then(|parent_id| record_index_of(records, parent_id))
-        .map(|parent_index| parent_index + 1)
-        .unwrap_or(records.len())
-}
-
-fn apply_subtree_depth_delta(
-    records: &mut [BlockIndexRecord],
-    old_root_depth: u16,
-    new_root_depth: u16,
-) {
-    if new_root_depth >= old_root_depth {
-        let delta = new_root_depth - old_root_depth;
-        for record in records {
-            record.depth = record.depth.saturating_add(delta);
-        }
-    } else {
-        let delta = old_root_depth - new_root_depth;
-        for record in records {
-            record.depth = record.depth.saturating_sub(delta);
         }
     }
 }

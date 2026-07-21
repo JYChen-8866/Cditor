@@ -36,7 +36,7 @@ pub(super) fn render_code_theme_button(
         .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
         .child(render_code_theme_icon(item))
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.toggle_code_theme_menu_from_gui(block_id, cx);
             });
             cx.stop_propagation();
@@ -137,7 +137,7 @@ fn render_code_theme_row(
                 .child(if selected { "✓" } else { "" }),
         )
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.select_code_theme_from_gui(item.id, cx);
             });
             cx.stop_propagation();

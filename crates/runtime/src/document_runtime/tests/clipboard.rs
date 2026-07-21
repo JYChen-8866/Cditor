@@ -77,6 +77,24 @@ fn cross_block_clipboard_preserves_partial_spans_and_block_boundaries() {
             .iter()
             .any(|span| { span.text == "e" && span.marks.contains(&InlineMark::Underline) })
     );
+    let transactions = target.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert_eq!(transactions[0].kind, EditTransactionKind::Paste);
+    assert_eq!(
+        transactions[0].origin,
+        cditor_core::edit::ChangeOrigin::Import
+    );
+    assert!(matches!(
+        transactions[0].ops.as_slice(),
+        [EditOperation::Block(_), EditOperation::InsertBlocks { payloads, .. }]
+            if payloads.len() == 2
+    ));
+    assert!(target.undo_focused_block().unwrap());
+    assert_eq!(target.index.block_ids, vec![10]);
+    assert_eq!(target.payload_window.get(10).unwrap().plain_text(), "XY");
+    assert!(target.redo_focused_block().unwrap());
+    assert_eq!(target.index.block_ids, vec![10, 11, 12]);
+    assert_eq!(target.payload_window.get(12).unwrap().plain_text(), "eY");
 }
 
 #[test]
@@ -167,6 +185,107 @@ fn cross_block_clipboard_preserves_first_kind_marks_and_nested_hierarchy() {
 }
 
 #[test]
+fn fragment_paste_over_cross_block_selection_is_one_payload_complete_transaction() {
+    let mut source = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            rich_record(10, RichBlockKind::Paragraph, vec![InlineSpan::plain("x")]),
+            rich_record(11, RichBlockKind::Quote, vec![InlineSpan::plain("y")]),
+        ],
+        720.0,
+    );
+    source.set_document_text_selection(10, 0, 11, 1).unwrap();
+    let selection = source.clipboard_selection_snapshot().unwrap();
+
+    let mut target = DocumentRuntime::from_payloads(
+        2,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "AA"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "BB"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "CC"),
+        ],
+        720.0,
+    );
+    target.set_document_text_selection(1, 1, 3, 1).unwrap();
+    let before_selection = target.document_selection_snapshot();
+
+    assert!(target.paste_clipboard_selection(&selection).unwrap());
+    assert_eq!(target.index.block_ids, vec![1, 4]);
+    assert_eq!(target.block_payload_record(1).unwrap().plain_text(), "Ax");
+    assert_eq!(target.block_payload_record(4).unwrap().plain_text(), "yC");
+    let transactions = target.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert!(matches!(
+        transactions[0].ops.as_slice(),
+        [
+            EditOperation::Block(_),
+            EditOperation::DeleteBlockRange { .. },
+            EditOperation::InsertBlocks { payloads, .. }
+        ] if payloads.len() == 1
+    ));
+    assert!(matches!(
+        transactions[0].inverse_ops.as_slice(),
+        [
+            EditOperation::DeleteBlockRange { .. },
+            EditOperation::InsertBlocks { payloads, .. },
+            EditOperation::Block(_)
+        ] if payloads.len() == 2
+    ));
+
+    assert!(target.undo_focused_block().unwrap());
+    assert_eq!(target.index.block_ids, vec![1, 2, 3]);
+    assert_eq!(target.block_payload_record(1).unwrap().plain_text(), "AA");
+    assert_eq!(target.block_payload_record(2).unwrap().plain_text(), "BB");
+    assert_eq!(target.block_payload_record(3).unwrap().plain_text(), "CC");
+    assert_eq!(target.document_selection_snapshot(), before_selection);
+    assert!(target.redo_focused_block().unwrap());
+    assert_eq!(target.index.block_ids, vec![1, 4]);
+}
+
+#[test]
+fn fragment_paste_preserves_unselected_nested_tail_in_the_same_transaction() {
+    let mut source = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(10, RichBlockKind::Paragraph, "x"),
+            BlockPayloadRecord::rich_text(11, RichBlockKind::Paragraph, "y"),
+        ],
+        720.0,
+    );
+    source.set_document_text_selection(10, 0, 11, 1).unwrap();
+    let selection = source.clipboard_selection_snapshot().unwrap();
+    let mut target = runtime_with_kind_depths_and_text(vec![
+        (RichBlockKind::Paragraph, 0, None, "AA"),
+        (RichBlockKind::Paragraph, 1, Some(1), "BB"),
+        (RichBlockKind::Paragraph, 2, Some(2), "CC"),
+        (RichBlockKind::Paragraph, 0, None, "DD"),
+    ]);
+    target.set_document_text_selection(1, 1, 2, 1).unwrap();
+
+    assert!(target.paste_clipboard_selection(&selection).unwrap());
+    assert_eq!(target.index.block_ids, vec![1, 5, 3, 4]);
+    assert_eq!(target.index.parent_ids, vec![None, None, None, None]);
+    assert_eq!(target.block_payload_record(1).unwrap().plain_text(), "Ax");
+    assert_eq!(target.block_payload_record(5).unwrap().plain_text(), "yB");
+    assert_eq!(target.block_payload_record(3).unwrap().plain_text(), "CC");
+    let transactions = target.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert!(matches!(
+        transactions[0].ops.as_slice(),
+        [
+            EditOperation::Block(_),
+            EditOperation::DeleteBlockRange { .. },
+            EditOperation::InsertBlocks { payloads, .. }
+        ] if payloads.len() == 2
+    ));
+    assert!(target.undo_focused_block().unwrap());
+    assert_eq!(target.index.block_ids, vec![1, 2, 3, 4]);
+    assert_eq!(target.index.parent_ids, vec![None, Some(1), Some(2), None]);
+    assert!(target.redo_focused_block().unwrap());
+    assert_eq!(target.index.block_ids, vec![1, 5, 3, 4]);
+}
+
+#[test]
 fn whole_block_clipboard_remaps_ids_and_preserves_complex_payload_hierarchy() {
     let records = vec![
         BlockIndexRecord::new(
@@ -221,6 +340,27 @@ fn whole_block_clipboard_remaps_ids_and_preserves_complex_payload_hierarchy() {
         panic!("expected whiteboard payload");
     };
     assert!(whiteboard.scene_json.contains("shape-1"));
+    let transactions = target.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert_eq!(transactions[0].kind, EditTransactionKind::Paste);
+    assert_eq!(
+        transactions[0].origin,
+        cditor_core::edit::ChangeOrigin::Import
+    );
+    let [
+        EditOperation::InsertBlocks {
+            blocks, payloads, ..
+        },
+    ] = transactions[0].ops.as_slice()
+    else {
+        panic!("whole-block paste must use one payload-carrying insertion");
+    };
+    assert_eq!(blocks.len(), 2);
+    assert_eq!(payloads.len(), 2);
+    assert!(matches!(
+        &payloads[1].payload,
+        BlockPayload::Whiteboard(whiteboard) if whiteboard.scene_json.contains("shape-1")
+    ));
 
     assert!(target.undo_focused_block().is_ok());
     assert_eq!(target.index.block_ids, vec![10]);
@@ -261,6 +401,13 @@ fn large_whole_block_clipboard_paste_rebuilds_structure_once_and_hydrates_a_wind
     assert_eq!(target.structure_version(), 2);
     assert!(projection.blocks.len() <= 320);
     assert!(target.text_models.len() <= 322);
+    let undo = target.external_undo_stack.last().unwrap();
+    let persistent = target.pending_structure_transactions.last().unwrap();
+    assert!(std::sync::Arc::ptr_eq(&undo.ops, &persistent.ops));
+    assert!(std::sync::Arc::ptr_eq(
+        &undo.inverse_ops,
+        &persistent.inverse_ops
+    ));
 
     assert!(target.undo_focused_block().unwrap());
     assert_eq!(target.index.total_count(), 1);

@@ -1,0 +1,1059 @@
+{
+  "schema_version": 1,
+  "corpus_id": "cditor-parley-visual-layout",
+  "parley_version": "0.11.0",
+  "coordinate_system": {
+    "unit": "1/64 device pixel",
+    "units_per_device_pixel": 64
+  },
+  "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+  "cases": [
+    {
+      "id": "wrapped-latin-1x",
+      "display_scale_milli": 1000,
+      "requested_width": 9088,
+      "layout_width": 6631,
+      "full_width": 6921,
+      "height": 4992,
+      "lines": [
+        {
+          "index": 0,
+          "text_range": [
+            0,
+            13
+          ],
+          "baseline": 1088,
+          "top": 0,
+          "bottom": 1664,
+          "advance": 6208,
+          "offset": 0
+        },
+        {
+          "index": 1,
+          "text_range": [
+            13,
+            27
+          ],
+          "baseline": 2752,
+          "top": 1664,
+          "bottom": 3328,
+          "advance": 6921,
+          "offset": 0
+        },
+        {
+          "index": 2,
+          "text_range": [
+            27,
+            34
+          ],
+          "baseline": 4416,
+          "top": 3328,
+          "bottom": 4992,
+          "advance": 3237,
+          "offset": 0
+        }
+      ],
+      "glyph_runs": [
+        {
+          "family": "League Spartan",
+          "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+          "face_index": 0,
+          "font_size": 1152,
+          "weight_milli": 100000,
+          "synthesized": false,
+          "normalized_coords": [
+            6454
+          ],
+          "foreground": 3618095,
+          "decoration_x": 0,
+          "decoration_width": 6208,
+          "baseline": 1088,
+          "glyphs": [
+            {
+              "id": 137,
+              "x": 0,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 208,
+              "x": 566,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 351,
+              "x": 1184,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 301,
+              "x": 1596,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 1850,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 402,
+              "x": 2402,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 2944,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 298,
+              "x": 3234,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 3722,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 4274,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 348,
+              "x": 4826,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 357,
+              "x": 5449,
+              "y": 1088,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 5917,
+              "y": 1088,
+              "color": false
+            }
+          ],
+          "underline": null
+        },
+        {
+          "family": "League Spartan",
+          "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+          "face_index": 0,
+          "font_size": 1152,
+          "weight_milli": 100000,
+          "synthesized": false,
+          "normalized_coords": [
+            6454
+          ],
+          "foreground": 3618095,
+          "decoration_x": 0,
+          "decoration_width": 6921,
+          "baseline": 2752,
+          "glyphs": [
+            {
+              "id": 396,
+              "x": 0,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 351,
+              "x": 775,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 208,
+              "x": 1176,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 348,
+              "x": 1794,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 348,
+              "x": 2416,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 3039,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 243,
+              "x": 3591,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 4201,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 301,
+              "x": 4491,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 279,
+              "x": 4746,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 309,
+              "x": 5016,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 5610,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 357,
+              "x": 6163,
+              "y": 2752,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 6631,
+              "y": 2752,
+              "color": false
+            }
+          ],
+          "underline": null
+        },
+        {
+          "family": "League Spartan",
+          "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+          "face_index": 0,
+          "font_size": 1152,
+          "weight_milli": 100000,
+          "synthesized": false,
+          "normalized_coords": [
+            6454
+          ],
+          "foreground": 3618095,
+          "decoration_x": 0,
+          "decoration_width": 3237,
+          "baseline": 4416,
+          "glyphs": [
+            {
+              "id": 357,
+              "x": 0,
+              "y": 4416,
+              "color": false
+            },
+            {
+              "id": 364,
+              "x": 460,
+              "y": 4416,
+              "color": false
+            },
+            {
+              "id": 208,
+              "x": 847,
+              "y": 4416,
+              "color": false
+            },
+            {
+              "id": 236,
+              "x": 1465,
+              "y": 4416,
+              "color": false
+            },
+            {
+              "id": 301,
+              "x": 2075,
+              "y": 4416,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 2329,
+              "y": 4416,
+              "color": false
+            },
+            {
+              "id": 471,
+              "x": 2882,
+              "y": 4416,
+              "color": false
+            }
+          ],
+          "underline": null
+        }
+      ],
+      "carets": [
+        {
+          "label": "start",
+          "offset": 0,
+          "affinity": "downstream",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 64,
+            "height": 1664
+          }
+        },
+        {
+          "label": "soft-wrap-upstream",
+          "offset": 19,
+          "affinity": "upstream",
+          "rect": {
+            "x": 3591,
+            "y": 1664,
+            "width": 64,
+            "height": 1664
+          }
+        },
+        {
+          "label": "soft-wrap-downstream",
+          "offset": 19,
+          "affinity": "downstream",
+          "rect": {
+            "x": 3591,
+            "y": 1664,
+            "width": 64,
+            "height": 1664
+          }
+        },
+        {
+          "label": "end",
+          "offset": 34,
+          "affinity": "upstream",
+          "rect": {
+            "x": 3237,
+            "y": 3328,
+            "width": 64,
+            "height": 1664
+          }
+        }
+      ],
+      "selections": [
+        {
+          "label": "wrapped-lines",
+          "anchor": {
+            "offset": 13,
+            "affinity": "downstream"
+          },
+          "focus": {
+            "offset": 26,
+            "affinity": "upstream"
+          },
+          "rects": [
+            {
+              "x": 0,
+              "y": 1664,
+              "width": 6631,
+              "height": 1664
+            }
+          ]
+        }
+      ],
+      "backgrounds": []
+    },
+    {
+      "id": "decorations-1_25x",
+      "display_scale_milli": 1250,
+      "requested_width": 16800,
+      "layout_width": 15151,
+      "full_width": 15514,
+      "height": 4160,
+      "lines": [
+        {
+          "index": 0,
+          "text_range": [
+            0,
+            26
+          ],
+          "baseline": 1344,
+          "top": 0,
+          "bottom": 2112,
+          "advance": 15514,
+          "offset": 825
+        },
+        {
+          "index": 1,
+          "text_range": [
+            26,
+            38
+          ],
+          "baseline": 3456,
+          "top": 2112,
+          "bottom": 4224,
+          "advance": 8122,
+          "offset": 4339
+        }
+      ],
+      "glyph_runs": [
+        {
+          "family": "League Spartan",
+          "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+          "face_index": 0,
+          "font_size": 1440,
+          "weight_milli": 100000,
+          "synthesized": false,
+          "normalized_coords": [
+            6454
+          ],
+          "foreground": 3618095,
+          "decoration_x": 825,
+          "decoration_width": 3334,
+          "baseline": 1344,
+          "glyphs": [
+            {
+              "id": 89,
+              "x": 825,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 279,
+              "x": 1492,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 309,
+              "x": 1830,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 298,
+              "x": 2573,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 357,
+              "x": 3211,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 3796,
+              "y": 1344,
+              "color": false
+            }
+          ],
+          "underline": null
+        },
+        {
+          "family": "League Spartan",
+          "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+          "face_index": 0,
+          "font_size": 1440,
+          "weight_milli": 100000,
+          "synthesized": false,
+          "normalized_coords": [
+            6454
+          ],
+          "foreground": 2327522,
+          "decoration_x": 4159,
+          "decoration_width": 9176,
+          "baseline": 1344,
+          "glyphs": [
+            {
+              "id": 357,
+              "x": 4159,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 364,
+              "x": 4734,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 208,
+              "x": 5218,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 402,
+              "x": 5991,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 6667,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 369,
+              "x": 7030,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 309,
+              "x": 7775,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 243,
+              "x": 8518,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 9279,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 351,
+              "x": 9970,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 301,
+              "x": 10484,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 279,
+              "x": 10802,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 309,
+              "x": 11140,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 11883,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 243,
+              "x": 12573,
+              "y": 1344,
+              "color": false
+            }
+          ],
+          "underline": {
+            "color": 2327522,
+            "offset": -72,
+            "size": 36
+          }
+        },
+        {
+          "family": "League Spartan",
+          "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+          "face_index": 0,
+          "font_size": 1440,
+          "weight_milli": 100000,
+          "synthesized": false,
+          "normalized_coords": [
+            6454
+          ],
+          "foreground": 3618095,
+          "decoration_x": 13335,
+          "decoration_width": 3003,
+          "baseline": 1344,
+          "glyphs": [
+            {
+              "id": 469,
+              "x": 13335,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 208,
+              "x": 13698,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 309,
+              "x": 14471,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 243,
+              "x": 15214,
+              "y": 1344,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 15975,
+              "y": 1344,
+              "color": false
+            }
+          ],
+          "underline": null
+        },
+        {
+          "family": "League Spartan",
+          "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+          "face_index": 0,
+          "font_size": 1440,
+          "weight_milli": 100000,
+          "synthesized": false,
+          "normalized_coords": [
+            6454
+          ],
+          "foreground": 10179040,
+          "decoration_x": 4339,
+          "decoration_width": 8122,
+          "baseline": 3456,
+          "glyphs": [
+            {
+              "id": 308,
+              "x": 4339,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 208,
+              "x": 5442,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 351,
+              "x": 6214,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 298,
+              "x": 6728,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 357,
+              "x": 7366,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 7951,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 351,
+              "x": 8314,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 8815,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 308,
+              "x": 9505,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 208,
+              "x": 10608,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 279,
+              "x": 11380,
+              "y": 3456,
+              "color": false
+            },
+            {
+              "id": 309,
+              "x": 11718,
+              "y": 3456,
+              "color": false
+            }
+          ],
+          "underline": {
+            "color": 10179040,
+            "offset": -72,
+            "size": 36
+          }
+        }
+      ],
+      "carets": [
+        {
+          "label": "link-start",
+          "offset": 6,
+          "affinity": "downstream",
+          "rect": {
+            "x": 4159,
+            "y": 0,
+            "width": 80,
+            "height": 2112
+          }
+        },
+        {
+          "label": "mark-start",
+          "offset": 26,
+          "affinity": "downstream",
+          "rect": {
+            "x": 4339,
+            "y": 2112,
+            "width": 80,
+            "height": 2112
+          }
+        },
+        {
+          "label": "end",
+          "offset": 38,
+          "affinity": "upstream",
+          "rect": {
+            "x": 12461,
+            "y": 2112,
+            "width": 80,
+            "height": 2112
+          }
+        }
+      ],
+      "selections": [
+        {
+          "label": "cross-style-runs",
+          "anchor": {
+            "offset": 3,
+            "affinity": "downstream"
+          },
+          "focus": {
+            "offset": 31,
+            "affinity": "upstream"
+          },
+          "rects": [
+            {
+              "x": 2573,
+              "y": 0,
+              "width": 13766,
+              "height": 2112
+            },
+            {
+              "x": 4339,
+              "y": 2112,
+              "width": 3612,
+              "height": 2112
+            }
+          ]
+        }
+      ],
+      "backgrounds": [
+        {
+          "rect": {
+            "x": 4259,
+            "y": 2112,
+            "width": 8282,
+            "height": 2112
+          },
+          "color": 15921906,
+          "radius": 0
+        }
+      ]
+    },
+    {
+      "id": "hard-line-ligatures-2x",
+      "display_scale_milli": 2000,
+      "requested_width": 30720,
+      "layout_width": 11444,
+      "full_width": 11444,
+      "height": 6656,
+      "lines": [
+        {
+          "index": 0,
+          "text_range": [
+            0,
+            14
+          ],
+          "baseline": 2176,
+          "top": 0,
+          "bottom": 3328,
+          "advance": 11444,
+          "offset": 19276
+        },
+        {
+          "index": 1,
+          "text_range": [
+            14,
+            25
+          ],
+          "baseline": 5504,
+          "top": 3328,
+          "bottom": 6656,
+          "advance": 10494,
+          "offset": 20226
+        }
+      ],
+      "glyph_runs": [
+        {
+          "family": "League Spartan",
+          "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+          "face_index": 0,
+          "font_size": 2304,
+          "weight_milli": 100000,
+          "synthesized": false,
+          "normalized_coords": [
+            6454
+          ],
+          "foreground": 3618095,
+          "decoration_x": 19276,
+          "decoration_width": 11444,
+          "baseline": 2176,
+          "glyphs": [
+            {
+              "id": 316,
+              "x": 19276,
+              "y": 2176,
+              "color": false
+            },
+            {
+              "id": 443,
+              "x": 20437,
+              "y": 2176,
+              "color": false
+            },
+            {
+              "id": 237,
+              "x": 22491,
+              "y": 2176,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 23451,
+              "y": 2176,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 24556,
+              "y": 2176,
+              "color": false
+            },
+            {
+              "id": 208,
+              "x": 25136,
+              "y": 2176,
+              "color": false
+            },
+            {
+              "id": 443,
+              "x": 26372,
+              "y": 2176,
+              "color": false
+            },
+            {
+              "id": 309,
+              "x": 28426,
+              "y": 2176,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 29615,
+              "y": 2176,
+              "color": false
+            }
+          ],
+          "underline": null
+        },
+        {
+          "family": "League Spartan",
+          "font_sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+          "face_index": 0,
+          "font_size": 2304,
+          "weight_milli": 100000,
+          "synthesized": false,
+          "normalized_coords": [
+            6454
+          ],
+          "foreground": 3618095,
+          "decoration_x": 20226,
+          "decoration_width": 10494,
+          "baseline": 5504,
+          "glyphs": [
+            {
+              "id": 357,
+              "x": 20226,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 21163,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 237,
+              "x": 22268,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 316,
+              "x": 23227,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 309,
+              "x": 24389,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 243,
+              "x": 25577,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 469,
+              "x": 26796,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 301,
+              "x": 27377,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 279,
+              "x": 27886,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 309,
+              "x": 28426,
+              "y": 5504,
+              "color": false
+            },
+            {
+              "id": 248,
+              "x": 29615,
+              "y": 5504,
+              "color": false
+            }
+          ],
+          "underline": null
+        }
+      ],
+      "carets": [
+        {
+          "label": "ligature-interior",
+          "offset": 2,
+          "affinity": "downstream",
+          "rect": {
+            "x": 21122,
+            "y": 0,
+            "width": 128,
+            "height": 3328
+          }
+        },
+        {
+          "label": "hard-line-upstream",
+          "offset": 14,
+          "affinity": "upstream",
+          "rect": {
+            "x": 20226,
+            "y": 3328,
+            "width": 128,
+            "height": 3328
+          }
+        },
+        {
+          "label": "hard-line-downstream",
+          "offset": 14,
+          "affinity": "downstream",
+          "rect": {
+            "x": 20226,
+            "y": 3328,
+            "width": 128,
+            "height": 3328
+          }
+        }
+      ],
+      "selections": [
+        {
+          "label": "across-hard-line",
+          "anchor": {
+            "offset": 7,
+            "affinity": "downstream"
+          },
+          "focus": {
+            "offset": 21,
+            "affinity": "upstream"
+          },
+          "rects": [
+            {
+              "x": 25136,
+              "y": 0,
+              "width": 6114,
+              "height": 3328
+            },
+            {
+              "x": 20226,
+              "y": 3328,
+              "width": 7150,
+              "height": 3328
+            }
+          ]
+        }
+      ],
+      "backgrounds": []
+    }
+  ]
+}

@@ -21,6 +21,7 @@ pub(in crate::gui::app) struct GuiTableReorderDrag {
 }
 
 impl CditorV2View {
+    #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
     pub(crate) fn start_table_reorder_from_gui(
         &mut self,
         block_id: BlockId,
@@ -119,17 +120,25 @@ impl CditorV2View {
             cx.notify();
             return true;
         }
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let result = match drag.axis {
-                TableAxis::Row => {
-                    runtime.move_table_row(drag.block_id, drag.from_index, drag.target_index)
-                }
-                TableAxis::Column => {
-                    runtime.move_table_column(drag.block_id, drag.from_index, drag.target_index)
-                }
-            };
+        let commit = match &mut self.state {
+            CditorViewState::Ready(runtime) => {
+                let result = match drag.axis {
+                    TableAxis::Row => {
+                        runtime.move_table_row(drag.block_id, drag.from_index, drag.target_index)
+                    }
+                    TableAxis::Column => {
+                        runtime.move_table_column(drag.block_id, drag.from_index, drag.target_index)
+                    }
+                };
+                Some((result, runtime.revision()))
+            }
+            _ => None,
+        };
+        if let Some((result, revision)) = commit {
             match result {
-                Ok(true) => self.mark_dirty(cx),
+                Ok(true) => {
+                    self.mark_dirty_at_revision(crate::api::ChangeOrigin::User, revision, cx)
+                }
                 Ok(false) => {}
                 Err(error) => {
                     self.save_status = EditorSaveStatus::Failed(error);

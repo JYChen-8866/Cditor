@@ -1,5 +1,5 @@
 use super::*;
-use cditor_core::edit::SelectionRange;
+use cditor_core::edit::{InnerSelectionAnchor, SelectionEndpoint, SelectionRange};
 
 #[test]
 fn document_text_selection_projects_partial_and_full_ranges() {
@@ -35,6 +35,125 @@ fn document_text_selection_projects_partial_and_full_ranges() {
     assert_eq!(
         runtime.selected_document_text().as_deref(),
         Some("cd\nefgh\ni")
+    );
+}
+
+#[test]
+fn unified_selection_projects_text_and_whole_block_truth_without_ui_entities() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "a"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "b"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "c"),
+        ],
+        720.0,
+    );
+    runtime.set_document_text_selection(1, 1, 3, 0).unwrap();
+    let text = runtime.unified_document_selection_snapshot().unwrap();
+    assert!(matches!(text.anchor, SelectionEndpoint::Text(_)));
+    assert!(matches!(text.focus, SelectionEndpoint::Text(_)));
+
+    runtime.document_selection = None;
+    runtime.selected_block_ids.extend([3, 1]);
+    let blocks = runtime.unified_document_selection_snapshot().unwrap();
+    assert_eq!(blocks.anchor, SelectionEndpoint::Block { block_id: 1 });
+    assert_eq!(blocks.focus, SelectionEndpoint::Block { block_id: 3 });
+}
+
+#[test]
+fn unified_selection_owns_code_and_canvas_inner_endpoints_and_clears_on_text_focus() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord {
+                block_id: 1,
+                content_version: 1,
+                kind: RichBlockKind::Code {
+                    language: Some("rust".to_owned()),
+                },
+                payload: BlockPayload::Code {
+                    language: Some("rust".to_owned()),
+                    text: "let x = 1;".to_owned(),
+                },
+            },
+            BlockPayloadRecord {
+                block_id: 2,
+                content_version: 1,
+                kind: RichBlockKind::Whiteboard,
+                payload: BlockPayload::Whiteboard(Default::default()),
+            },
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "text"),
+        ],
+        720.0,
+    );
+
+    runtime
+        .set_focused_inner_selection(
+            1,
+            InnerSelectionAnchor::CodeLine { line: 2, column: 1 },
+            InnerSelectionAnchor::CodeLine { line: 4, column: 7 },
+        )
+        .unwrap();
+    let code = runtime.unified_document_selection_snapshot().unwrap();
+    assert!(matches!(
+        code.focus,
+        SelectionEndpoint::Inner {
+            block_id: 1,
+            anchor: InnerSelectionAnchor::CodeLine { line: 4, column: 7 }
+        }
+    ));
+
+    runtime
+        .set_focused_inner_selection(
+            2,
+            InnerSelectionAnchor::CanvasPoint { x: -10, y: 20 },
+            InnerSelectionAnchor::CanvasPoint { x: 30, y: 40 },
+        )
+        .unwrap();
+    assert!(matches!(
+        runtime
+            .unified_document_selection_snapshot()
+            .unwrap()
+            .anchor,
+        SelectionEndpoint::Inner {
+            block_id: 2,
+            anchor: InnerSelectionAnchor::CanvasPoint { x: -10, y: 20 }
+        }
+    ));
+
+    runtime.focus_block_at_offset(3, 2).unwrap();
+    assert!(runtime.focused_inner_selection.is_none());
+}
+
+#[test]
+fn document_boundary_navigation_moves_and_extends_with_stable_semantic_endpoints() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "first"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "middle"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "last"),
+        ],
+        720.0,
+    );
+    runtime.focus_block_at_offset(2, 3).unwrap();
+    assert!(
+        runtime
+            .move_caret_to_document_boundary(false, false)
+            .unwrap()
+    );
+    assert_eq!(runtime.focused_block_id(), Some(1));
+    assert_eq!(runtime.caret_offset_for_block(1), Some(0));
+
+    runtime.focus_block_at_offset(2, 3).unwrap();
+    assert!(runtime.move_caret_to_document_boundary(true, true).unwrap());
+    assert_eq!(
+        runtime.document_selection_snapshot(),
+        Some(DocumentSelection {
+            anchor: TextPosition::downstream(2, 3),
+            focus: TextPosition::downstream(3, 4),
+        })
     );
 }
 

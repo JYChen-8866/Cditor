@@ -277,7 +277,7 @@ fn gutter_add_inserts_paragraph_without_replacing_complex_block() {
         payload: BlockPayload::Image(cditor_core::rich_text::ImagePayload {
             source: "asset://image.png".to_owned(),
             alt: "image".to_owned(),
-            caption: String::new(),
+            caption: String::new().into(),
             display_width_ratio_milli: None,
         }),
     };

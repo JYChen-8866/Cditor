@@ -20,6 +20,7 @@ pub const V1_CODE_CONTENT_PADDING_TOP_PX: f32 = 34.0;
 pub const V1_CODE_CONTENT_PADDING_X_PX: f32 = 14.0;
 pub const V1_CODE_CONTENT_PADDING_BOTTOM_PX: f32 = 14.0;
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub fn render_code_block(
     block_id: BlockId,
     content: AnyElement,

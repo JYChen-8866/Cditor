@@ -59,7 +59,8 @@ fn stale_input_session_content_version_is_rejected() {
         )],
         720.0,
     );
-    runtime.focus_block_at_offset(1, 2).unwrap();
+    runtime.focus_block(1);
+    runtime.set_caret_offset(1, 2).unwrap();
     runtime
         .begin_or_update_composition_with_selection(1, 2..2, "你", Some("你".len().."你".len()))
         .unwrap();
@@ -75,6 +76,30 @@ fn stale_input_session_content_version_is_rejected() {
     assert_eq!(runtime.input_session_marked_range(), None);
     assert_eq!(runtime.active_composition(), None);
     assert_eq!(runtime.focused_text_for_platform_input(), None);
+}
+
+#[test]
+fn refocusing_the_same_target_invalidates_the_previous_handler_identity() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "abcdef",
+        )],
+        720.0,
+    );
+    runtime.focus_block(1);
+    runtime.set_caret_offset(1, 2).unwrap();
+    let first = runtime.input_session_identity().unwrap();
+
+    runtime.focus_block(1);
+    runtime.set_caret_offset(1, 2).unwrap();
+    let second = runtime.input_session_identity().unwrap();
+
+    assert_eq!(first.target, second.target);
+    assert_eq!(first.content_version, second.content_version);
+    assert_ne!(first.session_id, second.session_id);
 }
 
 #[test]
@@ -209,6 +234,50 @@ fn multistage_ime_commit_creates_one_undo_step() {
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ab");
     assert!(!runtime.undo_focused_block().unwrap());
+}
+
+#[test]
+fn multistage_composition_cancel_restores_initial_selection_direction_and_affinity() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "abcdef",
+        )],
+        720.0,
+    );
+    let before = DocumentSelection {
+        anchor: TextPosition::downstream(1, 5),
+        focus: TextPosition {
+            block_id: 1,
+            offset: 2,
+            affinity: TextAffinity::Upstream,
+        },
+    };
+    runtime.set_document_selection(before).unwrap();
+
+    runtime.begin_or_update_composition(1, 2..5, "n").unwrap();
+    runtime.begin_or_update_composition(1, 2..5, "ni").unwrap();
+    runtime.begin_or_update_composition(1, 2..5, "你").unwrap();
+    runtime.cancel_composition();
+
+    assert_eq!(
+        runtime.payload_window.get(1).unwrap().plain_text(),
+        "abcdef"
+    );
+    assert_eq!(runtime.document_selection_snapshot(), Some(before));
+    assert_eq!(runtime.input_session_selected_range(), Some(2..5));
+    assert!(runtime.input_session_selection_reversed());
+    assert_eq!(runtime.input_session_marked_range(), None);
+    assert!(runtime.active_composition().is_none());
+    assert!(runtime.undo_events.is_empty());
+    let projection = runtime.projection_for_window();
+    assert_eq!(projection.blocks[0].caret_offset, Some(2));
+    assert_eq!(
+        projection.blocks[0].caret_affinity,
+        Some(TextAffinity::Upstream)
+    );
 }
 
 #[test]

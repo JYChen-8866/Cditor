@@ -202,6 +202,7 @@ mod tests {
             selection_overlay: false,
             focused: false,
             caret_offset: None,
+            caret_affinity: None,
             marked_range: None,
             table_view: None,
             focused_table_cell: None,

@@ -1,16 +1,20 @@
 use gpui::{App, Bounds, ElementInputHandler, Entity, FocusHandle, Pixels, Window};
 
 use crate::gui::app::{CditorV2View, GuiPlatformInputTarget};
+use crate::gui::text::TextPlatformLayoutIdentity;
 
 pub(crate) fn handle_registered_platform_input(
     view: &Entity<CditorV2View>,
     focus: &FocusHandle,
     target: GuiPlatformInputTarget,
+    layout_identity: TextPlatformLayoutIdentity,
     bounds: Bounds<Pixels>,
     window: &mut Window,
     cx: &mut App,
 ) -> bool {
-    let registered = view.update(cx, |view, _cx| view.register_platform_input_target(target));
+    let registered = view.update(cx, |view, _cx| {
+        view.register_platform_input_target(target, layout_identity)
+    });
     if registered {
         window.handle_input(focus, ElementInputHandler::new(bounds, view.clone()), cx);
     }

@@ -98,7 +98,7 @@ fn render_window_skeleton_block(index: usize, theme: GuiTheme) -> AnyElement {
             )
             .into_any_element(),
         _ => SkeletonRows::new(2)
-            .last_width(if index % 2 == 0 {
+            .last_width(if index.is_multiple_of(2) {
                 gpui::relative(0.72)
             } else {
                 gpui::relative(0.48)

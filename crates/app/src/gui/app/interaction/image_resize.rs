@@ -79,9 +79,18 @@ impl CditorV2View {
         };
         clear_committed_image_resize_action(&mut self.action_block_id, drag.block_id);
         let ratio = image_width_ratio_milli_for_width(drag.current_width_px, drag.max_width_px);
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            match runtime.update_image_display_width_ratio(drag.block_id, ratio) {
-                Ok(true) => self.mark_dirty(cx),
+        let commit = match &mut self.state {
+            CditorViewState::Ready(runtime) => Some((
+                runtime.update_image_display_width_ratio(drag.block_id, ratio),
+                runtime.revision(),
+            )),
+            _ => None,
+        };
+        if let Some((result, revision)) = commit {
+            match result {
+                Ok(true) => {
+                    self.mark_dirty_at_revision(crate::api::ChangeOrigin::User, revision, cx)
+                }
                 Ok(false) => {}
                 Err(error) => {
                     self.save_status = EditorSaveStatus::Failed(error);

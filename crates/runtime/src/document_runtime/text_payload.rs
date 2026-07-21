@@ -95,7 +95,7 @@ pub(super) fn text_payload_for_existing(existing: &BlockPayload, text: &str) -> 
         },
         BlockPayload::Html { sanitized, .. } => BlockPayload::Html {
             html: text.to_owned(),
-            sanitized: sanitized.clone(),
+            sanitized: *sanitized,
         },
         _ => BlockPayload::RichText {
             spans: vec![InlineSpan::plain(text)],
@@ -116,7 +116,7 @@ pub(super) fn text_payload_for_existing_after_replace(
         },
         BlockPayload::Html { sanitized, .. } => BlockPayload::Html {
             html: updated_text.to_owned(),
-            sanitized: sanitized.clone(),
+            sanitized: *sanitized,
         },
         BlockPayload::RichText { spans } => BlockPayload::RichText {
             spans: replace_rich_text_spans_preserving_marks(spans, replaced_range, inserted_text),
@@ -262,15 +262,23 @@ pub(super) fn slice_rich_text_spans(spans: &[InlineSpan], range: Range<usize>) -
 
 pub(super) fn marks_for_insertion(spans: &[InlineSpan], offset: usize) -> Vec<InlineMark> {
     let mut cursor = 0usize;
+    let mut trailing_marks = Vec::new();
     for span in spans {
         let span_start = cursor;
         let span_end = span_start + span.text.len();
         if span_start <= offset && offset < span_end {
             return span.marks.clone();
         }
+        if !span.text.is_empty() {
+            trailing_marks = span.marks.clone();
+        }
         cursor = span_end;
     }
-    Vec::new()
+    if offset == cursor {
+        trailing_marks
+    } else {
+        Vec::new()
+    }
 }
 
 pub(super) fn push_inline_span(output: &mut Vec<InlineSpan>, text: &str, marks: Vec<InlineMark>) {
@@ -311,11 +319,8 @@ pub(super) fn backspace_at_start_resets_kind_to_paragraph(kind: &RichBlockKind) 
 
 pub(super) fn uses_soft_tab(kind: &RichBlockKind) -> bool {
     matches!(
-        kind,
-        RichBlockKind::Code { .. }
-            | RichBlockKind::RawMarkdown
-            | RichBlockKind::Quote
-            | RichBlockKind::Callout { .. }
+        cditor_core::block::BlockKeyboardPolicy::for_kind(kind).tab,
+        cditor_core::block::TabKeyBehavior::InsertSoftTab
     )
 }
 
@@ -371,6 +376,9 @@ pub(super) fn split_payload_for_enter(
             BlockPayload::Table(table.clone()),
             payload_for_kind_from_plain_text(new_kind, String::new()),
         )),
+        BlockPayload::Columns(_) => {
+            Err("Cannot split columns payload - Enter should insert paragraph after".to_owned())
+        }
         BlockPayload::Empty => Ok((
             BlockPayload::Empty,
             payload_for_kind_from_plain_text(new_kind, String::new()),
@@ -388,6 +396,9 @@ pub(super) fn split_payload_for_enter(
         }
         BlockPayload::Embed(_) => {
             Err("Cannot split embed payload - Enter should insert paragraph after".to_owned())
+        }
+        BlockPayload::Collection(_) => {
+            Err("Cannot split collection payload - Enter should insert paragraph after".to_owned())
         }
     }
 }
@@ -646,5 +657,17 @@ mod tests {
                 span("f", vec![InlineMark::Bold]),
             ]
         );
+    }
+
+    #[test]
+    fn insertion_marks_use_right_span_at_boundary_and_left_span_at_document_end() {
+        let source = vec![
+            span("ab", vec![InlineMark::Bold]),
+            span("cd", vec![InlineMark::Italic]),
+        ];
+
+        assert_eq!(marks_for_insertion(&source, 2), vec![InlineMark::Italic]);
+        assert_eq!(marks_for_insertion(&source, 4), vec![InlineMark::Italic]);
+        assert!(marks_for_insertion(&source, 5).is_empty());
     }
 }

@@ -1,6 +1,5 @@
 pub mod ai_inline;
 pub mod block_transform_menu;
-pub mod caret_overlay;
 pub mod color_menu;
 pub mod floating_toolbar;
 pub mod selection_overlay;
@@ -16,7 +15,6 @@ pub use block_transform_menu::{
     BlockTransformAction, BlockTransformAvailability, block_transform_menu_opens_left,
     block_transform_menu_top_offset, render_block_transform_menu,
 };
-pub use caret_overlay::{CaretOverlayRect, caret_overlay_rects, render_caret_overlay};
 pub use color_menu::{
     ActiveColor, ColorMenuAction, PaletteColor, color_menu_geometry, render_color_menu,
 };

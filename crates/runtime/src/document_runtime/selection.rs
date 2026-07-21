@@ -29,6 +29,12 @@ impl FocusedTextSelection {
 }
 
 impl DocumentRuntime {
+    pub(super) fn selected_block_ids_snapshot(&self) -> Vec<BlockId> {
+        let mut block_ids = self.selected_block_ids.iter().copied().collect::<Vec<_>>();
+        block_ids.sort_unstable();
+        block_ids
+    }
+
     pub(super) fn input_session_is_current(&self) -> bool {
         let Some(editing) = self.editing.as_ref() else {
             return false;
@@ -40,6 +46,16 @@ impl DocumentRuntime {
     pub fn input_session_target(&self) -> Option<InputTarget> {
         self.input_session_is_current()
             .then(|| self.editing.as_ref().map(|editing| editing.input_target))
+            .flatten()
+    }
+
+    pub fn input_session_identity(&self) -> Option<InputSessionIdentity> {
+        self.input_session_is_current()
+            .then(|| {
+                self.editing
+                    .as_ref()
+                    .map(EditingSession::input_session_identity)
+            })
             .flatten()
     }
 
@@ -99,6 +115,7 @@ impl DocumentRuntime {
         focus_block_id: BlockId,
         focus_offset: usize,
     ) -> Result<bool, String> {
+        self.break_typing_coalescing();
         let anchor_offset = self.clamp_text_offset(anchor_block_id, anchor_offset)?;
         let focus_offset = self.clamp_text_offset(focus_block_id, focus_offset)?;
         trace_input(
@@ -122,6 +139,7 @@ impl DocumentRuntime {
             anchor: TextPosition::downstream(anchor_block_id, anchor_offset),
             focus: TextPosition::downstream(focus_block_id, focus_offset),
         });
+        self.remember_visual_caret(TextPosition::downstream(focus_block_id, focus_offset));
         self.focused_text_selection = if anchor_block_id == focus_block_id {
             Some(FocusedTextSelection {
                 anchor: anchor_offset,
@@ -177,6 +195,7 @@ impl DocumentRuntime {
             current.anchor.affinity = selection.anchor.affinity;
             current.focus.affinity = selection.focus.affinity;
         }
+        self.remember_visual_caret(selection.focus);
         Ok(changed)
     }
 
@@ -189,6 +208,10 @@ impl DocumentRuntime {
     }
 
     pub fn select_focused_text_all(&mut self) -> bool {
+        self.break_typing_coalescing();
+        if let Some(selected) = self.select_focused_auxiliary_text_all() {
+            return selected;
+        }
         let Some(block_id) = self.focused_block_id() else {
             return false;
         };
@@ -227,6 +250,10 @@ impl DocumentRuntime {
     /// the first invocation selects the focused block's text, and invoking it
     /// again while that exact range is still selected expands to the document.
     pub fn select_all_command(&mut self) -> bool {
+        self.break_typing_coalescing();
+        if let Some(selected) = self.select_focused_auxiliary_text_all() {
+            return selected;
+        }
         let Some(block_id) = self.focused_block_id() else {
             return false;
         };
@@ -284,7 +311,7 @@ impl DocumentRuntime {
             focus: TextPosition::downstream(last_block_id, last_offset),
         });
         if let Some(editing) = self.editing.as_mut() {
-            let caret = editing.caret_anchor.text_offset as usize;
+            let caret = editing.focus_offset();
             editing.set_collapsed_selection(caret);
         }
         trace_input(
@@ -296,9 +323,41 @@ impl DocumentRuntime {
         true
     }
 
+    fn select_focused_auxiliary_text_all(&mut self) -> Option<bool> {
+        let surface_id @ (cditor_core::ids::SurfaceId::ImageCaption { .. }
+        | cditor_core::ids::SurfaceId::CollectionTitle { .. }) = self.focused_text_surface_id()?
+        else {
+            return None;
+        };
+        let len = self.text_surface_base_snapshot(surface_id)?.len();
+        self.selected_block_ids.clear();
+        self.focused_table_cell = None;
+        self.focused_text_selection = None;
+        self.document_selection = None;
+        let editing = self.editing.as_mut()?;
+        let target = editing.input_target;
+        editing.set_input_target(target);
+        if len == 0 {
+            editing.set_collapsed_selection(0);
+        } else {
+            editing.set_selected_range(0..len, false);
+        }
+        Some(true)
+    }
+
     pub fn selected_focused_text(&self) -> Option<String> {
         if let Some(text) = self.selected_document_text() {
             return Some(text);
+        }
+        if let Some(
+            surface_id @ (cditor_core::ids::SurfaceId::ImageCaption { .. }
+            | cditor_core::ids::SurfaceId::CollectionTitle { .. }),
+        ) = self.focused_text_surface_id()
+        {
+            let snapshot = self.text_surface_base_snapshot(surface_id)?;
+            let text = snapshot.plain_text();
+            let range = safe_char_range(&text, self.input_session_selected_range()?);
+            return (!range.is_empty()).then(|| text[range].to_owned());
         }
         let block_id = self.focused_block_id()?;
         let model = self.text_models.get(&block_id)?;
@@ -309,6 +368,21 @@ impl DocumentRuntime {
     pub fn selected_focused_rich_text(&self) -> Option<RichTextSelectionSnapshot> {
         if self.has_cross_block_text_selection() {
             return None;
+        }
+        if let Some(
+            surface_id @ (cditor_core::ids::SurfaceId::ImageCaption { .. }
+            | cditor_core::ids::SurfaceId::CollectionTitle { .. }),
+        ) = self.focused_text_surface_id()
+        {
+            let snapshot = self.text_surface_base_snapshot(surface_id)?;
+            let range =
+                safe_char_range(&snapshot.plain_text(), self.input_session_selected_range()?);
+            if range.is_empty() {
+                return None;
+            }
+            let spans = slice_rich_text_spans(&snapshot.spans, range);
+            let text = plain_text_from_spans(&spans);
+            return (!text.is_empty()).then_some(RichTextSelectionSnapshot { text, spans });
         }
         let block_id = self.focused_block_id()?;
         let model = self.text_models.get(&block_id)?;
@@ -330,8 +404,8 @@ impl DocumentRuntime {
 
     pub fn clipboard_selection_snapshot(&self) -> Option<ClipboardSelection> {
         if !self.selected_block_ids.is_empty() {
-            let mut block_ids = self.selected_block_ids.iter().copied().collect::<Vec<_>>();
-            block_ids.sort_by_key(|block_id| self.index.index_of(*block_id).unwrap_or(usize::MAX));
+            let block_ids = self.selected_block_subtree_ids();
+            let included = block_ids.iter().copied().collect::<HashSet<_>>();
             let blocks = block_ids
                 .into_iter()
                 .map(|block_id| {
@@ -340,7 +414,7 @@ impl DocumentRuntime {
                     Some(ClipboardBlock {
                         source_id: block_id,
                         parent_source_id: self.index.parent_ids[index]
-                            .filter(|parent| self.selected_block_ids.contains(parent)),
+                            .filter(|parent| included.contains(parent)),
                         depth: self.index.depths[index],
                         kind: payload.kind.clone(),
                         payload: payload.payload.clone(),
@@ -483,6 +557,9 @@ impl DocumentRuntime {
                 .document_selection
                 .is_some_and(|selection| !selection.is_caret())
             || self.focused_text_selection_range().is_some()
+            || self
+                .input_session_selected_range()
+                .is_some_and(|range| !range.is_empty())
     }
 
     pub fn delete_active_selection(&mut self) -> Result<bool, String> {
@@ -495,6 +572,11 @@ impl DocumentRuntime {
             "document_selection"
         } else if self.focused_text_selection_range().is_some() {
             "focused_text_selection"
+        } else if self
+            .input_session_selected_range()
+            .is_some_and(|range| !range.is_empty())
+        {
+            "input_session_selection"
         } else {
             "none"
         };
@@ -514,6 +596,10 @@ impl DocumentRuntime {
             "document_selection" => self.delete_document_selection(),
             "focused_text_selection" => {
                 let range = self.focused_text_selection_range();
+                self.replace_text_in_focused_range(range, "")
+            }
+            "input_session_selection" => {
+                let range = self.input_session_selected_range();
                 self.replace_text_in_focused_range(range, "")
             }
             _ => Ok(false),
@@ -553,6 +639,7 @@ impl DocumentRuntime {
     }
 
     pub fn select_all_visible_blocks(&mut self) -> bool {
+        self.break_typing_coalescing();
         self.focused_table_cell = None;
         self.selected_block_ids = self
             .visible_index
@@ -572,6 +659,7 @@ impl DocumentRuntime {
     }
 
     pub fn select_visible_block_range(&mut self, anchor: BlockId, focus: BlockId) -> bool {
+        self.break_typing_coalescing();
         let Some(anchor_index) = self.visible_index.visible_index_of(anchor) else {
             return false;
         };

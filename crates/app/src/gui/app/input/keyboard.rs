@@ -8,8 +8,12 @@ use crate::gui::block::table::{TableAxis, TableAxisSelection};
 use crate::gui::clipboard_assets::image_asset_from_clipboard_item;
 use crate::gui::input::GuiInputCommand;
 use crate::gui::platform::normalize_external_line_endings;
-use crate::gui::text::RichTextPlatformLayout;
-use cditor_core::ids::BlockId;
+use crate::gui::text::{
+    ParleyMoveCommand, ParleySelection, ParleyTextPosition, RichTextPlatformLayout,
+    TextGeometryOperation, record_snapshot_geometry, record_unavailable_geometry,
+};
+use cditor_core::edit::TextAffinity;
+use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_core::rich_text::{
     CditorClipboardEnvelope, ClipboardSelection, InlineMark, looks_like_markdown_paste,
 };
@@ -36,7 +40,7 @@ fn clipboard_trace_preview(text: &str) -> String {
 }
 
 impl CditorV2View {
-    pub(in crate::gui::app) fn apply_input_command(
+    pub(in crate::gui::app) fn execute_gui_input_command_handler(
         &mut self,
         command: GuiInputCommand,
         cx: &mut Context<Self>,
@@ -46,6 +50,32 @@ impl CditorV2View {
             return;
         }
         if self.readonly && !matches!(command, GuiInputCommand::CopySelection) {
+            return;
+        }
+        if matches!(
+            command,
+            GuiInputCommand::UndoFocusedBlock | GuiInputCommand::RedoFocusedBlock
+        ) {
+            let redo = matches!(command, GuiInputCommand::RedoFocusedBlock);
+            let origin = if redo {
+                crate::api::ChangeOrigin::Redo
+            } else {
+                crate::api::ChangeOrigin::Undo
+            };
+            let _ = self.execute_history_action(origin, redo, cx);
+            return;
+        }
+        if matches!(
+            command,
+            GuiInputCommand::CopySelection
+                | GuiInputCommand::CutSelection
+                | GuiInputCommand::DeleteBackward
+                | GuiInputCommand::DeleteForward
+        ) && let Some(request) = self
+            .ready_runtime_ref()
+            .and_then(DocumentRuntime::selection_materialization_request)
+            && self.schedule_selection_materialization(command, request, cx)
+        {
             return;
         }
         let should_scroll_focus = !matches!(
@@ -198,11 +228,6 @@ impl CditorV2View {
                         self.mark_dirty(cx);
                     }
                 }
-                GuiInputCommand::InsertSpaceOrMarkdownShortcut => {
-                    if runtime.insert_space_or_markdown_shortcut().is_ok() {
-                        self.mark_dirty(cx);
-                    }
-                }
                 GuiInputCommand::DeleteBackward => {
                     let result = runtime.delete_backward();
                     trace_input("delete_backward.result", format_args!("{result:?}"));
@@ -218,16 +243,74 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretLeft { extend_selection } => {
-                    let _ = runtime.move_caret_left(extend_selection);
+                    let moved = move_caret_with_parley(
+                        &self.text_layouts,
+                        &self.text_surface_layouts,
+                        &mut self.preferred_text_navigation_x,
+                        runtime,
+                        ParleyMoveCommand::PreviousVisual,
+                        extend_selection,
+                    )
+                    .unwrap_or(false);
+                    if !moved {
+                        let _ = runtime.move_caret_left(extend_selection);
+                    }
                 }
                 GuiInputCommand::MoveCaretRight { extend_selection } => {
-                    let _ = runtime.move_caret_right(extend_selection);
+                    let moved = move_caret_with_parley(
+                        &self.text_layouts,
+                        &self.text_surface_layouts,
+                        &mut self.preferred_text_navigation_x,
+                        runtime,
+                        ParleyMoveCommand::NextVisual,
+                        extend_selection,
+                    )
+                    .unwrap_or(false);
+                    if !moved {
+                        let _ = runtime.move_caret_right(extend_selection);
+                    }
+                }
+                GuiInputCommand::MoveCaretToPreviousWord { extend_selection } => {
+                    let moved = move_caret_with_parley(
+                        &self.text_layouts,
+                        &self.text_surface_layouts,
+                        &mut self.preferred_text_navigation_x,
+                        runtime,
+                        ParleyMoveCommand::PreviousVisualWord,
+                        extend_selection,
+                    )
+                    .unwrap_or(false);
+                    if !moved {
+                        let _ = runtime.move_focused_caret_by_word(false, extend_selection);
+                    }
+                }
+                GuiInputCommand::MoveCaretToNextWord { extend_selection } => {
+                    let moved = move_caret_with_parley(
+                        &self.text_layouts,
+                        &self.text_surface_layouts,
+                        &mut self.preferred_text_navigation_x,
+                        runtime,
+                        ParleyMoveCommand::NextVisualWord,
+                        extend_selection,
+                    )
+                    .unwrap_or(false);
+                    if !moved {
+                        let _ = runtime.move_focused_caret_by_word(true, extend_selection);
+                    }
+                }
+                GuiInputCommand::MoveCaretToDocumentStart { extend_selection } => {
+                    let _ = runtime.move_caret_to_document_boundary(false, extend_selection);
+                }
+                GuiInputCommand::MoveCaretToDocumentEnd { extend_selection } => {
+                    let _ = runtime.move_caret_to_document_boundary(true, extend_selection);
                 }
                 GuiInputCommand::MoveCaretUp { extend_selection } => {
-                    let moved_in_block = move_caret_vertically_in_focused_block(
+                    let moved_in_block = move_caret_with_parley(
                         &self.text_layouts,
+                        &self.text_surface_layouts,
+                        &mut self.preferred_text_navigation_x,
                         runtime,
-                        -1,
+                        ParleyMoveCommand::PreviousLine,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -236,10 +319,12 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretDown { extend_selection } => {
-                    let moved_in_block = move_caret_vertically_in_focused_block(
+                    let moved_in_block = move_caret_with_parley(
                         &self.text_layouts,
+                        &self.text_surface_layouts,
+                        &mut self.preferred_text_navigation_x,
                         runtime,
-                        1,
+                        ParleyMoveCommand::NextLine,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -248,10 +333,33 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretToLineStart { extend_selection } => {
-                    let _ = runtime.move_focused_caret_to_line_boundary(false, extend_selection);
+                    let moved = move_caret_with_parley(
+                        &self.text_layouts,
+                        &self.text_surface_layouts,
+                        &mut self.preferred_text_navigation_x,
+                        runtime,
+                        ParleyMoveCommand::LineStart,
+                        extend_selection,
+                    )
+                    .unwrap_or(false);
+                    if !moved {
+                        let _ =
+                            runtime.move_focused_caret_to_line_boundary(false, extend_selection);
+                    }
                 }
                 GuiInputCommand::MoveCaretToLineEnd { extend_selection } => {
-                    let _ = runtime.move_focused_caret_to_line_boundary(true, extend_selection);
+                    let moved = move_caret_with_parley(
+                        &self.text_layouts,
+                        &self.text_surface_layouts,
+                        &mut self.preferred_text_navigation_x,
+                        runtime,
+                        ParleyMoveCommand::LineEnd,
+                        extend_selection,
+                    )
+                    .unwrap_or(false);
+                    if !moved {
+                        let _ = runtime.move_focused_caret_to_line_boundary(true, extend_selection);
+                    }
                 }
                 GuiInputCommand::ToggleBold => {
                     if matches!(
@@ -285,12 +393,6 @@ impl CditorV2View {
                         self.mark_dirty(cx);
                     }
                 }
-                GuiInputCommand::InsertChar(ch) => {
-                    ensure_runtime_focus_for_insert_char(runtime);
-                    if runtime.insert_char(ch).is_ok() {
-                        self.mark_dirty(cx);
-                    }
-                }
             }
         }
         if should_scroll_focus && let CditorViewState::Ready(runtime) = &mut self.state {
@@ -306,16 +408,18 @@ pub(super) fn mermaid_preview_blocks_command(command: GuiInputCommand) -> bool {
             | GuiInputCommand::CutSelection
             | GuiInputCommand::PasteClipboard
             | GuiInputCommand::InsertSoftLineBreak
-            | GuiInputCommand::InsertSpaceOrMarkdownShortcut
             | GuiInputCommand::DeleteBackward
             | GuiInputCommand::DeleteForward
             | GuiInputCommand::MoveCaretToLineStart { .. }
             | GuiInputCommand::MoveCaretToLineEnd { .. }
+            | GuiInputCommand::MoveCaretToPreviousWord { .. }
+            | GuiInputCommand::MoveCaretToNextWord { .. }
+            | GuiInputCommand::MoveCaretToDocumentStart { .. }
+            | GuiInputCommand::MoveCaretToDocumentEnd { .. }
             | GuiInputCommand::ToggleBold
             | GuiInputCommand::ToggleItalic
             | GuiInputCommand::ToggleUnderline
             | GuiInputCommand::ToggleInlineCode
-            | GuiInputCommand::InsertChar(_)
     )
 }
 
@@ -331,14 +435,6 @@ fn selected_table_axis_range(
         }
     }?;
     Some((selection.block_id, range))
-}
-
-pub(in crate::gui::app) fn ensure_runtime_focus_for_insert_char(runtime: &mut DocumentRuntime) {
-    if runtime.focused_block_id().is_none()
-        && let Some(block_id) = runtime.first_visible_block_id()
-    {
-        runtime.focus_block(block_id);
-    }
 }
 
 fn paste_text_from_clipboard(
@@ -401,47 +497,90 @@ fn paste_text_from_clipboard(
         }
     }
     trace_clipboard_markdown("fallback", "route=plain_text");
-    let changed = runtime
-        .replace_text_in_focused_range(None, text)
-        .unwrap_or(false);
+    let changed = runtime.replace_text_from_paste(None, text).unwrap_or(false);
     trace_clipboard_markdown("result", format_args!("route=plain_text changed={changed}"));
     changed
 }
 
-fn move_caret_vertically_in_focused_block(
+fn move_caret_with_parley(
     text_layouts: &HashMap<BlockId, RichTextPlatformLayout>,
+    text_surface_layouts: &HashMap<SurfaceId, RichTextPlatformLayout>,
+    preferred_x: &mut Option<(SurfaceId, f32)>,
     runtime: &mut DocumentRuntime,
-    direction: i32,
+    command: ParleyMoveCommand,
     extend_selection: bool,
 ) -> Result<bool, String> {
-    let Some(block_id) = runtime.focused_block_id() else {
+    let Some(surface_id) = runtime.focused_text_surface_id() else {
         return Ok(false);
     };
-    let Some(cache) = text_layouts.get(&block_id) else {
+    let cache = match surface_id {
+        SurfaceId::Block(block_id) => text_layouts.get(&block_id),
+        SurfaceId::ImageCaption { .. } | SurfaceId::CollectionTitle { .. } => {
+            text_surface_layouts.get(&surface_id)
+        }
+        SurfaceId::TableCell { .. } | SurfaceId::Ephemeral { .. } => None,
+    };
+    let Some(cache) = cache else {
+        record_unavailable_geometry();
         return Ok(false);
     };
-    let Some(current_content_version) = runtime.block_content_version(block_id) else {
+    let Some(current) = runtime.text_surface_snapshot(surface_id) else {
         return Ok(false);
     };
-    if cache.content_version != current_content_version {
+    if cache.content_version != current.identity.content_version {
+        record_unavailable_geometry();
         return Ok(false);
     }
-    let Some(caret) = runtime.caret_offset_for_block(block_id) else {
+    let Some(caret_offset) = runtime.text_surface_caret_offset(surface_id) else {
         return Ok(false);
     };
-    let Some(bounds) = crate::gui::text::platform_range_bounds(cache, caret..caret) else {
-        return Ok(false);
+    let caret_affinity = match surface_id {
+        SurfaceId::Block(block_id) => runtime
+            .caret_position_for_block(block_id)
+            .map(|position| position.affinity)
+            .unwrap_or(TextAffinity::Downstream),
+        _ => TextAffinity::Downstream,
     };
-    let line_height = f32::from(cache.line_height).max(1.0);
-    let target = gpui::point(
-        bounds.left() + bounds.size.width / 2.0,
-        bounds.top() + gpui::px(line_height * direction as f32),
+    let layout = &cache.snapshot;
+    record_snapshot_geometry(TextGeometryOperation::Navigation);
+    let selected = runtime
+        .input_session_selected_range()
+        .unwrap_or(caret_offset..caret_offset);
+    let anchor_offset = if runtime.input_session_selection_reversed() {
+        selected.end
+    } else {
+        selected.start
+    };
+    let selection = ParleySelection {
+        anchor: ParleyTextPosition {
+            offset: anchor_offset,
+            affinity: TextAffinity::Downstream,
+        },
+        focus: ParleyTextPosition {
+            offset: caret_offset,
+            affinity: caret_affinity,
+        },
+    };
+    let current_preferred_x = preferred_x
+        .as_ref()
+        .filter(|(current_surface, _)| *current_surface == surface_id)
+        .map(|(_, x)| *x);
+    let (moved, next_preferred_x) = layout.move_selection_with_preferred_x(
+        selection,
+        command,
+        extend_selection,
+        current_preferred_x,
     );
-    let next = crate::gui::text::platform_index_for_point(cache, target);
-    if next == caret {
+    *preferred_x = next_preferred_x.map(|x| (surface_id, x));
+    if moved.focus.offset == caret_offset && moved.focus.affinity == caret_affinity {
         return Ok(false);
     }
-    runtime.move_focused_caret_to_offset(block_id, next, extend_selection)?;
+    runtime.move_focused_text_surface_to_offset(
+        surface_id,
+        moved.focus.offset,
+        moved.focus.affinity,
+        extend_selection,
+    )?;
     Ok(true)
 }
 

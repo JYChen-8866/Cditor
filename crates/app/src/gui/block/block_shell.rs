@@ -46,6 +46,7 @@ impl BlockShellStyle {
 pub type BlockMouseMoveHandler =
     Box<dyn Fn(&MouseMoveEvent, &mut gpui::Window, &mut App) + 'static>;
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub fn block_shell(
     block: &ViewBlockSnapshot,
     theme: GuiTheme,

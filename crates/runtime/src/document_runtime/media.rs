@@ -21,7 +21,7 @@ impl DocumentRuntime {
 
         let image_payload = BlockPayloadRecord {
             block_id: image_block_id,
-            content_version: 1,
+            content_version: 0,
             kind: RichBlockKind::Image,
             payload: BlockPayload::Image(image),
         };
@@ -36,10 +36,9 @@ impl DocumentRuntime {
             image_block_id,
             estimate_payload_height(&image_payload, insert_at),
         ));
-        self.insert_runtime_block(insert_at, image_record, image_payload)?;
-
-        let paragraph_payload =
+        let mut paragraph_payload =
             BlockPayloadRecord::rich_text(trailing_block_id, RichBlockKind::Paragraph, "");
+        paragraph_payload.content_version = 0;
         let paragraph_record = BlockIndexRecord::new(
             trailing_block_id,
             parent_id,
@@ -51,11 +50,19 @@ impl DocumentRuntime {
             trailing_block_id,
             estimate_payload_height(&paragraph_payload, insert_at.saturating_add(1)),
         ));
-        self.insert_runtime_block(
-            insert_at.saturating_add(1),
-            paragraph_record,
-            paragraph_payload,
-        )?;
+        self.apply_local_insert_blocks_transaction(LocalInsertBlocksTransaction {
+            index: insert_at,
+            blocks: vec![image_record, paragraph_record],
+            payloads: vec![image_payload, paragraph_payload],
+            kind: EditTransactionKind::Paste,
+            origin: cditor_core::edit::ChangeOrigin::Import,
+            before_selection: self.document_selection_snapshot(),
+            after_selection: Some(DocumentSelection::caret(TextPosition {
+                block_id: trailing_block_id,
+                offset: 0,
+                affinity: TextAffinity::Downstream,
+            })),
+        })?;
         self.focus_block_at_offset(trailing_block_id, 0)?;
         Ok((image_block_id, trailing_block_id))
     }
@@ -68,22 +75,21 @@ impl DocumentRuntime {
         let ratio = display_width_ratio_milli.clamp(200, 1000);
         let record = self
             .payload_window
-            .payloads
-            .get_mut(&block_id)
+            .get(block_id)
+            .cloned()
             .ok_or_else(|| format!("missing payload for block {block_id}"))?;
-        let BlockPayload::Image(image) = &mut record.payload else {
+        let BlockPayload::Image(mut image) = record.payload else {
             return Ok(false);
         };
         if image.display_width_ratio_milli == Some(ratio) {
             return Ok(false);
         }
         image.display_width_ratio_milli = Some(ratio);
-        record.content_version = record.content_version.saturating_add(1);
-        if let Some(editing) = self.editing.as_mut()
-            && editing.block_id == block_id
-        {
-            editing.content_version = record.content_version;
-        }
-        Ok(true)
+        self.apply_local_block_payload_transaction(
+            block_id,
+            EditTransactionKind::DragDrop,
+            record.kind,
+            BlockPayload::Image(image),
+        )
     }
 }

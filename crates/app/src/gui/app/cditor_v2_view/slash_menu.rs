@@ -9,6 +9,8 @@ use crate::gui::persistence::EditorSaveStatus;
 use crate::gui::text::platform_range_bounds;
 use cditor_runtime::AiRequestPresentation;
 
+use crate::api::{CditorCommand, CommandOutcomeStatus, CommandSource};
+
 impl CditorV2View {
     pub(crate) fn sync_slash_menu_from_runtime(&mut self, cx: &mut Context<Self>) {
         let Some((block_id, text, caret)) = self.ready_runtime_ref().and_then(|runtime| {
@@ -134,18 +136,24 @@ impl CditorV2View {
             return false;
         }
         if item.command == Some(SlashMenuCommand::AskAi) {
-            let changed = self
-                .ready_runtime()
-                .and_then(|runtime| {
-                    let caret = runtime.caret_offset_for_block(menu.block_id)?;
-                    runtime
-                        .replace_text_in_focused_range(Some(menu.trigger_start..caret), "")
-                        .ok()
+            let command = self.ready_runtime_ref().and_then(|runtime| {
+                let kind = runtime.block_kind(menu.block_id)?;
+                let caret = runtime.caret_offset_for_block(menu.block_id)?;
+                Some(CditorCommand::ApplySlashBlock {
+                    block_id: menu.block_id,
+                    trigger_range: menu.trigger_start..caret,
+                    kind,
                 })
-                .unwrap_or(false);
+            });
+            let changed = command.is_some_and(|command| {
+                matches!(
+                    self.dispatch_command(command, CommandSource::SlashMenu, cx),
+                    Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied
+                )
+            });
             self.slash_menu = None;
-            if changed {
-                self.mark_dirty(cx);
+            if !changed {
+                return false;
             }
             return self.open_ai_prompt_from_gui_with_presentation(
                 menu.x,
@@ -156,35 +164,30 @@ impl CditorV2View {
         }
         let kind = item.kind;
         let opens_whiteboard = matches!(kind, cditor_core::rich_text::RichBlockKind::Whiteboard);
-        let result: Result<(bool, bool), String> = (|| {
-            let runtime = self
-                .ready_runtime()
-                .ok_or_else(|| "runtime is not ready".to_owned())?;
-            if runtime.focused_block_id() != Some(menu.block_id) {
-                return Ok((false, false));
-            }
-            let caret = runtime
-                .caret_offset_for_block(menu.block_id)
-                .unwrap_or(menu.trigger_start);
-            let deleted_trigger =
-                runtime.replace_text_in_focused_range(Some(menu.trigger_start..caret), "")?;
-            let converted = runtime.convert_focused_block_kind(kind)?;
-            Ok((deleted_trigger || converted, converted))
-        })();
+        let caret = self
+            .ready_runtime_ref()
+            .and_then(|runtime| runtime.caret_offset_for_block(menu.block_id))
+            .unwrap_or(menu.trigger_start);
+        let result = self.dispatch_command(
+            CditorCommand::ApplySlashBlock {
+                block_id: menu.block_id,
+                trigger_range: menu.trigger_start..caret,
+                kind,
+            },
+            CommandSource::SlashMenu,
+            cx,
+        );
         match result {
-            Ok((changed, converted)) => {
+            Ok(outcome) => {
                 self.slash_menu = None;
-                if changed {
-                    self.mark_dirty(cx);
-                }
-                if converted && opens_whiteboard {
+                if outcome.status == CommandOutcomeStatus::Applied && opens_whiteboard {
                     self.open_whiteboard_editor_from_gui(menu.block_id, cx);
                 }
                 cx.notify();
-                true
+                outcome.status == CommandOutcomeStatus::Applied
             }
             Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error);
+                self.save_status = EditorSaveStatus::Failed(error.to_string());
                 self.slash_menu = None;
                 cx.notify();
                 false
@@ -193,9 +196,8 @@ impl CditorV2View {
     }
 
     pub(super) fn slash_menu_anchor(&self, block_id: BlockId, caret: usize) -> (f32, f32) {
-        if let Some(cache) = self.text_layouts.get(&block_id)
-            && let Some(bounds) = platform_range_bounds(cache, caret..caret)
-        {
+        if let Some(cache) = self.text_layouts.get(&block_id) {
+            let bounds = platform_range_bounds(cache, caret..caret);
             return self.window_anchor_to_editor_local(
                 f32::from(bounds.left()),
                 f32::from(bounds.bottom()) + 4.0,
@@ -220,9 +222,8 @@ impl CditorV2View {
     }
 
     pub(super) fn ai_prompt_line_anchor(&self, block_id: BlockId, caret: usize) -> (f32, f32) {
-        if let Some(cache) = self.text_layouts.get(&block_id)
-            && let Some(bounds) = platform_range_bounds(cache, caret..caret)
-        {
+        if let Some(cache) = self.text_layouts.get(&block_id) {
+            let bounds = platform_range_bounds(cache, caret..caret);
             return self
                 .window_anchor_to_editor_local(f32::from(bounds.left()), f32::from(bounds.top()));
         }

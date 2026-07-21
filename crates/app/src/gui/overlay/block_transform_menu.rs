@@ -220,7 +220,7 @@ pub fn render_block_transform_menu(
                     row.cursor_pointer()
                         .hover(|style| style.bg(rgb(theme.hover_surface)))
                         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-                            let _ = row_view.update(cx, |view, cx| {
+                            row_view.update(cx, |view, cx| {
                                 view.transform_block_from_toolbar(block_id, action, cx);
                             });
                             cx.stop_propagation();

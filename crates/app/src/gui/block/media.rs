@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, Entity, InteractiveElement, IntoElement, MouseButton, ObjectFit,
+    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton, ObjectFit,
     ParentElement, RenderImage, Styled, div, px, rgb,
 };
 
@@ -11,9 +11,10 @@ use crate::gui::GuiTheme;
 use crate::gui::app::CditorV2View;
 use crate::gui::image_loader::{RasterImageElement, load_render_image};
 use crate::gui::image_preview::open_image_preview;
-use cditor_core::ids::BlockId;
+use crate::gui::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
+use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_core::layout::COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX;
-use cditor_core::rich_text::ImagePayload;
+use cditor_core::rich_text::{ImagePayload, TextAlign};
 
 const NOTE_IMAGE_MAX_WIDTH_PX: f32 = 704.0;
 const DEFAULT_IMAGE_MAX_WIDTH_PX: f32 = 560.0;
@@ -27,21 +28,26 @@ const IMAGE_RESIZE_HANDLE_EDGE_GAP_PX: f32 = 4.0;
 const IMAGE_RESIZE_HANDLE_DOT_ROWS: [usize; 3] = [1, 2, 3];
 const IMAGE_RESIZE_HANDLE_ROW_HEIGHT_PX: f32 = 6.0;
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub fn render_image_block(
     block_id: BlockId,
     content_version: u64,
+    layout_version: u64,
     image: &ImagePayload,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
+    focus: FocusHandle,
     image_resize_preview_width_px: Option<f32>,
     cx: &mut App,
 ) -> AnyElement {
+    let caption_surface_id = SurfaceId::ImageCaption { block_id };
+    let caption_state = view.read(cx).text_surface_render_state(caption_surface_id);
     let loaded = load_render_image(&image.source, cx);
     let display_size = loaded.as_deref().map(|render_image| {
         display_image_size_px(render_image, image, image_resize_preview_width_px)
     });
     if let Some((_, height)) = display_size {
-        let measured_height = image_block_measured_height(height, !image.caption.trim().is_empty());
+        let measured_height = image_block_measured_height(height, caption_state.is_some());
         schedule_rendered_media_height_report(
             view.clone(),
             block_id,
@@ -103,17 +109,71 @@ pub fn render_image_block(
         .items_center()
         .justify_center()
         .child(card)
-        .when(!image.caption.trim().is_empty(), |this| {
-            this.child(
-                div()
-                    .mt(px(6.0))
-                    .when_some(caption_width, |caption, width| caption.w(px(width)))
-                    .text_center()
-                    .text_size(px(14.0))
-                    .text_color(rgb(theme.muted))
-                    .child(image.caption.clone()),
-            )
+        .when_some(caption_state, |this, state| {
+            this.child(render_image_caption(
+                caption_surface_id,
+                state,
+                layout_version,
+                caption_width.unwrap_or(DEFAULT_IMAGE_MAX_WIDTH_PX),
+                theme,
+                view,
+                focus,
+            ))
         })
+        .into_any_element()
+}
+
+fn render_image_caption(
+    surface_id: SurfaceId,
+    state: crate::gui::app::cditor_v2_view::text_surface::TextSurfaceRenderState,
+    layout_version: u64,
+    width_px: f32,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    focus: FocusHandle,
+) -> AnyElement {
+    let input = RichTextLayoutInput::from_text_surface_snapshot(
+        state.snapshot,
+        layout_version,
+        TextAlign::Center,
+        f64::from(width_px),
+        1,
+        1,
+    );
+    let focus_view = view.clone();
+    div()
+        .mt(px(6.0))
+        .w(px(width_px))
+        .min_h(px(IMAGE_CAPTION_HEIGHT_PX))
+        .cursor_text()
+        .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+            focus_view.update(cx, |view, cx| {
+                view.focus_text_surface_from_gui_at_position(
+                    surface_id,
+                    event.position,
+                    event.click_count,
+                    window,
+                    cx,
+                );
+            });
+            cx.stop_propagation();
+        })
+        .child(
+            RichTextElement::new(input, theme)
+                .with_caret(state.caret_offset)
+                .with_caret_affinity(state.caret_affinity)
+                .with_selection_range(state.selection_range)
+                .with_marked_range(state.marked_range)
+                .with_base_text_color(Some(theme.muted))
+                .with_typography(RichTextTypography {
+                    font_size_px: Some(14.0),
+                    line_height_px: Some(20.0),
+                    font_weight: None,
+                })
+                .with_placeholder(Some("添加说明"))
+                .with_input_handler(view, focus, state.focused)
+                .render(),
+        )
         .into_any_element()
 }
 
@@ -133,13 +193,13 @@ pub(crate) fn schedule_rendered_media_height_report(
     let already_scheduled = media_height_report_cache()
         .lock()
         .ok()
-        .and_then(|mut cache| {
+        .map(|mut cache| {
             let next = (content_version, height_key);
             if cache.get(&block_id).copied() == Some(next) {
-                Some(true)
+                true
             } else {
                 cache.insert(block_id, next);
-                Some(false)
+                false
             }
         })
         .unwrap_or(false);
@@ -150,8 +210,8 @@ pub(crate) fn schedule_rendered_media_height_report(
     let async_cx = cx.to_async();
     cx.foreground_executor()
         .spawn(async move {
-            let _ = async_cx.update(|cx| {
-                let _ = view.update(cx, |view, cx| {
+            async_cx.update(|cx| {
+                view.update(cx, |view, cx| {
                     if view.queue_rendered_media_height(
                         block_id,
                         content_version,
@@ -183,12 +243,12 @@ fn natural_image_size_px(image: &RenderImage) -> (f32, f32) {
 
 fn max_resizable_image_width_px(image: &RenderImage) -> f32 {
     let (natural_width, _) = natural_image_size_px(image);
-    natural_width.min(NOTE_IMAGE_MAX_WIDTH_PX).max(1.0)
+    natural_width.clamp(1.0, NOTE_IMAGE_MAX_WIDTH_PX)
 }
 
 fn default_display_image_width_px(image: &RenderImage) -> f32 {
     let (natural_width, _) = natural_image_size_px(image);
-    natural_width.min(DEFAULT_IMAGE_MAX_WIDTH_PX).max(1.0)
+    natural_width.clamp(1.0, DEFAULT_IMAGE_MAX_WIDTH_PX)
 }
 
 fn image_width_from_ratio_px(image: &RenderImage, ratio_milli: u16) -> f32 {
@@ -251,7 +311,7 @@ fn render_image_resize_handle(
         .group_hover("image-resize", |s| s.opacity(0.9))
         .hover(|s| s.opacity(1.0))
         .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.start_image_resize_from_gui(
                     block_id,
                     current_width_px,

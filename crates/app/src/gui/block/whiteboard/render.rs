@@ -32,7 +32,7 @@ pub(crate) fn render_whiteboard_thumbnail(
             if !should_open_editor(event.click_count) {
                 return;
             }
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.open_whiteboard_editor_from_gui(block_id, cx);
             });
             cx.stop_propagation();

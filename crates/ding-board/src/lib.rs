@@ -215,30 +215,22 @@ pub enum MindMapSide {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum MindMapRootDirection {
+    #[default]
     Both,
     Left,
     Right,
 }
 
-impl Default for MindMapRootDirection {
-    fn default() -> Self {
-        Self::Both
-    }
-}
-
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum MindMapConnectorStyle {
     Straight,
+    #[default]
     Bezier,
     Orthogonal,
-}
-
-impl Default for MindMapConnectorStyle {
-    fn default() -> Self {
-        Self::Bezier
-    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -5596,10 +5588,10 @@ impl WhiteboardView {
                 // Inserting `key_char` here duplicates IME composition: pinyin is
                 // inserted by keydown, then the committed Chinese text is inserted
                 // by the input handler. Keep keydown for navigation/deletion only.
-                if !ks
+                if ks
                     .key_char
                     .as_deref()
-                    .is_some_and(|c| c.chars().next().is_some_and(|ch| !ch.is_control()))
+                    .is_none_or(|c| c.chars().next().is_none_or(|ch| ch.is_control()))
                 {
                     cx.propagate();
                 }
@@ -5910,10 +5902,12 @@ impl Render for BoardThumbnailView {
             &self.snapshot.scene,
             &self.font,
             cam,
-            ink,
-            text,
-            grid,
-            panel,
+            ThumbnailPalette {
+                ink,
+                text,
+                grid,
+                panel,
+            },
             None,
             None,
             None,
@@ -6815,18 +6809,30 @@ fn band_canvas(elems: Vec<ElemPaint>, cam: Camera) -> impl IntoElement {
     .size_full()
 }
 
-fn build_thumbnail_layers(
-    scene: &Scene,
-    font: &Font,
-    cam: Camera,
+/// Thumbnail rendering colors grouped to keep call signatures small.
+#[derive(Clone, Copy)]
+struct ThumbnailPalette {
     ink: Hsla,
     text: Hsla,
     grid: Hsla,
     panel: Hsla,
+}
+
+fn build_thumbnail_layers(
+    scene: &Scene,
+    font: &Font,
+    cam: Camera,
+    palette: ThumbnailPalette,
     viewport: Option<WorldViewport>,
     mut text_layout_cache: Option<&mut HashMap<u64, CachedTextLayout>>,
     mut label_layout_cache: Option<&mut HashMap<u64, CachedLabelLayout>>,
 ) -> Vec<Layer> {
+    let ThumbnailPalette {
+        ink,
+        text,
+        grid,
+        panel,
+    } = palette;
     let mindmap_connector_styles: HashMap<u64, MindMapConnectorStyle> = scene
         .elements
         .iter()
@@ -6928,9 +6934,11 @@ fn build_thumbnail_layers(
                     font,
                     kind,
                     stroke,
-                    label,
-                    label_color,
-                    styles,
+                    ThumbnailLabelSpec {
+                        label,
+                        label_color,
+                        styles,
+                    },
                     id,
                     text_layout_cache.as_deref_mut(),
                     label_layout_cache.as_deref_mut(),
@@ -6951,17 +6959,27 @@ fn build_thumbnail_layers(
     layers
 }
 
+/// Label inputs for thumbnail text outlines, grouped to keep signatures small.
+struct ThumbnailLabelSpec<'a> {
+    label: Option<&'a str>,
+    label_color: Option<u32>,
+    styles: &'a [StyleSpan],
+}
+
 fn thumbnail_text_outline(
     font: &Font,
     kind: &ElementKind,
     stroke: Hsla,
-    label: Option<&str>,
-    label_color: Option<u32>,
-    styles: &[StyleSpan],
+    label_spec: ThumbnailLabelSpec<'_>,
     element_id: u64,
     mut text_layout_cache: Option<&mut HashMap<u64, CachedTextLayout>>,
-    mut label_layout_cache: Option<&mut HashMap<u64, CachedLabelLayout>>,
+    label_layout_cache: Option<&mut HashMap<u64, CachedLabelLayout>>,
 ) -> Option<TextOutline> {
+    let ThumbnailLabelSpec {
+        label,
+        label_color,
+        styles,
+    } = label_spec;
     if let ElementKind::Text(t) = kind {
         let layout = match text_layout_cache.as_deref_mut() {
             Some(cache) => {
@@ -6990,14 +7008,27 @@ fn thumbnail_text_outline(
         && label.is_some_and(|s| !s.trim().is_empty())
     {
         let text = label.map_or("", str::trim);
-        let cached_label = label_layout_cache.as_deref_mut().map(|cache| {
-            cached_label_layout(cache, font, element_id, kind, bx, by, bw, bh, text, styles)
+        let cached_label = label_layout_cache.map(|cache| {
+            cached_label_layout(
+                cache,
+                font,
+                element_id,
+                kind,
+                LabelBox {
+                    x: bx,
+                    y: by,
+                    w: bw,
+                    h: bh,
+                },
+                text,
+                styles,
+            )
         });
         let (x, y, layout) = if let Some(label) = cached_label {
             (bx + label.offset_x, by + label.offset_y, label.text)
         } else {
             let block = shape_label_block(font, kind, bx, by, bw, bh, text);
-            let layout = match text_layout_cache.as_deref_mut() {
+            let layout = match text_layout_cache {
                 Some(cache) => cached_text_layout(
                     cache,
                     font,
@@ -7128,18 +7159,30 @@ fn text_layout_signature(
     hasher.finish()
 }
 
+/// Label bounding box in world coordinates.
+#[derive(Clone, Copy)]
+struct LabelBox {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+}
+
 fn cached_label_layout(
     cache: &mut HashMap<u64, CachedLabelLayout>,
     font: &Font,
     element_id: u64,
     kind: &ElementKind,
-    bx: f32,
-    by: f32,
-    bw: f32,
-    bh: f32,
+    bounds: LabelBox,
     content: &str,
     styles: &[StyleSpan],
 ) -> CachedLabelLayout {
+    let LabelBox {
+        x: bx,
+        y: by,
+        w: bw,
+        h: bh,
+    } = bounds;
     let mut hasher = DefaultHasher::new();
     content.hash(&mut hasher);
     bw.to_bits().hash(&mut hasher);
@@ -8226,10 +8269,12 @@ impl WhiteboardView {
             &self.scene,
             &self.font,
             camera,
-            ink,
-            text,
-            grid,
-            panel,
+            ThumbnailPalette {
+                ink,
+                text,
+                grid,
+                panel,
+            },
             render_viewport,
             Some(&mut self.text_layout_cache),
             Some(&mut self.label_layout_cache),
@@ -8530,10 +8575,12 @@ impl Render for WhiteboardView {
                             &font,
                             id,
                             kind,
-                            bx,
-                            by,
-                            bw,
-                            bh,
+                            LabelBox {
+                                x: bx,
+                                y: by,
+                                w: bw,
+                                h: bh,
+                            },
                             text,
                             styles,
                         );
@@ -10204,10 +10251,12 @@ mod tests {
             &font,
             3,
             &kind,
-            10.0,
-            20.0,
-            180.0,
-            60.0,
+            LabelBox {
+                x: 10.0,
+                y: 20.0,
+                w: 180.0,
+                h: 60.0,
+            },
             "Node",
             &[],
         );
@@ -10216,10 +10265,12 @@ mod tests {
             &font,
             3,
             &kind,
-            80.0,
-            90.0,
-            180.0,
-            60.0,
+            LabelBox {
+                x: 80.0,
+                y: 90.0,
+                w: 180.0,
+                h: 60.0,
+            },
             "Node",
             &[],
         );
@@ -10228,10 +10279,12 @@ mod tests {
             &font,
             3,
             &kind,
-            80.0,
-            90.0,
-            240.0,
-            80.0,
+            LabelBox {
+                x: 80.0,
+                y: 90.0,
+                w: 240.0,
+                h: 80.0,
+            },
             "Node",
             &[],
         );

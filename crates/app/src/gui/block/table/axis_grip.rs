@@ -54,6 +54,10 @@ pub(super) fn render_table_axis_handle_icon(axis: TableAxis, color: u32) -> AnyE
         .into_any_element()
 }
 
+// 形状不变量：列把手横向、行把手纵向（编译期断言）。
+const _: () = assert!(TABLE_COLUMN_HANDLE_DOT_COLUMNS > TABLE_COLUMN_HANDLE_DOT_ROWS);
+const _: () = assert!(TABLE_ROW_HANDLE_DOT_ROWS > TABLE_ROW_HANDLE_DOT_COLUMNS);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,8 +69,6 @@ mod tests {
             6
         );
         assert_eq!(TABLE_ROW_HANDLE_DOT_ROWS * TABLE_ROW_HANDLE_DOT_COLUMNS, 6);
-        assert!(TABLE_COLUMN_HANDLE_DOT_COLUMNS > TABLE_COLUMN_HANDLE_DOT_ROWS);
-        assert!(TABLE_ROW_HANDLE_DOT_ROWS > TABLE_ROW_HANDLE_DOT_COLUMNS);
     }
 
     #[test]

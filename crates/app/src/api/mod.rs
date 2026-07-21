@@ -19,8 +19,11 @@ pub use cold_start::{
     StorageRuntimeLoadOptions, load_runtime_from_options,
 };
 pub use command::{
-    BlockTransform, CditorCommand, CommandDescriptor, CommandOutcome, CommandState, SlashItem,
-    ToolbarItem,
+    AiApplyCommandMode, BlockTransform, CaretDirection, CditorCommand, CommandArgs, CommandCatalog,
+    CommandCatalogRegistrationError, CommandCheckState, CommandDefinition, CommandDescriptor,
+    CommandError, CommandErrorCode, CommandId, CommandInvocation, CommandMutability,
+    CommandOutcome, CommandOutcomeStatus, CommandQueryState, CommandSource, CommandState,
+    CommandUnavailableReason, CommandVisibility, SlashItem, TableAxis, ToolbarItem,
 };
 pub use component::CditorComponent;
 pub use diagnostics::CditorDiagnostics;

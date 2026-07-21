@@ -45,6 +45,7 @@ pub(crate) struct TableChromeOverlays {
     pub(crate) right_edge: Vec<AnyElement>,
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_table_axis_overlays(
     block_id: BlockId,
     table_view: &TableViewState,
@@ -133,11 +134,12 @@ fn focused_cell_chrome_is_visible(
     axis_selection: Option<TableAxisSelection>,
     range_selection: Option<TableCellRangeSelection>,
 ) -> bool {
-    !axis_selection.is_some_and(|selection| selection.block_id == block_id)
+    axis_selection.is_none_or(|selection| selection.block_id != block_id)
         && !range_selection
             .is_some_and(|selection| selection.block_id == block_id && selection.is_multi_cell())
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 fn render_table_axis_handles(
     block_id: BlockId,
     table_view: &TableViewState,
@@ -377,6 +379,7 @@ fn table_overlay_left_in_editor(rect: TableOverlayRect, origin: TableToolbarEdit
     origin.x_px + rect.x
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 fn render_table_axis_handle(
     block_id: BlockId,
     axis: TableAxis,
@@ -416,7 +419,7 @@ fn render_table_axis_handle(
         .when(selected, |this| this.opacity(1.0))
         .hover(move |style| style.opacity(1.0).bg(rgb(hover_background)))
         .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.start_table_reorder_from_gui(
                     block_id,
                     axis,
@@ -668,6 +671,7 @@ mod tests {
             ],
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_affinity: None,
             focused_cell_selection_range: None,
         }
     }

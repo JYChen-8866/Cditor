@@ -5,6 +5,22 @@ impl DocumentRuntime {
         &mut self,
         selection: &ClipboardSelection,
     ) -> Result<bool, String> {
+        if let Some(
+            surface_id @ (cditor_core::ids::SurfaceId::ImageCaption { .. }
+            | cditor_core::ids::SurfaceId::CollectionTitle { .. }),
+        ) = self.focused_text_surface_id()
+        {
+            let mut spans = auxiliary_clipboard_spans(selection);
+            if matches!(
+                surface_id,
+                cditor_core::ids::SurfaceId::CollectionTitle { .. }
+            ) {
+                for span in &mut spans {
+                    span.text = span.text.replace(['\r', '\n'], " ");
+                }
+            }
+            return self.paste_inline_clipboard_spans(&spans);
+        }
         match selection {
             ClipboardSelection::Inline { spans } => self.paste_inline_clipboard_spans(spans),
             ClipboardSelection::TextFragments { fragments } => {
@@ -43,26 +59,66 @@ impl DocumentRuntime {
     }
 
     fn paste_inline_clipboard_spans(&mut self, spans: &[InlineSpan]) -> Result<bool, String> {
+        if let Some(
+            surface_id @ (cditor_core::ids::SurfaceId::ImageCaption { .. }
+            | cditor_core::ids::SurfaceId::CollectionTitle { .. }),
+        ) = self.focused_text_surface_id()
+        {
+            let Some(edit) = self.resolve_focused_text_edit(None) else {
+                return Ok(false);
+            };
+            let snapshot = self
+                .text_surface_base_snapshot(surface_id)
+                .ok_or_else(|| format!("missing text surface {surface_id:?}"))?;
+            let inserted_len = spans.iter().map(|span| span.text.len()).sum::<usize>();
+            let next =
+                replace_rich_text_spans_with_spans(&snapshot.spans, edit.range.clone(), spans);
+            let next_offset = edit.range.start.saturating_add(inserted_len);
+            self.cancel_composition();
+            let changed = self.apply_text_surface_paste_transaction(
+                surface_id,
+                snapshot.spans,
+                next,
+                next_offset,
+            )?;
+            if changed && let Some(editing) = self.editing.as_mut() {
+                editing.set_collapsed_selection(next_offset);
+            }
+            return Ok(changed);
+        }
         let Some(focused) = self.focused_table_cell else {
             return self.replace_focused_range_with_rich_text_spans(spans);
         };
         let inserted_len = spans.iter().map(|span| span.text.len()).sum::<usize>();
         let range = focused.selected_range();
-        let changed = {
-            let runtime = self
-                .table_runtime_mut(focused.block_id)
-                .ok_or_else(|| format!("missing table runtime for block {}", focused.block_id))?;
-            runtime.replace_cell_spans(focused.row, focused.col, range.clone(), spans)?
+        let surface_id = SurfaceId::TableCell {
+            block_id: focused.block_id,
+            row: focused.row,
+            column: focused.col,
         };
+        let snapshot = self
+            .text_surface_base_snapshot(surface_id)
+            .ok_or_else(|| format!("missing table text surface {surface_id:?}"))?;
+        let next = replace_rich_text_spans_with_spans(&snapshot.spans, range.clone(), spans);
+        let caret = range.start.saturating_add(inserted_len);
+        self.cancel_composition();
+        let changed =
+            self.apply_text_surface_paste_transaction(surface_id, snapshot.spans, next, caret)?;
         if changed {
-            let caret = range.start.saturating_add(inserted_len);
             self.focused_table_cell = Some(FocusedTableCell::collapsed(
                 focused.block_id,
                 focused.row,
                 focused.col,
                 caret,
             ));
-            self.commit_table_runtime_payload(focused.block_id)?;
+            if let Some(editing) = self.editing.as_mut() {
+                editing.set_input_target(InputTarget::TableCell {
+                    block_id: focused.block_id,
+                    row: focused.row,
+                    col: focused.col,
+                });
+                editing.set_collapsed_selection(caret);
+            }
         }
         Ok(changed)
     }
@@ -77,95 +133,109 @@ impl DocumentRuntime {
         if fragments.len() == 1 {
             return self.replace_focused_range_with_rich_text_spans(&fragments[0].spans);
         }
+        self.paste_rich_text_fragments_transaction(fragments)
+    }
 
-        let original_focus = self
-            .focused_block_id()
-            .map(|block_id| (block_id, self.caret_offset_for_block(block_id).unwrap_or(0)));
-        let mut deleted_records = Vec::new();
-        let mut deleted_payloads = Vec::new();
-        let mut before_current_override = None;
-        let mut current_block_id = self
-            .focused_block_id()
+    fn paste_rich_text_fragments_transaction(
+        &mut self,
+        fragments: &[ClipboardBlockFragment],
+    ) -> Result<bool, String> {
+        let cross_plan = self
+            .document_selection
+            .filter(|selection| selection.anchor.block_id != selection.focus.block_id)
+            .map(|selection| self.plan_cross_block_replacement(selection))
+            .transpose()?;
+        let cross_selection = cross_plan.as_ref().map(|plan| plan.selection);
+        let current_block_id = cross_selection
+            .map(|selection| selection.start.block_id)
+            .or_else(|| self.focused_block_id())
             .ok_or_else(|| "missing focused block".to_owned())?;
-        if self.has_cross_block_text_selection() {
-            let normalized = self
-                .document_selection
-                .ok_or_else(|| "missing document selection".to_owned())?
-                .normalize(&self.index)
-                .map_err(|error| format!("{error:?}"))?;
-            before_current_override = Some((
-                self.index_record_for_block(normalized.start.block_id)?,
-                self.payload_window
-                    .get(normalized.start.block_id)
-                    .cloned()
-                    .ok_or_else(|| "selection start payload is not loaded".to_owned())?,
-            ));
-            if let Some((block_id, records, payloads)) =
-                self.collapse_cross_block_selection_for_paste()?
-            {
-                current_block_id = block_id;
-                deleted_records = records;
-                deleted_payloads = payloads;
-            }
-        }
-
         let current_index = self
             .index
             .index_of(current_block_id)
             .ok_or_else(|| "focused block is missing from index".to_owned())?;
-        let before_current_record = before_current_override
-            .as_ref()
-            .map(|pair| pair.0.clone())
-            .unwrap_or(self.index_record_for_block(current_block_id)?);
-        let before_current_payload = before_current_override
-            .map(|pair| pair.1)
-            .or_else(|| self.payload_window.get(current_block_id).cloned())
-            .ok_or_else(|| "focused payload is not loaded".to_owned())?;
-        let current_payload = self
+        let before_current = self
             .payload_window
             .get(current_block_id)
             .cloned()
             .ok_or_else(|| "focused payload is not loaded".to_owned())?;
         let BlockPayload::RichText {
             spans: current_spans,
-        } = current_payload.payload
+        } = &before_current.payload
         else {
             return Ok(false);
         };
-        let current_text = plain_text_from_spans(&current_spans);
-        let range = self
-            .focused_text_selection_range()
-            .map(|range| safe_char_range(&current_text, range))
-            .unwrap_or_else(|| {
-                let caret = self
-                    .caret_offset_for_block(current_block_id)
-                    .unwrap_or(current_text.len());
-                safe_char_range(&current_text, caret..caret)
-            });
-        let prefix = slice_rich_text_spans(&current_spans, 0..range.start);
-        let suffix = slice_rich_text_spans(&current_spans, range.end..current_text.len());
-        let parent_id = self.index.parent_ids[current_index];
-        let depth = self.index.depths[current_index];
-
+        let current_text = plain_text_from_spans(current_spans);
+        let (prefix, suffix) = if let Some(selection) = cross_selection {
+            let end_payload = self
+                .payload_window
+                .get(selection.end.block_id)
+                .ok_or_else(|| "selection end payload is not loaded".to_owned())?;
+            let BlockPayload::RichText { spans: end_spans } = &end_payload.payload else {
+                return Ok(false);
+            };
+            let end_text = plain_text_from_spans(end_spans);
+            let start_range = safe_char_range(
+                &current_text,
+                selection.start.offset..selection.start.offset,
+            );
+            let end_range = safe_char_range(&end_text, selection.end.offset..selection.end.offset);
+            (
+                slice_rich_text_spans(current_spans, 0..start_range.start),
+                slice_rich_text_spans(end_spans, end_range.start..end_text.len()),
+            )
+        } else {
+            let range = self
+                .focused_text_selection_range()
+                .map(|range| safe_char_range(&current_text, range))
+                .unwrap_or_else(|| {
+                    let caret = self
+                        .caret_offset_for_block(current_block_id)
+                        .unwrap_or(current_text.len());
+                    safe_char_range(&current_text, caret..caret)
+                });
+            (
+                slice_rich_text_spans(current_spans, 0..range.start),
+                slice_rich_text_spans(current_spans, range.end..current_text.len()),
+            )
+        };
+        let range = if cross_selection.is_some() {
+            None
+        } else {
+            Some(
+                self.focused_text_selection_range()
+                    .map(|range| safe_char_range(&current_text, range))
+                    .unwrap_or_else(|| {
+                        let caret = self
+                            .caret_offset_for_block(current_block_id)
+                            .unwrap_or(current_text.len());
+                        safe_char_range(&current_text, caret..caret)
+                    }),
+            )
+        };
         let mut first_spans = prefix;
         first_spans.extend(fragments[0].spans.clone());
-        let replaces_entire_target = range.start == 0 && range.end == current_text.len();
-        let current_kind = if replaces_entire_target
+        let replaces_entire_target = range
+            .as_ref()
+            .is_some_and(|range| range.start == 0 && range.end == current_text.len());
+        let after_current_kind = if replaces_entire_target
             && fragments[0].starts_at_block_start
             && fragments[0].ends_at_block_end
         {
             fragments[0].kind.clone()
         } else {
-            current_payload.kind
+            before_current.kind.clone()
         };
-        self.replace_block_kind_and_payload(
-            current_block_id,
-            current_kind,
-            BlockPayload::RichText {
-                spans: coalesce_clipboard_spans(first_spans),
-            },
-        )?;
+        let after_current_payload = BlockPayload::RichText {
+            spans: coalesce_clipboard_spans(first_spans),
+        };
 
+        let parent_id = self.index.parent_ids[current_index];
+        let depth = self.index.depths[current_index];
+        let insert_at = cross_plan
+            .as_ref()
+            .map(|plan| plan.replacement_index)
+            .unwrap_or_else(|| self.subtree_end(current_index));
         let mut next_id = self.next_available_block_id();
         let mut id_map = HashMap::with_capacity(fragments.len());
         id_map.insert(fragments[0].source_id, current_block_id);
@@ -173,9 +243,9 @@ impl DocumentRuntime {
             id_map.insert(fragment.source_id, next_id);
             next_id = next_id.saturating_add(1);
         }
-        let insert_at = self.subtree_end(current_index);
-        let mut inserted_records = Vec::new();
-        let mut inserted_payloads = Vec::new();
+
+        let mut inserted_records = Vec::with_capacity(fragments.len() - 1);
+        let mut inserted_payloads = Vec::with_capacity(fragments.len() - 1);
         let mut focus_block_id = current_block_id;
         let mut focus_offset = fragments[0]
             .spans
@@ -191,7 +261,7 @@ impl DocumentRuntime {
             }
             let payload = BlockPayloadRecord {
                 block_id,
-                content_version: 1,
+                content_version: 0,
                 kind: fragment.kind.clone(),
                 payload: BlockPayload::RichText {
                     spans: coalesce_clipboard_spans(spans),
@@ -218,131 +288,100 @@ impl DocumentRuntime {
             inserted_payloads.push(payload);
             focus_block_id = block_id;
         }
-        self.insert_runtime_blocks_batch(insert_at, &inserted_records, inserted_payloads)?;
-        self.focus_block_at_offset(focus_block_id, focus_offset)?;
-        let after_current_record = self.index_record_for_block(current_block_id)?;
-        let after_current_payload = self
-            .payload_window
-            .get(current_block_id)
-            .cloned()
-            .ok_or_else(|| "focused payload disappeared after paste".to_owned())?;
-        self.record_structure_paste(StructurePasteUndoStep {
-            current_block_id,
-            before_current_record,
-            before_current_payload,
-            after_current_record,
-            after_current_payload,
-            inserted_records,
-            inserted_payloads: Vec::new(),
-            deleted_records,
-            deleted_payloads,
-            before_focus: original_focus,
-            after_focus: Some((focus_block_id, focus_offset)),
+
+        let before_selection = self.document_selection_snapshot();
+        let after_selection = Some(DocumentSelection::caret(TextPosition {
+            block_id: focus_block_id,
+            offset: focus_offset,
+            affinity: TextAffinity::Downstream,
+        }));
+        let mut preconditions = Vec::with_capacity(inserted_records.len() + 2);
+        preconditions.push(TransactionPrecondition::StructureVersion(
+            self.structure_version(),
+        ));
+        preconditions.push(TransactionPrecondition::BlockContentVersion {
+            block_id: current_block_id,
+            version: before_current.content_version,
         });
+        preconditions.extend(
+            inserted_records
+                .iter()
+                .map(|record| TransactionPrecondition::BlockAbsent(record.id)),
+        );
+        let mut ops = vec![EditOperation::Block(
+            cditor_core::edit::BlockEditOperation::ReplacePayload {
+                block_id: current_block_id,
+                before_kind: before_current.kind.clone(),
+                before_payload: before_current.payload.clone(),
+                after_kind: after_current_kind.clone(),
+                after_payload: after_current_payload.clone(),
+            },
+        )];
+        let (structure_ops, mut inverse_ops) = if let Some(plan) = &cross_plan {
+            plan.structure_operations(inserted_records, inserted_payloads)?
+        } else {
+            let inserted_end = insert_at.saturating_add(inserted_records.len());
+            (
+                vec![EditOperation::InsertBlocks {
+                    index: insert_at,
+                    blocks: inserted_records,
+                    payloads: inserted_payloads,
+                }],
+                vec![EditOperation::DeleteBlockRange {
+                    range: insert_at..inserted_end,
+                }],
+            )
+        };
+        ops.extend(structure_ops);
+        inverse_ops.push(EditOperation::Block(
+            cditor_core::edit::BlockEditOperation::ReplacePayload {
+                block_id: current_block_id,
+                before_kind: after_current_kind,
+                before_payload: after_current_payload,
+                after_kind: before_current.kind,
+                after_payload: before_current.payload,
+            },
+        ));
+        self.cancel_composition();
+        self.apply_local_structure_transaction(
+            EditTransactionKind::Paste,
+            cditor_core::edit::ChangeOrigin::Import,
+            ops,
+            inverse_ops,
+            preconditions,
+            before_selection,
+            after_selection,
+            self.selected_block_ids_snapshot(),
+            Vec::new(),
+        )?;
+        self.focus_block_at_offset(focus_block_id, focus_offset)?;
         Ok(true)
     }
+}
 
-    fn paste_clipboard_blocks(&mut self, blocks: &[ClipboardBlock]) -> Result<bool, String> {
-        if blocks.is_empty() {
-            return Ok(false);
-        }
-        let anchor_id = self
-            .selected_block_ids
+fn auxiliary_clipboard_spans(selection: &ClipboardSelection) -> Vec<InlineSpan> {
+    match selection {
+        ClipboardSelection::Inline { spans } => spans.clone(),
+        ClipboardSelection::TextFragments { fragments } => fragments
             .iter()
-            .filter_map(|block_id| {
-                self.index
-                    .index_of(*block_id)
-                    .map(|index| (index, *block_id))
+            .enumerate()
+            .flat_map(|(index, fragment)| {
+                let mut spans = Vec::with_capacity(fragment.spans.len() + usize::from(index > 0));
+                if index > 0 {
+                    spans.push(InlineSpan::plain("\n"));
+                }
+                spans.extend(fragment.spans.clone());
+                spans
             })
-            .max_by_key(|pair| pair.0)
-            .map(|pair| pair.1)
-            .or_else(|| self.focused_block_id())
-            .or_else(|| self.index.block_ids.last().copied())
-            .ok_or_else(|| "document has no paste anchor".to_owned())?;
-        let anchor_index = self
-            .index
-            .index_of(anchor_id)
-            .ok_or_else(|| "paste anchor is missing".to_owned())?;
-        let insert_at = self.subtree_end(anchor_index);
-        let target_parent = self.index.parent_ids[anchor_index];
-        let target_depth = self.index.depths[anchor_index];
-        let before_current_record = self.index_record_for_block(anchor_id)?;
-        let before_current_payload = self
-            .payload_window
-            .get(anchor_id)
-            .cloned()
-            .ok_or_else(|| "paste anchor payload is not loaded".to_owned())?;
-        let before_focus = self
-            .focused_block_id()
-            .map(|block_id| (block_id, self.caret_offset_for_block(block_id).unwrap_or(0)));
-
-        let mut next_id = self.next_available_block_id();
-        let mut id_map = HashMap::new();
-        for block in blocks {
-            id_map.insert(block.source_id, next_id);
-            next_id = next_id.saturating_add(1);
-        }
-        let root_depth = blocks
-            .iter()
-            .filter(|block| block.parent_source_id.is_none())
-            .map(|block| block.depth)
-            .min()
-            .unwrap_or(blocks[0].depth);
-        let mut inserted_records = Vec::with_capacity(blocks.len());
-        let mut inserted_payloads = Vec::with_capacity(blocks.len());
-        for (offset, block) in blocks.iter().enumerate() {
-            let block_id = id_map[&block.source_id];
-            let parent_id = block
-                .parent_source_id
-                .and_then(|source_id| id_map.get(&source_id).copied())
-                .or(target_parent);
-            let depth = target_depth.saturating_add(block.depth.saturating_sub(root_depth));
-            let payload = BlockPayloadRecord {
-                block_id,
-                content_version: 1,
-                kind: block.kind.clone(),
-                payload: block.payload.clone(),
-            };
-            let record = BlockIndexRecord::new(
-                block_id,
-                parent_id,
-                depth,
-                kind_tag_for_rich_block_kind(&block.kind),
-                0,
-            )
-            .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(
-                block_id,
-                estimate_payload_height(&payload, insert_at + offset),
-            ));
-            inserted_records.push(record);
-            inserted_payloads.push(payload);
-        }
-        let first_id = inserted_records[0].id;
-        self.insert_runtime_blocks_batch(insert_at, &inserted_records, inserted_payloads)?;
-        self.selected_block_ids.clear();
-        if let Some(text_len) = self
-            .text_models
-            .get(&first_id)
-            .map(PieceTableTextModel::len)
-        {
-            self.focus_block_at_offset(first_id, text_len)?;
-        } else {
-            self.focus_block(first_id);
-        }
-        self.record_structure_paste(StructurePasteUndoStep {
-            current_block_id: anchor_id,
-            before_current_record,
-            before_current_payload: before_current_payload.clone(),
-            after_current_record: before_current_record,
-            after_current_payload: before_current_payload,
-            inserted_records,
-            inserted_payloads: Vec::new(),
-            deleted_records: Vec::new(),
-            deleted_payloads: Vec::new(),
-            before_focus,
-            after_focus: Some((first_id, self.caret_offset_for_block(first_id).unwrap_or(0))),
-        });
-        Ok(true)
+            .collect(),
+        ClipboardSelection::Blocks { blocks } => vec![InlineSpan::plain(
+            blocks
+                .iter()
+                .map(|block| block.payload.plain_text())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )],
+        ClipboardSelection::Table { table } => vec![InlineSpan::plain(table.plain_text())],
     }
 }
 

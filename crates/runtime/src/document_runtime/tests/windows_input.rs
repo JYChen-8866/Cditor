@@ -88,6 +88,21 @@ fn table_cells_share_home_end_selection_behavior() {
 }
 
 #[test]
+fn table_cell_visual_position_affinity_is_projected() {
+    let mut runtime = table_runtime("alpha beta", 5);
+    assert!(
+        runtime
+            .move_focused_table_cell_to_text_position(5, TextAffinity::Upstream, false)
+            .unwrap()
+    );
+
+    let projection = runtime.projection_for_window();
+    let table = projection.blocks[0].table_view.as_ref().unwrap();
+    assert_eq!(table.focused_cell_offset, Some(5));
+    assert_eq!(table.focused_cell_affinity, Some(TextAffinity::Upstream));
+}
+
+#[test]
 fn legacy_crlf_content_has_windows_line_boundaries() {
     let mut runtime = paragraph_runtime("first\r\nsecond", 11);
 

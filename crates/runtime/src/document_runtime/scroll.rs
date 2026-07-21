@@ -7,6 +7,47 @@ const FOCUSED_BLOCK_BOTTOM_RESERVE_LINES: f64 = 4.0;
 const FOCUSED_BLOCK_MIN_EDGE_MARGIN_PX: f64 = 8.0;
 
 impl DocumentRuntime {
+    pub(super) fn capture_undo_scroll_snapshot(&self) -> UndoScrollSnapshot {
+        let fallback_global_scroll_top = self.scroll.global_scroll_top;
+        let anchor = self
+            .target_for_global_offset(fallback_global_scroll_top)
+            .map(|target| ScrollAnchor {
+                block_id: target.block_id,
+                offset_in_block: target.offset_in_block,
+                viewport_y: 0.0,
+            });
+        UndoScrollSnapshot {
+            anchor,
+            fallback_global_scroll_top,
+        }
+    }
+
+    pub(super) fn restore_undo_scroll_snapshot(
+        &mut self,
+        snapshot: UndoScrollSnapshot,
+    ) -> Result<(), String> {
+        self.restore_scroll_anchor(snapshot.anchor, snapshot.fallback_global_scroll_top)
+    }
+
+    pub(super) fn restore_scroll_anchor(
+        &mut self,
+        anchor: Option<ScrollAnchor>,
+        fallback_global_scroll_top: f64,
+    ) -> Result<(), String> {
+        let global_scroll_top = anchor
+            .and_then(|anchor| {
+                let visible_index = self.visible_index.visible_index_of(anchor.block_id)?;
+                let block_top = self.height_index.offset_of_block(visible_index)?;
+                Some(block_top + anchor.offset_in_block - anchor.viewport_y)
+            })
+            .unwrap_or(fallback_global_scroll_top);
+        self.scroll
+            .scroll_to_global_offset(global_scroll_top, ScrollOrigin::ProgrammaticVirtualScroll)
+            .map_err(|error| error.to_string())?;
+        self.scroll.set_anchor(anchor);
+        Ok(())
+    }
+
     pub fn down_placer_height(&self) -> f64 {
         (self.scroll.viewport_height * DOWN_PLACER_VIEWPORT_RATIO)
             .clamp(DOWN_PLACER_MIN_HEIGHT_PX, DOWN_PLACER_MAX_HEIGHT_PX)

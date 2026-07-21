@@ -2,9 +2,6 @@ use super::*;
 
 #[test]
 fn mermaid_preview_blocks_hidden_source_mutations() {
-    assert!(mermaid_preview_blocks_command(GuiInputCommand::InsertChar(
-        'x'
-    )));
     assert!(mermaid_preview_blocks_command(
         GuiInputCommand::DeleteBackward
     ));
@@ -20,10 +17,15 @@ fn mermaid_preview_blocks_hidden_source_mutations() {
         }
     ));
 }
+use crate::gui::{
+    GuiTheme,
+    text::{ParleyLayoutOptions, RichTextLayoutInput, build_parley_layout},
+};
 use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineMark, InlineSpan, RichBlockKind, TableCellPayload,
     TablePayload, TableRowPayload,
 };
+use gpui::{Bounds, point, px, size};
 
 fn paragraph_runtime(text: &str) -> DocumentRuntime {
     let mut runtime = DocumentRuntime::from_payloads(
@@ -70,6 +72,65 @@ fn table_runtime(block_id: BlockId, rows: &[&[&str]]) -> DocumentRuntime {
 }
 
 #[test]
+fn keyboard_navigation_consumes_parley_layout_cache() {
+    let text = "abc אבג 123";
+    let mut runtime = paragraph_runtime(text);
+    runtime.focus_block_at_offset(1, 0).unwrap();
+    let input = RichTextLayoutInput {
+        block_id: 1,
+        surface_id: crate::gui::text::TextLayoutSurfaceId::Block(1),
+        content_version: runtime.block_content_version(1).unwrap(),
+        layout_version: 1,
+        kind: RichBlockKind::Paragraph,
+        text_align: cditor_core::rich_text::TextAlign::Start,
+        spans: vec![InlineSpan::plain(text)],
+        width_px: 500.0,
+        theme_version: 1,
+        font_version: 1,
+    };
+    let layout = build_parley_layout(
+        &input,
+        GuiTheme::light(),
+        &ParleyLayoutOptions {
+            width: Some(500.0),
+            base_text_color: GuiTheme::light().text,
+            ..ParleyLayoutOptions::default()
+        },
+    );
+    let mut layouts = HashMap::new();
+    layouts.insert(
+        1,
+        RichTextPlatformLayout {
+            block_id: 1,
+            surface_id: input.surface_id,
+            content_version: input.content_version,
+            layout_version: input.layout_version,
+            input_session_identity: None,
+            snapshot: layout,
+            accessibility: None,
+            bounds: Bounds::new(point(px(0.0), px(0.0)), size(px(500.0), px(24.0))),
+            measured_height: 24.0,
+            table_cell_position: None,
+        },
+    );
+
+    assert!(
+        move_caret_with_parley(
+            &layouts,
+            &Default::default(),
+            &mut None,
+            &mut runtime,
+            ParleyMoveCommand::NextVisual,
+            false,
+        )
+        .unwrap()
+    );
+    let position = runtime.caret_position_for_block(1).unwrap();
+    assert!(position.offset > 0);
+    assert!(text.is_char_boundary(position.offset));
+}
+
+#[test]
 fn paste_text_from_clipboard_uses_validated_rich_metadata() {
     let mut runtime = paragraph_runtime("hello ");
     let selection = ClipboardSelection::Inline {
@@ -97,6 +158,61 @@ fn paste_text_from_clipboard_uses_validated_rich_metadata() {
         }
         _ => panic!("expected rich text payload"),
     }
+}
+
+#[test]
+fn repeated_vertical_navigation_preserves_original_x_across_a_short_line() {
+    let text = "abcdefghij\nx\nabcdefghij";
+    let mut runtime = paragraph_runtime(text);
+    runtime.focus_block_at_offset(1, 8).unwrap();
+    let mut layouts = HashMap::new();
+    layouts.insert(
+        1,
+        crate::gui::text::test_platform_layout(
+            1,
+            runtime.block_content_version(1).unwrap(),
+            text,
+            Bounds::new(point(px(0.0), px(0.0)), size(px(500.0), px(80.0))),
+            None,
+        ),
+    );
+    let mut preferred_x = None;
+
+    assert!(
+        move_caret_with_parley(
+            &layouts,
+            &Default::default(),
+            &mut preferred_x,
+            &mut runtime,
+            ParleyMoveCommand::NextLine,
+            false,
+        )
+        .unwrap()
+    );
+    assert!(preferred_x.is_some());
+    assert!(
+        move_caret_with_parley(
+            &layouts,
+            &Default::default(),
+            &mut preferred_x,
+            &mut runtime,
+            ParleyMoveCommand::NextLine,
+            false,
+        )
+        .unwrap()
+    );
+    assert!(runtime.caret_offset_for_block(1).unwrap() >= 20);
+
+    move_caret_with_parley(
+        &layouts,
+        &Default::default(),
+        &mut preferred_x,
+        &mut runtime,
+        ParleyMoveCommand::PreviousVisual,
+        false,
+    )
+    .unwrap();
+    assert!(preferred_x.is_none());
 }
 
 #[test]

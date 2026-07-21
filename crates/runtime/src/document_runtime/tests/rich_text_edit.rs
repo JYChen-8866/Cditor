@@ -172,6 +172,110 @@ fn move_focused_caret_to_offset_updates_caret_without_selection() {
 }
 
 #[test]
+fn visual_text_position_affinity_survives_runtime_projection() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "alpha beta gamma",
+        )],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, 6).unwrap();
+
+    assert!(
+        runtime
+            .move_focused_caret_to_text_position(
+                TextPosition {
+                    block_id: 1,
+                    offset: 6,
+                    affinity: TextAffinity::Upstream,
+                },
+                false,
+            )
+            .unwrap()
+    );
+
+    let projection = runtime.projection_for_window();
+    assert_eq!(projection.blocks[0].caret_offset, Some(6));
+    assert_eq!(
+        projection.blocks[0].caret_affinity,
+        Some(TextAffinity::Upstream)
+    );
+    assert_eq!(
+        runtime
+            .document_selection_snapshot()
+            .unwrap()
+            .focus
+            .affinity,
+        TextAffinity::Upstream
+    );
+}
+
+#[test]
+fn extending_visual_selection_preserves_focus_affinity() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "abcdef",
+        )],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, 2).unwrap();
+    runtime
+        .move_focused_caret_to_text_position(
+            TextPosition {
+                block_id: 1,
+                offset: 5,
+                affinity: TextAffinity::Upstream,
+            },
+            true,
+        )
+        .unwrap();
+
+    let selection = runtime.document_selection_snapshot().unwrap();
+    assert_eq!(selection.anchor.offset, 2);
+    assert_eq!(selection.focus.offset, 5);
+    assert_eq!(selection.focus.affinity, TextAffinity::Upstream);
+}
+
+#[test]
+fn content_change_invalidates_visual_caret_affinity_even_when_offset_matches() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "abcdef",
+        )],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, 3).unwrap();
+    runtime
+        .move_focused_caret_to_text_position(
+            TextPosition {
+                block_id: 1,
+                offset: 3,
+                affinity: TextAffinity::Upstream,
+            },
+            false,
+        )
+        .unwrap();
+    runtime
+        .replace_text_in_focused_range(Some(2..3), "x")
+        .unwrap();
+
+    assert_eq!(runtime.caret_offset_for_block(1), Some(3));
+    assert_eq!(
+        runtime.caret_position_for_block(1).unwrap().affinity,
+        TextAffinity::Downstream
+    );
+}
+
+#[test]
 fn move_focused_caret_to_offset_extends_same_block_selection() {
     let mut runtime = DocumentRuntime::from_payloads(
         1,
@@ -190,6 +294,32 @@ fn move_focused_caret_to_offset_extends_same_block_selection() {
     assert_eq!(projection.blocks[0].caret_offset, Some(5));
     assert_eq!(runtime.focused_text_selection_range(), Some(2..5));
     assert_eq!(runtime.selected_focused_text().as_deref(), Some("cde"));
+}
+
+#[test]
+fn reversed_selection_projects_its_focus_endpoint_as_the_caret() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "abcdef",
+        )],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, 5).unwrap();
+
+    assert!(runtime.move_focused_caret_to_offset(1, 2, true).unwrap());
+
+    let editing = runtime.editing.as_ref().unwrap();
+    assert_eq!(editing.selected_range, 2..5);
+    assert!(editing.selection_reversed);
+    assert_eq!(editing.focus_offset(), 2);
+    assert_eq!(runtime.caret_offset_for_block(1), Some(2));
+    assert_eq!(
+        runtime.projection_for_window().blocks[0].caret_offset,
+        Some(2)
+    );
 }
 
 #[test]

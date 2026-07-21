@@ -9,6 +9,7 @@ members = [
     "crates/store",
     "crates/store-postgres",
     "crates/store-sqlite",
+    "crates/text",
 ]
 default-members = ["crates/app"]
 resolver = "3"

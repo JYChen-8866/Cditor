@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "corpus_id": "cditor-parley-text-layout",
+  "cases": [
+    {
+      "id": "cjk-basic",
+      "kind": "cjk",
+      "text_file": "texts/cjk.txt",
+      "min_graphemes": 24,
+      "min_clusters": 20,
+      "direction": "ltr",
+      "contains_emoji": false,
+      "contains_combining": false
+    },
+    {
+      "id": "emoji-zwj",
+      "kind": "emoji_zwj",
+      "text_file": "texts/emoji-zwj.txt",
+      "min_graphemes": 8,
+      "min_clusters": 8,
+      "direction": "ltr",
+      "contains_emoji": true,
+      "contains_combining": true
+    },
+    {
+      "id": "combining-marks",
+      "kind": "combining",
+      "text_file": "texts/combining.txt",
+      "min_graphemes": 18,
+      "min_clusters": 16,
+      "direction": "ltr",
+      "contains_emoji": false,
+      "contains_combining": true
+    },
+    {
+      "id": "arabic-rtl",
+      "kind": "arabic",
+      "text_file": "texts/arabic.txt",
+      "min_graphemes": 24,
+      "min_clusters": 20,
+      "direction": "rtl",
+      "contains_emoji": false,
+      "contains_combining": false
+    },
+    {
+      "id": "hebrew-rtl",
+      "kind": "hebrew",
+      "text_file": "texts/hebrew.txt",
+      "min_graphemes": 20,
+      "min_clusters": 18,
+      "direction": "rtl",
+      "contains_emoji": false,
+      "contains_combining": false
+    },
+    {
+      "id": "mixed-bidi",
+      "kind": "mixed_bidi",
+      "text_file": "texts/mixed-bidi.txt",
+      "min_graphemes": 30,
+      "min_clusters": 25,
+      "direction": "mixed",
+      "contains_emoji": false,
+      "contains_combining": false
+    }
+  ],
+  "variable_font": {
+    "text_file": "texts/variable-latin.txt",
+    "font_file": "fonts/LeagueSpartan[wght].ttf",
+    "license_file": "fonts/OFL.txt",
+    "sha256": "2dbb6290b39ab7c48a40b18f74ca59ef48a69a015c3ea0542703f0c6ce51d617",
+    "family": "League Spartan",
+    "axis": {
+      "tag": "wght",
+      "min": 100.0,
+      "default": 100.0,
+      "max": 900.0
+    },
+    "samples": [
+      { "name": "thin", "settings": "'wght' 100" },
+      { "name": "black", "settings": "'wght' 900" }
+    ]
+  },
+  "color_font": {
+    "font_file": "fonts/COLRv1StaticTestGlyphs.ttf",
+    "notice_file": "fonts/COLRv1StaticTestGlyphs-NOTICE.md",
+    "sha256": "0441303144c314d46ee12cf9742f1dd3fcbcb42700e7c51dba7b1b689c1dd1d7",
+    "family": "COLRv1 Static Test Glyphs",
+    "color_glyph_id": 9,
+    "non_color_glyph_id": 1
+  },
+  "visual_golden": {
+    "schema_version": 1,
+    "snapshot_file": "goldens/visual-layout-v1.json",
+    "coordinate_units_per_device_pixel": 64,
+    "scales": [1.0, 1.25, 2.0],
+    "dimensions": [
+      "line_break",
+      "glyph",
+      "caret",
+      "selection",
+      "underline"
+    ]
+  }
+}

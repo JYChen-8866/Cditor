@@ -65,7 +65,7 @@ pub(crate) fn inline_mark_visual_style(
         }
     }
 
-    let text_color = explicit_text_color.unwrap_or_else(|| {
+    let text_color = explicit_text_color.unwrap_or({
         if link {
             theme.focused
         } else if code {
@@ -109,6 +109,11 @@ pub fn render_payload_text(payload: &BlockPayloadRecord, theme: GuiTheme) -> Any
                 }))
             }))
             .into_any_element(),
+        BlockPayload::Columns(columns) => render_embedded_surface(
+            format!("{} columns", columns.columns.len()),
+            fallback_inner_height_px(&payload.kind),
+            theme,
+        ),
         BlockPayload::Image(image) => div()
             .flex()
             .flex_col()
@@ -123,9 +128,14 @@ pub fn render_payload_text(payload: &BlockPayloadRecord, theme: GuiTheme) -> Any
                 div()
                     .text_size(px(12.0))
                     .text_color(rgb(theme.muted))
-                    .child(format!("{} {}", image.alt, image.caption)),
+                    .child(format!("{} {}", image.alt, image.caption.plain_text())),
             )
             .into_any_element(),
+        BlockPayload::Collection(collection) => render_embedded_surface(
+            collection.title.plain_text(),
+            fallback_inner_height_px(&payload.kind),
+            theme,
+        ),
         BlockPayload::File(file) => {
             render_file_card(file, fallback_inner_height_px(&payload.kind), theme)
         }
@@ -230,7 +240,11 @@ fn render_file_card(
         .into_any_element()
 }
 
-fn render_embedded_surface(label: &'static str, min_height_px: f32, theme: GuiTheme) -> AnyElement {
+fn render_embedded_surface(
+    label: impl IntoElement,
+    min_height_px: f32,
+    theme: GuiTheme,
+) -> AnyElement {
     div()
         .w_full()
         .min_h(px(min_height_px))

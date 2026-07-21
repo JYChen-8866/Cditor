@@ -51,3 +51,17 @@ The whiteboard toolbar and shape controls include icons from Lucide.
 
 Source and binary distributions that contain the whiteboard must retain the
 corresponding font and icon license files listed above.
+
+## Google Fonts COLRv1 test font
+
+Cditor's exact-raster test suite bundles a generated COLRv1 font for
+deterministic color-glyph regression coverage.
+
+- Project: <https://github.com/googlefonts/color-fonts>
+- Upstream asset: `fonts/test_glyphs-glyf_colr_1.ttf`
+- Bundled asset:
+  `crates/text/tests/fixtures/text-layout/v1/fonts/COLRv1StaticTestGlyphs.ttf`
+- License: Apache-2.0
+- Asset notice:
+  `crates/text/tests/fixtures/text-layout/v1/fonts/COLRv1StaticTestGlyphs-NOTICE.md`
+- License text: `LICENSE-APACHE`

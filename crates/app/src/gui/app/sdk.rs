@@ -2,8 +2,8 @@ use gpui::{AppContext, Context, EventEmitter, Task, Window};
 
 use crate::api::{
     Affinity, BlockTransform, CditorCommand, CditorDiagnostics, CditorError, CditorEvent,
-    ChangeOrigin, CloseGuard, CommandOutcome, CommandState, DocumentInfo, DocumentPosition,
-    DocumentSelection, SaveReport, SaveStatus, ScrollAlignment, TextOffset,
+    ChangeOrigin, CloseGuard, CommandOutcome, CommandOutcomeStatus, CommandSource, DocumentInfo,
+    DocumentPosition, DocumentSelection, SaveReport, SaveStatus, ScrollAlignment, TextOffset,
 };
 use crate::gui::app::CditorV2View;
 use crate::gui::persistence::{EditorSaveStatus, PersistenceBarrierKind};
@@ -75,33 +75,11 @@ impl CditorV2View {
     }
 
     pub(crate) fn sdk_undo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
-        self.sdk_history_action(ChangeOrigin::Undo, cx, |runtime| {
-            runtime.undo_focused_block()
-        })
+        self.execute_history_action(ChangeOrigin::Undo, false, cx)
     }
 
     pub(crate) fn sdk_redo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
-        self.sdk_history_action(ChangeOrigin::Redo, cx, |runtime| {
-            runtime.redo_focused_block()
-        })
-    }
-
-    fn sdk_history_action(
-        &mut self,
-        origin: ChangeOrigin,
-        cx: &mut Context<Self>,
-        action: impl FnOnce(&mut cditor_runtime::DocumentRuntime) -> Result<bool, String>,
-    ) -> Result<bool, CditorError> {
-        if self.readonly {
-            return Err(CditorError::Readonly);
-        }
-        let runtime = self.ready_runtime().ok_or(CditorError::NotReady)?;
-        let changed = action(runtime).map_err(CditorError::Internal)?;
-        if changed {
-            self.mark_dirty_with_origin(origin, cx);
-            cx.notify();
-        }
-        Ok(changed)
+        self.execute_history_action(ChangeOrigin::Redo, true, cx)
     }
 
     pub(crate) fn sdk_document_info(&self) -> Option<DocumentInfo> {
@@ -248,21 +226,32 @@ impl CditorV2View {
         Ok(())
     }
 
-    pub(crate) fn sdk_execute_command(
+    pub(in crate::gui::app) fn execute_sdk_command_handler(
         &mut self,
         command: CditorCommand,
+        source: CommandSource,
         cx: &mut Context<Self>,
     ) -> Result<CommandOutcome, CditorError> {
         if matches!(&command, CditorCommand::Undo) {
             return self.sdk_undo(cx).map(|changed| CommandOutcome {
                 changed,
                 transaction_id: None,
+                status: if changed {
+                    CommandOutcomeStatus::Applied
+                } else {
+                    CommandOutcomeStatus::NoOp
+                },
             });
         }
         if matches!(&command, CditorCommand::Redo) {
             return self.sdk_redo(cx).map(|changed| CommandOutcome {
                 changed,
                 transaction_id: None,
+                status: if changed {
+                    CommandOutcomeStatus::Applied
+                } else {
+                    CommandOutcomeStatus::NoOp
+                },
             });
         }
         let is_select_all = matches!(&command, CditorCommand::SelectAll);
@@ -293,6 +282,13 @@ impl CditorV2View {
             }
             CditorCommand::TransformBlock(BlockTransform::Kind(kind)) => runtime
                 .convert_focused_block_kind(kind)
+                .map_err(CditorError::Internal)?,
+            CditorCommand::ApplySlashBlock {
+                block_id,
+                trigger_range,
+                kind,
+            } => runtime
+                .apply_slash_block_kind(block_id, trigger_range, kind)
                 .map_err(CditorError::Internal)?,
             CditorCommand::DeleteSelectedBlocks => runtime
                 .delete_selected_block_selection()
@@ -329,7 +325,10 @@ impl CditorV2View {
             }
         };
         if changed && mutating {
-            self.mark_dirty_with_origin(ChangeOrigin::Host, cx);
+            self.mark_dirty_with_origin(
+                super::command_router::change_origin_for_source(source),
+                cx,
+            );
         }
         if is_select_all && let Some(selection) = self.sdk_selection() {
             cx.emit(CditorEvent::SelectionChanged { selection });
@@ -338,47 +337,12 @@ impl CditorV2View {
         Ok(CommandOutcome {
             changed,
             transaction_id: None,
+            status: if changed {
+                CommandOutcomeStatus::Applied
+            } else {
+                CommandOutcomeStatus::NoOp
+            },
         })
-    }
-
-    pub(crate) fn sdk_command_state(&self, command: &CditorCommand) -> CommandState {
-        let Some(runtime) = self.ready_runtime_ref() else {
-            return CommandState::DISABLED;
-        };
-        let enabled = match command {
-            CditorCommand::Undo => self.sdk_can_undo(),
-            CditorCommand::Redo => self.sdk_can_redo(),
-            CditorCommand::SelectAll => true,
-            CditorCommand::DeleteSelection => !self.readonly && runtime.has_active_selection(),
-            CditorCommand::ToggleBold
-            | CditorCommand::ToggleItalic
-            | CditorCommand::ToggleUnderline
-            | CditorCommand::ToggleStrike
-            | CditorCommand::ToggleInlineCode => {
-                !self.readonly && runtime.focused_text_selection_range().is_some()
-            }
-            CditorCommand::FoldHeading | CditorCommand::UnfoldHeading => {
-                !self.readonly
-                    && runtime.focused_block_id().is_some_and(|block_id| {
-                        matches!(
-                            runtime.block_kind(block_id),
-                            Some(cditor_core::rich_text::RichBlockKind::Heading { .. })
-                        )
-                    })
-            }
-            CditorCommand::TransformBlock(BlockTransform::Kind(kind)) => {
-                !self.readonly
-                    && runtime
-                        .focused_block_id()
-                        .is_some_and(|block_id| runtime.can_convert_block_kind(block_id, kind))
-            }
-            _ => false,
-        };
-        CommandState {
-            enabled,
-            active: false,
-            visible: true,
-        }
     }
 
     pub(in crate::gui::app) fn sdk_register_focus_observers(

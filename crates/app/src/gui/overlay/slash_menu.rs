@@ -354,7 +354,7 @@ pub(crate) fn render_slash_menu(
         .on_mouse_down_out({
             let view = view.clone();
             move |_event, _window, cx| {
-                let _ = view.update(cx, |view, cx| {
+                view.update(cx, |view, cx| {
                     view.cancel_slash_menu(cx);
                 });
             }
@@ -365,7 +365,7 @@ pub(crate) fn render_slash_menu(
                 let delta_y = f32::from(event.delta.pixel_delta(px(SLASH_MENU_ROW_HEIGHT_PX)).y);
                 let rows = slash_scroll_delta_rows(delta_y);
                 if rows != 0 {
-                    let _ = view.update(cx, |view, cx| {
+                    view.update(cx, |view, cx| {
                         view.scroll_slash_menu_from_gui(rows, cx);
                     });
                 }
@@ -416,7 +416,7 @@ pub(crate) fn render_slash_menu(
 fn slash_menu_panel_height(total_items: usize) -> f32 {
     SLASH_MENU_PANEL_PADDING_PX * 2.0
         + SLASH_MENU_GROUP_HEIGHT_PX
-        + total_items.min(SLASH_MENU_VISIBLE_ITEMS).max(1) as f32 * SLASH_MENU_ROW_HEIGHT_PX
+        + total_items.clamp(1, SLASH_MENU_VISIBLE_ITEMS) as f32 * SLASH_MENU_ROW_HEIGHT_PX
 }
 
 fn slash_menu_panel_position(
@@ -516,7 +516,7 @@ fn render_slash_menu_row(
         .on_mouse_move({
             let view = view.clone();
             move |_event, _window, cx| {
-                let _ = view.update(cx, |view, cx| {
+                view.update(cx, |view, cx| {
                     view.select_slash_menu_index_from_gui(index, cx);
                 });
             }
@@ -558,7 +558,7 @@ fn render_slash_menu_row(
                 ),
         )
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.apply_slash_menu_index_from_gui(index, cx);
             });
             cx.stop_propagation();

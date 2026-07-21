@@ -3,6 +3,7 @@ pub mod block_shell;
 pub mod block_view;
 pub mod chrome;
 pub mod code;
+pub mod collection;
 pub mod drag_overlay;
 pub mod gutter;
 pub mod heading;

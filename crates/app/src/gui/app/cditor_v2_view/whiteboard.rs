@@ -39,17 +39,24 @@ impl CditorV2View {
             if !readonly {
                 board.set_on_change(Rc::new(move |scene_json, _window, app| {
                     let _ = host.update(app, |view, cx| {
-                        let changed = match &mut view.state {
-                            CditorViewState::Ready(runtime) => runtime
-                                .update_whiteboard_scene_json(block_id, scene_json)
-                                .unwrap_or(false),
-                            _ => false,
+                        let result = match &mut view.state {
+                            CditorViewState::Ready(runtime) => {
+                                let changed = runtime
+                                    .update_whiteboard_scene_json(block_id, scene_json)
+                                    .unwrap_or(false);
+                                (changed, runtime.revision())
+                            }
+                            _ => (false, 0),
                         };
-                        if changed {
+                        if result.0 {
                             // Skip thumbnail invalidation during editing — the editor
                             // is fullscreen so the thumbnail is not visible. We rebuild
                             // the thumbnail on close instead.
-                            view.mark_dirty(cx);
+                            view.mark_dirty_at_revision(
+                                crate::api::ChangeOrigin::User,
+                                result.1,
+                                cx,
+                            );
                         }
                     });
                 }));
@@ -73,9 +80,10 @@ impl CditorV2View {
             let changed = runtime
                 .update_whiteboard_scene_json(session.block_id, scene_json)
                 .unwrap_or(false);
+            let revision = runtime.revision();
             if changed {
                 self.whiteboard_thumbnails.invalidate(session.block_id);
-                self.mark_dirty(cx);
+                self.mark_dirty_at_revision(crate::api::ChangeOrigin::User, revision, cx);
             }
         }
         cx.notify();

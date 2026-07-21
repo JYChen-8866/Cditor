@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3093c94157656eb2aaf8a68b3b67ade01ea9d5781d49887ac8d4439184f5308e # shrinks to tokens = ["\n", "مرحبا"], width_px = 72, scale_index = 0, x_fraction = 0, y_fraction = 0
+cc 63dcc7554c20e8c3954f75a67fd89c81d456dbc58cacec30133abe8cb1dcb206 # shrinks to tokens = ["مرحبا", "\n", "\n"], width_px = 64, scale_index = 0
+cc 7fb19d37ceee34887efb8ca6971d3ae3366532ed6b8bfa1586ef9ced898ec045 # shrinks to tokens = ["שלום", "a", "👩\u{200d}💻", "中", "中", "e\u{301}", "中", "مرحبا", "e\u{301}", "\n"], width_px = 72, scale_index = 0
+cc 6a0545d20b29658200eff16c6c78da47fdba19d850fdea3f35930df9a408c5c0 # shrinks to tokens = ["مرحبا", "a", "a", "a", " ", "123", "123", "e\u{301}", "A\u{30a}", "A\u{30a}", "שלום", "🇨🇳", " ", " ", "中", "،"], width_px = 153, scale_index = 0, x_fraction = 0, y_fraction = 334
+cc ed42e6c8e8493f73664d52ed30cd84b71a62ef3bc403f8e088f3cf7f65b567a1 # shrinks to tokens = ["مرحبا", "中", "👨\u{200d}👩\u{200d}👧\u{200d}👦", ".", "中", "שלום", "👩\u{200d}💻", "한", "،", "日本", "a", "،", "👨\u{200d}👩\u{200d}👧\u{200d}👦", "،", "Word", "👩\u{200d}💻", "a"], width_px = 158, scale_index = 0, x_fraction = 0, y_fraction = 0

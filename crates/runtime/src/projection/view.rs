@@ -1,5 +1,5 @@
 use cditor_core::block::BlockChromeSnapshot;
-use cditor_core::edit::SelectionRange;
+use cditor_core::edit::{SelectionRange, TextAffinity};
 use cditor_core::ids::{BlockId, DocumentId};
 use cditor_core::layout::BlockLayoutMeta;
 use cditor_core::rich_text::{
@@ -70,6 +70,7 @@ pub struct TableViewState {
     pub visible_cells: Vec<TableVisibleCell>,
     pub focused_cell: Option<TableCellPosition>,
     pub focused_cell_offset: Option<usize>,
+    pub focused_cell_affinity: Option<TextAffinity>,
     pub focused_cell_selection_range: Option<std::ops::Range<usize>>,
 }
 
@@ -103,6 +104,7 @@ pub struct ViewBlockSnapshot {
     pub selection_overlay: bool,
     pub focused: bool,
     pub caret_offset: Option<usize>,
+    pub caret_affinity: Option<TextAffinity>,
     pub marked_range: Option<std::ops::Range<usize>>,
     pub table_view: Option<TableViewState>,
     pub focused_table_cell: Option<TableCellPosition>,

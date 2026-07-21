@@ -46,7 +46,7 @@ fn write_clipboard_image_asset(image: &Image) -> Option<ClipboardImageAsset> {
         payload: ImagePayload {
             source: path.to_string_lossy().to_string(),
             alt: filename.clone(),
-            caption: String::new(),
+            caption: String::new().into(),
             display_width_ratio_milli: None,
         },
         name: Some(filename),
@@ -65,7 +65,7 @@ fn image_asset_from_path(path: &Path, media_type: Option<String>) -> ClipboardIm
         payload: ImagePayload {
             source: path.to_string_lossy().to_string(),
             alt: name.clone().unwrap_or_default(),
-            caption: String::new(),
+            caption: String::new().into(),
             display_width_ratio_milli: None,
         },
         name,

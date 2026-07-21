@@ -67,6 +67,46 @@ pub(super) fn table_style_color(theme: GuiTheme, color: &str) -> Option<u32> {
     }
 }
 
+pub(super) fn table_selected_cell_background(theme: GuiTheme) -> u32 {
+    theme.action_background
+}
+
+pub(super) fn table_axis_handle_background(theme: GuiTheme, selected: bool) -> u32 {
+    if selected {
+        theme.table_active_border
+    } else {
+        theme.surface
+    }
+}
+
+pub(super) fn table_axis_handle_foreground(theme: GuiTheme, selected: bool) -> u32 {
+    if selected { theme.surface } else { theme.muted }
+}
+
+pub(super) fn table_axis_handle_hover_background(theme: GuiTheme, selected: bool) -> u32 {
+    if selected {
+        table_axis_handle_background(theme, true)
+    } else {
+        theme.action_hover_background
+    }
+}
+
+pub(super) fn table_surface_background(theme: GuiTheme) -> u32 {
+    theme.surface
+}
+
+pub(super) fn table_border_color(theme: GuiTheme) -> u32 {
+    theme.border
+}
+
+pub(super) fn table_header_background(theme: GuiTheme) -> u32 {
+    theme.table_header_background
+}
+
+pub(super) fn table_active_border_color(theme: GuiTheme) -> u32 {
+    theme.table_active_border
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,44 +146,4 @@ mod tests {
             theme.action_hover_background
         );
     }
-}
-
-pub(super) fn table_selected_cell_background(theme: GuiTheme) -> u32 {
-    theme.action_background
-}
-
-pub(super) fn table_axis_handle_background(theme: GuiTheme, selected: bool) -> u32 {
-    if selected {
-        theme.table_active_border
-    } else {
-        theme.surface
-    }
-}
-
-pub(super) fn table_axis_handle_foreground(theme: GuiTheme, selected: bool) -> u32 {
-    if selected { theme.surface } else { theme.muted }
-}
-
-pub(super) fn table_axis_handle_hover_background(theme: GuiTheme, selected: bool) -> u32 {
-    if selected {
-        table_axis_handle_background(theme, true)
-    } else {
-        theme.action_hover_background
-    }
-}
-
-pub(super) fn table_surface_background(theme: GuiTheme) -> u32 {
-    theme.surface
-}
-
-pub(super) fn table_border_color(theme: GuiTheme) -> u32 {
-    theme.border
-}
-
-pub(super) fn table_header_background(theme: GuiTheme) -> u32 {
-    theme.table_header_background
-}
-
-pub(super) fn table_active_border_color(theme: GuiTheme) -> u32 {
-    theme.table_active_border
 }

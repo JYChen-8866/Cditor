@@ -69,11 +69,38 @@ fn estimated_payload_heap_bytes(payload: &BlockPayload) -> usize {
             .map_or(0, String::capacity)
             .saturating_add(text.capacity()),
         BlockPayload::Table(table) => estimated_table_bytes(table),
+        BlockPayload::Columns(columns) => columns
+            .columns
+            .capacity()
+            .saturating_mul(size_of::<cditor_core::layout::ColumnSpec>()),
         BlockPayload::Image(image) => image
             .source
             .capacity()
             .saturating_add(image.alt.capacity())
-            .saturating_add(image.caption.capacity()),
+            .saturating_add(estimated_spans_bytes(
+                &image.caption.spans,
+                image.caption.spans.capacity(),
+            )),
+        BlockPayload::Collection(collection) => collection
+            .title
+            .spans
+            .iter()
+            .map(|span| span.text.capacity())
+            .sum::<usize>()
+            .saturating_add(
+                collection
+                    .properties
+                    .iter()
+                    .map(|property| property.name.capacity())
+                    .sum::<usize>(),
+            )
+            .saturating_add(
+                collection
+                    .views
+                    .iter()
+                    .map(|view| view.name.capacity())
+                    .sum::<usize>(),
+            ),
         BlockPayload::File(file) => file.name.capacity().saturating_add(file.source.capacity()),
         BlockPayload::Whiteboard(whiteboard) => whiteboard.scene_json.capacity(),
         BlockPayload::Embed(embed) => embed.url.capacity().saturating_add(embed.title.capacity()),

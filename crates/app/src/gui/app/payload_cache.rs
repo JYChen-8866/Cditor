@@ -19,6 +19,8 @@ impl CditorV2View {
             self.text_layouts.remove(&block_id);
             self.table_cell_layouts
                 .retain(|key, _| key.block_id != block_id);
+            self.text_surface_layouts
+                .retain(|surface_id, _| surface_id.block_id() != Some(block_id));
         }
     }
 

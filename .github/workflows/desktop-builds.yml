@@ -55,7 +55,7 @@ jobs:
 
       - name: Test editor input and runtime on Windows
         shell: pwsh
-        run: cargo test --locked -p cditor-runtime -p cditor-app --lib
+        run: cargo test --locked -p cditor-runtime -p cditor-text -p cditor-app --lib
 
       - name: Build release executable
         shell: pwsh

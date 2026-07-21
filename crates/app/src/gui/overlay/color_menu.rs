@@ -219,7 +219,7 @@ pub fn render_color_menu(
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
         .on_scroll_wheel(move |_event, _window, cx| {
-            let _ = content_view.update(cx, |_view, cx| cx.notify());
+            content_view.update(cx, |_view, cx| cx.notify());
         })
         .child(
             div()
@@ -310,7 +310,7 @@ pub fn render_color_menu(
         .on_hover({
             let view = view.clone();
             move |hovered, _window, cx| {
-                let _ = view.update(cx, |view, cx| {
+                view.update(cx, |view, cx| {
                     view.set_color_menu_hovered(*hovered, cx);
                 });
             }
@@ -363,7 +363,7 @@ fn render_color_action_row(
                     action.value(),
                 ),
             );
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.apply_color_from_toolbar(
                     action,
                     has_text_selection,

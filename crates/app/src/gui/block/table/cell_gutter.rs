@@ -38,6 +38,7 @@ pub(super) struct ActiveCellGutterElements {
     pub(super) left_edge: Vec<AnyElement>,
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(super) fn render_active_cell_gutters(
     focused_cell: TableCellPosition,
     active_border_rect: TableOverlayRect,
@@ -145,7 +146,7 @@ fn render_active_cell_gutter(
         .h(px(geometry.hitbox.height))
         .cursor_pointer()
         .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.start_table_reorder_from_gui(
                     block_id,
                     geometry.axis,

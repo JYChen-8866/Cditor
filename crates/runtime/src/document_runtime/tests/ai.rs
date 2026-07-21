@@ -138,6 +138,14 @@ fn accepting_empty_line_ai_parses_markdown_into_structured_blocks() {
             .iter()
             .any(|span| span.text == "Rust" && span.marks.contains(&InlineMark::Code))
     );
+    let transactions = runtime.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert_eq!(transactions[0].kind, EditTransactionKind::AiApply);
+    assert_eq!(transactions[0].origin, cditor_core::edit::ChangeOrigin::Ai);
+    assert!(matches!(
+        transactions[0].ops.as_slice(),
+        [EditOperation::Block(_), EditOperation::InsertBlocks { .. }]
+    ));
     assert!(runtime.undo_focused_block().unwrap());
     let restored = runtime.block_payload_record(1).unwrap();
     assert!(matches!(restored.kind, RichBlockKind::Paragraph));
@@ -204,6 +212,14 @@ fn accepted_inline_ai_is_one_undo_step() {
     });
     assert!(runtime.accept_ai_preview().unwrap());
     assert_ne!(runtime.block_payload_record(block_id).unwrap(), before);
+    let transactions = runtime.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert_eq!(transactions[0].kind, EditTransactionKind::AiApply);
+    assert_eq!(transactions[0].origin, cditor_core::edit::ChangeOrigin::Ai);
+    assert!(matches!(
+        transactions[0].ops.as_slice(),
+        [EditOperation::Text(_)]
+    ));
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(runtime.block_payload_record(block_id).unwrap(), before);
     assert!(!runtime.undo_focused_block().unwrap());
@@ -246,9 +262,26 @@ fn cross_block_ai_rewrite_accepts_atomically_and_undo_restores_blocks() {
     });
     assert!(runtime.accept_ai_preview().unwrap());
     assert!(runtime.index.index_of(second).is_none());
+    let transactions = runtime.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert_eq!(transactions[0].kind, EditTransactionKind::AiApply);
+    assert_eq!(transactions[0].origin, cditor_core::edit::ChangeOrigin::Ai);
+    assert!(matches!(
+        transactions[0].ops.as_slice(),
+        [
+            EditOperation::Block(_),
+            EditOperation::DeleteBlockRange { .. }
+        ]
+    ));
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.block_payload_record(first).unwrap(), before_first);
-    assert_eq!(runtime.block_payload_record(second).unwrap(), before_second);
+    let restored_first = runtime.block_payload_record(first).unwrap();
+    let restored_second = runtime.block_payload_record(second).unwrap();
+    assert_eq!(restored_first.kind, before_first.kind);
+    assert_eq!(restored_first.payload, before_first.payload);
+    assert!(restored_first.content_version > before_first.content_version);
+    assert_eq!(restored_second.kind, before_second.kind);
+    assert_eq!(restored_second.payload, before_second.payload);
+    assert!(restored_second.content_version > before_second.content_version);
 }
 
 #[test]

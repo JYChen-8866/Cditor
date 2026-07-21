@@ -1,7 +1,7 @@
 use cditor_runtime::DocumentRuntime;
 
 pub enum CditorViewState {
-    Ready(DocumentRuntime),
+    Ready(Box<DocumentRuntime>),
     Loading { message: String },
     LoadFailed { message: String },
 }
@@ -20,7 +20,7 @@ impl CditorViewState {
     }
 
     pub fn apply_loaded_runtime(&mut self, runtime: DocumentRuntime) {
-        *self = Self::Ready(runtime);
+        *self = Self::Ready(Box::new(runtime));
     }
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {

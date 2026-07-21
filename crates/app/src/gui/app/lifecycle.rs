@@ -64,7 +64,7 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
-            state: CditorViewState::Ready(runtime),
+            state: CditorViewState::Ready(Box::new(runtime)),
             focus: cx.focus_handle(),
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
@@ -83,6 +83,7 @@ impl CditorV2View {
             editor_viewport_handle: Default::default(),
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
+            text_surface_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
@@ -91,6 +92,7 @@ impl CditorV2View {
             whiteboard_editor: None,
             scrollbar_drag: None,
             text_drag_selection: None,
+            text_drag_auto_scroll_scheduled: false,
             block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
             code_theme_menu_block_id: None,
@@ -117,9 +119,16 @@ impl CditorV2View {
             storage_persistence: storage_session
                 .map(|session| StoragePersistenceState::for_session(session, autosave_interval))
                 .unwrap_or_else(StoragePersistenceState::disabled),
+            undo_spill_in_flight: false,
+            history_hydration_in_flight: None,
+            selection_materialization_in_flight: None,
+            undo_cleanup_in_flight: false,
             payload_window_load_scheduler: Default::default(),
             autosave_interval,
             platform_input_target: None,
+            platform_input_session_identity: None,
+            platform_input_layout_identity: None,
+            preferred_text_navigation_x: None,
         }
     }
 
@@ -156,6 +165,7 @@ impl CditorV2View {
             editor_viewport_handle: Default::default(),
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
+            text_surface_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
@@ -164,6 +174,7 @@ impl CditorV2View {
             whiteboard_editor: None,
             scrollbar_drag: None,
             text_drag_selection: None,
+            text_drag_auto_scroll_scheduled: false,
             block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
             code_theme_menu_block_id: None,
@@ -188,9 +199,16 @@ impl CditorV2View {
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
             storage_persistence: StoragePersistenceState::disabled(),
+            undo_spill_in_flight: false,
+            history_hydration_in_flight: None,
+            selection_materialization_in_flight: None,
+            undo_cleanup_in_flight: false,
             payload_window_load_scheduler: Default::default(),
             autosave_interval,
             platform_input_target: None,
+            platform_input_session_identity: None,
+            platform_input_layout_identity: None,
+            preferred_text_navigation_x: None,
         }
     }
 
@@ -230,6 +248,7 @@ impl CditorV2View {
             editor_viewport_handle: Default::default(),
             text_layouts: HashMap::new(),
             table_cell_layouts: HashMap::new(),
+            text_surface_layouts: HashMap::new(),
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
@@ -238,6 +257,7 @@ impl CditorV2View {
             whiteboard_editor: None,
             scrollbar_drag: None,
             text_drag_selection: None,
+            text_drag_auto_scroll_scheduled: false,
             block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
             code_theme_menu_block_id: None,
@@ -262,9 +282,16 @@ impl CditorV2View {
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
             storage_persistence: StoragePersistenceState::disabled(),
+            undo_spill_in_flight: false,
+            history_hydration_in_flight: None,
+            selection_materialization_in_flight: None,
+            undo_cleanup_in_flight: false,
             payload_window_load_scheduler: Default::default(),
             autosave_interval: None,
             platform_input_target: None,
+            platform_input_session_identity: None,
+            platform_input_layout_identity: None,
+            preferred_text_navigation_x: None,
         }
     }
 
@@ -282,6 +309,7 @@ impl CditorV2View {
         self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
+        self.text_surface_layouts.clear();
         self.table_scroll_state.clear();
         self.code_highlights.clear();
         self.mermaid_renders.clear();
@@ -289,6 +317,7 @@ impl CditorV2View {
         self.whiteboard_thumbnails.clear();
         self.whiteboard_editor = None;
         self.payload_window_load_scheduler.reset();
+        self.selection_materialization_in_flight = None;
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
@@ -324,6 +353,7 @@ impl CditorV2View {
         self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
+        self.text_surface_layouts.clear();
         self.table_scroll_state.clear();
         self.code_highlights.clear();
         self.mermaid_renders.clear();

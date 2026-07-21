@@ -4,6 +4,7 @@ use std::time::Duration;
 use cditor_core::rich_text::{InlineColorTarget, InlineMark, InlineSpan};
 use cditor_runtime::DocumentRuntime;
 
+use crate::api::{CditorCommand, CommandOutcomeStatus, CommandSource};
 use crate::gui::diagnostics::block_color::trace as trace_block_color;
 use crate::gui::overlay::{ActiveColor, ColorMenuAction, PaletteColor};
 
@@ -109,48 +110,43 @@ impl CditorV2View {
                 action.value(),
             ),
         );
-        let result = self
-            .ready_runtime()
-            .ok_or_else(|| "runtime is not ready".to_owned())
-            .and_then(|runtime| {
-                if let Some(block_id) = gutter_block_id {
-                    let before = runtime.block_attrs(block_id);
-                    let focused = runtime.focused_block_id();
-                    let result = runtime.set_block_color(block_id, action.target, action.value());
-                    let after = runtime.block_attrs(block_id);
-                    trace_block_color(
-                        "apply.runtime",
-                        format_args!(
-                            "block_id={block_id} focused={focused:?} before={before:?} after={after:?} result={result:?}",
-                        ),
-                    );
-                    return result;
-                }
-                let result = runtime.set_inline_color_on_selection(action.target, action.value());
-                trace_block_color(
-                    "apply.inline",
-                    format_args!("focused={:?} result={result:?}", runtime.focused_block_id()),
-                );
-                result
-            });
+        let before = gutter_block_id.and_then(|block_id| {
+            self.ready_runtime_ref()
+                .map(|runtime| runtime.block_attrs(block_id))
+        });
+        let command = gutter_block_id.map_or_else(
+            || CditorCommand::SetInlineColor {
+                target: action.target,
+                color: action.value().map(str::to_owned),
+            },
+            |block_id| CditorCommand::SetBlockColor {
+                block_id,
+                target: action.target,
+                color: action.value().map(str::to_owned),
+            },
+        );
+        let result = self.dispatch_command(command, CommandSource::Toolbar, cx);
         match result {
-            Ok(changed) => {
+            Ok(outcome) => {
+                let changed = outcome.status == CommandOutcomeStatus::Applied;
+                let after = gutter_block_id.and_then(|block_id| {
+                    self.ready_runtime_ref()
+                        .map(|runtime| runtime.block_attrs(block_id))
+                });
                 trace_block_color(
                     "apply.finish",
-                    format_args!("changed={changed} mark_dirty={changed}"),
+                    format_args!("changed={changed} before={before:?} after={after:?}"),
                 );
                 self.last_color_action = Some(action);
                 self.color_menu_open = false;
                 self.color_menu_hover_generation = self.color_menu_hover_generation.wrapping_add(1);
-                if changed {
-                    self.mark_dirty(cx);
-                }
                 cx.notify();
                 changed
             }
             Err(error) => {
                 trace_block_color("apply.error", &error);
-                self.save_status = crate::gui::persistence::EditorSaveStatus::Failed(error);
+                self.save_status =
+                    crate::gui::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

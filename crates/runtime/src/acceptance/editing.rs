@@ -83,9 +83,9 @@ fn run_continuous_input(
     let mut session = EditingSession::start(
         block_id,
         1,
+        0,
         CaretAnchor {
             block_id,
-            text_offset: 0,
             caret_rect_y_in_block: 20.0,
             viewport_y: initial_viewport_y,
         },
@@ -143,9 +143,9 @@ fn run_ime_composition(config: EditingAcceptanceConfig) -> EditingAcceptanceResu
     let mut session = EditingSession::start(
         block_id,
         1,
+        0,
         CaretAnchor {
             block_id,
-            text_offset: 0,
             caret_rect_y_in_block: 18.0,
             viewport_y: 260.0,
         },
@@ -161,6 +161,7 @@ fn run_ime_composition(config: EditingAcceptanceConfig) -> EditingAcceptanceResu
                 preview_text: "输入".repeat((index as usize % 3) + 1),
                 selected_range_start: None,
                 selected_range_end: None,
+                base_selection: Default::default(),
             })
             .expect("composition belongs to editing block");
         let candidate_y = session.primary_anchor_candidate().anchor.viewport_y;
@@ -244,7 +245,7 @@ fn finalize_result(
 
 fn simulated_latency_ms(index: usize, force_line_wraps: bool, while_scrolling: bool) -> f64 {
     let base = 2.0 + (index % 7) as f64 * 0.2;
-    let wrap_cost = if force_line_wraps && index % 80 == 0 {
+    let wrap_cost = if force_line_wraps && index.is_multiple_of(80) {
         1.0
     } else {
         0.0

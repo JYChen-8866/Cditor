@@ -16,6 +16,32 @@ fn backspace_at_start_merges_non_empty_paragraph_into_previous() {
     assert_eq!(runtime.focused_text(), Some("hello world"));
     assert_eq!(runtime.selected_focused_text(), Some("world".to_owned()));
     assert_eq!(runtime.scroll.global_scroll_top, before_scroll_top);
+    let transaction = runtime.drain_pending_structure_transactions().remove(0);
+    assert!(matches!(
+        transaction.ops.as_slice(),
+        [
+            EditOperation::Block(_),
+            EditOperation::DeleteBlockRange { .. }
+        ]
+    ));
+    assert!(matches!(
+        transaction.inverse_ops.as_slice(),
+        [
+            EditOperation::InsertBlocks { payloads, .. },
+            EditOperation::Block(_)
+        ] if payloads.len() == 1
+    ));
+    assert!(runtime.undo_focused_block().unwrap());
+    assert_eq!(runtime.index.block_ids, vec![1, 2]);
+    assert_eq!(
+        runtime.block_payload_record(2).unwrap().plain_text(),
+        "world"
+    );
+    assert!(runtime.redo_focused_block().unwrap());
+    assert_eq!(
+        runtime.block_payload_record(1).unwrap().plain_text(),
+        "hello world"
+    );
 }
 
 #[test]
@@ -128,6 +154,43 @@ fn delete_document_selection_collapses_cross_block_range() {
     assert_eq!(runtime.focused_block_id(), Some(1));
     assert_eq!(runtime.focused_text(), Some("ad"));
     assert_eq!(runtime.caret_offset_for_block(1), Some(1));
+}
+
+#[test]
+fn delete_document_selection_preserves_nested_tail_and_undo_restores_hierarchy() {
+    let mut runtime = runtime_with_kind_depths_and_text(vec![
+        (RichBlockKind::Paragraph, 0, None, "AA"),
+        (RichBlockKind::Paragraph, 1, Some(1), "BB"),
+        (RichBlockKind::Paragraph, 2, Some(2), "CC"),
+        (RichBlockKind::Paragraph, 0, None, "DD"),
+    ]);
+    runtime.set_document_text_selection(1, 1, 2, 1).unwrap();
+
+    assert!(runtime.delete_document_selection().unwrap());
+    assert_eq!(runtime.index.block_ids, vec![1, 3, 4]);
+    assert_eq!(runtime.index.parent_ids, vec![None, None, None]);
+    assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "AB");
+    assert_eq!(runtime.block_payload_record(3).unwrap().plain_text(), "CC");
+    let transactions = runtime.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert_eq!(
+        transactions[0].kind,
+        EditTransactionKind::BlockStructureChange
+    );
+    assert!(matches!(
+        transactions[0].ops.as_slice(),
+        [
+            EditOperation::Block(_),
+            EditOperation::DeleteBlockRange { .. },
+            EditOperation::InsertBlocks { payloads, .. }
+        ] if payloads.len() == 1
+    ));
+
+    assert!(runtime.undo_focused_block().unwrap());
+    assert_eq!(runtime.index.block_ids, vec![1, 2, 3, 4]);
+    assert_eq!(runtime.index.parent_ids, vec![None, Some(1), Some(2), None]);
+    assert!(runtime.redo_focused_block().unwrap());
+    assert_eq!(runtime.index.block_ids, vec![1, 3, 4]);
 }
 
 #[test]

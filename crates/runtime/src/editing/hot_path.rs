@@ -41,6 +41,10 @@ impl PieceTableTextModel {
         self.text.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+
     pub fn insert(
         &mut self,
         byte_offset: usize,
@@ -246,8 +250,41 @@ impl SingleCharInputHotPath {
         byte_offset: usize,
         ch: char,
     ) -> Result<InputHotPathResult, InputHotPathError> {
-        let started = Instant::now();
+        let transaction_id = self.next_transaction_id;
+        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
+        self.handle_insert_char_with_transaction(
+            session,
+            model,
+            byte_offset,
+            ch,
+            transaction_id,
+            transaction_id,
+        )
+    }
+
+    pub fn preflight_insert_char(
+        &self,
+        model: &PieceTableTextModel,
+        byte_offset: usize,
+    ) -> Result<(), InputHotPathError> {
         self.forbidden_sync_work.assert_clean()?;
+        if byte_offset > model.len() || !model.text().is_char_boundary(byte_offset) {
+            return Err(InputHotPathError::InvalidTextOffset(byte_offset));
+        }
+        Ok(())
+    }
+
+    pub fn handle_insert_char_with_transaction(
+        &mut self,
+        session: &mut EditingSession,
+        model: &mut PieceTableTextModel,
+        byte_offset: usize,
+        ch: char,
+        transaction_id: u64,
+        timestamp: u64,
+    ) -> Result<InputHotPathResult, InputHotPathError> {
+        let started = Instant::now();
+        self.preflight_insert_char(model, byte_offset)?;
 
         let inserted_text = ch.to_string();
         let inserted_range = model.insert(byte_offset, &inserted_text)?;
@@ -263,11 +300,10 @@ impl SingleCharInputHotPath {
         );
         let next_caret_anchor = CaretAnchor {
             block_id: session.block_id,
-            text_offset: (inserted_range.end) as u64,
             caret_rect_y_in_block: session.caret_anchor.caret_rect_y_in_block,
             viewport_y: session.caret_anchor.viewport_y,
         };
-        session.apply_content_edit(next_caret_anchor);
+        session.apply_content_edit(inserted_range.end, next_caret_anchor);
         session
             .ensure_layout_and_caret_same_version()
             .map_err(InputHotPathError::EditingSession)?;
@@ -278,8 +314,6 @@ impl SingleCharInputHotPath {
             visual_line_hint,
             priority: EditingPriority::Realtime,
         };
-        let tx_id = self.next_transaction_id;
-        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
         let before_selection =
             DocumentSelection::caret(TextPosition::downstream(session.block_id, byte_offset));
         let after_selection = DocumentSelection::caret(TextPosition::downstream(
@@ -297,8 +331,8 @@ impl SingleCharInputHotPath {
             viewport_y: next_caret_anchor.viewport_y,
         };
         let transaction = EditTransaction::insert_text(
-            tx_id,
-            tx_id,
+            transaction_id,
+            timestamp,
             session.block_id,
             byte_offset,
             inserted_text,
@@ -306,7 +340,7 @@ impl SingleCharInputHotPath {
         .with_selection(Some(before_selection), Some(after_selection))
         .with_anchor(Some(before_anchor), Some(after_anchor));
 
-        self.schedule_async_followups(session.block_id, tx_id);
+        self.schedule_async_followups(session.block_id, transaction_id);
         self.forbidden_sync_work.assert_clean()?;
 
         Ok(InputHotPathResult {
@@ -445,11 +479,11 @@ mod tests {
         let mut model = PieceTableTextModel::new("ab");
         let mut hot_path = SingleCharInputHotPath::default();
 
-        let result = hot_path
+        hot_path
             .handle_insert_char(&mut session, &mut model, 2, 'c')
             .unwrap();
 
-        assert_eq!(result.next_caret_anchor.text_offset, 3);
+        assert_eq!(session.focus_offset(), 3);
         assert!(session.ensure_layout_and_caret_same_version().is_ok());
     }
 
@@ -488,7 +522,7 @@ mod tests {
         assert!(p95 < Duration::from_millis(8), "p95 was {p95:?}");
         assert!(p99 < Duration::from_millis(16), "p99 was {p99:?}");
         assert_eq!(model.len(), 1_000);
-        assert_eq!(session.caret_anchor.text_offset, 1_000);
+        assert_eq!(session.focus_offset(), 1_000);
     }
 
     #[test]
@@ -509,9 +543,9 @@ mod tests {
         EditingSession::start(
             42,
             1,
+            0,
             CaretAnchor {
                 block_id: 42,
-                text_offset: 0,
                 caret_rect_y_in_block: 20.0,
                 viewport_y: 100.0,
             },

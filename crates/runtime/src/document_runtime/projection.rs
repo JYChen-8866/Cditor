@@ -274,6 +274,10 @@ impl DocumentRuntime {
                     .focused_table_cell_offset()
                     .filter(|(focused_block_id, _, _, _)| focused_block_id == block_id)
                     .map(|(_, _, _, offset)| offset);
+                let focused_table_cell_affinity = self
+                    .focused_table_cell_text_position()
+                    .filter(|(focused_block_id, _, _, _, _)| focused_block_id == block_id)
+                    .map(|(_, _, _, _, affinity)| affinity);
                 let focused_table_cell_selection_range = self
                     .focused_table_cell_selection_state()
                     .filter(|(focused_block_id, _, _, _, _, _)| focused_block_id == block_id)
@@ -283,6 +287,7 @@ impl DocumentRuntime {
                         runtime.table(),
                         focused_table_cell,
                         focused_table_cell_offset,
+                        focused_table_cell_affinity,
                         focused_table_cell_selection_range,
                         self.table_horizontal_scroll_offset_px(*block_id),
                     )
@@ -333,7 +338,10 @@ impl DocumentRuntime {
                         .editing
                         .as_ref()
                         .filter(|editing| editing.block_id == *block_id)
-                        .map(|editing| editing.caret_anchor.text_offset as usize),
+                        .map(EditingSession::focus_offset),
+                    caret_affinity: self
+                        .caret_position_for_block(*block_id)
+                        .map(|position| position.affinity),
                     marked_range,
                     table_view,
                     focused_table_cell,

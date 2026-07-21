@@ -2,6 +2,24 @@ use super::*;
 
 impl DocumentRuntime {
     pub fn toggle_inline_mark_on_selection(&mut self, mark: InlineMark) -> Result<bool, String> {
+        if let Some(
+            surface_id @ (cditor_core::ids::SurfaceId::ImageCaption { .. }
+            | cditor_core::ids::SurfaceId::CollectionTitle { .. }),
+        ) = self.focused_text_surface_id()
+        {
+            let Some(range) = self.input_session_selected_range() else {
+                return Ok(false);
+            };
+            let snapshot = self
+                .text_surface_base_snapshot(surface_id)
+                .ok_or_else(|| format!("missing text surface {surface_id:?}"))?;
+            let range = safe_char_range(&snapshot.plain_text(), range);
+            if range.is_empty() {
+                return Ok(false);
+            }
+            let spans = toggle_mark_for_range(&snapshot.spans, range, mark);
+            return self.replace_auxiliary_text_surface_spans(surface_id, spans);
+        }
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -18,17 +36,20 @@ impl DocumentRuntime {
         if range.is_empty() {
             return Ok(false);
         }
-        let (kind, current_spans) = self
+        let current_spans = self
             .payload_window
             .get(block_id)
             .and_then(|payload| match &payload.payload {
-                BlockPayload::RichText { spans } => Some((payload.kind.clone(), spans.clone())),
+                BlockPayload::RichText { spans } => Some(spans.clone()),
                 _ => None,
             })
             .ok_or_else(|| format!("block {block_id} does not support inline marks"))?;
-        self.push_undo_snapshot(block_id)?;
         let spans = toggle_mark_for_range(&current_spans, range.clone(), mark);
-        self.replace_block_kind_and_spans(block_id, kind, spans)?;
+        self.apply_text_surface_format_transaction(
+            SurfaceId::Block(block_id),
+            current_spans,
+            spans,
+        )?;
         self.focused_text_selection = Some(FocusedTextSelection {
             anchor: range.start,
             focus: range.end,
@@ -38,7 +59,6 @@ impl DocumentRuntime {
             .as_mut()
             .filter(|editing| editing.block_id == block_id)
         {
-            editing.caret_anchor.text_offset = range.end as u64;
             editing.set_input_target(InputTarget::BlockText { block_id });
             editing.set_selected_range(range, false);
         }
@@ -50,6 +70,24 @@ impl DocumentRuntime {
         target: InlineColorTarget,
         color: Option<&str>,
     ) -> Result<bool, String> {
+        if let Some(
+            surface_id @ (cditor_core::ids::SurfaceId::ImageCaption { .. }
+            | cditor_core::ids::SurfaceId::CollectionTitle { .. }),
+        ) = self.focused_text_surface_id()
+        {
+            let Some(range) = self.input_session_selected_range() else {
+                return Ok(false);
+            };
+            let snapshot = self
+                .text_surface_base_snapshot(surface_id)
+                .ok_or_else(|| format!("missing text surface {surface_id:?}"))?;
+            let range = safe_char_range(&snapshot.plain_text(), range);
+            if range.is_empty() {
+                return Ok(false);
+            }
+            let spans = set_color_mark_for_range(&snapshot.spans, range, target, color);
+            return self.replace_auxiliary_text_surface_spans(surface_id, spans);
+        }
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -71,11 +109,6 @@ impl DocumentRuntime {
             .as_mut()
             .filter(|editing| editing.block_id == block_id)
         {
-            editing.caret_anchor.text_offset = if selection_reversed {
-                range.start as u64
-            } else {
-                range.end as u64
-            };
             editing.set_input_target(InputTarget::BlockText { block_id });
             editing.set_selected_range(range, selection_reversed);
         }
@@ -99,11 +132,11 @@ impl DocumentRuntime {
         if range.is_empty() {
             return Ok(false);
         }
-        let (kind, current_spans) = self
+        let current_spans = self
             .payload_window
             .get(block_id)
             .and_then(|payload| match &payload.payload {
-                BlockPayload::RichText { spans } => Some((payload.kind.clone(), spans.clone())),
+                BlockPayload::RichText { spans } => Some(spans.clone()),
                 _ => None,
             })
             .ok_or_else(|| format!("block {block_id} does not support inline colors"))?;
@@ -116,23 +149,19 @@ impl DocumentRuntime {
             .editing
             .as_ref()
             .filter(|editing| editing.block_id == block_id)
-            .map(|editing| {
-                (
-                    editing.selected_range.clone(),
-                    editing.selection_reversed,
-                    editing.caret_anchor.text_offset,
-                )
-            });
-        self.push_undo_snapshot(block_id)?;
-        self.replace_block_kind_and_spans(block_id, kind, spans)?;
+            .map(|editing| (editing.selected_range.clone(), editing.selection_reversed));
+        self.apply_text_surface_format_transaction(
+            SurfaceId::Block(block_id),
+            current_spans,
+            spans,
+        )?;
         self.focused_text_selection = focused_selection;
-        if let (Some(editing), Some((selected_range, selection_reversed, caret_offset))) = (
+        if let (Some(editing), Some((selected_range, selection_reversed))) = (
             self.editing
                 .as_mut()
                 .filter(|editing| editing.block_id == block_id),
             editing_selection,
         ) {
-            editing.caret_anchor.text_offset = caret_offset;
             editing.set_input_target(InputTarget::BlockText { block_id });
             editing.set_selected_range(selected_range, selection_reversed);
         }

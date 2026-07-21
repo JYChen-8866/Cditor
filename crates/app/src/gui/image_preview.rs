@@ -71,7 +71,7 @@ pub fn close_active_preview(cx: &mut App) {
     cx.foreground_executor()
         .spawn(async move {
             executor.timer(preview_close_duration()).await;
-            let _ = async_cx.update(|cx| {
+            async_cx.update(|cx| {
                 if cx.has_global::<ActiveImagePreview>() {
                     let preview = cx.global_mut::<ActiveImagePreview>();
                     if preview.closing {

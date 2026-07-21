@@ -104,7 +104,7 @@ pub(super) fn render_active_cell_menu_handle(
             cx.stop_propagation();
         })
         .on_mouse_up(MouseButton::Left, move |_event, window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.open_table_cell_menu_from_gui(
                     block_id,
                     geometry.row,

@@ -15,23 +15,12 @@ pub(crate) const TABLE_MENU_MAX_VISIBLE_ROWS: usize = 10;
 pub(crate) const TABLE_MENU_VIEWPORT_MARGIN_PX: f32 = 8.0;
 pub(crate) const TABLE_MENU_GAP_PX: f32 = 8.0;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct TableMenuUiState {
     pub query: String,
     pub caret_offset: usize,
     pub marked_range: Option<Range<usize>>,
     pub color_submenu_open: bool,
-}
-
-impl Default for TableMenuUiState {
-    fn default() -> Self {
-        Self {
-            query: String::new(),
-            caret_offset: 0,
-            marked_range: None,
-            color_submenu_open: false,
-        }
-    }
 }
 
 impl TableMenuUiState {
@@ -400,7 +389,7 @@ pub(crate) fn table_menu_action_enabled(
 }
 
 pub(crate) fn table_menu_panel_height(item_count: usize) -> f32 {
-    let rows = item_count.min(TABLE_MENU_MAX_VISIBLE_ROWS).max(1);
+    let rows = item_count.clamp(1, TABLE_MENU_MAX_VISIBLE_ROWS);
     TABLE_MENU_PADDING_PX * 2.0
         + TABLE_MENU_SEARCH_HEIGHT_PX
         + TABLE_MENU_SEARCH_GAP_PX
@@ -624,6 +613,7 @@ mod tests {
             visible_cells: Vec::new(),
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_affinity: None,
             focused_cell_selection_range: None,
         }
     }

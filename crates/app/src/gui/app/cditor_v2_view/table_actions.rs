@@ -2,6 +2,9 @@ use cditor_core::ids::BlockId;
 use cditor_core::rich_text::TableRange;
 use gpui::{Context, Pixels, Point, Window};
 
+use crate::api::{
+    CditorCommand, CommandOutcomeStatus, CommandSource, TableAxis as CommandTableAxis,
+};
 use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::gui::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::gui::block::table::menu::{
@@ -59,6 +62,9 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus, cx);
+        if !self.commit_document_composition_before_external_focus(cx) {
+            return;
+        }
         let already_focused = self
             .ready_runtime_ref()
             .and_then(|runtime| runtime.focused_table_cell_offset())
@@ -86,18 +92,24 @@ impl CditorV2View {
         window.focus(&self.focus, cx);
         self.text_drag_selection = None;
         self.table_interaction_mode = GuiTableInteractionMode::EditingCell { block_id, row, col };
-        let offset = position.and_then(|position| {
-            self.text_offset_for_table_cell_at_position(block_id, row, col, position)
+        let text_position = position.and_then(|position| {
+            self.text_position_for_table_cell_at_position(block_id, row, col, position)
         });
         super::trace_table(
             "focus_cell.gui.begin",
             format_args!(
-                "block={block_id} row={row} col={col} position={position:?} resolved_offset={offset:?}"
+                "block={block_id} row={row} col={col} position={position:?} resolved_position={text_position:?}"
             ),
         );
         if let CditorViewState::Ready(runtime) = &mut self.state {
-            if let Some(offset) = offset {
-                let _ = runtime.focus_table_cell_at_offset(block_id, row, col, offset);
+            if let Some(text_position) = text_position {
+                let _ =
+                    runtime.focus_table_cell_at_offset(block_id, row, col, text_position.offset);
+                let _ = runtime.move_focused_table_cell_to_text_position(
+                    text_position.offset,
+                    text_position.affinity,
+                    false,
+                );
             } else {
                 let _ = runtime.focus_table_cell(block_id, row, col);
             }
@@ -131,24 +143,46 @@ impl CditorV2View {
         block_id: BlockId,
         row: usize,
         col: usize,
-        position: Option<Point<Pixels>>,
+        pointer: Option<(Point<Pixels>, usize)>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let position = pointer.map(|(position, _)| position);
+        let click_count = pointer.map(|(_, click_count)| click_count).unwrap_or(1);
         self.focus_table_cell_from_gui(block_id, row, col, position, window, cx);
-        let anchor_offset = self
+        if let Some(kind) = crate::gui::app::text_hit::selection_kind_for_click_count(click_count)
+            && let Some(position) = position
+            && let Some(cache) = self.current_table_cell_layout_cache(
+                self.ready_runtime_ref().unwrap(),
+                block_id,
+                row,
+                col,
+            )
+        {
+            let local_x = f32::from(position.x - cache.bounds.left());
+            let local_y = f32::from(position.y - cache.bounds.top());
+            let selection = cache.snapshot.selection_at_point(local_x, local_y, kind);
+            if let Some(runtime) = self.ready_runtime() {
+                let _ = runtime.set_focused_table_cell_text_selection(
+                    selection.anchor.offset,
+                    selection.focus.offset,
+                );
+            }
+        }
+        let anchor_position = self
             .ready_runtime_ref()
-            .and_then(|runtime| runtime.focused_table_cell_offset())
-            .filter(|(focused_block_id, focused_row, focused_col, _)| {
+            .and_then(|runtime| runtime.focused_table_cell_text_position())
+            .filter(|(focused_block_id, focused_row, focused_col, _, _)| {
                 (*focused_block_id, *focused_row, *focused_col) == (block_id, row, col)
             })
-            .map(|(_, _, _, offset)| offset)
-            .unwrap_or(0);
+            .map(|(_, _, _, offset, affinity)| (offset, affinity))
+            .unwrap_or((0, cditor_core::edit::TextAffinity::Downstream));
         self.table_interaction_mode = GuiTableInteractionMode::SelectingCellText {
             block_id,
             row,
             col,
-            anchor_offset,
+            anchor_offset: anchor_position.0,
+            anchor_affinity: anchor_position.1,
         };
     }
 
@@ -165,6 +199,7 @@ impl CditorV2View {
             row: anchor_row,
             col: anchor_col,
             anchor_offset,
+            anchor_affinity: _,
         } = self.table_interaction_mode
         else {
             return;
@@ -172,8 +207,8 @@ impl CditorV2View {
         if (anchor_block_id, anchor_row, anchor_col) != (block_id, row, col) {
             return;
         }
-        let Some(focus_offset) =
-            self.text_offset_for_table_cell_at_position(block_id, row, col, position)
+        let Some(focus_position) =
+            self.text_position_for_table_cell_at_position(block_id, row, col, position)
         else {
             return;
         };
@@ -181,7 +216,11 @@ impl CditorV2View {
             .ready_runtime()
             .and_then(|runtime| {
                 runtime
-                    .set_focused_table_cell_text_selection(anchor_offset, focus_offset)
+                    .set_focused_table_cell_text_selection_position(
+                        anchor_offset,
+                        focus_position.offset,
+                        focus_position.affinity,
+                    )
                     .ok()
             })
             .unwrap_or(false);
@@ -269,22 +308,20 @@ impl CditorV2View {
         let Some((block_id, range)) = self.selected_table_range() else {
             return false;
         };
-        let changed = self
-            .ready_runtime()
-            .and_then(|runtime| {
-                runtime
-                    .set_table_cell_background_color(
-                        block_id,
-                        range,
-                        color.value().map(str::to_owned),
-                    )
-                    .ok()
-            })
-            .unwrap_or(false);
+        let changed = matches!(
+            self.dispatch_command(
+                CditorCommand::TableSetRangeBackground {
+                    block_id,
+                    range,
+                    color: color.value().map(str::to_owned),
+                },
+                CommandSource::ContextMenu,
+                cx,
+            ),
+            Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied
+        );
         if changed {
             self.dismiss_table_menu_from_gui(cx);
-            self.mark_dirty(cx);
-            cx.notify();
         }
         changed
     }
@@ -298,35 +335,12 @@ impl CditorV2View {
             return false;
         }
         let axis_selection = self.table_interaction_mode.axis_selection();
-        let changed = match action {
+        let command = match action {
             TableMenuAction::ToggleHeader => {
-                let Some(selection) = axis_selection else {
-                    return false;
-                };
-                let currently_enabled = self
-                    .ready_runtime_ref()
-                    .and_then(|runtime| runtime.block_payload_record(selection.block_id))
-                    .and_then(|record| match &record.payload {
-                        cditor_core::rich_text::BlockPayload::Table(table) => {
-                            Some(match selection.axis {
-                                TableAxis::Row => table.header_rows > 0,
-                                TableAxis::Column => table.header_cols > 0,
-                            })
-                        }
-                        _ => None,
-                    })
-                    .unwrap_or(false);
-                let count = usize::from(!currently_enabled);
-                self.ready_runtime()
-                    .and_then(|runtime| match selection.axis {
-                        TableAxis::Row => runtime
-                            .set_table_header_rows(selection.block_id, count)
-                            .ok(),
-                        TableAxis::Column => runtime
-                            .set_table_header_columns(selection.block_id, count)
-                            .ok(),
-                    })
-                    .unwrap_or(false)
+                axis_selection.map(|selection| CditorCommand::TableToggleHeader {
+                    block_id: selection.block_id,
+                    axis: command_table_axis(selection.axis),
+                })
             }
             TableMenuAction::BackgroundColor => {
                 return self.set_table_background_submenu_open_from_gui(true, cx);
@@ -335,108 +349,87 @@ impl CditorV2View {
                 if axis_selection.is_some_and(|selection| selection.axis == TableAxis::Row) =>
             {
                 let selection = axis_selection.expect("checked row selection");
-                self.ready_runtime()
-                    .and_then(|runtime| {
-                        runtime
-                            .insert_table_row(selection.block_id, selection.index)
-                            .ok()
-                    })
-                    .unwrap_or(false)
+                Some(CditorCommand::TableInsertAxis {
+                    block_id: selection.block_id,
+                    axis: CommandTableAxis::Row,
+                    index: selection.index,
+                })
             }
             TableMenuAction::InsertRowBelow
                 if axis_selection.is_some_and(|selection| selection.axis == TableAxis::Row) =>
             {
                 let selection = axis_selection.expect("checked row selection");
-                self.ready_runtime()
-                    .and_then(|runtime| {
-                        runtime
-                            .insert_table_row(selection.block_id, selection.index.saturating_add(1))
-                            .ok()
-                    })
-                    .unwrap_or(false)
+                Some(CditorCommand::TableInsertAxis {
+                    block_id: selection.block_id,
+                    axis: CommandTableAxis::Row,
+                    index: selection.index.saturating_add(1),
+                })
             }
             TableMenuAction::DeleteRow
                 if axis_selection.is_some_and(|selection| selection.axis == TableAxis::Row) =>
             {
                 let selection = axis_selection.expect("checked row selection");
-                self.ready_runtime()
-                    .and_then(|runtime| {
-                        runtime
-                            .delete_table_row(selection.block_id, selection.index)
-                            .ok()
-                    })
-                    .unwrap_or(false)
+                Some(CditorCommand::TableDeleteAxis {
+                    block_id: selection.block_id,
+                    axis: CommandTableAxis::Row,
+                    index: selection.index,
+                })
             }
             TableMenuAction::DuplicateRow
                 if axis_selection.is_some_and(|selection| selection.axis == TableAxis::Row) =>
             {
                 let selection = axis_selection.expect("checked row selection");
-                self.ready_runtime()
-                    .and_then(|runtime| {
-                        runtime
-                            .duplicate_table_row(selection.block_id, selection.index)
-                            .ok()
-                    })
-                    .unwrap_or(false)
+                Some(CditorCommand::TableDuplicateAxis {
+                    block_id: selection.block_id,
+                    axis: CommandTableAxis::Row,
+                    index: selection.index,
+                })
             }
             TableMenuAction::InsertColumnLeft
                 if axis_selection.is_some_and(|selection| selection.axis == TableAxis::Column) =>
             {
                 let selection = axis_selection.expect("checked column selection");
-                self.ready_runtime()
-                    .and_then(|runtime| {
-                        runtime
-                            .insert_table_column(selection.block_id, selection.index)
-                            .ok()
-                    })
-                    .unwrap_or(false)
+                Some(CditorCommand::TableInsertAxis {
+                    block_id: selection.block_id,
+                    axis: CommandTableAxis::Column,
+                    index: selection.index,
+                })
             }
             TableMenuAction::InsertColumnRight
                 if axis_selection.is_some_and(|selection| selection.axis == TableAxis::Column) =>
             {
                 let selection = axis_selection.expect("checked column selection");
-                self.ready_runtime()
-                    .and_then(|runtime| {
-                        runtime
-                            .insert_table_column(
-                                selection.block_id,
-                                selection.index.saturating_add(1),
-                            )
-                            .ok()
-                    })
-                    .unwrap_or(false)
+                Some(CditorCommand::TableInsertAxis {
+                    block_id: selection.block_id,
+                    axis: CommandTableAxis::Column,
+                    index: selection.index.saturating_add(1),
+                })
             }
             TableMenuAction::DeleteColumn
                 if axis_selection.is_some_and(|selection| selection.axis == TableAxis::Column) =>
             {
                 let selection = axis_selection.expect("checked column selection");
-                self.ready_runtime()
-                    .and_then(|runtime| {
-                        runtime
-                            .delete_table_column(selection.block_id, selection.index)
-                            .ok()
-                    })
-                    .unwrap_or(false)
+                Some(CditorCommand::TableDeleteAxis {
+                    block_id: selection.block_id,
+                    axis: CommandTableAxis::Column,
+                    index: selection.index,
+                })
             }
             TableMenuAction::DuplicateColumn
                 if axis_selection.is_some_and(|selection| selection.axis == TableAxis::Column) =>
             {
                 let selection = axis_selection.expect("checked column selection");
-                self.ready_runtime()
-                    .and_then(|runtime| {
-                        runtime
-                            .duplicate_table_column(selection.block_id, selection.index)
-                            .ok()
-                    })
-                    .unwrap_or(false)
+                Some(CditorCommand::TableDuplicateAxis {
+                    block_id: selection.block_id,
+                    axis: CommandTableAxis::Column,
+                    index: selection.index,
+                })
             }
             TableMenuAction::ClearContents => {
                 let Some((block_id, range)) = self.selected_table_range() else {
                     return false;
                 };
-                self.ready_runtime()
-                    .and_then(|runtime| runtime.clear_table_range(block_id, range).ok())
-                    .unwrap_or(false)
+                Some(CditorCommand::TableClearRange { block_id, range })
             }
             TableMenuAction::DuplicateRow
             | TableMenuAction::DuplicateColumn
@@ -445,12 +438,17 @@ impl CditorV2View {
             | TableMenuAction::DeleteRow
             | TableMenuAction::InsertColumnLeft
             | TableMenuAction::InsertColumnRight
-            | TableMenuAction::DeleteColumn => false,
+            | TableMenuAction::DeleteColumn => None,
         };
+        let Some(command) = command else {
+            return false;
+        };
+        let changed = matches!(
+            self.dispatch_command(command, CommandSource::ContextMenu, cx),
+            Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied
+        );
         if changed {
             self.dismiss_table_menu_from_gui(cx);
-            self.mark_dirty(cx);
-            cx.notify();
         }
         changed
     }
@@ -481,5 +479,12 @@ impl CditorV2View {
             }
         };
         range.map(|range| (selection.block_id, range))
+    }
+}
+
+const fn command_table_axis(axis: TableAxis) -> CommandTableAxis {
+    match axis {
+        TableAxis::Row => CommandTableAxis::Row,
+        TableAxis::Column => CommandTableAxis::Column,
     }
 }

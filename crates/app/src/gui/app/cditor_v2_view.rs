@@ -4,10 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gpui::{AppContext, ClipboardItem, Context, FocusHandle, Pixels, Point, Window};
+use gpui::{AppContext, Context, FocusHandle, Pixels, Point, Window};
 
 use cditor_core::block::GutterBlockDragState;
-use cditor_core::ids::BlockId;
+use cditor_core::ids::{BlockId, SurfaceId};
 
 use crate::gui::app::input::text_drag::GuiTextDragSelection;
 use crate::gui::app::input_trace::trace_input;
@@ -26,11 +26,12 @@ use crate::gui::overlay::GuiToast;
 use crate::gui::overlay::SlashMenuState;
 use crate::gui::overlay::WhiteboardEditorSession;
 
+use crate::gui::input::GuiInputCommand;
 use crate::gui::persistence::{
     EditorSaveStatus, PayloadWindowLoadScheduler, StoragePersistenceState,
 };
-use crate::gui::text::RichTextPlatformLayout;
-use cditor_runtime::DocumentRuntime;
+use crate::gui::text::{RichTextPlatformLayout, TextPlatformLayoutIdentity};
+use cditor_runtime::{DocumentRuntime, InputSessionIdentity, SelectionMaterializationRequest};
 
 pub(in crate::gui::app) mod ai;
 mod block_actions;
@@ -41,6 +42,7 @@ mod formatting;
 mod platform_input;
 mod slash_menu;
 mod table_actions;
+pub(crate) mod text_surface;
 mod whiteboard;
 
 pub(in crate::gui::app) use super::persistence_bridge::save_status_for_mode;
@@ -72,6 +74,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) editor_viewport_handle: gpui::ScrollHandle,
     pub(in crate::gui::app) text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
+    pub(in crate::gui::app) text_surface_layouts: HashMap<SurfaceId, RichTextPlatformLayout>,
     pub(in crate::gui::app) table_scroll_state: GuiTableScrollState,
     pub(in crate::gui::app) code_highlights: CodeHighlightCache,
     pub(in crate::gui::app) mermaid_renders: MermaidRenderCache,
@@ -80,6 +83,7 @@ pub struct CditorV2View {
     pub(in crate::gui::app) whiteboard_editor: Option<WhiteboardEditorSession>,
     pub(in crate::gui::app) scrollbar_drag: Option<GuiScrollbarDrag>,
     pub(in crate::gui::app) text_drag_selection: Option<GuiTextDragSelection>,
+    pub(in crate::gui::app) text_drag_auto_scroll_scheduled: bool,
     pub(in crate::gui::app) block_drag_selection: BlockDragSelectionController,
     pub(in crate::gui::app) code_language_edit: Option<CodeLanguageEditState>,
     pub(in crate::gui::app) code_theme_menu_block_id: Option<BlockId>,
@@ -104,9 +108,17 @@ pub struct CditorV2View {
     pub(in crate::gui::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
     pub(in crate::gui::app) projected_block_rects: Vec<ProjectedBlockRect>,
     pub(in crate::gui::app) storage_persistence: StoragePersistenceState,
+    pub(in crate::gui::app) undo_spill_in_flight: bool,
+    pub(in crate::gui::app) history_hydration_in_flight: Option<(u64, bool)>,
+    pub(in crate::gui::app) selection_materialization_in_flight:
+        Option<(SelectionMaterializationRequest, GuiInputCommand)>,
+    pub(in crate::gui::app) undo_cleanup_in_flight: bool,
     pub(in crate::gui::app) payload_window_load_scheduler: PayloadWindowLoadScheduler,
     pub(in crate::gui::app) autosave_interval: Option<Duration>,
     pub(in crate::gui::app) platform_input_target: Option<GuiPlatformInputTarget>,
+    pub(in crate::gui::app) platform_input_session_identity: Option<InputSessionIdentity>,
+    pub(in crate::gui::app) platform_input_layout_identity: Option<TextPlatformLayoutIdentity>,
+    pub(in crate::gui::app) preferred_text_navigation_x: Option<(SurfaceId, f32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -145,15 +157,16 @@ impl CditorV2View {
     }
 
     pub(crate) fn copy_code_block_from_gui(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
-        let Some(text) = self.ready_runtime_ref().and_then(|runtime| {
-            runtime
-                .block_payload_record(block_id)
-                .map(|payload| payload.plain_text())
-        }) else {
-            return;
-        };
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.show_toast("已将代码拷贝到剪贴板", Duration::from_secs(3), cx);
+        if matches!(
+            self.dispatch_command(
+                crate::api::CditorCommand::CopyBlockText { block_id },
+                crate::api::CommandSource::Toolbar,
+                cx,
+            ),
+            Ok(outcome) if outcome.status == crate::api::CommandOutcomeStatus::Applied
+        ) {
+            self.show_toast("已将代码拷贝到剪贴板", Duration::from_secs(3), cx);
+        }
     }
 
     fn show_toast(
@@ -204,7 +217,7 @@ impl CditorV2View {
             trace_table(
                 "cache.table_cell",
                 format_args!(
-                    "block={} row={} col={} content_version={} bounds=({}, {}, {}, {}) text_len={} lines={}",
+                    "block={} row={} col={} content_version={} bounds=({}, {}, {}, {}) text_len={} lines={} accessibility={}",
                     cache.block_id,
                     position.row,
                     position.col,
@@ -213,8 +226,9 @@ impl CditorV2View {
                     f32::from(cache.bounds.top()),
                     f32::from(cache.bounds.size.width),
                     f32::from(cache.bounds.size.height),
-                    cache.text.len(),
-                    cache.lines.len()
+                    cache.snapshot.text().len(),
+                    cache.snapshot.line_count(),
+                    cache.accessibility.is_some()
                 ),
             );
             self.table_cell_layouts.insert(
@@ -225,6 +239,10 @@ impl CditorV2View {
                 },
                 cache,
             );
+            return false;
+        }
+        if !matches!(cache.surface_id, SurfaceId::Block(_)) {
+            self.text_surface_layouts.insert(cache.surface_id, cache);
             return false;
         }
         let block_id = cache.block_id;
@@ -268,6 +286,7 @@ impl CditorV2View {
         &mut self,
         block_id: cditor_core::ids::BlockId,
         position: impl Into<Option<Point<Pixels>>>,
+        click_count: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -278,18 +297,54 @@ impl CditorV2View {
         }
         self.clear_gutter_action();
         let position = position.into();
-        let offset = position
-            .and_then(|position| self.text_offset_for_block_at_position(block_id, position));
+        let text_position = position
+            .and_then(|position| self.text_position_for_block_at_position(block_id, position));
+        let click_selection = if let Some(kind) =
+            crate::gui::app::text_hit::selection_kind_for_click_count(click_count)
+        {
+            position.and_then(|position| {
+                let runtime = self.ready_runtime_ref()?;
+                let cache = self.current_text_layout_cache(runtime, block_id)?;
+                let local_x = f32::from(position.x - cache.bounds.left());
+                let local_y = f32::from(position.y - cache.bounds.top());
+                Some(cache.snapshot.selection_at_point(local_x, local_y, kind))
+            })
+        } else {
+            None
+        };
         trace_input(
             "focus_block_from_gui_at_position",
-            format_args!("block={block_id} position={position:?} resolved_offset={offset:?}"),
+            format_args!(
+                "block={block_id} position={position:?} resolved_position={text_position:?}"
+            ),
         );
         if let CditorViewState::Ready(runtime) = &mut self.state {
-            if let Some(offset) = offset {
-                let _ = runtime.focus_block_at_offset(block_id, offset);
+            if let Some(selection) = click_selection {
+                let _ = runtime.set_document_text_selection(
+                    block_id,
+                    selection.anchor.offset,
+                    block_id,
+                    selection.focus.offset,
+                );
+                self.text_drag_selection = None;
+                cx.stop_propagation();
+                cx.notify();
+                return;
+            }
+            if let Some(text_position) = text_position {
+                let _ = runtime.focus_block_at_offset(block_id, text_position.offset);
+                let _ = runtime.move_focused_caret_to_text_position(
+                    cditor_core::edit::TextPosition {
+                        block_id,
+                        offset: text_position.offset,
+                        affinity: text_position.affinity,
+                    },
+                    false,
+                );
                 self.text_drag_selection = Some(GuiTextDragSelection {
                     anchor_block_id: block_id,
-                    anchor_offset: offset,
+                    anchor_position: text_position,
+                    pointer_position: position.unwrap_or_default(),
                 });
             } else {
                 let anchor_offset = block_focus_offset_after_missed_hit_test(
@@ -300,7 +355,10 @@ impl CditorV2View {
                 let _ = runtime.focus_block_at_offset(block_id, anchor_offset);
                 self.text_drag_selection = Some(GuiTextDragSelection {
                     anchor_block_id: block_id,
-                    anchor_offset,
+                    anchor_position: crate::gui::text::ParleyTextPosition::downstream(
+                        anchor_offset,
+                    ),
+                    pointer_position: position.unwrap_or_default(),
                 });
             }
         }
@@ -308,16 +366,11 @@ impl CditorV2View {
     }
 
     pub(crate) fn toggle_todo_from_gui(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
-        if self.readonly {
-            return;
-        }
-        let CditorViewState::Ready(runtime) = &mut self.state else {
-            return;
-        };
-        if runtime.toggle_todo_checked(block_id).unwrap_or(false) {
-            self.mark_dirty(cx);
-            cx.notify();
-        }
+        let _ = self.dispatch_command(
+            crate::api::CditorCommand::ToggleTodo { block_id },
+            crate::api::CommandSource::Toolbar,
+            cx,
+        );
     }
 
     pub(crate) fn focus_down_placer_from_gui(

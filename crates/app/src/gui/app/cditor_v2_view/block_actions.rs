@@ -1,7 +1,8 @@
 use cditor_core::ids::BlockId;
 use gpui::{Context, Window};
 
-use crate::gui::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::api::{CditorCommand, CommandOutcomeStatus, CommandSource};
+use crate::gui::app::cditor_v2_view::CditorV2View;
 use crate::gui::persistence::EditorSaveStatus;
 
 pub(in crate::gui::app) fn block_focus_offset_after_missed_hit_test(
@@ -27,19 +28,19 @@ impl CditorV2View {
             return false;
         }
         window.focus(&self.focus, cx);
-        let result = match &mut self.state {
-            CditorViewState::Ready(runtime) => runtime.insert_paragraph_after_block(block_id),
-            CditorViewState::Loading { .. } | CditorViewState::LoadFailed { .. } => return false,
-        };
-        match result {
-            Ok(_) => {
+        match self.dispatch_command(
+            CditorCommand::InsertParagraphAfterBlock { block_id },
+            CommandSource::Toolbar,
+            cx,
+        ) {
+            Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied => {
                 self.slash_menu = None;
-                self.mark_dirty(cx);
                 cx.notify();
                 true
             }
+            Ok(_) => false,
             Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error);
+                self.save_status = EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }
@@ -54,12 +55,12 @@ impl CditorV2View {
         if self.readonly {
             return false;
         }
-        let result = match &mut self.state {
-            CditorViewState::Ready(runtime) => runtime.delete_block_by_id(block_id),
-            CditorViewState::Loading { .. } | CditorViewState::LoadFailed { .. } => return false,
-        };
-        match result {
-            Ok(true) => {
+        match self.dispatch_command(
+            CditorCommand::DeleteBlock { block_id },
+            CommandSource::Toolbar,
+            cx,
+        ) {
+            Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied => {
                 if self.gutter_toolbar_block_id == Some(block_id) {
                     self.gutter_toolbar_block_id = None;
                     self.block_transform_menu_open = false;
@@ -68,13 +69,12 @@ impl CditorV2View {
                 if self.action_block_id == Some(block_id) {
                     self.action_block_id = None;
                 }
-                self.mark_dirty(cx);
                 cx.notify();
                 true
             }
-            Ok(false) => false,
+            Ok(_) => false,
             Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error);
+                self.save_status = EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

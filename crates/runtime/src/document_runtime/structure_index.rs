@@ -10,7 +10,7 @@ impl DocumentRuntime {
                     .index_of(block_id)
                     .map(|index| rich_block_kind_from_tag(self.index.kind_tags[index]))
             })
-            .unwrap_or_else(|| RichBlockKind::Paragraph)
+            .unwrap_or(RichBlockKind::Paragraph)
     }
 
     pub(super) fn kind_at_index(&self, index: usize) -> RichBlockKind {
@@ -132,122 +132,5 @@ impl DocumentRuntime {
             .max()
             .unwrap_or(0)
             .saturating_add(1)
-    }
-
-    pub(super) fn replace_existing_block_from_record(
-        &mut self,
-        block_id: BlockId,
-        block: RichBlockRecord,
-    ) -> Result<(), String> {
-        let payload = normalize_payload_record_for_kind(block.to_payload_record());
-        self.replace_block_kind_and_payload(
-            block_id,
-            payload.kind.clone(),
-            payload.payload.clone(),
-        )?;
-        if let Some(record) = self.payload_window.payloads.get_mut(&block_id) {
-            record.content_version = payload.content_version;
-        }
-        Ok(())
-    }
-
-    pub(super) fn replace_text_in_block_with_plain(
-        &mut self,
-        block_id: BlockId,
-        text: String,
-    ) -> Result<(), String> {
-        let Some(payload) = self.payload_window.payloads.get(&block_id) else {
-            return Err(format!("missing payload for block {block_id}"));
-        };
-        let kind = payload.kind.clone();
-        if matches!(kind, RichBlockKind::Table) {
-            return Ok(());
-        }
-        self.replace_block_kind_and_payload(
-            block_id,
-            kind.clone(),
-            payload_for_kind_from_plain_text(&kind, text),
-        )
-    }
-
-    pub(super) fn insert_runtime_block(
-        &mut self,
-        insert_at: usize,
-        record: BlockIndexRecord,
-        payload: BlockPayloadRecord,
-    ) -> Result<(), String> {
-        let mut records = self
-            .index
-            .block_ids
-            .iter()
-            .enumerate()
-            .map(|(index, block_id)| {
-                BlockIndexRecord::new(
-                    *block_id,
-                    self.index.parent_ids[index],
-                    self.index.depths[index],
-                    self.index.kind_tags[index],
-                    self.index.flags[index],
-                )
-                .with_layout_meta(self.index.layout_meta[index])
-            })
-            .collect::<Vec<_>>();
-        let insert_at = insert_at.min(records.len());
-        records.insert(insert_at, record);
-
-        let mut payload = normalize_payload_record_for_kind(payload);
-        self.sync_table_runtime_from_loaded_record(&mut payload);
-        self.payload_window.insert(payload.clone());
-        self.index = DocumentIndex::new(
-            self.document_id,
-            records,
-            self.index.structure_version.saturating_add(1),
-        )
-        .map_err(|error| error.to_string())?;
-        self.visible_index = VisibleDocumentIndex::from_document_index(&self.index);
-        self.list_projection_cache = ListProjectionCache::build(&self.index);
-        self.payload_window.block_range = 0..self.visible_index.total_visible_count();
-        self.rebuild_height_indexes_from_layout_meta()?;
-        self.selected_block_ids.clear();
-        Ok(())
-    }
-
-    pub(super) fn insert_runtime_blocks_batch(
-        &mut self,
-        insert_at: usize,
-        inserted_records: &[BlockIndexRecord],
-        payloads: Vec<BlockPayloadRecord>,
-    ) -> Result<(), String> {
-        if inserted_records.len() != payloads.len() {
-            return Err(format!(
-                "batch insert record/payload mismatch: records={} payloads={}",
-                inserted_records.len(),
-                payloads.len()
-            ));
-        }
-        if inserted_records.is_empty() {
-            return Ok(());
-        }
-        if inserted_records
-            .iter()
-            .zip(&payloads)
-            .any(|(record, payload)| record.id != payload.block_id)
-        {
-            return Err("batch insert record/payload block ids do not match".to_owned());
-        }
-
-        let mut records = self.index_records();
-        let insert_at = insert_at.min(records.len());
-        records.splice(insert_at..insert_at, inserted_records.iter().copied());
-        self.rebuild_structure_index(records)?;
-
-        for mut payload in payloads {
-            payload = normalize_payload_record_for_kind(payload);
-            if matches!(payload.kind, RichBlockKind::Table) {
-                self.sync_table_runtime_from_loaded_record(&mut payload);
-            }
-            self.payload_window.insert(payload);
-        }
-        Ok(())
     }
 }

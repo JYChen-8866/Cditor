@@ -32,47 +32,91 @@ impl DocumentRuntime {
         // so that legacy representation would make the new block attribute
         // appear ineffective. Migrate only a uniform, full-block mark of the
         // same family; partial inline styling remains an intentional override.
-        let legacy_inline_range =
+        let legacy_inline_spans =
             self.payload_window
                 .get(block_id)
                 .and_then(|record| match &record.payload {
                     BlockPayload::RichText { spans }
                         if has_uniform_full_block_color_mark(spans, target) =>
                     {
-                        Some(0..spans.iter().map(|span| span.text.len()).sum())
+                        Some(spans.clone())
                     }
                     _ => None,
                 });
-        let migrated_legacy_inline = if let Some(range) = legacy_inline_range {
+        let migrated_legacy_inline = legacy_inline_spans.is_some();
+        if let Some(spans) = &legacy_inline_spans {
             trace_block_color(
                 "set.migrate_legacy_inline",
-                format_args!("block_id={block_id} target={target:?} range={range:?}"),
+                format_args!(
+                    "block_id={block_id} target={target:?} range={:?}",
+                    0..plain_text_from_spans(spans).len(),
+                ),
             );
-            self.set_inline_color_for_range(block_id, range, target, None)?
-        } else {
-            false
-        };
+        }
 
-        let attrs = self.block_attrs.entry(block_id).or_default();
+        let mut after = before.clone();
         let slot = match target {
-            InlineColorTarget::Text => &mut attrs.color,
-            InlineColorTarget::Background => &mut attrs.background_color,
+            InlineColorTarget::Text => &mut after.color,
+            InlineColorTarget::Background => &mut after.background_color,
         };
         let next = value.map(str::to_owned);
-        if *slot == next {
+        *slot = next;
+        if after == before && !migrated_legacy_inline {
             trace_block_color(
                 "set.noop",
                 format_args!(
                     "block_id={block_id} migrated_legacy_inline={migrated_legacy_inline} attrs={:?}",
-                    self.block_attrs(block_id),
+                    before,
                 ),
             );
-            return Ok(migrated_legacy_inline);
+            return Ok(false);
         }
-        *slot = next;
-        if *attrs == BlockAttrs::default() {
-            self.block_attrs.remove(&block_id);
+
+        let mut ops = Vec::with_capacity(2);
+        let mut inverse_ops = Vec::with_capacity(2);
+        if let Some(old_spans) = legacy_inline_spans {
+            let text_len = plain_text_from_spans(&old_spans).len();
+            let new_spans = set_color_mark_for_range(&old_spans, 0..text_len, target, None);
+            ops.push(EditOperation::Text(TextEditOperation::ReplaceSpans {
+                surface_id: SurfaceId::Block(block_id),
+                range: 0..text_len,
+                old_spans: old_spans.clone(),
+                new_spans: new_spans.clone(),
+            }));
+            inverse_ops.push(EditOperation::Text(TextEditOperation::ReplaceSpans {
+                surface_id: SurfaceId::Block(block_id),
+                range: 0..text_len,
+                old_spans: new_spans,
+                new_spans: old_spans,
+            }));
         }
+        if after != before {
+            ops.push(EditOperation::Block(
+                cditor_core::edit::BlockEditOperation::SetAttrs {
+                    block_id,
+                    before: before.clone(),
+                    after: after.clone(),
+                },
+            ));
+            inverse_ops.insert(
+                0,
+                EditOperation::Block(cditor_core::edit::BlockEditOperation::SetAttrs {
+                    block_id,
+                    before: after.clone(),
+                    after: before,
+                }),
+            );
+        }
+        let selection = self.document_selection_snapshot();
+        self.apply_local_block_operations_transaction(LocalBlockOperationsTransaction {
+            block_id,
+            kind: EditTransactionKind::Format,
+            origin: cditor_core::edit::ChangeOrigin::User,
+            ops,
+            inverse_ops,
+            before_selection: selection,
+            after_selection: selection,
+        })?;
         trace_block_color(
             "set.commit",
             format_args!(
@@ -212,5 +256,63 @@ mod tests {
                 .any(|mark| matches!(mark, InlineMark::Color(value) if value == "#337ea9"))
         }));
         assert_eq!(runtime.block_attrs(2).color.as_deref(), Some("#d44c47"));
+    }
+
+    #[test]
+    fn block_color_and_legacy_inline_migration_commit_as_one_undoable_transaction() {
+        let mut runtime = DocumentRuntime::demo();
+        let text_len = runtime.block_payload_record(2).unwrap().plain_text().len();
+        runtime
+            .set_inline_color_for_range(2, 0..text_len, InlineColorTarget::Text, Some("#337ea9"))
+            .unwrap();
+        runtime.drain_pending_structure_transactions();
+        runtime.external_undo_stack.clear();
+        runtime.undo_events.clear();
+        let revision_before = runtime.revision();
+        let content_version_before = runtime.block_content_version(2).unwrap();
+
+        assert!(
+            runtime
+                .set_block_color(2, InlineColorTarget::Text, Some("#d44c47"))
+                .unwrap()
+        );
+
+        assert_eq!(runtime.revision(), revision_before + 1);
+        assert_eq!(
+            runtime.block_content_version(2),
+            Some(content_version_before + 1)
+        );
+        assert_eq!(runtime.external_undo_stack.len(), 1);
+        let transactions = runtime.drain_pending_structure_transactions();
+        assert_eq!(transactions.len(), 1);
+        assert_eq!(transactions[0].kind, EditTransactionKind::Format);
+        assert!(matches!(
+            transactions[0].ops.as_slice(),
+            [EditOperation::Text(_), EditOperation::Block(_)]
+        ));
+
+        assert!(runtime.undo_focused_block().unwrap());
+        assert_eq!(runtime.block_attrs(2).color, None);
+        let BlockPayload::RichText { spans } = runtime.block_payload_record(2).unwrap().payload
+        else {
+            panic!("demo block 2 should be rich text");
+        };
+        assert!(spans.iter().all(|span| {
+            span.marks
+                .iter()
+                .any(|mark| matches!(mark, InlineMark::Color(value) if value == "#337ea9"))
+        }));
+
+        assert!(runtime.redo_focused_block().unwrap());
+        assert_eq!(runtime.block_attrs(2).color.as_deref(), Some("#d44c47"));
+        let BlockPayload::RichText { spans } = runtime.block_payload_record(2).unwrap().payload
+        else {
+            panic!("demo block 2 should be rich text");
+        };
+        assert!(spans.iter().all(|span| {
+            span.marks
+                .iter()
+                .all(|mark| !InlineColorTarget::Text.matches(mark))
+        }));
     }
 }

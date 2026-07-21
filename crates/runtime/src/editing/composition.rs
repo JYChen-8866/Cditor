@@ -112,11 +112,10 @@ impl CompositionController {
 
         let next_caret_anchor = CaretAnchor {
             block_id: session.block_id,
-            text_offset: inserted.end as u64,
             caret_rect_y_in_block: session.caret_anchor.caret_rect_y_in_block,
             viewport_y: session.caret_anchor.viewport_y,
         };
-        session.apply_content_edit(next_caret_anchor);
+        session.apply_content_edit(inserted.end, next_caret_anchor);
         let composition_anchor = ScrollAnchor {
             block_id: session.block_id,
             offset_in_block: next_caret_anchor.caret_rect_y_in_block,
@@ -140,6 +139,10 @@ impl CompositionController {
             preview_text: state.preview_text.clone(),
             selected_range_start: None,
             selected_range_end: None,
+            base_selection:
+                crate::editing::session::CompositionBaseSelection::from_document_selection(
+                    state.before_selection,
+                ),
         })?;
 
         let dirty_range = LayoutDirtyRange {
@@ -383,9 +386,9 @@ mod tests {
         EditingSession::start(
             42,
             1,
+            0,
             CaretAnchor {
                 block_id: 42,
-                text_offset: 0,
                 caret_rect_y_in_block: 0.0,
                 viewport_y: 100.0,
             },

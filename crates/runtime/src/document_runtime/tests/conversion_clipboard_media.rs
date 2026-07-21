@@ -21,6 +21,56 @@ fn convert_focused_block_kind_preserves_text_for_slash_menu() {
 }
 
 #[test]
+fn slash_block_command_is_one_atomic_undo_step_and_preserves_remaining_marks() {
+    let mut runtime = runtime_with_rich_spans(vec![
+        InlineSpan::plain("/h2 "),
+        InlineSpan {
+            text: "bold".to_owned(),
+            marks: vec![InlineMark::Bold],
+        },
+    ]);
+    runtime.focus_block_at_offset(1, 4).unwrap();
+
+    assert!(
+        runtime
+            .apply_slash_block_kind(1, 0..4, RichBlockKind::Heading { level: 2 })
+            .unwrap()
+    );
+    let record = runtime.block_payload_record(1).unwrap();
+    assert_eq!(record.kind, RichBlockKind::Heading { level: 2 });
+    assert_eq!(record.plain_text(), "bold");
+    let BlockPayload::RichText { spans } = record.payload else {
+        panic!("expected rich-text heading");
+    };
+    assert_eq!(spans[0].marks, vec![InlineMark::Bold]);
+
+    assert!(runtime.undo_focused_block().unwrap());
+    let restored = runtime.block_payload_record(1).unwrap();
+    assert_eq!(restored.kind, RichBlockKind::Paragraph);
+    assert_eq!(restored.plain_text(), "/h2 bold");
+    assert!(
+        !runtime.can_undo(),
+        "slash command must create one undo step"
+    );
+}
+
+#[test]
+fn slash_block_command_rejects_stale_range_without_mutating() {
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "/h2")]);
+    runtime.focus_block_at_offset(1, 3).unwrap();
+
+    assert!(
+        runtime
+            .apply_slash_block_kind(1, 0..99, RichBlockKind::Heading { level: 2 })
+            .is_err()
+    );
+    assert_eq!(runtime.focused_text(), Some("/h2"));
+    assert_eq!(runtime.block_kind(1), Some(RichBlockKind::Paragraph));
+    assert!(!runtime.can_undo());
+}
+
+#[test]
 fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "hello")]);
@@ -222,7 +272,7 @@ fn measured_height_marks_layout_dirty_until_saved() {
         BlockPayload::Image(ImagePayload {
             source: "/tmp/paste.png".to_owned(),
             alt: "paste.png".to_owned(),
-            caption: String::new(),
+            caption: String::new().into(),
             display_width_ratio_milli: None,
         }),
     );
@@ -241,7 +291,7 @@ fn image_projection_clamps_legacy_short_layout_height() {
         BlockPayload::Image(ImagePayload {
             source: "/tmp/paste.png".to_owned(),
             alt: "paste.png".to_owned(),
-            caption: String::new(),
+            caption: String::new().into(),
             display_width_ratio_milli: None,
         }),
     );
@@ -265,7 +315,7 @@ fn image_asset_insert_creates_image_block_and_trailing_paragraph() {
         .insert_image_asset_after_focused(ImagePayload {
             source: "/tmp/paste.png".to_owned(),
             alt: "paste.png".to_owned(),
-            caption: String::new(),
+            caption: String::new().into(),
             display_width_ratio_milli: None,
         })
         .unwrap();
@@ -276,6 +326,21 @@ fn image_asset_insert_creates_image_block_and_trailing_paragraph() {
     assert_eq!(runtime.focused_block_id(), Some(trailing_block_id));
     let image_payload = runtime.block_payload_record(image_block_id).unwrap();
     assert!(matches!(image_payload.payload, BlockPayload::Image(_)));
+    let transactions = runtime.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert_eq!(transactions[0].kind, EditTransactionKind::Paste);
+    assert_eq!(
+        transactions[0].origin,
+        cditor_core::edit::ChangeOrigin::Import
+    );
+    assert!(matches!(
+        transactions[0].ops.as_slice(),
+        [EditOperation::InsertBlocks { payloads, .. }] if payloads.len() == 2
+    ));
+    assert!(runtime.undo_focused_block().unwrap());
+    assert_eq!(runtime.index.total_count(), 1);
+    assert!(runtime.redo_focused_block().unwrap());
+    assert_eq!(runtime.index.total_count(), 3);
 }
 
 #[test]

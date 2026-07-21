@@ -1,6 +1,33 @@
 use super::*;
 
 impl DocumentRuntime {
+    pub fn can_handle_enter(&self) -> bool {
+        let Some(block_id) = self.focused_block_id() else {
+            return false;
+        };
+        match cditor_core::block::BlockKeyboardPolicy::for_kind(&self.kind_for_block(block_id))
+            .enter
+        {
+            cditor_core::block::EnterKeyBehavior::TableCellSoftBreak => {
+                self.focused_table_cell.is_some()
+            }
+            _ => true,
+        }
+    }
+
+    pub fn can_insert_soft_line_break(&self) -> bool {
+        if self.focused_table_cell.is_some() {
+            return true;
+        }
+        let Some(block_id) = self.focused_block_id() else {
+            return false;
+        };
+        matches!(
+            cditor_core::block::BlockInputCapability::for_kind(&self.kind_for_block(block_id)),
+            cditor_core::block::BlockInputCapability::Text(_)
+        )
+    }
+
     /// A conversion is offered only when the source payload has a defined,
     /// non-destructive text export. Complex asset payloads keep their metadata
     /// instead of being silently flattened by a menu click.

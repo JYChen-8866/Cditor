@@ -10,12 +10,13 @@ use crate::gui::input::ime::{
 };
 use crate::gui::input::{SINGLE_LINE_INPUT_FONT_SIZE_PX, single_line_text_offset_for_x};
 use crate::gui::platform::{is_single_line_break_commit, normalize_external_line_endings};
-use crate::gui::text::platform_index_for_point;
+use crate::gui::text::{platform_index_for_point, record_unavailable_geometry};
 use cditor_runtime::InputTarget;
 
 use super::ime_support::{
-    ai_prompt_input_target_allows, apply_platform_text_replacement, ime_replacement_range,
-    is_empty_line_ai_platform_input, table_menu_input_target_allows,
+    ai_prompt_input_target_allows, apply_platform_text_replacement, apply_platform_unmark,
+    ime_replacement_range, is_empty_line_ai_platform_input, platform_input_geometry_allows,
+    table_menu_input_target_allows,
 };
 pub(in crate::gui::app) use super::ime_support::{
     code_language_input_target_allows, platform_input_fallback_range, platform_input_target_allows,
@@ -66,8 +67,9 @@ impl EntityInputHandler for CditorV2View {
             return edit.draft.get(range).map(ToOwned::to_owned);
         }
         let registered_target = self.platform_input_target;
+        let registered_identity = self.platform_input_session_identity;
         let runtime = self.ready_runtime()?;
-        if !platform_input_target_allows(registered_target, runtime) {
+        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
             trace_input(
                 "text_for_range.rejected_target",
                 format_args!(
@@ -138,8 +140,9 @@ impl EntityInputHandler for CditorV2View {
             });
         }
         let registered_target = self.platform_input_target;
+        let registered_identity = self.platform_input_session_identity;
         let runtime = self.ready_runtime()?;
-        if !platform_input_target_allows(registered_target, runtime) {
+        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
             trace_input(
                 "selected_text_range.rejected_target",
                 format_args!(
@@ -203,7 +206,11 @@ impl EntityInputHandler for CditorV2View {
                 .map(|range| utf8_range_to_utf16_range(&edit.draft, range));
         }
         let runtime = self.ready_runtime_ref()?;
-        if !platform_input_target_allows(self.platform_input_target, runtime) {
+        if !platform_input_target_allows(
+            self.platform_input_target,
+            self.platform_input_session_identity,
+            runtime,
+        ) {
             trace_input(
                 "marked_text_range.rejected_target",
                 format_args!(
@@ -262,9 +269,18 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
-        if let Some(runtime) = self.ready_runtime() {
-            runtime.cancel_composition();
-            cx.notify();
+        let result = self.ready_runtime().map(apply_platform_unmark);
+        match result {
+            Some(Ok(true)) => {
+                self.mark_dirty(cx);
+                self.sync_slash_menu_from_runtime(cx);
+                cx.notify();
+            }
+            Some(Ok(false)) | None => {}
+            Some(Err(error)) => {
+                self.save_status = crate::gui::persistence::EditorSaveStatus::Failed(error);
+                cx.notify();
+            }
         }
     }
 
@@ -348,8 +364,11 @@ impl EntityInputHandler for CditorV2View {
         let registered_target = self.platform_input_target;
         let empty_line_ai_input = is_empty_line_ai_platform_input(range_utf16.as_ref(), text)
             && self.ready_runtime_ref().is_some_and(|runtime| {
-                platform_input_target_allows(registered_target, runtime)
-                    && runtime.focused_empty_text_block_for_ai().is_some()
+                platform_input_target_allows(
+                    registered_target,
+                    self.platform_input_session_identity,
+                    runtime,
+                ) && runtime.focused_empty_text_block_for_ai().is_some()
             });
         if empty_line_ai_input && self.invoke_empty_line_ai_from_gui(cx) {
             cx.notify();
@@ -365,10 +384,11 @@ impl EntityInputHandler for CditorV2View {
             cx.notify();
             return;
         }
+        let registered_identity = self.platform_input_session_identity;
         let Some(runtime) = self.ready_runtime() else {
             return;
         };
-        if !platform_input_target_allows(registered_target, runtime) {
+        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
             trace_input(
                 "replace_text_in_range.rejected_target",
                 format_args!(
@@ -466,10 +486,11 @@ impl EntityInputHandler for CditorV2View {
             return;
         }
         let registered_target = self.platform_input_target;
+        let registered_identity = self.platform_input_session_identity;
         let Some(runtime) = self.ready_runtime() else {
             return;
         };
-        if !platform_input_target_allows(registered_target, runtime) {
+        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
             trace_input(
                 "replace_and_mark_text_in_range.rejected_target",
                 format_args!(
@@ -566,7 +587,11 @@ impl EntityInputHandler for CditorV2View {
             return Some(utf8_to_utf16_offset(&edit.draft, utf8));
         }
         let runtime = self.ready_runtime_ref()?;
-        if !platform_input_target_allows(self.platform_input_target, runtime) {
+        if !platform_input_target_allows(
+            self.platform_input_target,
+            self.platform_input_session_identity,
+            runtime,
+        ) {
             trace_input(
                 "character_index_for_point.rejected_target",
                 format_args!(
@@ -584,14 +609,41 @@ impl EntityInputHandler for CditorV2View {
                 row,
                 col,
             } if target_block_id == block_id => {
-                let cache = self.current_table_cell_layout_cache(runtime, block_id, row, col)?;
+                let Some(cache) = self.current_table_cell_layout_cache(runtime, block_id, row, col)
+                else {
+                    record_unavailable_geometry();
+                    return None;
+                };
+                if !platform_input_geometry_allows(
+                    self.platform_input_target,
+                    self.platform_input_session_identity,
+                    self.platform_input_layout_identity,
+                    runtime,
+                    cache,
+                ) {
+                    record_unavailable_geometry();
+                    return None;
+                }
                 let utf8 = platform_index_for_point(cache, point).min(text.len());
                 Some(utf8_to_utf16_offset(&text, utf8))
             }
             InputTarget::BlockText {
                 block_id: target_block_id,
             } if target_block_id == block_id => {
-                let cache = self.current_text_layout_cache(runtime, block_id)?;
+                let Some(cache) = self.current_text_layout_cache(runtime, block_id) else {
+                    record_unavailable_geometry();
+                    return None;
+                };
+                if !platform_input_geometry_allows(
+                    self.platform_input_target,
+                    self.platform_input_session_identity,
+                    self.platform_input_layout_identity,
+                    runtime,
+                    cache,
+                ) {
+                    record_unavailable_geometry();
+                    return None;
+                }
                 let utf8 = platform_index_for_point(cache, point).min(text.len());
                 let utf16 = utf8_to_utf16_offset(&text, utf8);
                 trace_input(
@@ -603,6 +655,17 @@ impl EntityInputHandler for CditorV2View {
                 );
                 Some(utf16)
             }
+            target @ (InputTarget::ImageCaption {
+                block_id: target_block_id,
+            }
+            | InputTarget::CollectionTitle {
+                block_id: target_block_id,
+            }) if target_block_id == block_id => self.ime_character_index_for_text_surface(
+                runtime,
+                target.surface_id()?,
+                point,
+                &text,
+            ),
             _ => None,
         }
     }
@@ -624,7 +687,11 @@ impl EntityInputHandler for CditorV2View {
         !self.readonly
             && matches!(self.state, CditorViewState::Ready(_))
             && self.ready_runtime_ref().is_none_or(|runtime| {
-                platform_input_target_allows(self.platform_input_target, runtime)
+                platform_input_target_allows(
+                    self.platform_input_target,
+                    self.platform_input_session_identity,
+                    runtime,
+                )
             })
     }
 }

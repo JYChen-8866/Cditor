@@ -18,10 +18,11 @@ use crate::gui::image_preview::render_image_preview_overlay;
 use crate::gui::input::GuiInputCommand;
 use crate::gui::input::actions::{
     Backspace, Backtab, CDITOR_KEY_CONTEXT, Cancel, Copy, Cut, Delete, Duplicate, MoveDown,
-    MoveLeft, MoveRight, MoveToLineEnd, MoveToLineStart, MoveUp, Newline, NewlineBelow, Paste,
-    Redo, SelectAll, SelectDown, SelectLeft, SelectRight, SelectToLineEnd, SelectToLineStart,
-    SelectUp, SoftLineBreak, Tab, ToggleBold, ToggleInlineCode, ToggleItalic, ToggleUnderline,
-    Undo,
+    MoveLeft, MoveRight, MoveToDocumentEnd, MoveToDocumentStart, MoveToLineEnd, MoveToLineStart,
+    MoveToNextWord, MoveToPreviousWord, MoveUp, Newline, NewlineBelow, Paste, Redo, SelectAll,
+    SelectDown, SelectLeft, SelectRight, SelectToDocumentEnd, SelectToDocumentStart,
+    SelectToLineEnd, SelectToLineStart, SelectToNextWord, SelectToPreviousWord, SelectUp,
+    SoftLineBreak, Tab, ToggleBold, ToggleInlineCode, ToggleItalic, ToggleUnderline, Undo,
 };
 use crate::gui::menu_metrics::EditorViewport;
 use crate::gui::overlay::table::{table_hscroll_scroll_max, table_hscroll_track_width};
@@ -32,6 +33,7 @@ use crate::gui::overlay::{
 use crate::gui::persistence::{EditorLoadStateLabel, render_load_state};
 use cditor_editor::scroll::HeightCorrectionPriority;
 use cditor_runtime::AiRequestPresentation;
+use cditor_runtime::InputTarget;
 
 impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -184,6 +186,70 @@ impl Render for CditorV2View {
                     cx,
                 )
             }))
+            .on_action(cx.listener(|view, _: &MoveToPreviousWord, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToPreviousWord {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &MoveToNextWord, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToNextWord {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectToPreviousWord, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToPreviousWord {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectToNextWord, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToNextWord {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &MoveToDocumentStart, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToDocumentStart {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &MoveToDocumentEnd, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToDocumentEnd {
+                        extend_selection: false,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectToDocumentStart, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToDocumentStart {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
+            .on_action(cx.listener(|view, _: &SelectToDocumentEnd, _window, cx| {
+                view.handle_bound_input_action(
+                    BoundInputAction::MoveToDocumentEnd {
+                        extend_selection: true,
+                    },
+                    cx,
+                )
+            }))
             .on_action(cx.listener(|view, _: &MoveToLineStart, _window, cx| {
                 view.handle_bound_input_action(
                     BoundInputAction::MoveToLineStart {
@@ -303,6 +369,12 @@ impl Render for CditorV2View {
 
         match &mut self.state {
             CditorViewState::Ready(runtime) => {
+                let automatic_text_layout_pins = runtime
+                    .input_session_target()
+                    .and_then(InputTarget::surface_id)
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                crate::gui::text::sync_automatic_text_layout_pins(&automatic_text_layout_pins);
                 let viewport_height =
                     (editor_viewport.height - DEFAULT_DOCUMENT_TOP_INSET_PX).max(1.0) as f64;
                 let _ = runtime.sync_viewport_height(viewport_height);
@@ -466,23 +538,25 @@ impl Render for CditorV2View {
                 }
             }
             CditorViewState::Loading { message } => {
+                crate::gui::text::sync_automatic_text_layout_pins(&[]);
                 root = root.child(render_load_state(
                     &EditorLoadStateLabel::Loading(message.clone()),
                     theme,
                 ));
             }
             CditorViewState::LoadFailed { message } => {
+                crate::gui::text::sync_automatic_text_layout_pins(&[]);
                 root = root.child(render_load_state(
                     &EditorLoadStateLabel::Failed(message.clone()),
                     theme,
                 ));
             }
         }
-        if !pending_table_scroll_offsets.is_empty() {
-            if let Some(runtime) = self.ready_runtime() {
-                for (block_id, offset_x) in pending_table_scroll_offsets {
-                    let _ = runtime.set_table_horizontal_scroll_offset_px(block_id, offset_x);
-                }
+        if !pending_table_scroll_offsets.is_empty()
+            && let Some(runtime) = self.ready_runtime()
+        {
+            for (block_id, offset_x) in pending_table_scroll_offsets {
+                let _ = runtime.set_table_horizontal_scroll_offset_px(block_id, offset_x);
             }
         }
         if let (Some(session), Some(block_range)) =
@@ -531,16 +605,14 @@ impl Render for CditorV2View {
         if let Some(menu) = self.slash_menu.as_ref() {
             root = root.child(render_slash_menu(menu, theme, cx.entity(), editor_viewport));
         }
-        if !embedded_ai_prompt {
-            if let Some(prompt) = self.ai_prompt.as_ref() {
-                root = root.child(render_ai_prompt(
-                    prompt,
-                    theme,
-                    cx.entity(),
-                    self.ai_prompt_focus.clone(),
-                    editor_viewport,
-                ));
-            }
+        if !embedded_ai_prompt && let Some(prompt) = self.ai_prompt.as_ref() {
+            root = root.child(render_ai_prompt(
+                prompt,
+                theme,
+                cx.entity(),
+                self.ai_prompt_focus.clone(),
+                editor_viewport,
+            ));
         }
         if let Some(toast) = self
             .toast

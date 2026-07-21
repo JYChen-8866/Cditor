@@ -1,7 +1,59 @@
 use super::*;
+use cditor_core::edit::{ExternalUndoBlobRef, UndoExternalizationJob};
+
+const TYPING_MERGE_WINDOW: Duration = Duration::from_millis(1_000);
 
 impl DocumentRuntime {
+    /// Moves one large undo transaction out of the Runtime so an async
+    /// persistence worker can spill it without holding a Runtime borrow.
+    pub fn begin_external_undo_spill(&mut self) -> Option<UndoExternalizationJob> {
+        self.external_undo_stack.begin_externalization()
+    }
+
+    pub fn complete_external_undo_spill(
+        &mut self,
+        job: UndoExternalizationJob,
+        reference: ExternalUndoBlobRef,
+    ) -> Result<(), UndoExternalizationJob> {
+        self.external_undo_stack
+            .complete_externalization(job, reference)
+    }
+
+    pub fn abort_external_undo_spill(&mut self, job: UndoExternalizationJob) -> bool {
+        self.external_undo_stack.abort_externalization(job)
+    }
+
+    pub fn hydrate_external_undo(
+        &mut self,
+        snapshot_id: u64,
+        transaction: EditTransaction,
+    ) -> bool {
+        self.external_undo_stack
+            .hydrate_externalized(snapshot_id, transaction)
+    }
+
+    pub fn drain_orphaned_external_undo_blobs(&mut self) -> Vec<ExternalUndoBlobRef> {
+        self.external_undo_stack.drain_orphaned_external_blobs()
+    }
+
+    pub fn restore_orphaned_external_undo_blobs(
+        &mut self,
+        references: impl IntoIterator<Item = ExternalUndoBlobRef>,
+    ) {
+        self.external_undo_stack
+            .restore_orphaned_external_blobs(references);
+    }
+
+    pub fn pending_undo_hydration(&self) -> Option<ExternalUndoBlobRef> {
+        self.external_undo_stack.next_undo_external_blob().cloned()
+    }
+
+    pub fn pending_redo_hydration(&self) -> Option<ExternalUndoBlobRef> {
+        self.external_undo_stack.next_redo_external_blob().cloned()
+    }
+
     pub fn undo_focused_block(&mut self) -> Result<bool, String> {
+        self.break_typing_coalescing();
         let Some(event) = self.undo_events.pop() else {
             return Ok(false);
         };
@@ -16,37 +68,36 @@ impl DocumentRuntime {
                 self.redo_events.push(event);
                 Ok(true)
             }
-            RuntimeUndoEvent::StructureMove => {
-                let Some(step) = self.structure_undo_stack.pop() else {
+            RuntimeUndoEvent::ExternalTransaction => {
+                let Some(mut step) = self.external_undo_stack.take_undo_step() else {
                     return Ok(false);
                 };
-                if self.move_block_subtree_to_parent_untracked(
-                    step.block_id,
-                    step.old_parent_id,
-                    step.old_sibling_index,
-                )? {
-                    self.focus_block(step.block_id);
-                    self.structure_redo_stack.push(step);
-                    self.redo_events.push(event);
-                    self.queue_structure_move_transaction(step, false);
-                    Ok(true)
-                } else {
-                    Ok(false)
+                let Some(transaction) = step.payload.transaction_mut() else {
+                    self.external_undo_stack.rollback_undo_step(step);
+                    self.undo_events.push(event);
+                    return Err("external undo transaction requires hydration".to_owned());
+                };
+                std::mem::swap(&mut transaction.ops, &mut transaction.inverse_ops);
+                let apply_result = self
+                    .apply_external_transaction(transaction, cditor_core::edit::ChangeOrigin::Undo)
+                    .map_err(|error| error.to_string());
+                std::mem::swap(&mut transaction.ops, &mut transaction.inverse_ops);
+                if let Err(error) = apply_result {
+                    self.external_undo_stack.rollback_undo_step(step);
+                    self.undo_events.push(event);
+                    return Err(error);
                 }
-            }
-            RuntimeUndoEvent::StructurePaste => {
-                let Some(mut step) = self.paste_undo_stack.pop() else {
-                    return Ok(false);
-                };
-                self.apply_structure_paste_step(&mut step, false)?;
-                self.paste_redo_stack.push(step);
+                let ux_result = self.restore_transaction_ux(transaction, false);
+                self.external_undo_stack.commit_undo_step(step);
                 self.redo_events.push(event);
+                ux_result?;
                 Ok(true)
             }
         }
     }
 
     pub fn redo_focused_block(&mut self) -> Result<bool, String> {
+        self.break_typing_coalescing();
         let Some(event) = self.redo_events.pop() else {
             return Ok(false);
         };
@@ -61,37 +112,33 @@ impl DocumentRuntime {
                 self.undo_events.push(event);
                 Ok(true)
             }
-            RuntimeUndoEvent::StructureMove => {
-                let Some(step) = self.structure_redo_stack.pop() else {
+            RuntimeUndoEvent::ExternalTransaction => {
+                let Some(mut step) = self.external_undo_stack.take_redo_step() else {
                     return Ok(false);
                 };
-                if self.move_block_subtree_to_parent_untracked(
-                    step.block_id,
-                    step.new_parent_id,
-                    step.new_sibling_index,
-                )? {
-                    self.focus_block(step.block_id);
-                    self.structure_undo_stack.push(step);
-                    self.undo_events.push(event);
-                    self.queue_structure_move_transaction(step, true);
-                    Ok(true)
-                } else {
-                    Ok(false)
+                let Some(transaction) = step.payload.transaction_mut() else {
+                    self.external_undo_stack.rollback_redo_step(step);
+                    self.redo_events.push(event);
+                    return Err("external redo transaction requires hydration".to_owned());
+                };
+                if let Err(error) = self
+                    .apply_external_transaction(transaction, cditor_core::edit::ChangeOrigin::Redo)
+                    .map_err(|error| error.to_string())
+                {
+                    self.external_undo_stack.rollback_redo_step(step);
+                    self.redo_events.push(event);
+                    return Err(error);
                 }
-            }
-            RuntimeUndoEvent::StructurePaste => {
-                let Some(mut step) = self.paste_redo_stack.pop() else {
-                    return Ok(false);
-                };
-                self.apply_structure_paste_step(&mut step, true)?;
-                self.paste_undo_stack.push(step);
+                let ux_result = self.restore_transaction_ux(transaction, true);
+                self.external_undo_stack.commit_redo_step(step);
                 self.undo_events.push(event);
+                ux_result?;
                 Ok(true)
             }
         }
     }
 
-    fn snapshot(&self, block_id: BlockId) -> Result<TextSnapshot, String> {
+    pub(super) fn snapshot(&self, block_id: BlockId) -> Result<TextSnapshot, String> {
         let payload = self
             .payload_window
             .get(block_id)
@@ -104,10 +151,47 @@ impl DocumentRuntime {
             focused_table_cell: self
                 .focused_table_cell
                 .filter(|focused| focused.block_id == block_id),
+            input_target: self
+                .editing
+                .as_ref()
+                .filter(|editing| editing.block_id == block_id)
+                .map(|editing| editing.input_target),
+            selected_range: self
+                .editing
+                .as_ref()
+                .filter(|editing| editing.block_id == block_id)
+                .map(|editing| editing.selected_range.clone()),
+            selection_reversed: self
+                .editing
+                .as_ref()
+                .filter(|editing| editing.block_id == block_id)
+                .is_some_and(|editing| editing.selection_reversed),
+            scroll: self.capture_undo_scroll_snapshot(),
         })
     }
 
     pub(super) fn push_undo_snapshot(&mut self, block_id: BlockId) -> Result<(), String> {
+        if let Some(request) = self.pending_typing_undo {
+            if self.typing_undo_group.is_some_and(|group| {
+                group.surface_id == request.surface_id
+                    && group.next_offset == request.offset
+                    && request.started_at.duration_since(group.last_input_at) <= TYPING_MERGE_WINDOW
+            }) {
+                return Ok(());
+            }
+            self.push_undo_snapshot_uncoalesced(block_id)?;
+            self.typing_undo_group = Some(TypingUndoGroup {
+                surface_id: request.surface_id,
+                next_offset: request.offset,
+                last_input_at: request.started_at,
+            });
+            return Ok(());
+        }
+        self.break_typing_coalescing();
+        self.push_undo_snapshot_uncoalesced(block_id)
+    }
+
+    fn push_undo_snapshot_uncoalesced(&mut self, block_id: BlockId) -> Result<(), String> {
         let snapshot = self.snapshot(block_id)?;
         let stack = self.undo_stacks.entry(block_id).or_default();
         if stack.last() != Some(&snapshot) {
@@ -125,190 +209,173 @@ impl DocumentRuntime {
         Ok(())
     }
 
-    pub(super) fn record_structure_paste(&mut self, step: StructurePasteUndoStep) {
-        self.paste_undo_stack.push(step);
-        if self.paste_undo_stack.len() > 100 {
-            self.paste_undo_stack.remove(0);
-        }
-        self.paste_redo_stack.clear();
-        self.undo_events.push(RuntimeUndoEvent::StructurePaste);
-        if self.undo_events.len() > 1_000 {
-            self.undo_events.remove(0);
-        }
-        self.redo_events.clear();
+    pub(super) fn prepare_typing_undo(&mut self, surface_id: SurfaceId, offset: usize) {
+        self.pending_typing_undo = Some(TypingUndoRequest {
+            surface_id,
+            offset,
+            started_at: Instant::now(),
+        });
     }
 
-    fn apply_structure_paste_step(
+    pub(super) fn finish_typing_undo(
         &mut self,
-        step: &mut StructurePasteUndoStep,
-        redo: bool,
-    ) -> Result<(), String> {
-        let mut records = self.index_records();
-        let inserted_ids = step
-            .inserted_records
-            .iter()
-            .map(|record| record.id)
-            .collect::<HashSet<_>>();
-        let deleted_ids = step
-            .deleted_records
-            .iter()
-            .map(|record| record.id)
-            .collect::<HashSet<_>>();
-        records.retain(|record| !inserted_ids.contains(&record.id));
-        if redo {
-            records.retain(|record| !deleted_ids.contains(&record.id));
-        }
-        let current_record = if redo {
-            step.after_current_record
-        } else {
-            step.before_current_record
-        };
-        if let Some(index) = records
-            .iter()
-            .position(|record| record.id == step.current_block_id)
-        {
-            records[index] = current_record;
-        } else {
-            records.push(current_record);
-        }
-        let current_position = records
-            .iter()
-            .position(|record| record.id == step.current_block_id)
-            .unwrap_or(records.len().saturating_sub(1));
-        if redo {
-            let insert_at = current_position.saturating_add(1).min(records.len());
-            records.splice(insert_at..insert_at, step.inserted_records.clone());
-        } else {
-            let restore_at = current_position.saturating_add(1).min(records.len());
-            records.splice(restore_at..restore_at, step.deleted_records.clone());
-        }
-
-        let current_payload = if redo {
-            step.after_current_payload.clone()
-        } else {
-            step.before_current_payload.clone()
-        };
-        let mut current_payload = normalize_payload_record_for_kind(current_payload);
-        self.sync_table_runtime_from_loaded_record(&mut current_payload);
-        self.payload_window.insert(current_payload.clone());
-        if redo {
-            for block_id in deleted_ids {
-                self.payload_window.remove(block_id);
-                self.text_models.remove(&block_id);
-                self.table_runtimes.remove(&block_id);
-            }
-            for payload in &step.inserted_payloads {
-                let mut payload = normalize_payload_record_for_kind(payload.clone());
-                if matches!(payload.kind, RichBlockKind::Table) {
-                    self.sync_table_runtime_from_loaded_record(&mut payload);
-                }
-                self.payload_window.insert(payload);
-            }
-        } else {
-            let capture_inserted_payloads = step.inserted_payloads.is_empty();
-            for block_id in inserted_ids {
-                if capture_inserted_payloads
-                    && let Some(payload) = self.payload_window.remove(block_id)
-                {
-                    step.inserted_payloads.push(payload);
-                } else {
-                    self.payload_window.remove(block_id);
-                }
-                self.text_models.remove(&block_id);
-                self.table_runtimes.remove(&block_id);
-            }
-            for payload in &step.deleted_payloads {
-                let mut payload = normalize_payload_record_for_kind(payload.clone());
-                self.sync_table_runtime_from_loaded_record(&mut payload);
-                self.payload_window.insert(payload.clone());
-            }
-        }
-        self.rebuild_structure_index(records)?;
-        let focus = if redo {
-            step.after_focus
-        } else {
-            step.before_focus
-        };
-        if let Some((block_id, offset)) = focus {
-            let _ = self.focus_block_at_offset(block_id, offset);
-        }
-        Ok(())
-    }
-
-    pub(super) fn record_structure_move(&mut self, step: StructureMoveUndoStep) {
-        self.structure_undo_stack.push(step);
-        if self.structure_undo_stack.len() > 100 {
-            self.structure_undo_stack.remove(0);
-        }
-        self.structure_redo_stack.clear();
-        self.undo_events.push(RuntimeUndoEvent::StructureMove);
-        if self.undo_events.len() > 1_000 {
-            self.undo_events.remove(0);
-        }
-        self.redo_events.clear();
-    }
-
-    pub(super) fn queue_structure_move_transaction(
-        &mut self,
-        step: StructureMoveUndoStep,
-        forward: bool,
+        surface_id: SurfaceId,
+        next_offset: Option<usize>,
+        changed: bool,
     ) {
-        let transaction_id = self.next_transaction_id;
-        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
-        let (parent_id, sibling_index, inverse_parent_id, inverse_sibling_index) = if forward {
-            (
-                step.new_parent_id,
-                step.new_sibling_index,
-                step.old_parent_id,
-                step.old_sibling_index,
-            )
-        } else {
-            (
-                step.old_parent_id,
-                step.old_sibling_index,
-                step.new_parent_id,
-                step.new_sibling_index,
-            )
-        };
-        self.pending_structure_transactions
-            .push(EditTransaction::new(
-                transaction_id,
-                EditTransactionKind::BlockStructureChange,
-                transaction_id,
-                vec![EditOperation::MoveBlockToParent {
-                    block_id: step.block_id,
-                    parent_id,
-                    sibling_index,
-                }],
-                vec![EditOperation::MoveBlockToParent {
-                    block_id: step.block_id,
-                    parent_id: inverse_parent_id,
-                    sibling_index: inverse_sibling_index,
-                }],
-            ));
+        let request = self.pending_typing_undo.take();
+        if !changed {
+            self.typing_undo_group = None;
+            return;
+        }
+        if let (Some(group), Some(next_offset)) = (&mut self.typing_undo_group, next_offset)
+            && group.surface_id == surface_id
+        {
+            group.next_offset = next_offset;
+            if let Some(request) = request {
+                group.last_input_at = request.started_at;
+            }
+        }
     }
 
-    fn restore_snapshot(
+    pub fn break_typing_coalescing(&mut self) {
+        self.pending_typing_undo = None;
+        self.typing_undo_group = None;
+        self.typing_mark_override = None;
+    }
+
+    pub(super) fn restore_snapshot(
         &mut self,
         block_id: BlockId,
         snapshot: TextSnapshot,
     ) -> Result<(), String> {
+        let scroll = snapshot.scroll;
         let text = snapshot.payload.plain_text();
+        let input_target = snapshot.input_target;
+        let selected_range = snapshot.selected_range.clone();
+        let selection_reversed = snapshot.selection_reversed;
+        let focused_table_cell = snapshot.focused_table_cell;
         self.replace_block_kind_and_payload(block_id, snapshot.kind, snapshot.payload)?;
         let _ = self.refresh_table_block_height(block_id)?;
-        if self.focused_block_id() != Some(block_id) {
-            self.focus_block(block_id);
-        }
-        if let Some(editing) = self.editing.as_mut() {
-            editing.content_version = snapshot.content_version;
-            editing.caret_anchor.text_offset = text.len() as u64;
-        }
         if let Some(payload) = self.payload_window.payloads.get_mut(&block_id) {
             payload.content_version = snapshot.content_version;
         }
-        self.restore_snapshot_table_focus(block_id, snapshot.focused_table_cell);
+        match input_target {
+            Some(
+                target @ (InputTarget::ImageCaption { .. } | InputTarget::CollectionTitle { .. }),
+            ) => {
+                let offset = selected_range
+                    .as_ref()
+                    .map(|range| {
+                        if selection_reversed {
+                            range.start
+                        } else {
+                            range.end
+                        }
+                    })
+                    .unwrap_or(text.len());
+                if let Some(surface_id) = target.surface_id() {
+                    self.focus_text_surface_at_offset(surface_id, offset)?;
+                }
+            }
+            Some(InputTarget::TableCell { block_id, row, col }) => {
+                let offset = focused_table_cell
+                    .map(|cell| cell.offset)
+                    .unwrap_or_default();
+                self.focus_table_cell_at_offset(block_id, row, col, offset)?;
+            }
+            Some(InputTarget::BlockText { block_id }) => {
+                let offset = selected_range
+                    .as_ref()
+                    .map(|range| {
+                        if selection_reversed {
+                            range.start
+                        } else {
+                            range.end
+                        }
+                    })
+                    .unwrap_or(text.len());
+                if self.text_models.contains_key(&block_id) {
+                    self.focus_block_at_offset(block_id, offset)?;
+                } else {
+                    self.focus_block(block_id);
+                }
+            }
+            Some(InputTarget::ComplexBlock { block_id })
+            | Some(InputTarget::BlockChrome { block_id }) => self.focus_block(block_id),
+            None => {
+                if self.focused_block_id() != Some(block_id) {
+                    self.focus_block(block_id);
+                }
+            }
+        }
+        if let Some(editing) = self.editing.as_mut() {
+            editing.content_version = snapshot.content_version;
+            if let Some(range) = selected_range {
+                editing.set_selected_range(range, selection_reversed);
+            } else {
+                editing.set_collapsed_selection(text.len());
+            }
+        }
+        self.restore_snapshot_table_focus(block_id, focused_table_cell);
         self.selected_block_ids.clear();
+        self.restore_undo_scroll_snapshot(scroll)?;
         Ok(())
+    }
+
+    fn restore_transaction_ux(
+        &mut self,
+        transaction: &EditTransaction,
+        forward: bool,
+    ) -> Result<(), String> {
+        let selection = if forward {
+            transaction.after_selection
+        } else {
+            transaction.before_selection
+        };
+        self.restore_document_selection_ux(selection)?;
+        let selected_blocks = if forward {
+            &transaction.after_selected_blocks
+        } else {
+            &transaction.before_selected_blocks
+        };
+        self.restore_selected_blocks_ux(selected_blocks);
+        let anchor = if forward {
+            transaction.after_anchor
+        } else {
+            transaction.before_anchor
+        };
+        if anchor.is_some() {
+            self.restore_scroll_anchor(anchor, self.scroll.global_scroll_top)?;
+        }
+        Ok(())
+    }
+
+    fn restore_document_selection_ux(
+        &mut self,
+        selection: Option<DocumentSelection>,
+    ) -> Result<(), String> {
+        let Some(selection) = selection else {
+            return Ok(());
+        };
+        self.hydrate_payload_runtime_state(selection.anchor.block_id);
+        self.hydrate_payload_runtime_state(selection.focus.block_id);
+        self.set_document_selection(selection)?;
+        Ok(())
+    }
+
+    fn restore_selected_blocks_ux(&mut self, block_ids: &[BlockId]) {
+        self.selected_block_ids = block_ids
+            .iter()
+            .copied()
+            .filter(|block_id| self.index.index_of(*block_id).is_some())
+            .collect();
+        if !self.selected_block_ids.is_empty() {
+            self.document_selection = None;
+            self.focused_text_selection = None;
+            self.focused_table_cell = None;
+            self.editing = None;
+        }
     }
 
     fn restore_snapshot_table_focus(

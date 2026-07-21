@@ -34,6 +34,7 @@ pub(crate) fn table_viewport_measurement_from_handle(
     (viewport_width_px > 0.5).then_some(TableViewportMeasurement { viewport_width_px })
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_table_horizontal_scrollbar(
     block_id: BlockId,
     table_view: &TableViewState,
@@ -69,7 +70,7 @@ pub(crate) fn render_table_horizontal_scrollbar(
                     .bg(rgb(theme.scrollbar))
                     .hover(move |style| style.bg(rgb(theme.scrollbar_hover)))
                     .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-                        let _ = view.update(cx, |view, cx| {
+                        view.update(cx, |view, cx| {
                             view.start_table_hscroll_drag_from_gui(
                                 block_id,
                                 event.position,

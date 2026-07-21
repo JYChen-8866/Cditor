@@ -35,6 +35,27 @@ impl DocumentRuntime {
         self.set_focused_table_cell_text_selection(anchor, focus_offset)
     }
 
+    pub fn move_focused_table_cell_to_text_position(
+        &mut self,
+        offset: usize,
+        affinity: TextAffinity,
+        extend_selection: bool,
+    ) -> Result<bool, String> {
+        let Some(focused) = self.focused_table_cell else {
+            return Ok(false);
+        };
+        let changed = if extend_selection {
+            self.extend_focused_table_cell_selection_to_offset(offset)?
+        } else {
+            self.focus_table_cell_at_offset(focused.block_id, focused.row, focused.col, offset)?;
+            focused.offset != offset || focused.affinity != affinity
+        };
+        if let Some(cell) = self.focused_table_cell.as_mut() {
+            *cell = cell.with_affinity(affinity);
+        }
+        Ok(changed)
+    }
+
     pub fn move_focused_table_cell_up(&mut self) -> Result<bool, String> {
         self.move_focused_table_cell_vertically(-1)
     }

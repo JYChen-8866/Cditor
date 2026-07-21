@@ -136,6 +136,8 @@ mod composition_input;
 mod conversion_clipboard_media;
 #[path = "tests/delete_navigation_height.rs"]
 mod delete_navigation_height;
+#[path = "tests/focus_composition.rs"]
+mod focus_composition;
 #[path = "tests/inline_color.rs"]
 mod inline_color;
 #[path = "tests/inline_markdown_incremental.rs"]
@@ -144,6 +146,14 @@ mod inline_markdown_incremental;
 mod large_window;
 #[path = "tests/list_structure.rs"]
 mod list_structure;
+#[path = "tests/list_structure_move.rs"]
+mod list_structure_move;
+#[path = "tests/local_block_transactions.rs"]
+mod local_block_transactions;
+#[path = "tests/local_table_transactions.rs"]
+mod local_table_transactions;
+#[path = "tests/local_text_transactions.rs"]
+mod local_text_transactions;
 #[path = "tests/markdown.rs"]
 mod markdown;
 #[path = "tests/multi_block_delete.rs"]
@@ -164,6 +174,16 @@ mod table_core;
 mod table_structure_layout;
 #[path = "tests/table_style_input.rs"]
 mod table_style_input;
+#[path = "tests/text_surface.rs"]
+mod text_surface;
+#[path = "tests/transaction_apply.rs"]
+mod transaction_apply;
+#[path = "tests/transaction_apply_domain.rs"]
+mod transaction_apply_domain;
+#[path = "tests/typing_undo.rs"]
+mod typing_undo;
+#[path = "tests/undo_property.rs"]
+mod undo_property;
 #[path = "tests/window_projection.rs"]
 mod window_projection;
 #[path = "tests/windows_input.rs"]

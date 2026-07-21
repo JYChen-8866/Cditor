@@ -20,6 +20,10 @@ pub(in crate::gui::app) enum BoundInputAction {
     MoveRight { extend_selection: bool },
     MoveUp { extend_selection: bool },
     MoveDown { extend_selection: bool },
+    MoveToPreviousWord { extend_selection: bool },
+    MoveToNextWord { extend_selection: bool },
+    MoveToDocumentStart { extend_selection: bool },
+    MoveToDocumentEnd { extend_selection: bool },
     MoveToLineStart { extend_selection: bool },
     MoveToLineEnd { extend_selection: bool },
     DeleteBackward,
@@ -272,6 +276,13 @@ impl CditorV2View {
         action: BoundInputAction,
         _cx: &mut Context<Self>,
     ) -> bool {
+        let (parley_target, next_preferred_x) = table_cell_parley_target(
+            &self.table_cell_layouts,
+            self.ready_runtime_ref(),
+            action,
+            self.preferred_text_navigation_x,
+        );
+        self.preferred_text_navigation_x = next_preferred_x;
         let vertical_selection_target = match action {
             BoundInputAction::MoveUp {
                 extend_selection: true,
@@ -305,38 +316,127 @@ impl CditorV2View {
                 .unwrap_or(false),
             BoundInputAction::MoveLeft {
                 extend_selection: true,
-            } => runtime
-                .extend_focused_table_cell_selection_left()
-                .unwrap_or(false),
+            } => parley_target
+                .and_then(|position| {
+                    runtime
+                        .move_focused_table_cell_to_text_position(
+                            position.offset,
+                            position.affinity,
+                            true,
+                        )
+                        .ok()
+                })
+                .unwrap_or_else(|| {
+                    runtime
+                        .extend_focused_table_cell_selection_left()
+                        .unwrap_or(false)
+                }),
             BoundInputAction::MoveLeft {
                 extend_selection: false,
-            } => runtime.move_focused_table_cell_left().unwrap_or(false),
+            } => parley_target
+                .and_then(|position| {
+                    runtime
+                        .move_focused_table_cell_to_text_position(
+                            position.offset,
+                            position.affinity,
+                            false,
+                        )
+                        .ok()
+                })
+                .unwrap_or_else(|| runtime.move_focused_table_cell_left().unwrap_or(false)),
             BoundInputAction::MoveRight {
                 extend_selection: true,
-            } => runtime
-                .extend_focused_table_cell_selection_right()
-                .unwrap_or(false),
+            } => parley_target
+                .and_then(|position| {
+                    runtime
+                        .move_focused_table_cell_to_text_position(
+                            position.offset,
+                            position.affinity,
+                            true,
+                        )
+                        .ok()
+                })
+                .unwrap_or_else(|| {
+                    runtime
+                        .extend_focused_table_cell_selection_right()
+                        .unwrap_or(false)
+                }),
             BoundInputAction::MoveRight {
                 extend_selection: false,
-            } => runtime.move_focused_table_cell_right().unwrap_or(false),
+            } => parley_target
+                .and_then(|position| {
+                    runtime
+                        .move_focused_table_cell_to_text_position(
+                            position.offset,
+                            position.affinity,
+                            false,
+                        )
+                        .ok()
+                })
+                .unwrap_or_else(|| runtime.move_focused_table_cell_right().unwrap_or(false)),
             BoundInputAction::MoveUp {
                 extend_selection: true,
             }
             | BoundInputAction::MoveDown {
                 extend_selection: true,
-            } => vertical_selection_target
-                .and_then(|target| {
+            } => parley_target
+                .and_then(|position| {
                     runtime
-                        .extend_focused_table_cell_selection_to_offset(target)
+                        .move_focused_table_cell_to_text_position(
+                            position.offset,
+                            position.affinity,
+                            true,
+                        )
                         .ok()
+                })
+                .or_else(|| {
+                    vertical_selection_target.and_then(|target| {
+                        runtime
+                            .extend_focused_table_cell_selection_to_offset(target)
+                            .ok()
+                    })
                 })
                 .unwrap_or(false),
             BoundInputAction::MoveUp {
                 extend_selection: false,
-            } => runtime.move_focused_table_cell_up().unwrap_or(false),
+            } => parley_target
+                .and_then(|position| {
+                    runtime
+                        .move_focused_table_cell_to_text_position(
+                            position.offset,
+                            position.affinity,
+                            false,
+                        )
+                        .ok()
+                })
+                .unwrap_or_else(|| runtime.move_focused_table_cell_up().unwrap_or(false)),
             BoundInputAction::MoveDown {
                 extend_selection: false,
-            } => runtime.move_focused_table_cell_down().unwrap_or(false),
+            } => parley_target
+                .and_then(|position| {
+                    runtime
+                        .move_focused_table_cell_to_text_position(
+                            position.offset,
+                            position.affinity,
+                            false,
+                        )
+                        .ok()
+                })
+                .unwrap_or_else(|| runtime.move_focused_table_cell_down().unwrap_or(false)),
+            BoundInputAction::MoveToLineStart { extend_selection }
+            | BoundInputAction::MoveToLineEnd { extend_selection }
+            | BoundInputAction::MoveToPreviousWord { extend_selection }
+            | BoundInputAction::MoveToNextWord { extend_selection } => parley_target
+                .and_then(|position| {
+                    runtime
+                        .move_focused_table_cell_to_text_position(
+                            position.offset,
+                            position.affinity,
+                            extend_selection,
+                        )
+                        .ok()
+                })
+                .unwrap_or(false),
             _ => return false,
         };
         self.slash_menu = None;
@@ -359,6 +459,108 @@ impl CditorV2View {
     }
 }
 
+fn table_cell_parley_target(
+    layouts: &std::collections::HashMap<
+        TableCellLayoutKey,
+        crate::gui::text::RichTextPlatformLayout,
+    >,
+    runtime: Option<&DocumentRuntime>,
+    action: BoundInputAction,
+    preferred_x: Option<(cditor_core::ids::SurfaceId, f32)>,
+) -> (
+    Option<crate::gui::text::ParleyTextPosition>,
+    Option<(cditor_core::ids::SurfaceId, f32)>,
+) {
+    use crate::gui::text::{
+        ParleyMoveCommand, ParleySelection, ParleyTextPosition, TextGeometryOperation,
+        record_snapshot_geometry, record_unavailable_geometry,
+    };
+
+    let (command, extend) = match action {
+        BoundInputAction::MoveLeft { extend_selection } => {
+            (ParleyMoveCommand::PreviousVisual, extend_selection)
+        }
+        BoundInputAction::MoveRight { extend_selection } => {
+            (ParleyMoveCommand::NextVisual, extend_selection)
+        }
+        BoundInputAction::MoveUp { extend_selection } => {
+            (ParleyMoveCommand::PreviousLine, extend_selection)
+        }
+        BoundInputAction::MoveDown { extend_selection } => {
+            (ParleyMoveCommand::NextLine, extend_selection)
+        }
+        BoundInputAction::MoveToLineStart { extend_selection } => {
+            (ParleyMoveCommand::LineStart, extend_selection)
+        }
+        BoundInputAction::MoveToLineEnd { extend_selection } => {
+            (ParleyMoveCommand::LineEnd, extend_selection)
+        }
+        BoundInputAction::MoveToPreviousWord { extend_selection } => {
+            (ParleyMoveCommand::PreviousVisualWord, extend_selection)
+        }
+        BoundInputAction::MoveToNextWord { extend_selection } => {
+            (ParleyMoveCommand::NextVisualWord, extend_selection)
+        }
+        _ => return (None, None),
+    };
+    let Some(runtime) = runtime else {
+        return (None, None);
+    };
+    let Some((block_id, row, col, offset, affinity)) = runtime.focused_table_cell_text_position()
+    else {
+        return (None, None);
+    };
+    let surface_id = cditor_core::ids::SurfaceId::TableCell {
+        block_id,
+        row,
+        column: col,
+    };
+    let Some(cache) = layouts.get(&TableCellLayoutKey { block_id, row, col }) else {
+        record_unavailable_geometry();
+        return (
+            None,
+            preferred_x.filter(|(surface, _)| *surface == surface_id),
+        );
+    };
+    if Some(cache.content_version) != runtime.block_content_version(block_id) {
+        record_unavailable_geometry();
+        return (
+            None,
+            preferred_x.filter(|(surface, _)| *surface == surface_id),
+        );
+    }
+    let layout = &cache.snapshot;
+    record_snapshot_geometry(TextGeometryOperation::Navigation);
+    let anchor_offset = runtime
+        .focused_table_cell_selection_state()
+        .filter(|(id, focused_row, focused_col, _, _, _)| {
+            (*id, *focused_row, *focused_col) == (block_id, row, col)
+        })
+        .map(|(_, _, _, range, reversed, _)| {
+            if range.is_empty() {
+                offset
+            } else if reversed {
+                range.end
+            } else {
+                range.start
+            }
+        })
+        .unwrap_or(offset);
+    let selection = ParleySelection {
+        anchor: ParleyTextPosition::downstream(anchor_offset),
+        focus: ParleyTextPosition { offset, affinity },
+    };
+    let current_preferred_x = preferred_x
+        .filter(|(surface, _)| *surface == surface_id)
+        .map(|(_, x)| x);
+    let (moved, next_preferred_x) =
+        layout.move_selection_with_preferred_x(selection, command, extend, current_preferred_x);
+    (
+        (moved.focus != (ParleyTextPosition { offset, affinity })).then_some(moved.focus),
+        next_preferred_x.map(|x| (surface_id, x)),
+    )
+}
+
 fn table_cell_vertical_selection_target(
     layouts: &std::collections::HashMap<
         TableCellLayoutKey,
@@ -373,14 +575,18 @@ fn table_cell_vertical_selection_target(
     if cache.content_version != runtime.block_content_version(block_id)? {
         return None;
     }
-    let bounds = crate::gui::text::platform_range_bounds(cache, caret..caret)?;
+    let bounds = crate::gui::text::platform_range_bounds(cache, caret..caret);
     let target = gpui::point(
         bounds.left() + bounds.size.width / 2.0,
-        bounds.top() + cache.line_height * direction as f32,
+        bounds.top() + bounds.size.height * direction as f32,
     );
     let next = crate::gui::text::platform_index_for_point(cache, target);
     Some(if next == caret {
-        if direction < 0 { 0 } else { cache.text.len() }
+        if direction < 0 {
+            0
+        } else {
+            cache.snapshot.text().len()
+        }
     } else {
         next
     })
@@ -404,6 +610,18 @@ fn command_for_bound_action(action: BoundInputAction) -> GuiInputCommand {
         }
         BoundInputAction::MoveDown { extend_selection } => {
             GuiInputCommand::MoveCaretDown { extend_selection }
+        }
+        BoundInputAction::MoveToPreviousWord { extend_selection } => {
+            GuiInputCommand::MoveCaretToPreviousWord { extend_selection }
+        }
+        BoundInputAction::MoveToNextWord { extend_selection } => {
+            GuiInputCommand::MoveCaretToNextWord { extend_selection }
+        }
+        BoundInputAction::MoveToDocumentStart { extend_selection } => {
+            GuiInputCommand::MoveCaretToDocumentStart { extend_selection }
+        }
+        BoundInputAction::MoveToDocumentEnd { extend_selection } => {
+            GuiInputCommand::MoveCaretToDocumentEnd { extend_selection }
         }
         BoundInputAction::MoveToLineStart { extend_selection } => {
             GuiInputCommand::MoveCaretToLineStart { extend_selection }

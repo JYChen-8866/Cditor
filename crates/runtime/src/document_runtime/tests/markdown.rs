@@ -137,6 +137,47 @@ fn markdown_paste_deletes_cross_block_selection_and_undo_restores_it() {
 }
 
 #[test]
+fn markdown_paste_over_nested_boundary_preserves_trailing_subtree_transactionally() {
+    let mut runtime = runtime_with_kind_depths_and_text(vec![
+        (RichBlockKind::Paragraph, 0, None, "AA"),
+        (RichBlockKind::Paragraph, 1, Some(1), "BB"),
+        (RichBlockKind::Paragraph, 2, Some(2), "CC"),
+        (RichBlockKind::Paragraph, 0, None, "DD"),
+    ]);
+    runtime.set_document_text_selection(1, 1, 2, 1).unwrap();
+    let before_selection = runtime.document_selection_snapshot();
+
+    assert!(runtime.insert_markdown_paste("- x\n- y").unwrap());
+    assert_eq!(runtime.index.block_ids, vec![1, 6, 3, 4]);
+    assert_eq!(runtime.index.parent_ids, vec![None, None, None, None]);
+    assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "Ax");
+    assert_eq!(runtime.block_payload_record(6).unwrap().plain_text(), "yB");
+    assert_eq!(runtime.block_payload_record(3).unwrap().plain_text(), "CC");
+    let transactions = runtime.drain_pending_structure_transactions();
+    assert_eq!(transactions.len(), 1);
+    assert_eq!(transactions[0].kind, EditTransactionKind::Paste);
+    assert_eq!(
+        transactions[0].origin,
+        cditor_core::edit::ChangeOrigin::Import
+    );
+    assert!(matches!(
+        transactions[0].ops.as_slice(),
+        [
+            EditOperation::Block(_),
+            EditOperation::DeleteBlockRange { .. },
+            EditOperation::InsertBlocks { payloads, .. }
+        ] if payloads.len() == 2
+    ));
+
+    assert!(runtime.undo_focused_block().unwrap());
+    assert_eq!(runtime.index.block_ids, vec![1, 2, 3, 4]);
+    assert_eq!(runtime.index.parent_ids, vec![None, Some(1), Some(2), None]);
+    assert_eq!(runtime.document_selection_snapshot(), before_selection);
+    assert!(runtime.redo_focused_block().unwrap());
+    assert_eq!(runtime.index.block_ids, vec![1, 6, 3, 4]);
+}
+
+#[test]
 fn markdown_paste_undo_redo_restores_structure_and_payloads() {
     let mut runtime = runtime_with_kind_depths_and_text(vec![(
         RichBlockKind::Paragraph,

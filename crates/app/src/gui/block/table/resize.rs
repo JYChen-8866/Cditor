@@ -75,7 +75,7 @@ fn render_table_resize_handle(
         .opacity(table_resize_handle_idle_opacity(track.axis))
         .hover(|style| style.opacity(1.0))
         .on_mouse_down(gpui::MouseButton::Left, move |event, window, cx| {
-            let _ = start_view.update(cx, |view, cx| {
+            start_view.update(cx, |view, cx| {
                 view.start_table_resize_from_gui(
                     block_id,
                     track.axis,
@@ -360,6 +360,7 @@ mod tests {
             horizontal_scroll_offset_px: 0.0,
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_affinity: None,
             focused_cell_selection_range: None,
             visible_cells: vec![
                 visible_cell(0, 0, 0.0, 0.0),

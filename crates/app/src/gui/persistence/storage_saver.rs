@@ -265,9 +265,11 @@ impl StoragePersistenceState {
         if self.last_saved_structure_version.is_none() {
             self.last_saved_structure_version = Some(structure_version);
         }
-        let index_records = should_save_structure
-            .then(|| runtime.index_records_snapshot())
-            .unwrap_or_default();
+        let index_records = if should_save_structure {
+            runtime.index_records_snapshot()
+        } else {
+            Default::default()
+        };
 
         if transactions.is_empty() && payloads.is_empty() && index_records.is_empty() {
             return None;

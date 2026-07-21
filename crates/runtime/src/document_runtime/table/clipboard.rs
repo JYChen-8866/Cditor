@@ -17,30 +17,46 @@ impl DocumentRuntime {
         let range = self
             .table_range_selection_range(block_id, range)
             .ok_or_else(|| "invalid table clipboard range".to_owned())?;
-        let changed = {
-            let runtime = self
-                .table_runtime_mut(block_id)
-                .ok_or_else(|| format!("missing table runtime for block {block_id}"))?;
-            let mut changed = false;
-            for row in range.start_row..=range.end_row {
-                for col in range.start_col..=range.end_col {
-                    if runtime
-                        .cell_plain_text(row, col)
-                        .is_some_and(|text| !text.is_empty())
-                    {
-                        runtime
-                            .set_cell_plain_text(row, col, String::new())
-                            .ok_or_else(|| format!("missing table cell {row}:{col}"))?;
-                        changed = true;
-                    }
+        let table = self
+            .table_runtime(block_id)
+            .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
+            .table();
+        let mut forward = Vec::new();
+        let mut inverse = Vec::new();
+        for row in range.start_row..=range.end_row {
+            for col in range.start_col..=range.end_col {
+                let cell = &table.rows[row].cells[col];
+                if plain_text_from_spans(&cell.spans).is_empty() {
+                    continue;
                 }
+                let cleared = vec![InlineSpan::plain(String::new())];
+                forward.push(TableEditOperation::SetCellText {
+                    block_id,
+                    row,
+                    col,
+                    old_spans: cell.spans.clone(),
+                    new_spans: cleared.clone(),
+                });
+                inverse.push(TableEditOperation::SetCellText {
+                    block_id,
+                    row,
+                    col,
+                    old_spans: cleared,
+                    new_spans: cell.spans.clone(),
+                });
             }
-            changed
-        };
-        if changed {
-            self.commit_table_runtime_payload(block_id)?;
         }
-        Ok(changed)
+        if forward.is_empty() {
+            return Ok(false);
+        }
+        inverse.reverse();
+        self.apply_local_table_operations(
+            block_id,
+            EditTransactionKind::ExplicitCommand,
+            forward,
+            inverse,
+        )?;
+        Ok(true)
     }
 
     pub fn paste_delimited_table_text_at_focused_cell(
@@ -60,22 +76,40 @@ impl DocumentRuntime {
         let Some(focused) = self.focused_table_cell else {
             return Ok(false);
         };
-        let changed = {
-            let runtime = self
-                .table_runtime_mut(focused.block_id)
-                .ok_or_else(|| format!("missing table runtime for block {}", focused.block_id))?;
-            runtime.paste_table_at(focused.row, focused.col, &snapshot.table)?
-        };
-        if changed {
-            self.focused_table_cell = Some(FocusedTableCell::collapsed(
-                focused.block_id,
-                focused.row,
-                focused.col,
-                0,
-            ));
-            self.commit_table_runtime_payload(focused.block_id)?;
+        let runtime = self
+            .table_runtime(focused.block_id)
+            .ok_or_else(|| format!("missing table runtime for block {}", focused.block_id))?;
+        let mut preview = runtime.clone();
+        if !preview.paste_table_at(focused.row, focused.col, &snapshot.table)? {
+            return Ok(false);
         }
-        Ok(changed)
+        let kind = self
+            .payload_window
+            .get(focused.block_id)
+            .map(|record| record.kind.clone())
+            .ok_or_else(|| format!("missing payload for block {}", focused.block_id))?;
+        self.apply_local_block_payload_transaction_with_origin(
+            focused.block_id,
+            EditTransactionKind::Paste,
+            cditor_core::edit::ChangeOrigin::Import,
+            kind,
+            preview.payload(),
+        )?;
+        self.focused_table_cell = Some(FocusedTableCell::collapsed(
+            focused.block_id,
+            focused.row,
+            focused.col,
+            0,
+        ));
+        if let Some(editing) = self.editing.as_mut() {
+            editing.set_input_target(InputTarget::TableCell {
+                block_id: focused.block_id,
+                row: focused.row,
+                col: focused.col,
+            });
+            editing.set_collapsed_selection(0);
+        }
+        Ok(true)
     }
 
     pub fn table_clipboard_for_cell(

@@ -92,3 +92,29 @@ fn delete_menu_capability_matches_subtree_delete_contract() {
     assert!(final_block.can_delete_block(1));
     assert!(!final_block.can_delete_block(99));
 }
+
+#[test]
+fn enter_and_soft_break_capabilities_follow_surface_ownership() {
+    let mut paragraph =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "text")]);
+    paragraph.focus_block_at_offset(1, 2).unwrap();
+    assert!(paragraph.can_handle_enter());
+    assert!(paragraph.can_insert_soft_line_break());
+
+    let mut image = runtime_with_single_payload(
+        RichBlockKind::Image,
+        BlockPayload::Image(cditor_core::rich_text::ImagePayload::default()),
+    );
+    image.focus_block(1);
+    assert!(image.can_handle_enter());
+    assert!(!image.can_insert_soft_line_break());
+
+    let mut table =
+        runtime_with_single_payload(RichBlockKind::Table, sample_table_payload().payload);
+    table.focus_block(1);
+    assert!(!table.can_handle_enter());
+    assert!(!table.can_insert_soft_line_break());
+    table.focus_table_cell_at_offset(1, 0, 0, 0).unwrap();
+    assert!(table.can_handle_enter());
+    assert!(table.can_insert_soft_line_break());
+}

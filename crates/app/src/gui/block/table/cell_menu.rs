@@ -28,6 +28,7 @@ struct TableCellMenuAnchor {
     top: f32,
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_table_cell_menu(
     selection: TableCellSelection,
     table_view: &TableViewState,
@@ -88,7 +89,7 @@ pub(crate) fn render_table_cell_menu(
         .on_mouse_down_out({
             let view = view.clone();
             move |_event, _window, cx| {
-                let _ = view.update(cx, |view, cx| {
+                view.update(cx, |view, cx| {
                     view.dismiss_table_menu_from_gui(cx);
                 });
             }
@@ -278,6 +279,7 @@ mod tests {
             horizontal_scroll_offset_px: -40.0,
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_affinity: None,
             focused_cell_selection_range: None,
             row_count: 2,
             col_count: 3,
@@ -458,6 +460,7 @@ mod tests {
             horizontal_scroll_offset_px,
             focused_cell: None,
             focused_cell_offset: None,
+            focused_cell_affinity: None,
             focused_cell_selection_range: None,
             row_count: 1,
             col_count: 1,

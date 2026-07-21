@@ -99,6 +99,7 @@ fn delete_50k_blocks(for_undo: bool) -> StructureEditAcceptanceResult {
             } else {
                 Vec::new()
             },
+            payloads: Vec::new(),
         }],
     );
     let mut undo = UndoStack::default();

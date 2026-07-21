@@ -34,6 +34,7 @@ impl BlockView {
         Self { theme }
     }
 
+    #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
     pub(crate) fn render(
         &self,
         block: &ViewBlockSnapshot,
@@ -132,7 +133,7 @@ impl BlockView {
                 hover_block_from_mouse(&hover_view, block_id, event, cx);
             })),
             Some(Box::new(move |_event, window, cx| {
-                let _ = add_view.update(cx, |view, cx| {
+                add_view.update(cx, |view, cx| {
                     view.insert_paragraph_after_block_from_gui(block_id, window, cx);
                 });
                 cx.stop_propagation();
@@ -147,6 +148,7 @@ impl BlockView {
     }
 }
 
+#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 fn render_kind_content(
     block: &ViewBlockSnapshot,
     theme: GuiTheme,

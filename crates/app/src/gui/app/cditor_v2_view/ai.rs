@@ -7,6 +7,7 @@ use cditor_ai::{
 use cditor_runtime::{AiApplyMode, AiRequestPresentation, AiStreamApplyResult, RuntimeAiTarget};
 use gpui::{AppContext, Context, px};
 
+use crate::api::{AiApplyCommandMode, CditorCommand, CommandOutcomeStatus, CommandSource};
 use crate::gui::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::gui::input::{
     AiPromptEditAction, AiPromptKeyResult, AiPromptState, apply_ai_prompt_action,
@@ -74,14 +75,17 @@ impl CditorV2View {
         let Some(block_id) = self.ready_runtime_ref().and_then(|runtime| {
             runtime
                 .ai_session_snapshot()
-                .and_then(|session| match session.target {
-                    RuntimeAiTarget::InlineCaret(position) => Some(position.block_id),
-                    RuntimeAiTarget::TextSelection(selection) => Some(selection.focus.block_id),
+                .map(|session| match session.target {
+                    RuntimeAiTarget::InlineCaret(position) => position.block_id,
+                    RuntimeAiTarget::TextSelection(selection) => selection.focus.block_id,
                 })
                 .or_else(|| runtime.focused_block_id())
         }) else {
             return false;
         };
+        if !self.commit_document_composition_before_external_focus(cx) {
+            return false;
+        }
         if let Some(runtime) = self.ready_runtime() {
             runtime.cancel_ai_request();
         }
@@ -236,19 +240,19 @@ impl CditorV2View {
         mode: AiApplyMode,
         cx: &mut Context<Self>,
     ) -> bool {
-        let result = self
-            .ready_runtime()
-            .ok_or_else(|| "runtime is not ready".to_owned())
-            .and_then(|runtime| runtime.apply_ai_preview(mode));
+        let mode = match mode {
+            AiApplyMode::Replace => AiApplyCommandMode::Replace,
+            AiApplyMode::InsertAfter => AiApplyCommandMode::InsertAfter,
+        };
+        let result = self.dispatch_command(
+            CditorCommand::ApplyAiPreview { mode },
+            CommandSource::Ai,
+            cx,
+        );
         match result {
-            Ok(true) => {
-                self.mark_dirty_with_origin(crate::api::ChangeOrigin::Ai, cx);
-                cx.notify();
-                true
-            }
-            Ok(false) => false,
+            Ok(outcome) => outcome.status == CommandOutcomeStatus::Applied,
             Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error);
+                self.save_status = EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

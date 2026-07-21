@@ -153,7 +153,7 @@ pub fn render_floating_toolbar(
                 panel.on_mouse_down_out({
                     let view = view.clone();
                     move |_event, _window, cx| {
-                        let _ = view.update(cx, |view, cx| {
+                        view.update(cx, |view, cx| {
                             view.dismiss_gutter_toolbar_from_gui(cx);
                         });
                     }
@@ -236,7 +236,7 @@ fn render_color_trigger(
                 .on_hover({
                     let view = view.clone();
                     move |hovered, _window, cx| {
-                        let _ = view.update(cx, |view, cx| {
+                        view.update(cx, |view, cx| {
                             view.set_color_menu_hovered(*hovered, cx);
                         });
                     }
@@ -339,7 +339,7 @@ fn render_delete_action(
                 .hover(|style| style.bg(rgb(theme.hover_surface)))
                 .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
                     if let Some(block_id) = block_id {
-                        let _ = view.update(cx, |view, cx| {
+                        view.update(cx, |view, cx| {
                             view.delete_block_from_gui(block_id, cx);
                         });
                     }
@@ -386,7 +386,7 @@ fn render_block_format_header(
                 .on_mouse_move({
                     let view = view.clone();
                     move |_event, _window, cx| {
-                        let _ = view.update(cx, |view, cx| {
+                        view.update(cx, |view, cx| {
                             view.open_block_transform_menu_from_gui(cx);
                         });
                     }
@@ -394,7 +394,7 @@ fn render_block_format_header(
                 .on_mouse_down(MouseButton::Left, {
                     let view = view.clone();
                     move |_event, _window, cx| {
-                        let _ = view.update(cx, |view, cx| {
+                        view.update(cx, |view, cx| {
                             view.open_block_transform_menu_from_gui(cx);
                         });
                         cx.stop_propagation();
@@ -487,7 +487,7 @@ fn render_format_button(
                 .cursor_pointer()
                 .hover(|style| style.bg(rgb(theme.hover_surface)))
                 .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-                    let _ = view.update(cx, |view, cx| {
+                    view.update(cx, |view, cx| {
                         view.apply_inline_format_from_toolbar(action, state.has_text_selection, cx);
                     });
                     cx.stop_propagation();
@@ -595,7 +595,7 @@ fn render_custom_ai_button(
             .cursor_pointer()
             .hover(|style| style.bg(rgb(theme.hover_surface)))
             .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-                let _ = view.update(cx, |view, cx| {
+                view.update(cx, |view, cx| {
                     view.open_ai_prompt_from_gui(x, y, cx);
                 });
                 cx.stop_propagation();

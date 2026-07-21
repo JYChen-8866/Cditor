@@ -50,7 +50,7 @@ pub(crate) fn render_whiteboard_editor(
                 .cursor_pointer()
                 .hover(move |style| style.bg(rgb(theme.hover_surface)))
                 .on_mouse_down(gpui::MouseButton::Left, move |_event, _window, cx| {
-                    let _ = close_view.update(cx, |view, cx| {
+                    close_view.update(cx, |view, cx| {
                         view.close_whiteboard_editor_from_gui(cx);
                     });
                     cx.stop_propagation();

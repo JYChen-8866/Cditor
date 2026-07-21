@@ -51,7 +51,7 @@ impl SkeletonItem {
     }
 
     pub fn render(self, theme: GuiTheme) -> AnyElement {
-        let height = self.height_px.unwrap_or_else(|| match self.variant {
+        let height = self.height_px.unwrap_or(match self.variant {
             SkeletonVariant::Text => 14.0,
             SkeletonVariant::Heading => 22.0,
             SkeletonVariant::Circle => 20.0,

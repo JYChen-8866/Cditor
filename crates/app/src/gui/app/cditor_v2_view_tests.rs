@@ -5,7 +5,6 @@ use crate::gui::app::input::ime::{
     code_language_input_target_allows, platform_input_fallback_range, platform_input_target_allows,
     platform_selected_text_range,
 };
-use crate::gui::app::input::keyboard::ensure_runtime_focus_for_insert_char;
 use crate::gui::app::interaction::geometry::{
     ParentDropTarget, drop_target_for_document_y_from_rects, fallback_text_metrics_for_block,
     parent_drop_target_from_rects,
@@ -31,43 +30,6 @@ fn cditor_view_state_can_swap_from_loading_to_ready_or_failed() {
     assert!(state.is_ready());
     state.apply_load_failed("network error");
     assert!(state.is_load_failed());
-}
-
-#[test]
-fn insert_char_focus_helper_preserves_existing_middle_caret() {
-    let mut runtime = DocumentRuntime::from_payloads(
-        1,
-        vec![cditor_core::rich_text::BlockPayloadRecord::rich_text(
-            1,
-            cditor_core::rich_text::RichBlockKind::Paragraph,
-            "abcdef",
-        )],
-        720.0,
-    );
-    runtime.focus_block_at_offset(1, 3).unwrap();
-
-    ensure_runtime_focus_for_insert_char(&mut runtime);
-
-    assert_eq!(runtime.focused_block_id(), Some(1));
-    assert_eq!(runtime.caret_offset_for_block(1), Some(3));
-}
-
-#[test]
-fn insert_char_focus_helper_falls_back_only_when_unfocused() {
-    let mut runtime = DocumentRuntime::from_payloads(
-        1,
-        vec![cditor_core::rich_text::BlockPayloadRecord::rich_text(
-            1,
-            cditor_core::rich_text::RichBlockKind::Paragraph,
-            "abcdef",
-        )],
-        720.0,
-    );
-
-    ensure_runtime_focus_for_insert_char(&mut runtime);
-
-    assert_eq!(runtime.focused_block_id(), Some(1));
-    assert_eq!(runtime.caret_offset_for_block(1), Some("abcdef".len()));
 }
 
 #[test]
@@ -193,6 +155,7 @@ fn platform_input_target_guard_rejects_stale_registered_cell() {
         720.0,
     );
     runtime.focus_table_cell_at_offset(1, 0, 1, 2).unwrap();
+    let registered_identity = runtime.input_session_identity();
 
     assert!(platform_input_target_allows(
         Some(GuiPlatformInputTarget::TableCell {
@@ -200,6 +163,7 @@ fn platform_input_target_guard_rejects_stale_registered_cell() {
             row: 0,
             col: 1
         }),
+        registered_identity,
         &runtime
     ));
     assert!(!platform_input_target_allows(
@@ -208,6 +172,18 @@ fn platform_input_target_guard_rejects_stale_registered_cell() {
             row: 0,
             col: 0
         }),
+        registered_identity,
+        &runtime
+    ));
+
+    runtime.focus_table_cell_at_offset(1, 0, 1, 2).unwrap();
+    assert!(!platform_input_target_allows(
+        Some(GuiPlatformInputTarget::TableCell {
+            block_id: 1,
+            row: 0,
+            col: 1
+        }),
+        registered_identity,
         &runtime
     ));
 }
@@ -299,6 +275,24 @@ fn gui_platform_input_target_covers_runtime_and_toolbar_targets() {
         GuiPlatformInputTarget::BlockText { block_id: 1 }
     );
     assert_eq!(
+        GuiPlatformInputTarget::from_runtime_target(cditor_runtime::InputTarget::ImageCaption {
+            block_id: 7
+        }),
+        GuiPlatformInputTarget::ImageCaption { block_id: 7 }
+    );
+    assert_eq!(
+        GuiPlatformInputTarget::from_runtime_target(cditor_runtime::InputTarget::CollectionTitle {
+            block_id: 8
+        }),
+        GuiPlatformInputTarget::CollectionTitle { block_id: 8 }
+    );
+    assert_eq!(
+        GuiPlatformInputTarget::from_surface_id(cditor_core::ids::SurfaceId::ImageCaption {
+            block_id: 7
+        }),
+        Some(GuiPlatformInputTarget::ImageCaption { block_id: 7 })
+    );
+    assert_eq!(
         GuiPlatformInputTarget::from_runtime_target(cditor_runtime::InputTarget::TableCell {
             block_id: 2,
             row: 3,
@@ -316,6 +310,48 @@ fn gui_platform_input_target_covers_runtime_and_toolbar_targets() {
     assert!(code_language.is_code_language_for(5));
     assert!(!code_language.is_code_language_for(6));
     assert!(!GuiPlatformInputTarget::BlockText { block_id: 5 }.is_code_language_for(5));
+}
+
+#[test]
+fn platform_input_target_guard_accepts_only_the_focused_auxiliary_surface() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![cditor_core::rich_text::BlockPayloadRecord {
+            block_id: 10,
+            content_version: 1,
+            kind: cditor_core::rich_text::RichBlockKind::Image,
+            payload: cditor_core::rich_text::BlockPayload::Image(
+                cditor_core::rich_text::ImagePayload {
+                    caption: "caption".into(),
+                    ..Default::default()
+                },
+            ),
+        }],
+        720.0,
+    );
+    runtime
+        .focus_text_surface_at_offset(
+            cditor_core::ids::SurfaceId::ImageCaption { block_id: 10 },
+            2,
+        )
+        .unwrap();
+    let identity = runtime.input_session_identity();
+
+    assert!(platform_input_target_allows(
+        Some(GuiPlatformInputTarget::ImageCaption { block_id: 10 }),
+        identity,
+        &runtime,
+    ));
+    assert!(!platform_input_target_allows(
+        Some(GuiPlatformInputTarget::BlockText { block_id: 10 }),
+        identity,
+        &runtime,
+    ));
+    assert!(!platform_input_target_allows(
+        Some(GuiPlatformInputTarget::CollectionTitle { block_id: 10 }),
+        identity,
+        &runtime,
+    ));
 }
 
 #[test]
@@ -382,6 +418,7 @@ fn fallback_snapshot(
         selection_overlay: false,
         focused: false,
         caret_offset: None,
+        caret_affinity: None,
         marked_range: None,
         table_view: None,
         focused_table_cell: None,

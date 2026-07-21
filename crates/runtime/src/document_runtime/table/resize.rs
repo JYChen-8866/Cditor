@@ -7,16 +7,34 @@ impl DocumentRuntime {
         row: usize,
         height: TableTrackSize,
     ) -> Result<bool, String> {
-        let changed = {
-            let runtime = self
-                .table_runtime_mut(block_id)
-                .ok_or_else(|| format!("missing table runtime for block {block_id}"))?;
-            runtime.set_row_height(row, height)?
-        };
-        if changed {
-            self.commit_table_runtime_payload(block_id)?;
+        let old_height = self
+            .table_runtime(block_id)
+            .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
+            .table()
+            .rows
+            .get(row)
+            .ok_or_else(|| format!("row {row} out of bounds"))?
+            .height;
+        if old_height == height {
+            return Ok(false);
         }
-        Ok(changed)
+        self.apply_local_table_operation(
+            block_id,
+            EditTransactionKind::DragDrop,
+            TableEditOperation::ResizeRow {
+                block_id,
+                row,
+                old_height,
+                new_height: height,
+            },
+            TableEditOperation::ResizeRow {
+                block_id,
+                row,
+                old_height: height,
+                new_height: old_height,
+            },
+        )?;
+        Ok(true)
     }
 
     pub fn set_table_column_width(
@@ -25,15 +43,36 @@ impl DocumentRuntime {
         col: usize,
         width: TableTrackSize,
     ) -> Result<bool, String> {
-        let changed = {
-            let runtime = self
-                .table_runtime_mut(block_id)
-                .ok_or_else(|| format!("missing table runtime for block {block_id}"))?;
-            runtime.set_column_width(col, width)?
-        };
-        if changed {
-            self.commit_table_runtime_payload(block_id)?;
+        let mut table = self
+            .table_runtime(block_id)
+            .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
+            .table()
+            .clone();
+        table.normalize();
+        let old_width = table
+            .columns
+            .get(col)
+            .ok_or_else(|| format!("column {col} out of bounds"))?
+            .width;
+        if old_width == width {
+            return Ok(false);
         }
-        Ok(changed)
+        self.apply_local_table_operation(
+            block_id,
+            EditTransactionKind::DragDrop,
+            TableEditOperation::ResizeColumn {
+                block_id,
+                column: col,
+                old_width,
+                new_width: width,
+            },
+            TableEditOperation::ResizeColumn {
+                block_id,
+                column: col,
+                old_width: width,
+                new_width: old_width,
+            },
+        )?;
+        Ok(true)
     }
 }

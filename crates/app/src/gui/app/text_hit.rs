@@ -1,14 +1,27 @@
 use gpui::{Pixels, Point};
 
-use cditor_core::ids::BlockId;
+use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_runtime::DocumentRuntime;
 
 use crate::gui::app::cditor_v2_view::CditorV2View;
 use crate::gui::app::cditor_v2_view::TableCellLayoutKey;
+use crate::gui::app::input_trace::trace_input;
 use crate::gui::app::interaction::geometry::FallbackViewportOrigin;
 use crate::gui::text::{
-    RichTextLayoutInput, RichTextPlatformLayout, platform_index_for_point, wrap_rich_text,
+    ParleySelectionKind, ParleyTextPosition, RichTextElement, RichTextLayoutInput,
+    RichTextPlatformLayout, platform_text_position_for_point, record_synchronous_geometry_fallback,
+    record_unavailable_geometry, text_geometry_telemetry,
 };
+
+pub(in crate::gui::app) fn selection_kind_for_click_count(
+    click_count: usize,
+) -> Option<ParleySelectionKind> {
+    match click_count {
+        0 | 1 => None,
+        2 => Some(ParleySelectionKind::Word),
+        _ => Some(ParleySelectionKind::Line),
+    }
+}
 
 impl CditorV2View {
     pub(in crate::gui::app) fn current_text_layout_cache(
@@ -34,36 +47,84 @@ impl CditorV2View {
         table_cell_layout_cache_is_current(runtime, cache, block_id).then_some(cache)
     }
 
-    pub(in crate::gui::app) fn text_offset_for_block_at_position(
+    pub(in crate::gui::app) fn current_text_surface_layout_cache(
+        &self,
+        runtime: &DocumentRuntime,
+        surface_id: SurfaceId,
+    ) -> Option<&RichTextPlatformLayout> {
+        match surface_id {
+            SurfaceId::Block(block_id) => self.current_text_layout_cache(runtime, block_id),
+            SurfaceId::TableCell {
+                block_id,
+                row,
+                column,
+            } => self.current_table_cell_layout_cache(runtime, block_id, row, column),
+            SurfaceId::ImageCaption { .. } | SurfaceId::CollectionTitle { .. } => {
+                let cache = self.text_surface_layouts.get(&surface_id)?;
+                let current = runtime.text_surface_snapshot(surface_id)?;
+                (cache.content_version == current.identity.content_version).then_some(cache)
+            }
+            SurfaceId::Ephemeral { .. } => None,
+        }
+    }
+
+    pub(in crate::gui::app) fn text_position_for_surface_at_position(
+        &self,
+        surface_id: SurfaceId,
+        position: Point<Pixels>,
+    ) -> Option<ParleyTextPosition> {
+        let runtime = self.ready_runtime_ref()?;
+        let cache = self.current_text_surface_layout_cache(runtime, surface_id)?;
+        Some(platform_text_position_for_point(cache, position))
+    }
+
+    pub(in crate::gui::app) fn text_position_for_block_at_position(
         &self,
         block_id: BlockId,
         position: Point<Pixels>,
-    ) -> Option<usize> {
+    ) -> Option<ParleyTextPosition> {
         let runtime = self.ready_runtime_ref()?;
         if let Some(cache) = self.current_text_layout_cache(runtime, block_id) {
-            return Some(platform_index_for_point(cache, position));
+            return Some(platform_text_position_for_point(cache, position));
         }
-        self.fallback_text_offset_for_block_at_position(runtime, block_id, position)
+        record_synchronous_geometry_fallback();
+        let fallback =
+            self.fallback_text_position_for_block_at_position(runtime, block_id, position);
+        if fallback.is_none() {
+            record_unavailable_geometry();
+        }
+        trace_input(
+            "geometry.sync_layout_fallback",
+            format_args!(
+                "block={block_id} available={} telemetry={:?}",
+                fallback.is_some(),
+                text_geometry_telemetry()
+            ),
+        );
+        fallback
     }
 
-    pub(in crate::gui::app) fn text_offset_for_table_cell_at_position(
+    pub(in crate::gui::app) fn text_position_for_table_cell_at_position(
         &self,
         block_id: BlockId,
         row: usize,
         col: usize,
         position: Point<Pixels>,
-    ) -> Option<usize> {
+    ) -> Option<ParleyTextPosition> {
         let runtime = self.ready_runtime_ref()?;
-        let cache = self.current_table_cell_layout_cache(runtime, block_id, row, col)?;
-        Some(platform_index_for_point(cache, position))
+        let Some(cache) = self.current_table_cell_layout_cache(runtime, block_id, row, col) else {
+            record_unavailable_geometry();
+            return None;
+        };
+        Some(platform_text_position_for_point(cache, position))
     }
 
-    fn fallback_text_offset_for_block_at_position(
+    fn fallback_text_position_for_block_at_position(
         &self,
         runtime: &DocumentRuntime,
         block_id: BlockId,
         position: Point<Pixels>,
-    ) -> Option<usize> {
+    ) -> Option<ParleyTextPosition> {
         let rect = self
             .projected_block_rects
             .iter()
@@ -78,11 +139,11 @@ impl CditorV2View {
             cditor_core::rich_text::BlockPayload::Html { html, .. } => {
                 vec![cditor_core::rich_text::InlineSpan::plain(html)]
             }
-            _ => return Some(0),
+            _ => return Some(ParleyTextPosition::downstream(0)),
         };
         let text = cditor_core::rich_text::plain_text_from_spans(&spans);
         if text.is_empty() {
-            return Some(0);
+            return Some(ParleyTextPosition::downstream(0));
         }
         let hit_point = fallback_text_hit_point(
             position,
@@ -94,16 +155,19 @@ impl CditorV2View {
         );
         let input = RichTextLayoutInput {
             block_id,
+            surface_id: crate::gui::text::TextLayoutSurfaceId::Block(block_id),
             content_version: payload.content_version,
-            layout_version: 0,
+            layout_version: runtime.block_layout_version(block_id)?,
             kind: payload.kind,
+            text_align: cditor_core::rich_text::TextAlign::Start,
             spans,
             width_px: rect.text_width_px,
             theme_version: 1,
             font_version: 1,
         };
-        let layout = wrap_rich_text(&input);
-        Some(layout.offset_for_point(&text, hit_point))
+        Some(
+            RichTextElement::new(input, crate::gui::GuiTheme::light()).hit_test_position(hit_point),
+        )
     }
 
     pub(in crate::gui::app) fn infer_document_viewport_origin(
@@ -226,45 +290,59 @@ mod tests {
             .replace_text_in_focused_range(None, "\nmore")
             .unwrap();
         let current_version = runtime.block_content_version(1).unwrap();
-        let stale_cache = RichTextPlatformLayout {
-            block_id: 1,
-            content_version: current_version.saturating_sub(1),
-            text: "cell".to_owned(),
-            lines: Vec::new(),
-            bounds: Bounds {
+        let stale_cache = crate::gui::text::test_platform_layout(
+            1,
+            current_version.saturating_sub(1),
+            "cell",
+            Bounds {
                 origin: point(px(10.0), px(20.0)),
                 size: Size {
                     width: px(120.0),
                     height: px(36.0),
                 },
             },
-            line_height: px(17.5),
-            text_align: gpui::TextAlign::Left,
-            measured_height: 36.0,
-            table_cell_position: Some(TableCellPosition { row: 0, col: 0 }),
-        };
+            Some(TableCellPosition { row: 0, col: 0 }),
+        );
         assert!(!table_cell_layout_cache_is_current(
             &runtime,
             &stale_cache,
             1
         ));
-        let current_cache = RichTextPlatformLayout {
-            content_version: current_version,
-            bounds: Bounds {
+        let current_cache = crate::gui::text::test_platform_layout(
+            1,
+            current_version,
+            "cell\nmore",
+            Bounds {
                 origin: point(px(10.0), px(20.0)),
                 size: Size {
                     width: px(120.0),
                     height: px(88.0),
                 },
             },
-            measured_height: 88.0,
-            ..stale_cache
-        };
+            Some(TableCellPosition { row: 0, col: 0 }),
+        );
 
         assert!(table_cell_layout_cache_is_current(
             &runtime,
             &current_cache,
             1
         ));
+    }
+
+    #[test]
+    fn click_count_maps_single_to_caret_double_to_word_and_triple_to_line() {
+        assert_eq!(selection_kind_for_click_count(1), None);
+        assert_eq!(
+            selection_kind_for_click_count(2),
+            Some(ParleySelectionKind::Word)
+        );
+        assert_eq!(
+            selection_kind_for_click_count(3),
+            Some(ParleySelectionKind::Line)
+        );
+        assert_eq!(
+            selection_kind_for_click_count(5),
+            Some(ParleySelectionKind::Line)
+        );
     }
 }

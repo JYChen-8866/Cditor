@@ -7,17 +7,30 @@ impl DocumentRuntime {
         from: usize,
         to: usize,
     ) -> Result<bool, String> {
-        let changed = {
-            let runtime = self
-                .table_runtime_mut(block_id)
-                .ok_or_else(|| format!("missing table runtime for block {block_id}"))?;
-            runtime.move_row(from, to)?
-        };
-        if changed {
-            self.remap_focused_table_cell_after_row_move(block_id, from, to)?;
-            self.commit_table_runtime_payload(block_id)?;
+        let mut preview = self
+            .table_runtime(block_id)
+            .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
+            .clone();
+        if !preview.move_row(from, to)? {
+            return Ok(false);
         }
-        Ok(changed)
+        self.apply_local_table_operation(
+            block_id,
+            EditTransactionKind::DragDrop,
+            TableEditOperation::MoveRows {
+                block_id,
+                from,
+                to,
+                count: 1,
+            },
+            TableEditOperation::MoveRows {
+                block_id,
+                from: to,
+                to: from,
+                count: 1,
+            },
+        )?;
+        Ok(true)
     }
 
     pub fn move_table_column(
@@ -26,17 +39,116 @@ impl DocumentRuntime {
         from: usize,
         to: usize,
     ) -> Result<bool, String> {
-        let changed = {
-            let runtime = self
-                .table_runtime_mut(block_id)
-                .ok_or_else(|| format!("missing table runtime for block {block_id}"))?;
-            runtime.move_column(from, to)?
-        };
-        if changed {
-            self.remap_focused_table_cell_after_column_move(block_id, from, to)?;
-            self.commit_table_runtime_payload(block_id)?;
+        let mut preview = self
+            .table_runtime(block_id)
+            .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
+            .clone();
+        if !preview.move_column(from, to)? {
+            return Ok(false);
         }
-        Ok(changed)
+        self.apply_local_table_operation(
+            block_id,
+            EditTransactionKind::DragDrop,
+            TableEditOperation::MoveColumns {
+                block_id,
+                from,
+                to,
+                count: 1,
+            },
+            TableEditOperation::MoveColumns {
+                block_id,
+                from: to,
+                to: from,
+                count: 1,
+            },
+        )?;
+        Ok(true)
+    }
+
+    pub(in crate::document_runtime) fn remap_focused_table_cell_after_table_operations(
+        &mut self,
+        operations: &[EditOperation],
+    ) {
+        for operation in operations {
+            match operation {
+                EditOperation::Table(TableEditOperation::MoveRows {
+                    block_id,
+                    from,
+                    to,
+                    count: 1,
+                }) => {
+                    let _ = self.remap_focused_table_cell_after_row_move(*block_id, *from, *to);
+                }
+                EditOperation::Table(TableEditOperation::MoveColumns {
+                    block_id,
+                    from,
+                    to,
+                    count: 1,
+                }) => {
+                    let _ = self.remap_focused_table_cell_after_column_move(*block_id, *from, *to);
+                }
+                EditOperation::Table(TableEditOperation::InsertRows {
+                    block_id,
+                    index,
+                    rows,
+                }) => {
+                    for _ in rows {
+                        let _ = self.remap_focused_table_cell_after_row_insert(*block_id, *index);
+                    }
+                }
+                EditOperation::Table(TableEditOperation::DeleteRows {
+                    block_id,
+                    index,
+                    rows,
+                }) => {
+                    for _ in rows {
+                        let _ = self.remap_focused_table_cell_after_row_delete(*block_id, *index);
+                    }
+                }
+                EditOperation::Table(TableEditOperation::InsertColumns {
+                    block_id,
+                    index,
+                    columns,
+                    ..
+                }) => {
+                    for _ in columns {
+                        let _ =
+                            self.remap_focused_table_cell_after_column_insert(*block_id, *index);
+                    }
+                }
+                EditOperation::Table(TableEditOperation::DeleteColumns {
+                    block_id,
+                    index,
+                    columns,
+                    ..
+                }) => {
+                    for _ in columns {
+                        let _ =
+                            self.remap_focused_table_cell_after_column_delete(*block_id, *index);
+                    }
+                }
+                EditOperation::Table(TableEditOperation::MergeCells {
+                    block_id, range, ..
+                }) => {
+                    if let Some(focused) = self
+                        .focused_table_cell
+                        .filter(|focused| focused.block_id == *block_id)
+                        && focused.row >= range.start_row
+                        && focused.row <= range.end_row
+                        && focused.col >= range.start_col
+                        && focused.col <= range.end_col
+                    {
+                        let _ = self.set_focused_table_cell_after_structure_edit(
+                            *block_id,
+                            range.start_row,
+                            range.start_col,
+                            0,
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     fn remap_focused_table_cell_after_row_move(
