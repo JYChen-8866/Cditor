@@ -1,4 +1,4 @@
-use gpui::{App, Entity, WeakEntity};
+use gpui::{App, WeakEntity};
 
 #[derive(Clone)]
 pub struct CditorHandle {
@@ -10,10 +10,10 @@ impl CditorHandle {
         Self { entity }
     }
 
-    pub fn is_ready(&self, cx: &App) -> bool {
+    pub fn is_ready(&self, _cx: &App) -> bool {
         self.entity.upgrade().is_some()
     }
-    
+
     pub fn document_info(&self, _cx: &App) -> Option<crate::document::DocumentInfo> {
         None
     }

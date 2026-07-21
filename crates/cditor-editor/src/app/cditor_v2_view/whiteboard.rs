@@ -3,10 +3,10 @@ use std::rc::Rc;
 use ding_board::{Scene, WhiteboardView};
 use gpui::{AppContext, Context};
 
-use crate::theme::GuiTheme;
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::block::whiteboard_style_fn;
 use crate::overlay::WhiteboardEditorSession;
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::BlockPayload;
 

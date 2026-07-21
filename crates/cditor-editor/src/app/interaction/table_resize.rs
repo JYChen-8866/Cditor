@@ -63,9 +63,7 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn table_resize_preview(
-        &self,
-    ) -> Option<(BlockId, TableAxis, usize, f32)> {
+    pub(in crate::app) fn table_resize_preview(&self) -> Option<(BlockId, TableAxis, usize, f32)> {
         self.table_resize_drag
             .map(|drag| (drag.block_id, drag.axis, drag.index, drag.current_size_px))
     }

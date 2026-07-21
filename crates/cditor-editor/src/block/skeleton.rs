@@ -1,7 +1,7 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentBuilder, px, rgb};
 
-use crate::theme::GuiTheme;
 use crate::skeleton::{SkeletonItem, SkeletonRows, SkeletonVariant};
+use crate::theme::GuiTheme;
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 

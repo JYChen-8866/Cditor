@@ -7,11 +7,11 @@ use gpui::{
     ParentElement, RenderImage, Styled, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::image_loader::{RasterImageElement, load_render_image};
 use crate::image_preview::open_image_preview;
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
+use crate::theme::GuiTheme;
 use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_core::layout::COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX;
 use cditor_core::rich_text::{ImagePayload, TextAlign};

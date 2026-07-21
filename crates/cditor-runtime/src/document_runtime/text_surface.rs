@@ -533,9 +533,9 @@ impl DocumentRuntime {
             if let Some(editing) = self.editing.as_mut() {
                 editing.set_selected_range(normalized.clone(), false);
             }
-            self.paste_clipboard_selection(&cditor_import_export::clipboard::ClipboardSelection::Inline {
-                spans: delta.spans,
-            })?
+            self.paste_clipboard_selection(
+                &cditor_import_export::clipboard::ClipboardSelection::Inline { spans: delta.spans },
+            )?
         } else {
             self.replace_text_in_focused_range(Some(normalized.clone()), &inserted_text)?
         };

@@ -3,8 +3,8 @@ mod paint;
 
 use cditor_core::rich_text::{InlineSpan, RichBlockKind};
 
-use crate::theme::GuiTheme;
 use crate::text::RichTextLayoutInput;
+use crate::theme::GuiTheme;
 
 pub use cditor_text::{
     CachedParleyLayout, ParleyAccessibilityProjection, ParleyAlignment, ParleyBrush,

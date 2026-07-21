@@ -4,9 +4,9 @@ use gpui::{
     Styled, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::menu_metrics::SECONDARY_MENU_WIDTH_PX;
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{CalloutVariant, RichBlockKind};
 

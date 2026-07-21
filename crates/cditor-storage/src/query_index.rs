@@ -1,9 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use cditor_core::ids::{BlockId, DocumentId};
-use cditor_editor_core::scroll::{
-    BlockScrollResolver, LayoutPx, ResolvedBlockScrollTarget, ScrollPrecision,
-};
 
 pub const BLOCK_FTS_SCHEMA: &str = r#"CREATE VIRTUAL TABLE block_fts USING fts5(
     document_id UNINDEXED,
@@ -60,16 +57,6 @@ pub struct QueryResult {
     pub block_id: BlockId,
     pub content_version: u64,
     pub score: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct QueryScrollTarget {
-    pub block_id: BlockId,
-    pub block_index: usize,
-    pub global_scroll_top: LayoutPx,
-    pub offset_in_block: LayoutPx,
-    pub precision: ScrollPrecision,
-    pub restore_anchor_after_load: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,15 +140,6 @@ impl DocumentQueryIndex {
         results
     }
 
-    pub fn scroll_to_block<R: BlockScrollResolver>(
-        &self,
-        block_id: BlockId,
-        resolver: &R,
-    ) -> Option<QueryScrollTarget> {
-        let resolved = resolver.resolve_block_scroll_target(block_id)?;
-        Some(QueryScrollTarget::from_resolved(block_id, resolved))
-    }
-
     pub fn contains_block(&self, document_id: DocumentId, block_id: BlockId) -> bool {
         self.entries.contains_key(&(document_id, block_id))
     }
@@ -192,19 +170,6 @@ impl DocumentQueryIndex {
                 .insert(entry.block_id);
         }
         self.entries.insert(key, entry);
-    }
-}
-
-impl QueryScrollTarget {
-    fn from_resolved(block_id: BlockId, resolved: ResolvedBlockScrollTarget) -> Self {
-        Self {
-            block_id,
-            block_index: resolved.block_index,
-            global_scroll_top: resolved.global_scroll_top,
-            offset_in_block: resolved.offset_in_block,
-            precision: resolved.precision,
-            restore_anchor_after_load: resolved.precision != ScrollPrecision::Exact,
-        }
     }
 }
 
@@ -247,21 +212,6 @@ fn strip_tags(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[derive(Debug)]
-    struct MockResolver {
-        block_id: BlockId,
-        target: ResolvedBlockScrollTarget,
-    }
-
-    impl BlockScrollResolver for MockResolver {
-        fn resolve_block_scroll_target(
-            &self,
-            block_id: BlockId,
-        ) -> Option<ResolvedBlockScrollTarget> {
-            (block_id == self.block_id).then_some(self.target)
-        }
-    }
 
     #[test]
     fn schema_declares_sqlite_fts5_block_table() {
@@ -320,33 +270,5 @@ mod tests {
         assert_eq!(first_frame.applied, 16);
         assert_eq!(first_frame.remaining, 984);
         assert_eq!(index.query(1, "block", 1).len(), 1);
-    }
-
-    #[test]
-    fn search_result_jump_to_remote_page_uses_estimated_scroll_target_and_anchor_restore() {
-        let mut index = DocumentQueryIndex::default();
-        index.enqueue_update(FtsUpdateTask {
-            document_id: 1,
-            block_id: 9_000,
-            content_version: 1,
-            payload: BlockPayloadForQuery::PlainText("remote result".to_owned()),
-        });
-        index.apply_pending_updates(1);
-
-        let resolver = MockResolver {
-            block_id: 9_000,
-            target: ResolvedBlockScrollTarget {
-                block_index: 8_999,
-                offset_in_block: 0.0,
-                global_scroll_top: 8_999.0 * 32.0,
-                precision: ScrollPrecision::Estimated,
-            },
-        };
-        let target = index.scroll_to_block(9_000, &resolver).unwrap();
-
-        assert_eq!(target.block_id, 9_000);
-        assert_eq!(target.block_index, 8_999);
-        assert_eq!(target.precision, ScrollPrecision::Estimated);
-        assert!(target.restore_anchor_after_load);
     }
 }

@@ -3,9 +3,9 @@ use gpui::{
     Styled, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::block::table::TableToolbarEditorOrigin;
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 #[cfg(test)]
 use cditor_core::layout::TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;

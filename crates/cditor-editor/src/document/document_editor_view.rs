@@ -5,7 +5,6 @@ use gpui::{
     ParentElement, Styled, div, prelude::FluentBuilder, px,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::app::cditor_v2_view::TableScrollSnapshot;
 use crate::block::table::menu::TableMenuUiState;
@@ -26,6 +25,7 @@ use crate::overlay::render_editor_overlays;
 use crate::overlay::table::{
     render_table_horizontal_scrollbar, render_table_reorder_preview_overlay,
 };
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::EditorViewProjection;
 

@@ -5,7 +5,6 @@ use gpui::{
     RenderImage, Styled, div, img, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::block::chrome::{
     BLOCK_GUTTER_WIDTH_PX, BLOCK_PREFIX_WIDTH_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_OUTER_PADDING_X_PX,
@@ -13,6 +12,7 @@ use crate::block::chrome::{
 use crate::block::media::schedule_rendered_media_height_report;
 use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::image_preview::open_image_preview;
+use crate::theme::GuiTheme;
 
 use super::{MermaidRenderCache, MermaidRenderStatus};
 

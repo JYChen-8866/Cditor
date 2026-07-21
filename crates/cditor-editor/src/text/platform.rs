@@ -130,11 +130,11 @@ pub(crate) fn test_platform_layout(
 ) -> RichTextPlatformLayout {
     use cditor_core::rich_text::{InlineSpan, RichBlockKind, TextAlign};
 
-    use crate::theme::GuiTheme;
     use crate::text::{
         ParleyLayoutOptions, ParleyLineHeight, ParleyTextStyleConfig, RichTextLayoutInput,
         TextLayoutSurfaceId, build_parley_layout,
     };
+    use crate::theme::GuiTheme;
 
     let surface_id = table_cell_position.map_or(TextLayoutSurfaceId::Block(block_id), |position| {
         TextLayoutSurfaceId::TableCell {
@@ -187,11 +187,11 @@ mod tests {
     use gpui::{point, px, size};
 
     use super::*;
-    use crate::theme::GuiTheme;
     use crate::text::{
         ParleyAlignment, ParleyLayoutOptions, ParleyLineHeight, ParleyTextStyleConfig,
         RichTextLayoutInput, TextLayoutSurfaceId, build_parley_layout,
     };
+    use crate::theme::GuiTheme;
 
     #[test]
     fn range_and_point_geometry_round_trip_through_the_same_parley_snapshot() {

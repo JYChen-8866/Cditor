@@ -5,9 +5,9 @@ use gpui::{
     deferred, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::menu_metrics::EditorViewport;
+use crate::theme::GuiTheme;
 
 pub const SLASH_MENU_VISIBLE_ITEMS: usize = 8;
 const SLASH_MENU_ROW_HEIGHT_PX: f32 = 48.0;

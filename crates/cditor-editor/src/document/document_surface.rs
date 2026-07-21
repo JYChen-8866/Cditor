@@ -1,10 +1,10 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentBuilder, px, rgb};
 
-use crate::theme::GuiTheme;
 use crate::document::layout_metrics::DocumentLayoutMetrics;
 use crate::document::skeleton_window::{
     render_document_skeleton_window, render_document_window_error,
 };
+use crate::theme::GuiTheme;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentSurface {

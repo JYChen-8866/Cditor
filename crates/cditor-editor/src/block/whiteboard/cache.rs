@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use ding_board::{Scene, WhiteboardView};
 use gpui::{AppContext, Context, Entity};
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayload, BlockPayloadView};
 use cditor_runtime::EditorViewProjection;

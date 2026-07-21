@@ -5,9 +5,9 @@ use gpui::{
     ParentElement, Styled, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
+use crate::theme::GuiTheme;
 
 pub(crate) fn render_collection_block(
     block_id: BlockId,

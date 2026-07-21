@@ -1,8 +1,8 @@
 use gpui::{AnyElement, FontWeight, IntoElement, ParentElement, Styled, div, px, rgb};
 
-use crate::theme::GuiTheme;
 use crate::block::paragraph::NOTION_PARAGRAPH_TEXT_SIZE_PX;
 use crate::block::skeleton::render_block_skeleton;
+use crate::theme::GuiTheme;
 use cditor_core::layout::block_metrics::NOTION_BODY_LINE_HEIGHT_PX;
 use cditor_core::layout::text_line_height_for_kind;
 use cditor_core::rich_text::RichBlockKind;

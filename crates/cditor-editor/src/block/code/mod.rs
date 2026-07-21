@@ -1,7 +1,7 @@
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::input::CodeLanguageEditState;
 use crate::platform::EDITOR_MONO_FONT_FAMILY;
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use gpui::{
     AnyElement, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Styled, div,

@@ -92,11 +92,10 @@ impl CditorV2View {
             .infer_document_viewport_origin()
             .map(|origin| text_drag_pointer_viewport_y(drag.pointer_position.y, origin.y))
             .unwrap_or(f64::NAN);
-        let delta =
-            crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
-                pointer_y,
-                runtime.scroll.viewport_height,
-            );
+        let delta = crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
+            pointer_y,
+            runtime.scroll.viewport_height,
+        );
         if delta.abs() < f64::EPSILON {
             return;
         }
@@ -132,11 +131,10 @@ impl CditorV2View {
         let Some(runtime) = self.ready_runtime() else {
             return false;
         };
-        let delta =
-            crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
-                pointer_y,
-                runtime.scroll.viewport_height,
-            );
+        let delta = crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
+            pointer_y,
+            runtime.scroll.viewport_height,
+        );
         if delta.abs() < f64::EPSILON || runtime.scroll_by_delta(delta).is_err() {
             return false;
         }

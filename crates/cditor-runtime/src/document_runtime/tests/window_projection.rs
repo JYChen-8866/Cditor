@@ -111,7 +111,10 @@ fn scrollbar_drag_projects_the_target_placeholder_for_live_loading() {
 
     runtime
         .scroll
-        .scroll_to_global_offset(20_000.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(
+            20_000.0,
+            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
+        )
         .unwrap();
     let policy = ScrollbarPolicy::default();
     runtime.begin_scrollbar_drag(policy);

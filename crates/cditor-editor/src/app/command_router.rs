@@ -27,7 +27,7 @@ impl CditorV2View {
         let _ = self.dispatch_command(command, CommandSource::Keyboard, cx);
     }
 
-    pub(crate) fn sdk_execute_command(
+    pub fn sdk_execute_command(
         &mut self,
         command: CditorCommand,
         cx: &mut Context<Self>,
@@ -35,7 +35,7 @@ impl CditorV2View {
         self.dispatch_command(command, CommandSource::Sdk, cx)
     }
 
-    pub(crate) fn sdk_command_state(&self, command: &CditorCommand) -> CommandState {
+    pub fn sdk_command_state(&self, command: &CditorCommand) -> CommandState {
         CommandState::from_query(self.query_command(command))
     }
 

@@ -2,8 +2,8 @@ use cditor_core::ids::BlockId;
 #[cfg(test)]
 use cditor_core::rich_text::InlineMark;
 
-use cditor_api::command::{BlockTransform, CditorCommand, CommandOutcomeStatus, CommandSource};
 use crate::overlay::{BlockTransformAction, InlineFormatAction};
+use cditor_api::command::{BlockTransform, CditorCommand, CommandOutcomeStatus, CommandSource};
 
 use super::super::CditorV2View;
 
@@ -88,8 +88,7 @@ impl CditorV2View {
         ) {
             Ok(outcome) => outcome.status == CommandOutcomeStatus::Applied,
             Err(error) => {
-                self.save_status =
-                    crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

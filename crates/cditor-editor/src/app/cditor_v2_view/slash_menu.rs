@@ -22,8 +22,7 @@ impl CditorV2View {
             self.slash_menu = None;
             return;
         };
-        let Some((trigger_start, query)) =
-            crate::overlay::slash_query_before_caret(&text, caret)
+        let Some((trigger_start, query)) = crate::overlay::slash_query_before_caret(&text, caret)
         else {
             self.slash_menu = None;
             return;

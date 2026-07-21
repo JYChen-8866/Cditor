@@ -7,7 +7,7 @@ pub struct CditorComponent {
 }
 
 impl CditorComponent {
-    pub(crate) fn from_view(view: Entity<()>) -> Self {
+    pub fn from_erased_view(view: Entity<()>) -> Self {
         let handle = crate::CditorHandle::new(view.downgrade());
         Self { view, handle }
     }

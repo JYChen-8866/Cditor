@@ -17,6 +17,7 @@ members = [
     "crates/cditor-test-support",
     "crates/cditor-text",
     "crates/ding-board",
+    "crates/dc-board",
 ]
 default-members = ["crates/cditor-app"]
 resolver = "3"

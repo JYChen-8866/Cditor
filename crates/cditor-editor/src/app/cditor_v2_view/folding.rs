@@ -57,8 +57,7 @@ impl CditorV2View {
             }
             Ok(_) => false,
             Err(error) => {
-                self.save_status =
-                    crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

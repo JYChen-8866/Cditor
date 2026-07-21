@@ -4,8 +4,8 @@ use gpui::{
     px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::{TableCellPosition, TableViewState};
 

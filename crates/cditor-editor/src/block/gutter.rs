@@ -4,8 +4,8 @@ use gpui::{
     Styled, Window, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::block::chrome::{BLOCK_GUTTER_HEIGHT_PX, BLOCK_GUTTER_WIDTH_PX};
+use crate::theme::GuiTheme;
 
 pub type GutterMouseDownHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 pub type GutterAddHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;

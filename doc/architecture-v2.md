@@ -45,6 +45,20 @@
 
 > **为什么拆成两个：** 同一 crate 内没有编译边界，Rust 不阻止算法代码 import GPUI 类型。拆开后 `cditor-editor-core` 保持零 GPUI 依赖，将来做 Web/TUI 编辑器可以直接复用。
 
+### 1.1 落地复核与修正
+
+目录拆分方向总体合理，但不能逐字照搬原方案。实际落地采用以下修正：
+
+1. **保留主干编译边界。** `core -> editor-core/storage -> runtime -> editor -> app` 分离了领域真相、纯算法、活文档状态、GPUI 适配和进程组装，边界能由 Cargo 与结构门禁共同执行。
+2. **`storage` 不拥有导航行为。** 全文索引只返回 `BlockId` 和匹配信息；“搜索结果如何滚动到 Block”属于 runtime/editor。原实现让 `cditor-storage -> cditor-editor-core`，已移除该反向依赖。
+3. **主题只保留一个定义。** `GuiTheme` 的实现位于 `cditor-theme`；`cditor-editor::theme` 仅做兼容 re-export，避免迁移后形成两个会漂移的主题类型。
+4. **`app` 不依赖所有 crate。** 组装层只声明可执行程序实际使用的直接依赖。要求 composition root 依赖全部 crate 会增加无意义的重编译和错误耦合。
+5. **协同 crate 独立计数。** 当前 workspace 是 16 个本次目录重构范围内的 crate，加一个预留的 `cditor-collaboration`，合计 17 个；本次不实现协同功能。
+6. **`theme-types` 暂时保留但设观察点。** 它目前只被 `cditor-theme` 消费，单看现状拆分收益有限；保留它是为了未来宿主主题 token/schema 不依赖具体解析器。若下一阶段仍无第二消费者，应合并回 `cditor-theme`。
+7. **API 构造不能用未落地的伪抽象。** 原文提出的 `CditorViewFactory` 尚不足以解决 GPUI `Entity` 类型擦除和组装所有权。稳定 API crate 应保存 options/command/event/handle 契约，具体 View 构造由 `cditor-app` 暴露；在真实构造入口完成前，不把相关任务标记完成。
+
+结构门禁 `scripts/dev/check_structure.sh` 已同步到新路径，并禁止 core/runtime/text/editor-core/storage 重新跨越上述边界。
+
 ---
 
 ## 2. 最终 crate 清单
@@ -78,7 +92,7 @@ Cditor/
 └── fixtures/
 ```
 
-共 16 个 crate。其中 9 个已有代码（core/editor/runtime/store/store-postgres/store-sqlite/ai/text/ding-board），7 个全新或从旧 crate 拆出。
+本次重构范围共 16 个 crate；workspace 另含预留的 `cditor-collaboration`，实际合计 17 个 crate。
 
 ---
 
@@ -1149,15 +1163,15 @@ pub struct MainThreadBudget {
 
 ### 阶段 0：环境准备
 
-- [ ] **0.1** 确认工作区 workspace Cargo.toml members 已包含所有 16 个 crate
-- [ ] **0.2** 创建 `cditor-theme-types/` 的 `Cargo.toml` + `src/lib.rs`（6 个 token 模块声明）
-- [ ] **0.3** 创建 `cditor-theme/` 的 `Cargo.toml` + `src/lib.rs`（7 个模块声明）
-- [ ] **0.4** 创建 `cditor-editor-core/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
-- [ ] **0.5** 创建 `cditor-import-export/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
-- [ ] **0.6** 创建 `cditor-api/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
-- [ ] **0.7** 创建 `cditor-app/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
-- [ ] **0.8** 创建 `cditor-test-support/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
-- [ ] **0.9** 确认所有空 crate 的 `cargo check` 通过（至少 `lib.rs` 不能有语法错误）
+- [x] **0.1** 确认 workspace 已包含本次重构的 16 个 crate，并保留独立的 `cditor-collaboration`（合计 17 个）
+- [x] **0.2** 创建 `cditor-theme-types/` 的 `Cargo.toml` + `src/lib.rs`（6 个 token 模块声明）
+- [x] **0.3** 创建 `cditor-theme/` 的 `Cargo.toml` + `src/lib.rs`（7 个模块声明）
+- [x] **0.4** 创建 `cditor-editor-core/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
+- [x] **0.5** 创建 `cditor-import-export/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
+- [x] **0.6** 创建 `cditor-api/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
+- [x] **0.7** 创建 `cditor-app/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
+- [x] **0.8** 创建 `cditor-test-support/` 的 `Cargo.toml` + `src/lib.rs`（模块声明）
+- [x] **0.9** 确认所有空 crate 的 `cargo check` 通过（至少 `lib.rs` 不能有语法错误）
 
 ---
 
@@ -1166,18 +1180,18 @@ pub struct MainThreadBudget {
 > 目标：旧 `crates/core/` → 新 `crates/cditor-core/`
 > 同步迁出 markdown 到 ceditor-import-export
 
-- [ ] **1.1** 从旧 `core/src/` 搬入全部保留文件到 `cditor-core/src/`（56 个文件，不改代码）
+- [x] **1.1** 从旧 `core/src/` 搬入全部保留文件到 `cditor-core/src/`（56 个文件，不改代码）
   - block/, document/, edit/, layout/, schema/, telemetry/, identity/, fixtures/
   - rich_text/（block_kind, payload, document, attrs, inline, table, span_splice, table/）
   - ids.rs, version.rs, demo_fixtures.rs, lib.rs
-- [ ] **1.2** 配置 `cditor-core/Cargo.toml` 依赖：serde, serde_json, thiserror, uuid, indexmap, smallvec
-- [ ] **1.3** 在 `cditor-core/src/lib.rs` 去掉 markdown 和 clipboard 的 pub mod 声明
-- [ ] **1.4** 迁出 `rich_text/markdown/` 全部 7 个文件 → `cditor-import-export/src/markdown/`
-- [ ] **1.5** 迁出 `rich_text/clipboard.rs` → `cditor-import-export/src/clipboard.rs`
-- [ ] **1.6** 迁出 `rich_text/table/clipboard.rs` → `cditor-import-export/src/table_clipboard.rs`
-- [ ] **1.7** 配置 `cditor-import-export/Cargo.toml` 依赖：cditor-core + serde + serde_json
-- [ ] **1.8** `cargo check -p cditor-core` 通过
-- [ ] **1.9** `cargo check -p cditor-import-export` 通过
+- [x] **1.2** 配置 `cditor-core/Cargo.toml` 依赖：serde, serde_json, thiserror, uuid, indexmap, smallvec
+- [x] **1.3** 在 `cditor-core/src/lib.rs` 去掉 markdown 和 clipboard 的 pub mod 声明
+- [x] **1.4** 迁出 `rich_text/markdown/` 全部 7 个文件 → `cditor-import-export/src/markdown/`
+- [x] **1.5** 迁出 `rich_text/clipboard.rs` → `cditor-import-export/src/clipboard.rs`
+- [x] **1.6** 迁出 `rich_text/table/clipboard.rs` → `cditor-import-export/src/table_clipboard.rs`
+- [x] **1.7** 配置 `cditor-import-export/Cargo.toml` 依赖：cditor-core + serde + serde_json
+- [x] **1.8** `cargo check -p cditor-core` 通过
+- [x] **1.9** `cargo check -p cditor-import-export` 通过
 
 ---
 
@@ -1187,15 +1201,15 @@ pub struct MainThreadBudget {
 > 旧 `crates/store-postgres/` → `crates/cditor-storage-postgres/`
 > 旧 `crates/store-sqlite/` → `crates/cditor-storage-sqlite/`
 
-- [ ] **2.1** 从旧 `store/src/` 搬入全部 11 个文件到 `cditor-storage/src/`
-- [ ] **2.2** 配置 `cditor-storage/Cargo.toml` 依赖：cditor-core + serde + serde_json + thiserror + tokio
-- [ ] **2.3** `cargo check -p cditor-storage` 通过
-- [ ] **2.4** 从旧 `store-postgres/src/` 搬入全部文件到 `cditor-storage-postgres/src/`
-- [ ] **2.5** 更新 `cditor-storage-postgres/Cargo.toml` 依赖 path 指向新 crate
-- [ ] **2.6** `cargo check -p cditor-storage-postgres` 通过
-- [ ] **2.7** 从旧 `store-sqlite/src/` 搬入全部文件到 `cditor-storage-sqlite/src/`
-- [ ] **2.8** 更新 `cditor-storage-sqlite/Cargo.toml` 依赖 path 指向新 crate
-- [ ] **2.9** `cargo check -p cditor-storage-sqlite` 通过
+- [x] **2.1** 从旧 `store/src/` 搬入全部 11 个文件到 `cditor-storage/src/`
+- [x] **2.2** 配置 `cditor-storage/Cargo.toml` 依赖：cditor-core + serde + serde_json + thiserror + tokio
+- [x] **2.3** `cargo check -p cditor-storage` 通过
+- [x] **2.4** 从旧 `store-postgres/src/` 搬入全部文件到 `cditor-storage-postgres/src/`
+- [x] **2.5** 更新 `cditor-storage-postgres/Cargo.toml` 依赖 path 指向新 crate
+- [x] **2.6** `cargo check -p cditor-storage-postgres` 通过
+- [x] **2.7** 从旧 `store-sqlite/src/` 搬入全部文件到 `cditor-storage-sqlite/src/`
+- [x] **2.8** 更新 `cditor-storage-sqlite/Cargo.toml` 依赖 path 指向新 crate
+- [x] **2.9** `cargo check -p cditor-storage-sqlite` 通过
 
 ---
 
@@ -1203,11 +1217,11 @@ pub struct MainThreadBudget {
 
 > 目标：旧 `crates/editor/` → 新 `crates/cditor-editor-core/`
 
-- [ ] **3.1** 从旧 `editor/src/` 搬入全部 10 个文件到 `cditor-editor-core/src/`
+- [x] **3.1** 从旧 `editor/src/` 搬入全部 10 个文件到 `cditor-editor-core/src/`
   - command.rs, hit_test.rs, debug_overlay.rs, scroll_trace_replay.rs, trace_event_log.rs
   - scroll/ (7 文件), window/ (4 文件)
-- [ ] **3.2** 配置 `cditor-editor-core/Cargo.toml` 依赖：cditor-core + serde + serde_json + unicode-segmentation
-- [ ] **3.3** `cargo check -p cditor-editor-core` 通过
+- [x] **3.2** 配置 `cditor-editor-core/Cargo.toml` 依赖：cditor-core + serde + serde_json + unicode-segmentation
+- [x] **3.3** `cargo check -p cditor-editor-core` 通过
 
 ---
 
@@ -1216,24 +1230,24 @@ pub struct MainThreadBudget {
 > 目标：旧 `crates/runtime/` → 新 `crates/cditor-runtime/`
 > 同步迁出 paste_import/security → import-export，query_index → storage，acceptance → test-support
 
-- [ ] **4.1** 从旧 `runtime/src/` 搬入保留文件到 `cditor-runtime/src/`
+- [x] **4.1** 从旧 `runtime/src/` 搬入保留文件到 `cditor-runtime/src/`
   - document_runtime/（50+ 文件，全部保留）
   - editing/（3 文件）
   - scheduling/（4 文件）
   - projection/（2 文件）
   - content/（media_cache, payload_cache, payload_window 三个文件保留）
   - lib.rs（去掉迁出模块的声明）
-- [ ] **4.2** 迁出 `content/paste_import.rs` → `cditor-import-export/src/paste_import.rs`
-- [ ] **4.3** 迁出 `content/security.rs` → `cditor-import-export/src/security.rs`
-- [ ] **4.4** 更新 `cditor-import-export/src/lib.rs` 增加 paste_import 和 security 的模块声明
-- [ ] **4.5** 迁出 `content/query_index.rs` → `cditor-storage/src/query_index.rs`
-- [ ] **4.6** 更新 `cditor-storage/src/lib.rs` 增加 query_index 的模块声明
-- [ ] **4.7** 迁出 `acceptance/` 全部 6 个文件 → `cditor-test-support/src/acceptance/`
-- [ ] **4.8** 配置 `cditor-runtime/Cargo.toml` 依赖指向新 crate path
-- [ ] **4.9** 配置 `cditor-test-support/Cargo.toml`：依赖 cditor-runtime + cditor-core + cditor-editor-core
-- [ ] **4.10** `cargo check -p cditor-runtime` 通过
-- [ ] **4.11** `cargo check -p cditor-import-export` 通过
-- [ ] **4.12** `cargo check -p cditor-test-support` 通过
+- [x] **4.2** 迁出 `content/paste_import.rs` → `cditor-import-export/src/paste_import.rs`
+- [x] **4.3** 迁出 `content/security.rs` → `cditor-import-export/src/security.rs`
+- [x] **4.4** 更新 `cditor-import-export/src/lib.rs` 增加 paste_import 和 security 的模块声明
+- [x] **4.5** 迁出 `content/query_index.rs` → `cditor-storage/src/query_index.rs`
+- [x] **4.6** 更新 `cditor-storage/src/lib.rs` 增加 query_index 的模块声明
+- [x] **4.7** 迁出 `acceptance/` 全部 6 个文件 → `cditor-test-support/src/acceptance/`
+- [x] **4.8** 配置 `cditor-runtime/Cargo.toml` 依赖指向新 crate path
+- [x] **4.9** 配置 `cditor-test-support/Cargo.toml`：依赖 cditor-runtime + cditor-core + cditor-editor-core
+- [x] **4.10** `cargo check -p cditor-runtime` 通过
+- [x] **4.11** `cargo check -p cditor-import-export` 通过
+- [x] **4.12** `cargo check -p cditor-test-support` 通过
 
 ---
 
@@ -1241,20 +1255,20 @@ pub struct MainThreadBudget {
 
 > 目标：cditor-api 不能依赖 cditor-editor，cditor-api 不能引用 GuiTheme
 
-- [ ] **5.1** 把 `GuiTheme` 从旧 `app/src/gui/theme.rs` 迁到 `cditor-theme/src/theme.rs`
+- [x] **5.1** 把 `GuiTheme` 从旧 `app/src/gui/theme.rs` 迁到 `cditor-theme/src/theme.rs`
   - 保持 30+ 颜色字段不变
   - 去掉 `app/src/gui/theme.rs` 中的原始 GuiTheme 定义
-- [ ] **5.2** 更新 `cditor-theme/src/lib.rs` 增加 theme 模块声明
-- [ ] **5.3** 配置 `cditor-theme/Cargo.toml` 依赖：cditor-theme-types + serde + serde_json
-- [ ] **5.4** `cargo check -p cditor-theme` 通过
-- [ ] **5.5** 更新旧代码中所有 `crate::gui::GuiTheme` 引用 → `cditor_theme::GuiTheme`
-- [ ] **5.6** 在 `cditor-api/src/` 中定义 `CditorViewFactory` trait（或先预留接口，阶段 8 再注入实现）
+- [x] **5.2** 更新 `cditor-theme/src/lib.rs` 增加 theme 模块声明
+- [x] **5.3** 配置 `cditor-theme/Cargo.toml` 依赖：cditor-theme-types + serde + serde_json
+- [x] **5.4** `cargo check -p cditor-theme` 通过
+- [x] **5.5** 更新旧代码中所有 `crate::gui::GuiTheme` 引用 → `cditor_theme::GuiTheme`
+- [ ] **5.6** 裁决并实现跨 crate 的 typed GPUI component/handle 构造协议（不采用无法保持 `Entity<CditorV2View>` 类型的伪擦除）
   ```rust
   pub trait CditorViewFactory: Send + Sync {
       fn build_component(&self, options: CditorOptions, cx: &mut AppContext) -> CditorComponent;
   }
   ```
-- [ ] **5.7** 重构 `Cditor::build_view()` 为非泛型返回 → 通过 `CditorComponent` 包装
+- [ ] **5.7** 让 `Cditor::build()` 调用 app composition API，返回可用的 typed component/handle，禁止 panic 或永久 `Unsupported`
 
 ---
 
@@ -1262,13 +1276,13 @@ pub struct MainThreadBudget {
 
 > 目标：旧 `app/src/api/` → 新 `crates/cditor-api/`
 
-- [ ] **6.1** 从旧 `app/src/api/` 搬入全部 14 个文件到 `cditor-api/src/`
+- [x] **6.1** 从旧 `app/src/api/` 搬入全部 14 个文件到 `cditor-api/src/`
   - builder.rs, cditor.rs, cold_start.rs, command.rs, component.rs
   - diagnostics.rs, document.rs, error.rs, event.rs, handle.rs
   - import_export.rs, mod.rs, options.rs, providers.rs
-- [ ] **6.2** 配置 `cditor-api/Cargo.toml` 依赖：cditor-core + cditor-runtime + cditor-storage + cditor-theme + gpui
-- [ ] **6.3** 更新所有 `crate::gui::*` 引用 → 对应新 crate 的路径
-- [ ] **6.4** `cargo check -p cditor-api` 通过
+- [x] **6.2** 配置 `cditor-api/Cargo.toml` 依赖：cditor-core + cditor-runtime + cditor-storage + cditor-theme + gpui
+- [x] **6.3** 更新所有 `crate::gui::*` 引用 → 对应新 crate 的路径
+- [x] **6.4** `cargo check -p cditor-api` 通过
 
 ---
 
@@ -1277,7 +1291,7 @@ pub struct MainThreadBudget {
 > 目标：旧 `app/src/gui/` → 新 `crates/cditor-editor/`
 > 这是最大的改动：约 350 个 .rs 文件
 
-- [ ] **7.1** 从旧 `app/src/gui/` 搬入全部子目录和文件到 `cditor-editor/src/`
+- [x] **7.1** 从旧 `app/src/gui/` 搬入全部子目录和文件到 `cditor-editor/src/`
   - block/（约 50 文件，含 code/, table/, mermaid/, whiteboard/ 子目录）
   - document/（5 文件）
   - text/（约 12 文件，含 parley_adapter/ 子目录）
@@ -1290,15 +1304,15 @@ pub struct MainThreadBudget {
   - diagnostics/（2 文件）
   - platform.rs, clipboard_assets.rs, image_loader.rs, image_preview.rs
   - rich_text.rs, menu_metrics.rs, mod.rs
-- [ ] **7.2** 配置 `cditor-editor/Cargo.toml` 依赖所有相关 crate + gpui + swash + lumis + image + mermaid_render
+- [x] **7.2** 配置 `cditor-editor/Cargo.toml` 依赖所有相关 crate + gpui + swash + lumis + image + mermaid_render
   ```toml
   cditor-core, cditor-editor-core, cditor-runtime, cditor-storage,
   cditor-theme, cditor-ai, cditor-text, cditor-import-export,
   gpui, gpui_platform, mermaid_render, swash, lumis, image, reqwest, ...
   ```
-- [ ] **7.3** 批量更新 cargo 依赖 path，把旧的 `crates/editor` → `../cditor-editor-core`
-- [ ] **7.4** 批量更新所有 `crate::` 内部引用 → 新 crate 名
-- [ ] **7.5** `cargo check -p cditor-editor` 通过（这步可能要修很多 import path）
+- [x] **7.3** 批量更新 cargo 依赖 path，把旧的 `crates/editor` → `../cditor-editor-core`
+- [x] **7.4** 批量更新所有 `crate::` 内部引用 → 新 crate 名
+- [x] **7.5** `cargo check -p cditor-editor` 通过（这步可能要修很多 import path）
 
 ---
 
@@ -1306,43 +1320,43 @@ pub struct MainThreadBudget {
 
 > 目标：旧 `app/src/main.rs` → 新 `crates/cditor-app/`
 
-- [ ] **8.1** 从旧 `app/src/main.rs` 搬入到 `cditor-app/src/main.rs`
+- [x] **8.1** 从旧 `app/src/main.rs` 搬入到 `cditor-app/src/main.rs`
 - [ ] **8.2** 创建 `cditor-app/src/wiring.rs`——组装 storage_wiring, runtime_wiring, editor_wiring, theme_wiring, api_wiring
-- [ ] **8.3** 配置 `cditor-app/Cargo.toml` 依赖所有 16 个 crate（这是唯一依赖全部的 crate）
-- [ ] **8.4** 实现 `CditorViewFactory` trait，注入 `cditor-editor::CditorV2View` 的构建逻辑
-- [ ] **8.5** 从旧 `app/tests/` 搬入 `component_sdk.rs` 到 `cditor-app/tests/`
-- [ ] **8.6** `cargo check -p cditor-app` 通过
+- [x] **8.3** `cditor-app/Cargo.toml` 只声明 executable 实际使用的直接依赖，不强制依赖全部 crate
+- [ ] **8.4** 实现 app composition API，注入 `cditor-editor::CditorV2View` 的构建逻辑
+- [ ] **8.5** 恢复 `component_sdk.rs` 跨 crate typed component/handle 端到端测试
+- [x] **8.6** `cargo check -p cditor-app` 通过
 
 ---
 
 ### 阶段 9：清理旧代码
 
-- [ ] **9.1** 从 workspace Cargo.toml members 移除旧的 `crates/app`, `crates/core`, `crates/editor`, `crates/runtime`, `crates/store`, `crates/store-postgres`, `crates/store-sqlite`
-- [ ] **9.2** 删除旧 `crates/app/` 目录
-- [ ] **9.3** 删除旧 `crates/core/` 目录
-- [ ] **9.4** 删除旧 `crates/editor/` 目录
-- [ ] **9.5** 删除旧 `crates/runtime/` 目录
-- [ ] **9.6** 删除旧 `crates/store/` 目录
-- [ ] **9.7** 删除旧 `crates/store-postgres/` 目录
-- [ ] **9.8** 删除旧 `crates/store-sqlite/` 目录
-- [ ] **9.9** `cargo check --workspace` 通过（全部 16 个 crate 可编译）
+- [x] **9.1** 从 workspace Cargo.toml members 移除旧的 `crates/app`, `crates/core`, `crates/editor`, `crates/runtime`, `crates/store`, `crates/store-postgres`, `crates/store-sqlite`
+- [x] **9.2** 删除旧 `crates/app/` 目录
+- [x] **9.3** 删除旧 `crates/core/` 目录
+- [x] **9.4** 删除旧 `crates/editor/` 目录
+- [x] **9.5** 删除旧 `crates/runtime/` 目录
+- [x] **9.6** 删除旧 `crates/store/` 目录
+- [x] **9.7** 删除旧 `crates/store-postgres/` 目录
+- [x] **9.8** 删除旧 `crates/store-sqlite/` 目录
+- [x] **9.9** `cargo check --workspace` 通过（全部 16 个 crate 可编译）
 
 ---
 
 ### 阶段 10：测试验证
 
-- [ ] **10.1** `cargo test -p cditor-core` 通过
-- [ ] **10.2** `cargo test -p cditor-editor-core` 通过
-- [ ] **10.3** `cargo test -p cditor-storage` 通过
-- [ ] **10.4** `cargo test -p cditor-storage-postgres` 通过（需 PG 环境）
-- [ ] **10.5** `cargo test -p cditor-storage-sqlite` 通过
-- [ ] **10.6** `cargo test -p cditor-runtime` 通过
-- [ ] **10.7** `cargo test -p cditor-import-export` 通过
-- [ ] **10.8** `cargo test -p cditor-api` 通过
-- [ ] **10.9** `cargo test -p cditor-editor` 通过
-- [ ] **10.10** `cargo test -p cditor-app` 通过（端到端测试）
-- [ ] **10.11** `cargo test -p cditor-test-support` 通过（验收测试）
-- [ ] **10.12** `cargo test --workspace` 全部通过
+- [x] **10.1** `cargo test -p cditor-core` 通过
+- [x] **10.2** `cargo test -p cditor-editor-core` 通过
+- [x] **10.3** `cargo test -p cditor-storage` 通过
+- [ ] **10.4** `cargo test -p cditor-storage-postgres -- --ignored` 通过（需 PG 环境；本次未运行）
+- [x] **10.5** `cargo test -p cditor-storage-sqlite` 通过
+- [x] **10.6** `cargo test -p cditor-runtime` 通过
+- [x] **10.7** `cargo test -p cditor-import-export` 通过
+- [x] **10.8** `cargo test -p cditor-api` 通过
+- [x] **10.9** `cargo test -p cditor-editor` 通过
+- [x] **10.10** `cargo test -p cditor-app` 通过（当前 crate 编译与单测；component SDK 端到端覆盖见未完成的 8.5）
+- [x] **10.11** `cargo test -p cditor-test-support` 通过（验收测试）
+- [x] **10.12** `cargo test --workspace` 全部通过
 
 ---
 
@@ -1362,6 +1376,8 @@ pub struct MainThreadBudget {
 | 9. 清理旧代码 | 9 | 删除旧目录 |
 | 10. 测试验证 | 12 | 全量测试 |
 | **合计** | **85** | |
+
+当前状态：**79/85 完成**。剩余 6 项是 typed component/handle composition（5.6、5.7、8.2、8.4、8.5）和需要外部 PostgreSQL 的 ignored 集成测试（10.4）；它们不影响 crate 目录迁移和普通 workspace 构建，但不能被目录移动本身冒充完成。
 
 
 ## 附录：关键决策汇总

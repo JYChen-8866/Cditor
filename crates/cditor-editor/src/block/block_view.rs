@@ -3,7 +3,6 @@ use gpui::{
     px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::block::block_content::render_block_content;
 use crate::block::block_shell::{BlockActionState, block_shell};
@@ -21,6 +20,7 @@ use crate::input::{
     hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,
 };
 use crate::platform::EDITOR_MONO_FONT_FAMILY;
+use crate::theme::GuiTheme;
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 

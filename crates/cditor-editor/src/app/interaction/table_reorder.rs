@@ -101,10 +101,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::app) fn commit_table_reorder_drag(
-        &mut self,
-        cx: &mut Context<Self>,
-    ) -> bool {
+    pub(in crate::app) fn commit_table_reorder_drag(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(drag) = self.table_reorder_drag.take() else {
             return false;
         };
@@ -248,9 +245,11 @@ mod tests {
         );
         assert_eq!(
             table_reorder_release_mode(&drag),
-            GuiTableInteractionMode::AxisSelected(
-                crate::block::table::TableAxisSelection::new(7, TableAxis::Column, 1,),
-            )
+            GuiTableInteractionMode::AxisSelected(crate::block::table::TableAxisSelection::new(
+                7,
+                TableAxis::Column,
+                1,
+            ),)
         );
         drag.exceeded_threshold = true;
         assert!(matches!(

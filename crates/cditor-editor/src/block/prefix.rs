@@ -4,8 +4,8 @@ use gpui::{
     PathBuilder, Styled, Window, canvas, div, point, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::block::chrome::{BLOCK_PREFIX_WIDTH_PX, CALLOUT_PREFIX_WIDTH_PX};
+use crate::theme::GuiTheme;
 use cditor_core::block::{BlockPrefixSnapshot, bullet_marker_for_depth};
 use cditor_core::rich_text::CalloutVariant;
 

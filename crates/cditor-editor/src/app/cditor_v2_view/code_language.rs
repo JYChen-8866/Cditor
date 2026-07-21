@@ -1,13 +1,13 @@
 use cditor_core::ids::BlockId;
 use gpui::{Context, Window};
 
-use cditor_api::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 use crate::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::input::{
     CodeLanguageEditAction, CodeLanguageEditKeyResult, CodeLanguageEditState,
     CodeLanguagePopupPlacement, apply_code_language_action,
 };
 use crate::menu_metrics::EditorViewport;
+use cditor_api::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 impl CditorV2View {
     pub(crate) fn toggle_code_language_dropdown_from_gui(

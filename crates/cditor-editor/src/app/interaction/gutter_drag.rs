@@ -193,9 +193,7 @@ impl CditorV2View {
         )
     }
 
-    pub(in crate::app) fn block_drag_overlay_snapshot(
-        &self,
-    ) -> Option<BlockDragOverlaySnapshot> {
+    pub(in crate::app) fn block_drag_overlay_snapshot(&self) -> Option<BlockDragOverlaySnapshot> {
         let drag = self.gutter_block_drag?;
         if !drag.exceeded_threshold {
             return None;

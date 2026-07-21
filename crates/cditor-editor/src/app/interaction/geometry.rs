@@ -1,7 +1,7 @@
-use crate::theme::GuiTheme;
 use crate::block::chrome::{BLOCK_GUTTER_WIDTH_PX, BlockChromeStyle};
 use crate::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
 use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
+use crate::theme::GuiTheme;
 use cditor_core::block::BlockDropTarget;
 use cditor_core::ids::BlockId;
 use cditor_runtime::{EditorViewProjection, ViewBlockSnapshot};

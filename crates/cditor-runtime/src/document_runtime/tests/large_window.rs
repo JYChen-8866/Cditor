@@ -200,7 +200,10 @@ fn large_mixed_demo_keeps_payloads_windowed() {
 
     runtime
         .scroll
-        .scroll_to_global_offset(1_000_000.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(
+            1_000_000.0,
+            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
+        )
         .unwrap();
     let projection = runtime.projection_for_window_planned();
 
@@ -215,7 +218,10 @@ fn planned_projection_uses_the_same_bounded_viewport_for_resident_100k_document(
     let mut runtime = runtime_with_paragraph_blocks(100_000);
     runtime
         .scroll
-        .scroll_to_global_offset(1_000_000.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(
+            1_000_000.0,
+            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
+        )
         .unwrap();
 
     let projection = runtime.projection_for_window_planned();

@@ -11,9 +11,9 @@ use gpui::{
     Window, fill, point, px, rgb, rgba,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::{CditorV2View, GuiPlatformInputTarget};
 use crate::input::platform_adapter::handle_registered_platform_input;
+use crate::theme::GuiTheme;
 use cditor_core::edit::TextAffinity;
 use cditor_core::layout::normalize_text_inner_measured_height;
 use cditor_core::rich_text::InlineSpan;

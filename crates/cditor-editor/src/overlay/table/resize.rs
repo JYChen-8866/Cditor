@@ -1,11 +1,11 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{AnyElement, IntoElement, Styled, div, px, rgb};
 
-use crate::theme::GuiTheme;
 use crate::block::table::{
     TABLE_RESIZE_INDICATOR_THICKNESS_PX, TableResizePreview, TableToolbarEditorOrigin,
     table_resize_indicator_edge_px,
 };
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::TableViewState;
 

@@ -4,7 +4,6 @@ use gpui::{
     Styled, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::block::chrome::{
     BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX,
     BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
@@ -14,6 +13,7 @@ use crate::block::prefix::{
     FoldToggleHandler, TodoToggleHandler, render_block_content_prefix, render_block_prefix,
 };
 use crate::diagnostics::block_color::trace_render;
+use crate::theme::GuiTheme;
 use cditor_runtime::ViewBlockSnapshot;
 
 const NOTION_QUOTE_BAR_WIDTH_PX: f32 = 3.0;

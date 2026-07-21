@@ -1085,7 +1085,6 @@ version = "0.2.6"
 dependencies = [
  "async-trait",
  "cditor-core",
- "cditor-editor-core",
  "tokio",
 ]
 
@@ -1109,6 +1108,7 @@ version = "0.2.6"
 dependencies = [
  "async-trait",
  "cditor-core",
+ "cditor-runtime",
  "cditor-storage",
  "serde",
  "serde_json",
@@ -1767,6 +1767,19 @@ name = "data-url"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
+
+[[package]]
+name = "dc-board"
+version = "0.1.0"
+dependencies = [
+ "cditor-api",
+ "cditor-core",
+ "cditor-editor",
+ "cditor-runtime",
+ "gpui",
+ "gpui_platform",
+ "log",
+]
 
 [[package]]
 name = "deflate64"

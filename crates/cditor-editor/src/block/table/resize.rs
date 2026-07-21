@@ -3,8 +3,8 @@ use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::TableViewState;
 

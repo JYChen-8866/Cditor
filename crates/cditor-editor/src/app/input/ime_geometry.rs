@@ -12,9 +12,7 @@ use crate::block::table::menu::TABLE_MENU_SEARCH_FONT_SIZE_PX;
 use crate::input::ime::utf8_to_utf16_offset;
 use crate::input::ime::utf16_range_to_utf8_range;
 use crate::input::{SINGLE_LINE_INPUT_FONT_SIZE_PX, single_line_visible_range_x};
-use crate::text::{
-    platform_index_for_point, platform_range_bounds, record_unavailable_geometry,
-};
+use crate::text::{platform_index_for_point, platform_range_bounds, record_unavailable_geometry};
 use cditor_core::ids::SurfaceId;
 use cditor_runtime::{DocumentRuntime, InputTarget};
 

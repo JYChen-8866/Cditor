@@ -1,7 +1,7 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgba};
 
-use crate::theme::GuiTheme;
 use crate::block::chrome::{BLOCK_INDENT_STEP_PX, block_content_left_px};
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::EditorViewProjection;
 

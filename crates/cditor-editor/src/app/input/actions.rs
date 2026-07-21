@@ -460,10 +460,7 @@ impl CditorV2View {
 }
 
 fn table_cell_parley_target(
-    layouts: &std::collections::HashMap<
-        TableCellLayoutKey,
-        crate::text::RichTextPlatformLayout,
-    >,
+    layouts: &std::collections::HashMap<TableCellLayoutKey, crate::text::RichTextPlatformLayout>,
     runtime: Option<&DocumentRuntime>,
     action: BoundInputAction,
     preferred_x: Option<(cditor_core::ids::SurfaceId, f32)>,
@@ -562,10 +559,7 @@ fn table_cell_parley_target(
 }
 
 fn table_cell_vertical_selection_target(
-    layouts: &std::collections::HashMap<
-        TableCellLayoutKey,
-        crate::text::RichTextPlatformLayout,
-    >,
+    layouts: &std::collections::HashMap<TableCellLayoutKey, crate::text::RichTextPlatformLayout>,
     runtime: Option<&DocumentRuntime>,
     direction: i32,
 ) -> Option<usize> {

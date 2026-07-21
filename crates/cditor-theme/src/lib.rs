@@ -1,6 +1,8 @@
-pub mod theme;
 pub mod colors;
-pub mod typography;
+pub mod default_theme;
 pub mod metrics;
 pub mod resolver;
-pub mod default_theme;
+pub mod theme;
+pub mod typography;
+
+pub use theme::GuiTheme;

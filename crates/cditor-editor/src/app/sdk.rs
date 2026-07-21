@@ -17,7 +17,7 @@ use cditor_core::edit::ChangeOrigin;
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
 impl CditorV2View {
-    pub(crate) fn sdk_configure_ai(
+    pub fn sdk_configure_ai(
         &mut self,
         provider: Option<std::sync::Arc<dyn cditor_ai::AiProvider>>,
         enabled: bool,
@@ -28,15 +28,15 @@ impl CditorV2View {
         self.ai_enabled = enabled;
     }
 
-    pub(crate) fn sdk_is_ready(&self) -> bool {
+    pub fn sdk_is_ready(&self) -> bool {
         self.state.is_ready()
     }
 
-    pub(crate) fn sdk_is_readonly(&self) -> bool {
+    pub fn sdk_is_readonly(&self) -> bool {
         self.readonly
     }
 
-    pub(crate) fn sdk_set_readonly(&mut self, readonly: bool, cx: &mut Context<Self>) {
+    pub fn sdk_set_readonly(&mut self, readonly: bool, cx: &mut Context<Self>) {
         if self.readonly == readonly {
             return;
         }
@@ -54,41 +54,41 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(crate) fn sdk_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn sdk_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.focus.is_focused(window) {
             window.focus(&self.focus, cx);
         }
     }
 
-    pub(crate) fn sdk_blur(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
+    pub fn sdk_blur(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
         if self.focus.is_focused(window) {
             window.blur();
         }
     }
 
-    pub(crate) fn sdk_can_undo(&self) -> bool {
+    pub fn sdk_can_undo(&self) -> bool {
         !self.readonly
             && self
                 .ready_runtime_ref()
                 .is_some_and(|runtime| runtime.can_undo())
     }
 
-    pub(crate) fn sdk_can_redo(&self) -> bool {
+    pub fn sdk_can_redo(&self) -> bool {
         !self.readonly
             && self
                 .ready_runtime_ref()
                 .is_some_and(|runtime| runtime.can_redo())
     }
 
-    pub(crate) fn sdk_undo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
+    pub fn sdk_undo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
         self.execute_history_action(ChangeOrigin::Undo, false, cx)
     }
 
-    pub(crate) fn sdk_redo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
+    pub fn sdk_redo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
         self.execute_history_action(ChangeOrigin::Redo, true, cx)
     }
 
-    pub(crate) fn sdk_document_info(&self) -> Option<DocumentInfo> {
+    pub fn sdk_document_info(&self) -> Option<DocumentInfo> {
         let runtime = self.ready_runtime_ref()?;
         Some(DocumentInfo {
             document_id: runtime.document_id,
@@ -99,11 +99,11 @@ impl CditorV2View {
         })
     }
 
-    pub(crate) fn sdk_is_dirty(&self) -> bool {
+    pub fn sdk_is_dirty(&self) -> bool {
         self.dirty
     }
 
-    pub(crate) fn sdk_save_status(&self) -> SaveStatus {
+    pub fn sdk_save_status(&self) -> SaveStatus {
         match &self.save_status {
             EditorSaveStatus::Clean => SaveStatus::Clean,
             EditorSaveStatus::Dirty => SaveStatus::Dirty,
@@ -113,7 +113,7 @@ impl CditorV2View {
         }
     }
 
-    pub(crate) fn sdk_close_guard(&self) -> CloseGuard {
+    pub fn sdk_close_guard(&self) -> CloseGuard {
         let saving = self.storage_persistence.is_saving();
         let failed_operations =
             usize::from(matches!(self.save_status, EditorSaveStatus::Failed(_)));
@@ -125,17 +125,11 @@ impl CditorV2View {
         }
     }
 
-    pub(crate) fn sdk_save(
-        &mut self,
-        cx: &mut Context<Self>,
-    ) -> Task<Result<SaveReport, CditorError>> {
+    pub fn sdk_save(&mut self, cx: &mut Context<Self>) -> Task<Result<SaveReport, CditorError>> {
         self.sdk_persistence_barrier(PersistenceBarrierKind::Save, cx)
     }
 
-    pub(crate) fn sdk_flush(
-        &mut self,
-        cx: &mut Context<Self>,
-    ) -> Task<Result<SaveReport, CditorError>> {
+    pub fn sdk_flush(&mut self, cx: &mut Context<Self>) -> Task<Result<SaveReport, CditorError>> {
         self.sdk_persistence_barrier(PersistenceBarrierKind::Flush, cx)
     }
 
@@ -163,7 +157,7 @@ impl CditorV2View {
         )
     }
 
-    pub(crate) fn sdk_diagnostics(&self) -> Result<CditorDiagnostics, CditorError> {
+    pub fn sdk_diagnostics(&self) -> Result<CditorDiagnostics, CditorError> {
         let runtime = self.ready_runtime_ref().ok_or(CditorError::NotReady)?;
         Ok(CditorDiagnostics {
             storage_backend: self
@@ -182,7 +176,7 @@ impl CditorV2View {
         })
     }
 
-    pub(crate) fn sdk_selection(&self) -> Option<DocumentSelection> {
+    pub fn sdk_selection(&self) -> Option<DocumentSelection> {
         let selection = self.ready_runtime_ref()?.document_selection_snapshot()?;
         Some(DocumentSelection {
             anchor: sdk_position(selection.anchor),
@@ -190,7 +184,7 @@ impl CditorV2View {
         })
     }
 
-    pub(crate) fn sdk_set_selection(
+    pub fn sdk_set_selection(
         &mut self,
         selection: DocumentSelection,
         cx: &mut Context<Self>,
@@ -208,11 +202,11 @@ impl CditorV2View {
         Ok(())
     }
 
-    pub(crate) fn sdk_selected_text(&self) -> Option<String> {
+    pub fn sdk_selected_text(&self) -> Option<String> {
         self.ready_runtime_ref()?.selected_focused_text()
     }
 
-    pub(crate) fn sdk_scroll_to_block(
+    pub fn sdk_scroll_to_block(
         &mut self,
         block_id: cditor_core::ids::BlockId,
         alignment: ScrollAlignment,

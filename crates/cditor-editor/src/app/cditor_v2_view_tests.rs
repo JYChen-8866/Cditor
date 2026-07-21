@@ -1,5 +1,4 @@
 use super::*;
-use crate::theme::GuiTheme;
 use crate::app::GuiPlatformInputTarget;
 use crate::app::input::ime::{
     code_language_input_target_allows, platform_input_fallback_range, platform_input_target_allows,
@@ -11,6 +10,7 @@ use crate::app::interaction::geometry::{
 };
 use crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta;
 use crate::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+use crate::theme::GuiTheme;
 use cditor_core::block::BlockDropTarget;
 
 #[test]
@@ -444,11 +444,7 @@ fn fallback_text_metrics_include_list_prefix_and_indent() {
 
     assert!(
         metrics.origin_x_in_block_px
-            >= 8.0
-                + 48.0
-                + 24.0
-                + 8.0
-                + f64::from(crate::block::chrome::BLOCK_PREFIX_WIDTH_PX)
+            >= 8.0 + 48.0 + 24.0 + 8.0 + f64::from(crate::block::chrome::BLOCK_PREFIX_WIDTH_PX)
     );
     assert!(metrics.width_px > 0.0);
 }
@@ -498,8 +494,7 @@ fn fallback_todo_text_starts_after_checkbox_at_shared_surface_origin() {
 
     assert_eq!(
         todo.origin_x_in_block_px,
-        paragraph.origin_x_in_block_px
-            + f64::from(crate::block::chrome::BLOCK_PREFIX_WIDTH_PX)
+        paragraph.origin_x_in_block_px + f64::from(crate::block::chrome::BLOCK_PREFIX_WIDTH_PX)
     );
 }
 

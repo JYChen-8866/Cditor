@@ -14,6 +14,6 @@ pub mod providers;
 
 pub use cditor::Cditor;
 pub use component::CditorComponent;
-pub use handle::CditorHandle;
 pub use error::CditorError;
+pub use handle::CditorHandle;
 pub use options::CditorOptions;

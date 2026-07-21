@@ -1,6 +1,6 @@
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::block::code::highlight::{CODE_THEME_ITEMS, CodeThemeItem, code_theme_item};
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled,

@@ -4,9 +4,7 @@ use gpui::{Context, Pixels, Point, ScrollHandle, Window, point, px};
 
 use crate::app::cditor_v2_view::CditorV2View;
 use crate::app::interaction::table_mode::GuiTableInteractionMode;
-use crate::overlay::table::{
-    TableViewportMeasurement, table_viewport_measurement_from_handle,
-};
+use crate::overlay::table::{TableViewportMeasurement, table_viewport_measurement_from_handle};
 use cditor_core::ids::BlockId;
 
 #[derive(Debug, Default)]
@@ -143,10 +141,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::app) fn finish_table_hscroll_drag(
-        &mut self,
-        cx: &mut Context<Self>,
-    ) -> bool {
+    pub(in crate::app) fn finish_table_hscroll_drag(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(drag) = self.table_hscroll_drag.take() else {
             return false;
         };

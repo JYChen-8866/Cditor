@@ -1,9 +1,9 @@
 use std::{fmt, path::PathBuf};
 
+use ::ding_board::Scene as WhiteboardScene;
 use async_trait::async_trait;
 pub use cditor_ai::{AiProvider, AiProviderError, AiProviderRequest as AiRequest, AiTaskKind};
 pub use cditor_core::rich_text::AssetRef;
-use ::ding_board::Scene as WhiteboardScene;
 
 use super::command::{CommandDescriptor, SlashItem, ToolbarItem};
 

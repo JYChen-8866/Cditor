@@ -3,10 +3,10 @@ use gpui::{
     Styled, Window, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use crate::scroll::{ScrollbarPolicy, ScrollbarVisualState};
+use crate::theme::GuiTheme;
 use cditor_runtime::DocumentRuntime;
 
 const GUI_SCROLLBAR_WIDTH_PX: f32 = 10.0;

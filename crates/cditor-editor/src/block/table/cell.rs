@@ -3,11 +3,11 @@ use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::input::{
     begin_table_cell_text_selection_from_mouse, update_table_cell_text_selection_from_mouse,
 };
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 #[cfg(test)]
 use cditor_core::rich_text::TablePayload;

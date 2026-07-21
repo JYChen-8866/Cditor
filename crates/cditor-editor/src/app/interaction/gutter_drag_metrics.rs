@@ -46,10 +46,7 @@ pub(in crate::app) fn gutter_drag_pointer_document_y(
     (f64::from(window_y) - document_viewport_origin_y + scroll_top) as f32
 }
 
-pub(in crate::app) fn gutter_drag_auto_scroll_delta(
-    pointer_y: f64,
-    viewport_height: f64,
-) -> f64 {
+pub(in crate::app) fn gutter_drag_auto_scroll_delta(pointer_y: f64, viewport_height: f64) -> f64 {
     if viewport_height <= GUTTER_DRAG_AUTO_SCROLL_EDGE_PX * 2.0 {
         return 0.0;
     }

@@ -1,17 +1,13 @@
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::block::chrome::{
     BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX,
     BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
 };
 #[cfg(test)]
-use crate::block::chrome::{
-    BLOCK_GUTTER_WIDTH_PX, BLOCK_INDENT_STEP_PX, BLOCK_PREFIX_WIDTH_PX,
-};
+use crate::block::chrome::{BLOCK_GUTTER_WIDTH_PX, BLOCK_INDENT_STEP_PX, BLOCK_PREFIX_WIDTH_PX};
 use crate::input::SingleLineTextInputElement;
-use crate::menu_metrics::{
-    MenuViewportBounds, SECONDARY_MENU_WIDTH_PX, secondary_menu_geometry,
-};
+use crate::menu_metrics::{MenuViewportBounds, SECONDARY_MENU_WIDTH_PX, secondary_menu_geometry};
+use crate::theme::GuiTheme;
 #[cfg(test)]
 use cditor_core::rich_text::TableCellAlign;
 use cditor_runtime::{TableViewState, ViewBlockSnapshot};

@@ -1,11 +1,11 @@
 //! Code-block language, copy, and theme controls.
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::input::{
     CODE_LANGUAGE_VISIBLE_SUGGESTIONS, CodeLanguageEditState, CodeLanguageItem,
     CodeLanguagePopupPlacement, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement,
 };
+use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use gpui::InteractiveElement;
 use gpui::prelude::FluentBuilder;

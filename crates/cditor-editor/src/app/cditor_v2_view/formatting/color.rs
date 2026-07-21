@@ -4,9 +4,9 @@ use std::time::Duration;
 use cditor_core::rich_text::{InlineColorTarget, InlineMark, InlineSpan};
 use cditor_runtime::DocumentRuntime;
 
-use cditor_api::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::overlay::{ActiveColor, ColorMenuAction, PaletteColor};
+use cditor_api::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 use super::super::CditorV2View;
 
@@ -145,8 +145,7 @@ impl CditorV2View {
             }
             Err(error) => {
                 trace_block_color("apply.error", &error);
-                self.save_status =
-                    crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

@@ -1,7 +1,7 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
 
-use crate::theme::GuiTheme;
 use crate::skeleton::{SkeletonItem, SkeletonRows, SkeletonVariant};
+use crate::theme::GuiTheme;
 
 const MAX_WINDOW_SKELETON_BLOCKS: usize = 12;
 const ESTIMATED_SKELETON_BLOCK_HEIGHT_PX: f64 = 56.0;

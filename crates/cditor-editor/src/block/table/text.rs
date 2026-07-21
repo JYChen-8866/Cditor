@@ -2,11 +2,9 @@ use std::ops::Range;
 
 use gpui::{AnyElement, Entity, FocusHandle, FontWeight, IntoElement};
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
-use crate::text::{
-    RichTextElement, RichTextLayoutInput, RichTextTypography, TextLayoutSurfaceId,
-};
+use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography, TextLayoutSurfaceId};
+use crate::theme::GuiTheme;
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{InlineSpan, RichBlockKind, TableCellAlign, TextAlign};

@@ -5,13 +5,14 @@
 //! 含 OS、架构、逻辑核数、profile、fixture version/checksum 的 versioned JSON
 //! 报告。任一场景未通过其内置预算时以非零码退出。
 //!
-//! 运行：`cargo bench -p cditor-runtime --bench frame_baseline -- [--quick|--full]`
+//! 运行：`cargo bench -p cditor-test-support --bench frame_baseline -- [--quick|--full]`
 //! 报告：stdout JSON + `target/benchmark-reports/frame-baseline-<mode>.json`
 
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use cditor_core::demo_fixtures::large_mixed_rich_text_document;
 use cditor_core::fixtures::{
     FIXTURE_MANIFEST_SCHEMA_VERSION, MIXED_FIXTURE_VERSION,
     bidi::{BIDI_FIXTURE_VERSION, BIDI_STRESS_BLOCKS, bidi_stress_document},
@@ -23,13 +24,17 @@ use cditor_core::fixtures::{
     },
 };
 use cditor_core::rich_text::RichTextDocument;
-use cditor_runtime::{
-    AcceptanceFixture, EditingAcceptanceConfig, EditingAcceptanceScenario, OpenAcceptanceConfig,
-    ScrollAcceptanceConfig, ScrollAcceptanceScenario, StructureEditAcceptanceConfig,
-    StructureEditScenario, fixture_10mb_code_block, fixture_50k_row_table,
-    fixture_100k_one_line_blocks, fixture_100k_uneven_heights, fixture_emoji_cjk_bidi,
-    fixture_image_dense, large_mixed_rich_text_document, run_editing_acceptance,
-    run_open_acceptance, run_scroll_acceptance, run_structure_edit_acceptance,
+use cditor_test_support::acceptance::{
+    editing::{EditingAcceptanceConfig, EditingAcceptanceScenario, run_editing_acceptance},
+    open::{
+        AcceptanceFixture, OpenAcceptanceConfig, fixture_10mb_code_block, fixture_50k_row_table,
+        fixture_100k_one_line_blocks, fixture_100k_uneven_heights, fixture_emoji_cjk_bidi,
+        fixture_image_dense, run_open_acceptance,
+    },
+    scroll::{ScrollAcceptanceConfig, ScrollAcceptanceScenario, run_scroll_acceptance},
+    structure_edit::{
+        StructureEditAcceptanceConfig, StructureEditScenario, run_structure_edit_acceptance,
+    },
 };
 use serde::Serialize;
 

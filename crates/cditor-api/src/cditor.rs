@@ -1,15 +1,12 @@
 use std::{fmt, sync::Arc, time::Duration};
 
-use gpui::{AppContext, Context, Entity};
+use gpui::AppContext;
 
 use cditor_core::ids::DocumentId;
-use cditor_runtime::DocumentRuntime;
-use cditor_storage::{StorageError, block_on_storage};
 
-use super::cold_start::{CditorColdStartPlan, load_runtime_from_options};
+use super::cold_start::CditorColdStartPlan;
 use super::component::CditorComponent;
 use super::error::CditorError;
-use super::event::CditorEvent;
 use super::options::{CditorBackend, CditorOptions, SqliteStorageOptions, WorkspaceId};
 
 #[derive(Clone)]
@@ -170,25 +167,16 @@ impl Cditor {
         self.options
     }
 
-
     /// Builds the preferred SDK component pair.
-    pub fn build<C: AppContext>(self, cx: &mut C) -> Result<CditorComponent, CditorError> {
+    pub fn build<C: AppContext>(self, _cx: &mut C) -> Result<CditorComponent, CditorError> {
         if let CditorColdStartPlan::Invalid { reason } =
             CditorColdStartPlan::from_options(&self.options)
         {
             return Err(CditorError::InvalidInput(reason));
         }
-        let view = todo!("build moved to cditor-app");
-        Ok(CditorComponent::from_view(view))
-    }
-}
-
-
-fn storage_cold_start_timeout(options: &CditorOptions) -> Duration {
-    if options.seed_large_demo_to_postgres {
-        Duration::from_secs(30 * 60)
-    } else {
-        Duration::from_secs(90)
+        Err(CditorError::Unsupported(
+            "construct Cditor through the cditor-app composition API".to_owned(),
+        ))
     }
 }
 
@@ -257,20 +245,6 @@ mod tests {
     }
 
     #[test]
-    fn postgres_seed_gets_a_longer_cold_start_deadline() {
-        let normal = Cditor::new().into_options();
-        let seeded = Cditor::new()
-            .with_postgres_large_demo_seed(100_000, false)
-            .into_options();
-
-        assert_eq!(storage_cold_start_timeout(&normal), Duration::from_secs(90));
-        assert_eq!(
-            storage_cold_start_timeout(&seeded),
-            Duration::from_secs(30 * 60)
-        );
-    }
-
-    #[test]
     fn cditor_builder_sets_autosave_interval() {
         let cditor = Cditor::new().with_autosave(10);
 
@@ -318,15 +292,5 @@ mod tests {
         let disabled = configured.without_ai();
         assert!(!disabled.ai_enabled);
         assert!(disabled.ai_provider.is_none());
-    }
-
-    #[test]
-    fn memory_backend_builds_empty_editor_runtime() {
-        let runtime = DocumentRuntime::empty();
-        let projection = runtime.projection_for_window();
-
-        assert_eq!(projection.blocks.len(), 1);
-        assert_eq!(projection.blocks[0].block_id, 1);
-        assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "");
     }
 }

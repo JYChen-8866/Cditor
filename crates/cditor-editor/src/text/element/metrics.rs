@@ -14,8 +14,8 @@ use super::super::{
     ParleyTextStyleConfig, RichTextLayoutInput,
 };
 use super::RichTextTypography;
-use crate::theme::GuiTheme;
 use crate::rich_text::NOTION_MONO_FONT_FAMILY;
+use crate::theme::GuiTheme;
 
 pub(in crate::text) fn plain_text_from_spans(spans: &[InlineSpan]) -> String {
     spans.iter().map(|span| span.text.as_str()).collect()
@@ -153,10 +153,7 @@ pub(in crate::text) fn base_font_weight_for_kind(
     }
 }
 
-pub(in crate::text) fn line_height_for_kind(
-    kind: &RichBlockKind,
-    _text_size: Pixels,
-) -> Pixels {
+pub(in crate::text) fn line_height_for_kind(kind: &RichBlockKind, _text_size: Pixels) -> Pixels {
     match kind {
         RichBlockKind::Code { .. } => px(24.0),
         RichBlockKind::Heading { level: 1 } => px(NOTION_HEADING_1_LINE_HEIGHT_PX as f32),

@@ -5,10 +5,10 @@ use gpui::{
     ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::menu_metrics::SECONDARY_MENU_WIDTH_PX;
+use crate::theme::GuiTheme;
 
 pub const COLOR_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
 pub const COLOR_MENU_DESIRED_HEIGHT_PX: f32 = 520.0;
