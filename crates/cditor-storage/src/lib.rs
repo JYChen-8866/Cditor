@@ -18,3 +18,4 @@ pub use error::{StorageError, StorageResult};
 pub use page_layout_snapshot::{StoragePageLayoutPage, StoragePageLayoutSnapshot};
 pub use runtime::block_on_storage;
 pub use version::DOCUMENT_INDEX_VISIBLE_VERSION;
+pub mod query_index;

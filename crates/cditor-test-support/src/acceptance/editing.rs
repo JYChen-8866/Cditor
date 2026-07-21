@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{
+use cditor_runtime::{
     CompositionState, EditingSession, InputHotPathConfig, PieceTableTextModel,
     SingleCharInputHotPath,
 };

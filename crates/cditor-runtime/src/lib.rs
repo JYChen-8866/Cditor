@@ -1,27 +1,9 @@
-pub mod acceptance;
 pub mod content;
 pub mod document_runtime;
 pub mod editing;
 pub mod projection;
 pub mod scheduling;
 
-pub use acceptance::editing::{
-    EditingAcceptanceConfig, EditingAcceptanceResult, EditingAcceptanceScenario,
-    run_editing_acceptance,
-};
-pub use acceptance::open::{
-    AcceptanceFixture, AcceptanceFixtureKind, OpenAcceptanceConfig, OpenAcceptanceResult,
-    TextProfile, fixture_10mb_code_block, fixture_50k_row_table, fixture_100k_one_line_blocks,
-    fixture_100k_uneven_heights, fixture_emoji_cjk_bidi, fixture_image_dense, run_open_acceptance,
-};
-pub use acceptance::scroll::{
-    ScrollAcceptanceConfig, ScrollAcceptanceResult, ScrollAcceptanceScenario,
-    evaluate_scroll_trace, run_scroll_acceptance,
-};
-pub use acceptance::structure_edit::{
-    StructureEditAcceptanceConfig, StructureEditAcceptanceResult, StructureEditScenario,
-    run_structure_edit_acceptance,
-};
 pub use cditor_core::demo_fixtures::{
     LARGE_MIXED_DEMO_BLOCKS, LARGE_MIXED_DEMO_DOCUMENT_ID, large_mixed_demo_document,
     large_mixed_rich_text_document,
@@ -46,10 +28,6 @@ pub use content::payload_cache::{
     PayloadCachePolicy, PayloadCacheTrimReport,
 };
 pub use content::payload_window::PayloadWindow;
-pub use content::query_index::{
-    BLOCK_FTS_SCHEMA, BlockPayloadForQuery, DocumentQueryIndex, FtsApplyResult, FtsEntry,
-    FtsUpdateTask, QueryResult, QueryScrollTarget,
-};
 pub use document_runtime::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
     AiStreamApplyResult, CompositionFocusTransition, DocumentRuntime,

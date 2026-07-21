@@ -1084,6 +1084,7 @@ version = "0.2.6"
 dependencies = [
  "async-trait",
  "cditor-core",
+ "cditor-editor-core",
  "tokio",
 ]
 
