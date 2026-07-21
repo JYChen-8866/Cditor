@@ -1,11 +1,10 @@
 [package]
-name = "cditor-editor-core"
+name = "cditor-theme"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-cditor-core = { path = "../cditor-core" }
+cditor-theme-types = { path = "../cditor-theme-types" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-unicode-segmentation = "1.12"

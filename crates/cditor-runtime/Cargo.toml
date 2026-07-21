@@ -5,9 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-cditor-ai = { path = "../ai" }
-cditor-core = { path = "../core" }
-cditor-editor = { path = "../editor" }
+cditor-ai = { path = "../cditor-ai" }
+cditor-core = { path = "../cditor-core" }
+cditor-editor = { path = "../cditor-editor-core" }
 unicode-segmentation = "1.12"
 
 [dev-dependencies]

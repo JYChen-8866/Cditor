@@ -1,17 +1,24 @@
 [workspace]
 members = [
-    "crates/ai",
-    "crates/app",
-    "crates/core",
+    "crates/cditor-ai",
+    "crates/cditor-core",
+    "crates/cditor-theme-types",
+    "crates/cditor-theme",
+    "crates/cditor-storage",
+    "crates/cditor-storage-postgres",
+    "crates/cditor-storage-sqlite",
+    "crates/cditor-runtime",
+    "crates/cditor-editor-core",
+    "crates/cditor-editor",
+    "crates/cditor-import-export",
+    "crates/cditor-collaboration",
+    "crates/cditor-api",
+    "crates/cditor-app",
+    "crates/cditor-test-support",
+    "crates/cditor-text",
     "crates/ding-board",
-    "crates/editor",
-    "crates/runtime",
-    "crates/store",
-    "crates/store-postgres",
-    "crates/store-sqlite",
-    "crates/text",
 ]
-default-members = ["crates/app"]
+default-members = ["crates/cditor-app"]
 resolver = "3"
 
 [workspace.package]
@@ -19,8 +26,6 @@ version = "0.2.6"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
-# Distribution builds favor runtime performance over CI compile time. Fat LTO
-# and a single codegen unit let LLVM optimize across the complete crate graph.
 [profile.release]
 opt-level = 3
 debug = false

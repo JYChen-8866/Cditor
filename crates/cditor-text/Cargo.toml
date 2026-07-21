@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 accesskit = "=0.24.1"
-cditor-core = { path = "../core" }
+cditor-core = { path = "../cditor-core" }
 fontique = "=0.11.0"
 parley = { version = "=0.11.0", features = ["accesskit", "complex-scripts", "system"] }
 sha2 = "0.10"

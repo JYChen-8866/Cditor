@@ -6,5 +6,5 @@ license.workspace = true
 
 [dependencies]
 async-trait = "0.1"
-cditor-core = { path = "../core" }
+cditor-core = { path = "../cditor-core" }
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }

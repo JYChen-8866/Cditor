@@ -12,15 +12,15 @@ runtime-shaders = ["gpui_platform/runtime_shaders"]
 
 [dependencies]
 async-trait = "0.1"
-cditor-ai = { path = "../ai" }
-cditor-core = { path = "../core" }
-cditor-text = { path = "../text" }
+cditor-ai = { path = "../cditor-ai" }
+cditor-core = { path = "../cditor-core" }
+cditor-text = { path = "../cditor-text" }
 ding-board = { path = "../ding-board" }
-cditor-editor = { path = "../editor" }
-cditor-runtime = { path = "../runtime" }
-cditor-storage = { path = "../store" }
-cditor-storage-postgres = { path = "../store-postgres" }
-cditor-storage-sqlite = { path = "../store-sqlite" }
+cditor-editor = { path = "../cditor-editor-core" }
+cditor-runtime = { path = "../cditor-runtime" }
+cditor-storage = { path = "../cditor-storage" }
+cditor-storage-postgres = { path = "../cditor-storage-postgres" }
+cditor-storage-sqlite = { path = "../cditor-storage-sqlite" }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
 mermaid_render = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }

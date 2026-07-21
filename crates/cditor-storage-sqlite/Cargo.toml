@@ -6,8 +6,8 @@ license.workspace = true
 
 [dependencies]
 async-trait = "0.1"
-cditor-core = { path = "../core" }
-cditor-storage = { path = "../store" }
+cditor-core = { path = "../cditor-core" }
+cditor-storage = { path = "../cditor-storage" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -16,6 +16,6 @@ tokio = { version = "1", features = ["sync", "time"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
-cditor-runtime = { path = "../runtime" }
+cditor-runtime = { path = "../cditor-runtime" }
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
