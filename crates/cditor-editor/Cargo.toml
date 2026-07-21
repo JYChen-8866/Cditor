@@ -10,6 +10,9 @@ name = "cditor_editor"
 [features]
 runtime-shaders = ["gpui_platform/runtime_shaders"]
 
+[dev-dependencies]
+async-trait = "0.1"
+
 [dependencies]
 cditor-ai = { path = "../cditor-ai" }
 cditor-api = { path = "../cditor-api" }
@@ -22,7 +25,7 @@ cditor-storage = { path = "../cditor-storage" }
 cditor-theme = { path = "../cditor-theme" }
 ding-board = { path = "../ding-board" }
 tokio = { version = "1", features = ["time"] }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit", "test-support"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
 mermaid_render = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
 serde = { version = "1", features = ["derive"] }

@@ -182,7 +182,7 @@ fn table_cells_support_escaped_pipe_like_v1() {
     assert_eq!(table.rows.len(), 2);
     assert_eq!(table.rows[1].cells.len(), 2);
     assert_eq!(
-        crate::rich_text::plain_text_from_spans(&table.rows[1].cells[0].spans),
+        cditor_core::rich_text::plain_text_from_spans(&table.rows[1].cells[0].spans),
         "left | right"
     );
 }

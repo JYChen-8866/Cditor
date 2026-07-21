@@ -352,7 +352,7 @@ fn register_fixture_font() {
 fn fixture_font_data() -> Vec<u8> {
     std::fs::read(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../text/tests/fixtures/text-layout/v1/fonts/LeagueSpartan[wght].ttf"),
+            .join("../cditor-text/tests/fixtures/text-layout/v1/fonts/LeagueSpartan[wght].ttf"),
     )
     .unwrap()
 }
@@ -360,7 +360,7 @@ fn fixture_font_data() -> Vec<u8> {
 fn color_font_fixture_data() -> &'static [u8] {
     include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../text/tests/fixtures/text-layout/v1/fonts/COLRv1StaticTestGlyphs.ttf"
+        "/../cditor-text/tests/fixtures/text-layout/v1/fonts/COLRv1StaticTestGlyphs.ttf"
     ))
 }
 

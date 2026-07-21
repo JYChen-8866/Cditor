@@ -2,9 +2,9 @@ use std::time::{Duration, Instant};
 
 use cditor_core::ids::SurfaceId;
 use cditor_core::rich_text::{
-    BlockPayload, BlockPayloadRecord, ClipboardSelection, ImagePayload, InlineMark, InlineSpan,
-    RichBlockKind,
+    BlockPayload, BlockPayloadRecord, ImagePayload, InlineMark, InlineSpan, RichBlockKind,
 };
+use cditor_import_export::clipboard::ClipboardSelection;
 
 use super::*;
 

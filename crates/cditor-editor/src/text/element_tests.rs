@@ -6,7 +6,7 @@ use super::element::{
     text_size_for_kind,
 };
 use super::*;
-use cditor_theme::theme::GuiTheme;
+use crate::theme::GuiTheme;
 use gpui::{FontWeight, px};
 use std::sync::Arc;
 

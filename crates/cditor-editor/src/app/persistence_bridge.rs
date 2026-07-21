@@ -634,7 +634,7 @@ mod tests {
         cx.run_until_parked();
         assert!(matches!(
             view.read_with(cx, |view, _| view.sdk_save_status()),
-            cditor_api::SaveStatus::Failed(message) if message.contains("injected")
+            cditor_api::document::SaveStatus::Failed(message) if message.contains("injected")
         ));
         assert_eq!(
             view.read_with(cx, |view, _| {
@@ -650,7 +650,7 @@ mod tests {
         assert_eq!(report.saved_blocks, 3);
         assert_eq!(
             view.read_with(cx, |view, _| view.sdk_save_status()),
-            cditor_api::SaveStatus::Clean
+            cditor_api::document::SaveStatus::Clean
         );
         assert_eq!(*storage.transaction_counts.lock().unwrap(), vec![1, 1]);
     }

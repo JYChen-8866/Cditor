@@ -105,7 +105,8 @@ impl GuiInputCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cditor_core::{CaretDirection, CditorCommand, CommandArgs, CommandSource};
+    use cditor_editor_core::command::{CaretDirection, CommandArgs, CommandSource};
+    use cditor_api::command::CditorCommand;
 
     #[test]
     fn gui_input_maps_to_the_stable_command_protocol() {
