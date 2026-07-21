@@ -106,13 +106,9 @@ use cditor_core::layout::{
     estimate_text_payload_height, text_line_height_for_kind,
 };
 use cditor_core::rich_text::{
-    BlockAttrs, BlockPayload, BlockPayloadRecord, BlockPayloadView, ClipboardBlock,
-    ClipboardBlockFragment, ClipboardFragmentBoundary, ClipboardSelection, ImagePayload,
-    InlineColorTarget, InlineMark, InlineSpan, MarkdownImportOptions, ParsedMarkdownDocument,
-    RichBlockKind, RichBlockRecord, RichTextDocument, TableCellAlign, TableCellMerge, TableRange,
-    TableTrackSize, block_kind_shortcut_with_marker_len, code_fence_shortcut,
-    import_markdown_block_incremental, kind_tag_for_rich_block_kind, looks_like_markdown_paste,
-    markdown_inline_shortcut_spans, parse_callout_marker, parse_markdown_document,
+    BlockAttrs, BlockPayload, BlockPayloadRecord, BlockPayloadView, ImagePayload,
+    InlineColorTarget, InlineMark, InlineSpan, RichBlockKind, RichBlockRecord, RichTextDocument,
+    TableCellAlign, TableCellMerge, TableRange, TableTrackSize, kind_tag_for_rich_block_kind,
     plain_text_from_spans, rich_block_kind_from_tag,
 };
 use cditor_editor_core::debug_overlay::DebugOverlaySnapshot;
@@ -124,6 +120,14 @@ use cditor_editor_core::scroll::{
 use cditor_editor_core::window::{
     PlaceholderWindow, RenderWindow, ScrollDirection, WindowPlanDecision, WindowPlanRequest,
     WindowPlanner, WindowPlannerPolicy,
+};
+use cditor_import_export::clipboard::{
+    ClipboardBlock, ClipboardBlockFragment, ClipboardFragmentBoundary, ClipboardSelection,
+};
+use cditor_import_export::markdown::{
+    MarkdownImportOptions, ParsedMarkdownDocument, block_kind_shortcut_with_marker_len,
+    code_fence_shortcut, import_markdown_block_incremental, looks_like_markdown_paste,
+    markdown_inline_shortcut_spans, parse_callout_marker, parse_markdown_document,
 };
 
 fn input_trace_enabled() -> bool {

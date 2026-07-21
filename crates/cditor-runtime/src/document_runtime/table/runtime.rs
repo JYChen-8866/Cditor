@@ -114,7 +114,12 @@ impl TableRuntime {
         col: usize,
         table: &cditor_core::rich_text::TablePayload,
     ) -> Result<bool, String> {
-        let changed = self.table.paste_table_at(row, col, table)?;
+        let changed = cditor_import_export::table_clipboard::paste_table_at(
+            &mut self.table,
+            row,
+            col,
+            table,
+        )?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;

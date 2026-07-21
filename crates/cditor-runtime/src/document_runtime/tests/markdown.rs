@@ -68,7 +68,7 @@ fn markdown_paste_multiline_list_inserts_structured_siblings() {
 
 #[test]
 fn markdown_paste_detection_scans_all_lines_like_v1() {
-    assert!(cditor_core::rich_text::looks_like_markdown_paste(
+    assert!(cditor_import_export::markdown::looks_like_markdown_paste(
         "plain intro\n- item"
     ));
 }

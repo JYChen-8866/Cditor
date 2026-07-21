@@ -98,7 +98,9 @@ pub(super) fn table_to_plain_markdown(payload: &BlockPayload) -> Option<String> 
         let cells = row
             .cells
             .iter()
-            .map(|cell| escape_table_cell(&crate::rich_text::plain_text_from_spans(&cell.spans)))
+            .map(|cell| {
+                escape_table_cell(&cditor_core::rich_text::plain_text_from_spans(&cell.spans))
+            })
             .collect::<Vec<_>>();
         lines.push(format!("| {} |", cells.join(" | ")));
         if row_index == 0 {

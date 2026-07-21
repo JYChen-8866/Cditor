@@ -1,6 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use cditor_core::ids::BlockId;
+pub use cditor_import_export::media_resource::{MediaResourceId, MediaStableBox};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MediaCachePolicy {
@@ -25,9 +26,6 @@ pub enum MemoryPressure {
     Warning,
     Critical,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MediaResourceId(pub u64);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaDecodeKind {
@@ -81,13 +79,6 @@ impl MediaMetadata {
             mime: mime.into(),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MediaStableBox {
-    pub estimated_height: f64,
-    pub min_height: f64,
-    pub max_height: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]

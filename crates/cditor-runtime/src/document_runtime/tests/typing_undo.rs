@@ -357,7 +357,7 @@ fn structure_undo_redo_restore_whole_block_selection() {
     assert!(
         runtime
             .paste_clipboard_selection(&ClipboardSelection::Blocks {
-                blocks: vec![cditor_core::rich_text::ClipboardBlock {
+                blocks: vec![cditor_import_export::clipboard::ClipboardBlock {
                     source_id: 99,
                     parent_source_id: None,
                     depth: 0,

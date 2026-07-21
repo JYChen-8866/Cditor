@@ -9,21 +9,18 @@ use gpui::{
     px, rgb,
 };
 
-use crate::theme::GuiTheme;
 use crate::app::CditorV2View;
 use crate::block::{
     heading::render_heading,
     list::{render_bulleted, render_numbered, render_todo},
 };
-use crate::input::{
-    AiPromptState, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement,
-};
+use crate::input::{AiPromptState, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement};
 use crate::menu_metrics::EditorViewport;
 use crate::rich_text::render_wrapped_payload_text;
 use crate::text::{RichTextPlatformLayout, platform_range_bounds};
-use cditor_core::rich_text::{
-    BlockPayloadRecord, MarkdownImportOptions, RichBlockKind, parse_markdown_document,
-};
+use crate::theme::GuiTheme;
+use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
+use cditor_import_export::markdown::{MarkdownImportOptions, parse_markdown_document};
 
 const AI_PROMPT_WIDTH_PX: f32 = 720.0;
 const AI_PROMPT_HEIGHT_PX: f32 = 48.0;

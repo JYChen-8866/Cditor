@@ -1,7 +1,6 @@
 use super::{InlineSpan, plain_text_from_spans};
 use serde::{Deserialize, Serialize};
 
-mod clipboard;
 mod structure;
 mod style;
 

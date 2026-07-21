@@ -1,14 +1,15 @@
-use super::{
+use cditor_core::ids::{BlockId, DocumentId};
+pub use cditor_core::rich_text::{
     BlockPayload, CalloutVariant, InlineMark, InlineSpan, RichBlockKind, RichBlockRecord,
     RichTextDocument, TableCellPayload, TablePayload, TableRowPayload,
 };
-use crate::ids::{BlockId, DocumentId};
-use crate::rich_text::MARKDOWN_PARSE_STATS;
 
 mod block;
 mod export;
+mod markdown_stats;
 
 pub use block::parse_callout_marker;
+pub use markdown_stats::{MARKDOWN_PARSE_STATS, MarkdownParseStats, MarkdownParseStatsSnapshot};
 mod inline;
 mod table;
 

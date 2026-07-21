@@ -1026,6 +1026,7 @@ dependencies = [
  "cditor-api",
  "cditor-core",
  "cditor-editor-core",
+ "cditor-import-export",
  "cditor-runtime",
  "cditor-storage",
  "cditor-text",
@@ -1061,6 +1062,7 @@ dependencies = [
  "cditor-core",
  "serde",
  "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -1070,6 +1072,7 @@ dependencies = [
  "cditor-ai",
  "cditor-core",
  "cditor-editor-core",
+ "cditor-import-export",
  "serde",
  "serde_json",
  "unicode-segmentation",

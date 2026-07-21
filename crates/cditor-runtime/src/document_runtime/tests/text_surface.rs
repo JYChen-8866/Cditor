@@ -346,7 +346,7 @@ fn auxiliary_select_all_copy_cut_and_rich_clipboard_share_session_selection() {
     assert_eq!(runtime.input_session_selected_range(), Some(0..7));
     assert_eq!(runtime.selected_focused_text().as_deref(), Some("caption"));
     let selection = runtime.clipboard_selection_snapshot().unwrap();
-    let cditor_core::rich_text::ClipboardSelection::Inline { spans } = selection else {
+    let cditor_import_export::clipboard::ClipboardSelection::Inline { spans } = selection else {
         panic!("caption selection must use inline clipboard spans");
     };
     assert_eq!(
@@ -369,9 +369,9 @@ fn collection_title_flattens_structural_clipboard_without_inserting_blocks() {
     let mut runtime = runtime_with_auxiliary_surfaces();
     let surface_id = SurfaceId::CollectionTitle { block_id: 20 };
     runtime.focus_text_surface_at_offset(surface_id, 0).unwrap();
-    let selection = cditor_core::rich_text::ClipboardSelection::Blocks {
+    let selection = cditor_import_export::clipboard::ClipboardSelection::Blocks {
         blocks: vec![
-            cditor_core::rich_text::ClipboardBlock {
+            cditor_import_export::clipboard::ClipboardBlock {
                 source_id: 100,
                 parent_source_id: None,
                 depth: 0,
@@ -380,7 +380,7 @@ fn collection_title_flattens_structural_clipboard_without_inserting_blocks() {
                     spans: vec![cditor_core::rich_text::InlineSpan::plain("one")],
                 },
             },
-            cditor_core::rich_text::ClipboardBlock {
+            cditor_import_export::clipboard::ClipboardBlock {
                 source_id: 101,
                 parent_source_id: None,
                 depth: 0,

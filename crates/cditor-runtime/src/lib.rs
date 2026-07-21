@@ -26,15 +26,20 @@ pub use cditor_core::demo_fixtures::{
     LARGE_MIXED_DEMO_BLOCKS, LARGE_MIXED_DEMO_DOCUMENT_ID, large_mixed_demo_document,
     large_mixed_rich_text_document,
 };
+pub use cditor_import_export::paste_import::{
+    ClipboardInput, MediaMetadataTask, NormalizedPasteBlock, PasteImportConfig,
+    PasteImportPipeline, PasteImportResult, PastePipelinePhase, PasteProgress, PasteRunOptions,
+    PayloadPersistTask, PendingMediaResource,
+};
+pub use cditor_import_export::security::{
+    DataUrlPolicy, EmbedPolicy, ExternalContentPolicy, ExternalResourceAction,
+    ExternalResourceDecision, ExternalResourceKind, FileUrlPolicy, PrivacyMode,
+    RemoteResourcePolicy, SanitizedHtml, SvgPolicy, sanitize_external_html,
+};
 pub use content::media_cache::{
     MediaCache, MediaCacheEntry, MediaCachePolicy, MediaCacheStats, MediaDecodeDecision,
     MediaDecodeKind, MediaDecodeLane, MediaDecodeRequest, MediaDecodeTrigger, MediaMetadata,
     MediaResourceId, MediaStableBox, MemoryPressure,
-};
-pub use content::paste_import::{
-    ClipboardInput, MediaMetadataTask, NormalizedPasteBlock, PasteImportConfig,
-    PasteImportPipeline, PasteImportResult, PastePipelinePhase, PasteProgress, PasteRunOptions,
-    PayloadPersistTask, PendingMediaResource,
 };
 pub use content::payload_cache::{
     DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES, DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES,
@@ -44,11 +49,6 @@ pub use content::payload_window::PayloadWindow;
 pub use content::query_index::{
     BLOCK_FTS_SCHEMA, BlockPayloadForQuery, DocumentQueryIndex, FtsApplyResult, FtsEntry,
     FtsUpdateTask, QueryResult, QueryScrollTarget,
-};
-pub use content::security::{
-    DataUrlPolicy, EmbedPolicy, ExternalContentPolicy, ExternalResourceAction,
-    ExternalResourceDecision, ExternalResourceKind, FileUrlPolicy, PrivacyMode,
-    RemoteResourcePolicy, SanitizedHtml, SvgPolicy, sanitize_external_html,
 };
 pub use document_runtime::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,

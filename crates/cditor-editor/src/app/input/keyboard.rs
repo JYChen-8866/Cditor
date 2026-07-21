@@ -14,9 +14,9 @@ use crate::text::{
 };
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::{BlockId, SurfaceId};
-use cditor_core::rich_text::{
-    CditorClipboardEnvelope, ClipboardSelection, InlineMark, looks_like_markdown_paste,
-};
+use cditor_core::rich_text::InlineMark;
+use cditor_import_export::clipboard::{CditorClipboardEnvelope, ClipboardSelection};
+use cditor_import_export::markdown::looks_like_markdown_paste;
 use cditor_runtime::DocumentRuntime;
 
 fn trace_clipboard_markdown(event: &str, details: impl std::fmt::Display) {

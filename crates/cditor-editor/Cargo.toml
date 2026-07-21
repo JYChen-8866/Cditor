@@ -14,6 +14,7 @@ runtime-shaders = ["gpui_platform/runtime_shaders"]
 cditor-ai = { path = "../cditor-ai" }
 cditor-api = { path = "../cditor-api" }
 cditor-core = { path = "../cditor-core" }
+cditor-import-export = { path = "../cditor-import-export" }
 cditor-text = { path = "../cditor-text" }
 cditor-editor-core = { path = "../cditor-editor-core" }
 cditor-runtime = { path = "../cditor-runtime" }

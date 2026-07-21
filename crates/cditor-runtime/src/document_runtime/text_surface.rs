@@ -533,7 +533,7 @@ impl DocumentRuntime {
             if let Some(editing) = self.editing.as_mut() {
                 editing.set_selected_range(normalized.clone(), false);
             }
-            self.paste_clipboard_selection(&cditor_core::rich_text::ClipboardSelection::Inline {
+            self.paste_clipboard_selection(&cditor_import_export::clipboard::ClipboardSelection::Inline {
                 spans: delta.spans,
             })?
         } else {

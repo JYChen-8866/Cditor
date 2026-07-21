@@ -570,7 +570,7 @@ fn rich_clipboard_paste_uses_import_origin_and_one_external_undo_transaction() {
     let mut runtime = paragraph_runtime("hello");
     runtime.focus_block_at_offset(1, 5).unwrap();
     runtime.set_document_text_selection(1, 0, 1, 5).unwrap();
-    let selection = cditor_core::rich_text::ClipboardSelection::Inline {
+    let selection = cditor_import_export::clipboard::ClipboardSelection::Inline {
         spans: vec![InlineSpan {
             text: "hi".to_owned(),
             marks: vec![InlineMark::Bold],

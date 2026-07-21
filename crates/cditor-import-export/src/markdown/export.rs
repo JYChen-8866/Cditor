@@ -1,5 +1,5 @@
-use super::*;
-use crate::rich_text::markdown::table::table_to_plain_markdown;
+use super::table::table_to_plain_markdown;
+use cditor_core::rich_text::{CalloutVariant, RichBlockKind, RichBlockRecord};
 
 pub(super) fn block_to_plain_markdown(block: &RichBlockRecord) -> String {
     let text = block.payload.plain_text();
