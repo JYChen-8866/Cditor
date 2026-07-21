@@ -16,6 +16,5 @@ tokio = { version = "1", features = ["sync", "time"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
-cditor-runtime = { path = "../cditor-runtime" }
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

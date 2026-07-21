@@ -1109,7 +1109,6 @@ version = "0.2.6"
 dependencies = [
  "async-trait",
  "cditor-core",
- "cditor-runtime",
  "cditor-storage",
  "serde",
  "serde_json",
