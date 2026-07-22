@@ -50,6 +50,12 @@ impl DocumentRuntime {
             EditorCommand::SetDocumentSelection { selection } => self
                 .set_document_selection(selection)
                 .map_err(apply_error)?,
+            EditorCommand::FocusBlock { block_id } => {
+                affected_blocks.push(block_id);
+                let before = self.focused_block_id();
+                self.try_focus_block(block_id).map_err(apply_error)?;
+                before != self.focused_block_id()
+            }
             EditorCommand::DeleteSelection => {
                 self.delete_active_selection().map_err(apply_error)?
             }

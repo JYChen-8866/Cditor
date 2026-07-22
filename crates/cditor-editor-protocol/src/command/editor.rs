@@ -148,6 +148,10 @@ pub enum EditorCommand {
     SetDocumentSelection {
         selection: cditor_core::edit::DocumentSelection,
     },
+    #[doc(hidden)]
+    FocusBlock {
+        block_id: cditor_core::ids::BlockId,
+    },
     MoveCaret {
         direction: CaretDirection,
         extend_selection: bool,
@@ -259,6 +263,7 @@ impl EditorCommand {
             Self::DeleteBackward => builtin::TEXT_DELETE_BACKWARD,
             Self::DeleteForward => builtin::TEXT_DELETE_FORWARD,
             Self::SetDocumentSelection { .. } => builtin::SELECTION_SET_DOCUMENT,
+            Self::FocusBlock { .. } => builtin::SELECTION_FOCUS_BLOCK,
             Self::MoveCaret { .. } => builtin::TEXT_MOVE_CARET,
             Self::ApplySlashBlock { .. } => builtin::BLOCK_APPLY_SLASH,
             Self::TableToggleHeader { .. } => builtin::TABLE_TOGGLE_HEADER,
@@ -314,7 +319,8 @@ impl EditorCommand {
             Self::InsertParagraphAfterBlock { block_id }
             | Self::DeleteBlock { block_id }
             | Self::ToggleTodo { block_id }
-            | Self::CopyBlockText { block_id } => CommandArgs::BlockTarget {
+            | Self::CopyBlockText { block_id }
+            | Self::FocusBlock { block_id } => CommandArgs::BlockTarget {
                 block_id: *block_id,
             },
             Self::MoveBlockBefore {
@@ -572,5 +578,19 @@ mod tests {
             CommandCatalog::builtin().validate_invocation(&invocation),
             Ok(())
         );
+    }
+
+    #[test]
+    fn block_focus_command_uses_a_read_only_typed_target() {
+        let command = EditorCommand::FocusBlock { block_id: 9 };
+        let invocation = command.invocation(CommandSource::Toolbar);
+
+        assert_eq!(invocation.id.as_str(), builtin::SELECTION_FOCUS_BLOCK);
+        assert_eq!(invocation.args, CommandArgs::BlockTarget { block_id: 9 });
+        let definition = CommandCatalog::builtin()
+            .definition(&invocation.id)
+            .cloned()
+            .expect("focus command must be registered");
+        assert_eq!(definition.mutability, CommandMutability::ReadOnly);
     }
 }

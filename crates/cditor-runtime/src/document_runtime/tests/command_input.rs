@@ -158,6 +158,40 @@ fn document_selection_dispatch_preserves_affinity_without_changing_revision() {
 }
 
 #[test]
+fn block_focus_dispatch_changes_session_without_changing_document_revision() {
+    let mut runtime = runtime_with_kind_depths(vec![
+        (RichBlockKind::Paragraph, 0, None),
+        (RichBlockKind::Image, 0, None),
+    ]);
+    runtime.focus_block(1);
+    let before_revision = runtime.revision();
+
+    let outcome = dispatch(&mut runtime, EditorCommand::FocusBlock { block_id: 2 });
+
+    assert!(outcome.changed());
+    assert_eq!(outcome.affected_blocks, vec![2]);
+    assert!(outcome.transaction_ids.is_empty());
+    assert_eq!(runtime.focused_block_id(), Some(2));
+    assert_eq!(runtime.revision(), before_revision);
+
+    let error = runtime
+        .dispatch(
+            CommandEnvelope::new(
+                EditorCommand::FocusBlock { block_id: 1 },
+                CommandSource::Toolbar,
+            )
+            .expecting_revision(before_revision + 1),
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        cditor_editor_protocol::ProtocolErrorCode::StalePrecondition
+    );
+    assert_eq!(runtime.focused_block_id(), Some(2));
+    assert_eq!(runtime.revision(), before_revision);
+}
+
+#[test]
 fn structure_input_commands_dispatch_without_false_document_changes() {
     let mut runtime = runtime_with_kind_depths(vec![
         (RichBlockKind::BulletedList, 0, None),

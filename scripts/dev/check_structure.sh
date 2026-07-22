@@ -165,6 +165,19 @@ if [ -n "$direct_document_selection_violations" ]; then
   exit 1
 fi
 
+direct_interaction_focus_violations=$(
+  grep -n -E '\.focus_block\(' \
+    crates/cditor-editor/src/app/interaction/gutter_drag.rs \
+    crates/cditor-editor/src/app/interaction/image_resize.rs \
+    crates/cditor-editor/src/app/interaction/table_resize.rs \
+    crates/cditor-editor/src/app/interaction/table_reorder.rs || true
+)
+if [ -n "$direct_interaction_focus_violations" ]; then
+  echo 'error: block interactions must route focus through Runtime dispatch:' >&2
+  echo "$direct_interaction_focus_violations" >&2
+  exit 1
+fi
+
 printable_keydown_violations=$(
   grep -R -n -E 'InsertChar|InsertSpaceOrMarkdownShortcut' --include='*.rs' crates/cditor-editor/src || true
 )

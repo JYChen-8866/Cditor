@@ -143,6 +143,7 @@ impl CditorV2View {
                 runtime.block_kind(selection.anchor.block_id).is_some()
                     && runtime.block_kind(selection.focus.block_id).is_some()
             }
+            CditorCommand::FocusBlock { block_id } => runtime.block_kind(*block_id).is_some(),
             CditorCommand::CopySelection
             | CditorCommand::CutSelection
             | CditorCommand::DeleteSelection => runtime.has_active_selection(),
@@ -288,6 +289,7 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
         command,
         CditorCommand::SelectAll
             | CditorCommand::SetDocumentSelection { .. }
+            | CditorCommand::FocusBlock { .. }
             | CditorCommand::DeleteSelection
             | CditorCommand::ApplyClipboardData { .. }
             | CditorCommand::InsertImageAsset { .. }
@@ -483,6 +485,7 @@ fn command_mutates_document(command: &CditorCommand) -> bool {
         command,
         CditorCommand::SelectAll
             | CditorCommand::SetDocumentSelection { .. }
+            | CditorCommand::FocusBlock { .. }
             | CditorCommand::CopySelection
             | CditorCommand::CopyBlockText { .. }
             | CditorCommand::MoveCaret { .. }

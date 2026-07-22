@@ -578,6 +578,7 @@ pub mod builtin {
     pub const TEXT_DELETE_FORWARD: &str = "text.delete_forward";
     pub const TEXT_MOVE_CARET: &str = "text.move_caret";
     pub const SELECTION_SET_DOCUMENT: &str = "selection.set_document";
+    pub const SELECTION_FOCUS_BLOCK: &str = "selection.focus_block";
     pub const TEXT_INSERT_SOFT_BREAK: &str = "text.insert_soft_break";
     pub const FORMAT_TOGGLE_MARK: &str = "format.toggle_mark";
     pub const FORMAT_TOGGLE_BOLD: &str = "format.toggle_bold";

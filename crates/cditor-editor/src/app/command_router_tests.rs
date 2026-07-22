@@ -102,6 +102,7 @@ fn representative_commands() -> Vec<CditorCommand> {
                 focus: cditor_core::edit::TextPosition::downstream(1, 1),
             },
         },
+        CditorCommand::FocusBlock { block_id: 1 },
         CditorCommand::MoveCaret {
             direction: CaretDirection::NextVisual,
             extend_selection: false,
