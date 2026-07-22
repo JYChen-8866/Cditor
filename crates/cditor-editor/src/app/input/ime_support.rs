@@ -3,7 +3,10 @@ use std::ops::Range;
 use gpui::UTF16Selection;
 
 use cditor_core::ids::BlockId;
-use cditor_runtime::{DocumentRuntime, InputSessionIdentity};
+use cditor_runtime::{
+    DocumentRuntime, InputSessionIdentity, RealtimeInput, RealtimeInputError, RealtimeInputOutcome,
+    RealtimeInputRequest,
+};
 
 use crate::app::cditor_v2_view::GuiPlatformInputTarget;
 use crate::app::input_trace::trace_input;
@@ -15,9 +18,10 @@ use crate::text::{RichTextPlatformLayout, TextPlatformLayoutIdentity};
 
 pub(super) fn apply_platform_text_replacement(
     runtime: &mut DocumentRuntime,
+    expected: InputSessionIdentity,
     range: Option<Range<usize>>,
     text: &str,
-) -> Result<bool, String> {
+) -> Result<RealtimeInputOutcome, RealtimeInputError> {
     let has_active_selection = runtime.has_active_selection();
     let route = if text.is_empty() && has_active_selection {
         "delete_active_selection"
@@ -35,11 +39,10 @@ pub(super) fn apply_platform_text_replacement(
             runtime.input_session_selected_range(),
         ),
     );
-    let result = if route == "delete_active_selection" {
-        runtime.delete_active_selection()
-    } else {
-        runtime.replace_text_from_platform(range, text)
-    };
+    let result = runtime.apply_realtime_input(RealtimeInputRequest {
+        expected,
+        input: RealtimeInput::ReplaceText { range, text },
+    });
     trace_input(
         "platform_text_replacement.end",
         format_args!("route={route} result={result:?}"),
@@ -47,13 +50,14 @@ pub(super) fn apply_platform_text_replacement(
     result
 }
 
-pub(super) fn apply_platform_unmark(runtime: &mut DocumentRuntime) -> Result<bool, String> {
-    if runtime.active_composition().is_some() {
-        runtime.commit_composition()
-    } else {
-        runtime.cancel_composition();
-        Ok(false)
-    }
+pub(super) fn apply_platform_unmark(
+    runtime: &mut DocumentRuntime,
+    expected: InputSessionIdentity,
+) -> Result<RealtimeInputOutcome, RealtimeInputError> {
+    runtime.apply_realtime_input(RealtimeInputRequest {
+        expected,
+        input: RealtimeInput::UnmarkComposition,
+    })
 }
 
 pub(in crate::app) fn platform_input_target_allows(
@@ -216,7 +220,7 @@ mod tests {
     };
     use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
     use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
-    use cditor_runtime::DocumentRuntime;
+    use cditor_runtime::{DocumentRuntime, RealtimeInput, RealtimeInputRequest};
     use gpui::{point, px, size};
 
     use crate::app::GuiPlatformInputTarget;
@@ -230,6 +234,20 @@ mod tests {
             ))
             .unwrap()
             .changed()
+    }
+
+    fn update_composition(runtime: &mut DocumentRuntime, text: &str) {
+        let expected = runtime.input_session_identity().unwrap();
+        runtime
+            .apply_realtime_input(RealtimeInputRequest {
+                expected,
+                input: RealtimeInput::UpdateComposition {
+                    range: 1..1,
+                    text,
+                    selected_range: None,
+                },
+            })
+            .unwrap();
     }
 
     #[test]
@@ -253,7 +271,12 @@ mod tests {
         );
         runtime.focus_block_at_offset(1, 1).unwrap();
 
-        assert!(apply_platform_text_replacement(&mut runtime, None, "中").unwrap());
+        let expected = runtime.input_session_identity().unwrap();
+        assert!(
+            apply_platform_text_replacement(&mut runtime, expected, None, "中")
+                .unwrap()
+                .document_changed
+        );
         assert_eq!(runtime.focused_text(), Some("a中b"));
         assert!(undo(&mut runtime));
         assert_eq!(runtime.focused_text(), Some("ab"));
@@ -273,7 +296,12 @@ mod tests {
         );
         runtime.set_document_text_selection(1, 1, 1, 3).unwrap();
 
-        assert!(apply_platform_text_replacement(&mut runtime, None, "X").unwrap());
+        let expected = runtime.input_session_identity().unwrap();
+        assert!(
+            apply_platform_text_replacement(&mut runtime, expected, None, "X")
+                .unwrap()
+                .document_changed
+        );
         assert_eq!(runtime.focused_text(), Some("aXd"));
         assert_eq!(runtime.caret_offset_for_block(1), Some(2));
         assert!(undo(&mut runtime));
@@ -293,9 +321,14 @@ mod tests {
             720.0,
         );
         runtime.focus_block_at_offset(1, 1).unwrap();
-        runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
+        update_composition(&mut runtime, "中");
 
-        assert!(apply_platform_unmark(&mut runtime).unwrap());
+        let expected = runtime.input_session_identity().unwrap();
+        assert!(
+            apply_platform_unmark(&mut runtime, expected)
+                .unwrap()
+                .document_changed
+        );
         assert_eq!(runtime.focused_text(), Some("a中b"));
         assert!(runtime.active_composition().is_none());
         assert!(undo(&mut runtime));
@@ -339,7 +372,7 @@ mod tests {
             &cache,
         ));
 
-        runtime.begin_or_update_composition(1, 1..1, "你").unwrap();
+        update_composition(&mut runtime, "你");
         assert!(!platform_input_geometry_allows(
             target,
             registered_session,
@@ -379,7 +412,12 @@ mod tests {
         );
         runtime.set_document_text_selection(1, 1, 3, 1).unwrap();
 
-        assert!(apply_platform_text_replacement(&mut runtime, Some(1..1), "").unwrap());
+        let expected = runtime.input_session_identity().unwrap();
+        assert!(
+            apply_platform_text_replacement(&mut runtime, expected, Some(1..1), "")
+                .unwrap()
+                .document_changed
+        );
         assert_eq!(runtime.focused_text(), Some("ad"));
         assert_eq!(runtime.projection_for_window().blocks.len(), 1);
         assert!(!runtime.has_active_selection());
@@ -398,7 +436,12 @@ mod tests {
         );
         runtime.set_document_text_selection(1, 1, 1, 3).unwrap();
 
-        assert!(apply_platform_text_replacement(&mut runtime, Some(1..3), "").unwrap());
+        let expected = runtime.input_session_identity().unwrap();
+        assert!(
+            apply_platform_text_replacement(&mut runtime, expected, Some(1..3), "")
+                .unwrap()
+                .document_changed
+        );
         assert_eq!(runtime.focused_text(), Some("ad"));
         assert_eq!(runtime.caret_offset_for_block(1), Some(1));
         assert!(!runtime.has_active_selection());

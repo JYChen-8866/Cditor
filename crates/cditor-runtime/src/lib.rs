@@ -31,7 +31,8 @@ pub use content::payload_window::PayloadWindow;
 pub use document_runtime::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
     AiStreamApplyResult, CompositionFocusTransition, DocumentRuntime,
-    DocumentTextSelectionFragment, RichTextDelta, RichTextSelectionSnapshot, RuntimeAiTarget,
+    DocumentTextSelectionFragment, RealtimeInput, RealtimeInputError, RealtimeInputOutcome,
+    RealtimeInputRequest, RichTextDelta, RichTextSelectionSnapshot, RuntimeAiTarget,
     RuntimeTextSurface, SelectionMaterializationApplyDecision, SelectionMaterializationRequest,
     TableClipboardSnapshot, TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult,
     TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot, TextSurfaceSnapshotIdentity,

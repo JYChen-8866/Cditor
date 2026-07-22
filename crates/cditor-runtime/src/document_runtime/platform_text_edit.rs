@@ -5,7 +5,7 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn replace_text_from_platform(
+    pub(crate) fn replace_text_from_platform(
         &mut self,
         range: Option<Range<usize>>,
         text: &str,

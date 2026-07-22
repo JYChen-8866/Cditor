@@ -1,9 +1,9 @@
 use super::*;
 use crate::app::GuiPlatformInputTarget;
 use crate::app::input::ime::{
-    code_language_input_target_allows, platform_input_fallback_range, platform_input_target_allows,
-    platform_selected_text_range,
+    code_language_input_target_allows, platform_input_target_allows, platform_selected_text_range,
 };
+use crate::app::input::ime_support::platform_input_fallback_range;
 use crate::app::interaction::geometry::{
     ParentDropTarget, drop_target_for_document_y_from_rects, fallback_text_metrics_for_block,
     parent_drop_target_from_rects,
@@ -12,6 +12,25 @@ use crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta;
 use crate::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
 use crate::theme::GuiTheme;
 use cditor_core::block::BlockDropTarget;
+
+fn update_composition(
+    runtime: &mut DocumentRuntime,
+    range: std::ops::Range<usize>,
+    text: &str,
+    selected_range: Option<std::ops::Range<usize>>,
+) {
+    let expected = runtime.input_session_identity().unwrap();
+    runtime
+        .apply_realtime_input(cditor_runtime::RealtimeInputRequest {
+            expected,
+            input: cditor_runtime::RealtimeInput::UpdateComposition {
+                range,
+                text,
+                selected_range,
+            },
+        })
+        .unwrap();
+}
 
 #[test]
 fn save_status_for_mode_respects_readonly() {
@@ -64,9 +83,7 @@ fn platform_input_fallback_prefers_active_composition_base_range_over_caret() {
         720.0,
     );
     runtime.focus_block_at_offset(1, 3).unwrap();
-    runtime
-        .begin_or_update_composition_with_selection(1, 3..3, "你", Some("你".len().."你".len()))
-        .unwrap();
+    update_composition(&mut runtime, 3..3, "你", Some("你".len().."你".len()));
     assert_eq!(runtime.caret_offset_for_block(1), Some("abc你".len()));
 
     let fallback = platform_input_fallback_range(&runtime, 1);
@@ -366,9 +383,7 @@ fn platform_selected_text_range_prefers_ime_selected_subrange() {
         720.0,
     );
     runtime.focus_block_at_offset(1, 2).unwrap();
-    runtime
-        .begin_or_update_composition_with_selection(1, 2..2, "你好", Some("你".len().."你好".len()))
-        .unwrap();
+    update_composition(&mut runtime, 2..2, "你好", Some("你".len().."你好".len()));
 
     let selection = platform_selected_text_range(&runtime).unwrap();
 
@@ -388,9 +403,7 @@ fn platform_selected_text_range_uses_marked_end_when_ime_has_no_subrange() {
         720.0,
     );
     runtime.focus_block_at_offset(1, 2).unwrap();
-    runtime
-        .begin_or_update_composition_with_selection(1, 2..2, "你好", None)
-        .unwrap();
+    update_composition(&mut runtime, 2..2, "你好", None);
 
     let selection = platform_selected_text_range(&runtime).unwrap();
 

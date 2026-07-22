@@ -8,7 +8,7 @@ pub enum CompositionFocusTransition {
 }
 
 impl DocumentRuntime {
-    pub fn prepare_input_focus_transition(
+    pub(crate) fn prepare_input_focus_transition(
         &mut self,
         next_target: InputTarget,
     ) -> Result<CompositionFocusTransition, String> {
@@ -52,7 +52,7 @@ impl DocumentRuntime {
         }
     }
 
-    pub fn commit_composition_before_external_focus(&mut self) -> Result<bool, String> {
+    pub(crate) fn commit_composition_before_external_focus(&mut self) -> Result<bool, String> {
         if self
             .editing
             .as_ref()

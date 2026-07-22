@@ -144,6 +144,17 @@ if [ -n "$migrated_runtime_mutation_violations" ]; then
   exit 1
 fi
 
+legacy_platform_input_mutation_violations=$(
+  grep -R -n -E \
+    '\.(replace_text_from_platform|begin_or_update_composition|begin_or_update_composition_with_selection|commit_composition|cancel_composition|commit_composition_before_external_focus|delete_active_selection)\(' \
+    --include='*.rs' crates/cditor-editor/src || true
+)
+if [ -n "$legacy_platform_input_mutation_violations" ]; then
+  echo 'error: GPUI platform input must use the versioned Runtime realtime port:' >&2
+  echo "$legacy_platform_input_mutation_violations" >&2
+  exit 1
+fi
+
 printable_keydown_violations=$(
   grep -R -n -E 'InsertChar|InsertSpaceOrMarkdownShortcut' --include='*.rs' crates/cditor-editor/src || true
 )

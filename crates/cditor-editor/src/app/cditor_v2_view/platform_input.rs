@@ -111,18 +111,34 @@ impl CditorV2View {
         &mut self,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
-        let result = self
-            .ready_runtime()
-            .map(|runtime| runtime.commit_composition_before_external_focus())
-            .unwrap_or(Ok(false));
+        let expected = self.platform_input_session_identity;
+        let result = self.ready_runtime().map(|runtime| {
+            if !runtime.has_pending_composition() {
+                return Ok(None);
+            }
+            let expected = expected
+                .ok_or_else(|| "active composition has no registered input identity".to_owned())?;
+            runtime
+                .apply_realtime_input(cditor_runtime::RealtimeInputRequest {
+                    expected,
+                    input: cditor_runtime::RealtimeInput::CommitBeforeExternalFocus,
+                })
+                .map(Some)
+                .map_err(|error| error.to_string())
+        });
         match result {
-            Ok(true) => {
+            Some(Ok(Some(outcome))) if outcome.document_changed => {
                 trace_input("external_focus.composition_committed", "changed=true");
-                self.mark_dirty(cx);
+                self.platform_input_session_identity = outcome.input_identity;
+                self.mark_dirty_at_revision(
+                    cditor_core::edit::ChangeOrigin::Ime,
+                    outcome.revision,
+                    cx,
+                );
                 true
             }
-            Ok(false) => true,
-            Err(error) => {
+            Some(Ok(_)) | None => true,
+            Some(Err(error)) => {
                 trace_input(
                     "external_focus.composition_commit_failed",
                     format_args!("error={error}"),
@@ -229,7 +245,17 @@ mod tests {
             720.0,
         );
         runtime.focus_block_at_offset(1, 1).unwrap();
-        runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
+        let expected = runtime.input_session_identity().unwrap();
+        runtime
+            .apply_realtime_input(cditor_runtime::RealtimeInputRequest {
+                expected,
+                input: cditor_runtime::RealtimeInput::UpdateComposition {
+                    range: 1..1,
+                    text: "中",
+                    selected_range: None,
+                },
+            })
+            .unwrap();
         runtime
     }
 
@@ -238,6 +264,9 @@ mod tests {
         let view = cx.new(|cx| CditorV2View::from_runtime(composing_runtime(), false, cx));
 
         view.update(cx, |view, cx| {
+            view.platform_input_session_identity = view
+                .ready_runtime_ref()
+                .and_then(DocumentRuntime::input_session_identity);
             assert!(view.commit_document_composition_before_external_focus(cx));
             assert!(view.dirty);
             let runtime = view.ready_runtime_ref().unwrap();
@@ -253,6 +282,9 @@ mod tests {
         let view = cx.new(|cx| CditorV2View::from_runtime(composing_runtime(), false, cx));
 
         view.update(cx, |view, cx| {
+            view.platform_input_session_identity = view
+                .ready_runtime_ref()
+                .and_then(DocumentRuntime::input_session_identity);
             view.ready_runtime()
                 .unwrap()
                 .payload_window

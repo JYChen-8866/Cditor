@@ -124,6 +124,7 @@ pub enum InputTarget {
 pub struct InputSessionIdentity {
     pub session_id: u64,
     pub target_generation: u64,
+    pub selection_generation: u64,
     pub composition_generation: u64,
     pub target: InputTarget,
     pub content_version: u64,
@@ -185,6 +186,7 @@ pub struct EditingSession {
     pub layout_cache_pin: LayoutCachePin,
     session_id: u64,
     target_generation: u64,
+    selection_generation: u64,
     composition_generation: u64,
     text_layout_version: TextLayoutVersion,
     caret_geometry_version: CaretGeometryVersion,
@@ -235,6 +237,7 @@ impl EditingSession {
             layout_cache_pin,
             session_id,
             target_generation: 1,
+            selection_generation: 0,
             composition_generation: 0,
             text_layout_version: TextLayoutVersion {
                 content_version,
@@ -276,6 +279,9 @@ impl EditingSession {
     }
 
     pub fn set_collapsed_selection(&mut self, offset: usize) {
+        if self.selected_range != (offset..offset) || self.selection_reversed {
+            self.selection_generation = self.selection_generation.saturating_add(1);
+        }
         self.selected_range = offset..offset;
         self.selection_reversed = false;
         self.marked_range = None;
@@ -284,8 +290,12 @@ impl EditingSession {
     pub fn set_selected_range(&mut self, range: Range<usize>, reversed: bool) {
         debug_assert!(range.start <= range.end, "selection range must be ordered");
         let is_collapsed = range.is_empty();
+        let reversed = reversed && !is_collapsed;
+        if self.selected_range != range || self.selection_reversed != reversed {
+            self.selection_generation = self.selection_generation.saturating_add(1);
+        }
         self.selected_range = range;
-        self.selection_reversed = reversed && !is_collapsed;
+        self.selection_reversed = reversed;
         self.marked_range = None;
     }
 
@@ -342,6 +352,7 @@ impl EditingSession {
         InputSessionIdentity {
             session_id: self.session_id,
             target_generation: self.target_generation,
+            selection_generation: self.selection_generation,
             composition_generation: self.composition_generation,
             target: self.input_target,
             content_version: self.content_version,
@@ -502,14 +513,22 @@ mod tests {
     #[test]
     fn selected_range_is_the_only_text_focus_truth() {
         let mut session = EditingSession::start(42, 1, 5, caret(42, 0.0, 0.0));
+        let initial_identity = session.input_session_identity();
 
         session.set_selected_range(3..11, false);
+        let forward_identity = session.input_session_identity();
         assert_eq!(session.anchor_offset(), 3);
         assert_eq!(session.focus_offset(), 11);
+        assert!(forward_identity.selection_generation > initial_identity.selection_generation);
 
         session.set_selected_range(3..11, true);
+        let reversed_identity = session.input_session_identity();
         assert_eq!(session.anchor_offset(), 11);
         assert_eq!(session.focus_offset(), 3);
+        assert!(reversed_identity.selection_generation > forward_identity.selection_generation);
+
+        session.set_selected_range(3..11, true);
+        assert_eq!(session.input_session_identity(), reversed_identity);
 
         session.set_selected_range(7..7, true);
         assert!(session.selection_is_collapsed());

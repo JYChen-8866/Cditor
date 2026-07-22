@@ -26,6 +26,7 @@ mod payload_window;
 mod platform_text_edit;
 mod projection;
 mod queries;
+mod realtime;
 mod scroll;
 mod selection;
 mod selection_materialization;
@@ -63,6 +64,7 @@ pub use cold_start::{
     DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,
 };
 pub use focus_transition::CompositionFocusTransition;
+pub use realtime::{RealtimeInput, RealtimeInputError, RealtimeInputOutcome, RealtimeInputRequest};
 pub use selection::DocumentTextSelectionFragment;
 pub use selection_materialization::{
     SelectionMaterializationApplyDecision, SelectionMaterializationRequest,

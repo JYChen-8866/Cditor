@@ -14,13 +14,11 @@ use crate::text::{platform_index_for_point, record_unavailable_geometry};
 use cditor_runtime::InputTarget;
 
 use super::ime_support::{
-    ai_prompt_input_target_allows, apply_platform_text_replacement, apply_platform_unmark,
-    ime_replacement_range, is_empty_line_ai_platform_input, platform_input_geometry_allows,
+    ai_prompt_input_target_allows, apply_platform_unmark, platform_input_geometry_allows,
     table_menu_input_target_allows,
 };
 pub(in crate::app) use super::ime_support::{
-    code_language_input_target_allows, platform_input_fallback_range, platform_input_target_allows,
-    platform_selected_text_range,
+    code_language_input_target_allows, platform_input_target_allows, platform_selected_text_range,
 };
 
 impl EntityInputHandler for CditorV2View {
@@ -269,16 +267,30 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
-        let result = self.ready_runtime().map(apply_platform_unmark);
+        let expected = self.platform_input_session_identity;
+        let result = self
+            .ready_runtime()
+            .and_then(|runtime| expected.map(|expected| apply_platform_unmark(runtime, expected)));
         match result {
-            Some(Ok(true)) => {
-                self.mark_dirty(cx);
+            Some(Ok(outcome)) if outcome.document_changed => {
+                self.platform_input_session_identity = outcome.input_identity;
+                self.mark_dirty_at_revision(
+                    cditor_core::edit::ChangeOrigin::Ime,
+                    outcome.revision,
+                    cx,
+                );
                 self.sync_slash_menu_from_runtime(cx);
                 cx.notify();
             }
-            Some(Ok(false)) | None => {}
+            Some(Ok(outcome)) => {
+                self.platform_input_session_identity = outcome.input_identity;
+                if outcome.state_changed {
+                    cx.notify();
+                }
+            }
+            None => {}
             Some(Err(error)) => {
-                self.save_status = crate::persistence::EditorSaveStatus::Failed(error);
+                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
             }
         }
@@ -358,69 +370,7 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
-        if self.readonly {
-            return;
-        }
-        let registered_target = self.platform_input_target;
-        let empty_line_ai_input = is_empty_line_ai_platform_input(range_utf16.as_ref(), text)
-            && self.ready_runtime_ref().is_some_and(|runtime| {
-                platform_input_target_allows(
-                    registered_target,
-                    self.platform_input_session_identity,
-                    runtime,
-                ) && runtime.focused_empty_text_block_for_ai().is_some()
-            });
-        if empty_line_ai_input && self.invoke_empty_line_ai_from_gui(cx) {
-            cx.notify();
-            return;
-        }
-        if is_single_line_break_commit(text) {
-            trace_input(
-                "replace_text_in_range.native_enter_fallback",
-                format_args!("registered={registered_target:?}"),
-            );
-            self.apply_input_command(crate::input::GuiInputCommand::HandleEnter, cx);
-            self.sync_slash_menu_from_runtime(cx);
-            cx.notify();
-            return;
-        }
-        let registered_identity = self.platform_input_session_identity;
-        let Some(runtime) = self.ready_runtime() else {
-            return;
-        };
-        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
-            trace_input(
-                "replace_text_in_range.rejected_target",
-                format_args!(
-                    "registered={:?} runtime={:?}",
-                    registered_target,
-                    runtime.input_session_target()
-                ),
-            );
-            return;
-        }
-        let focused = runtime.focused_block_id();
-        let range = ime_replacement_range(runtime, range_utf16.clone());
-        trace_input(
-            "replace_text_in_range",
-            format_args!(
-                "focused={focused:?} range_utf16={range_utf16:?} resolved_utf8={range:?} text_len={}",
-                text.len()
-            ),
-        );
-        let text = normalize_external_line_endings(text);
-        match apply_platform_text_replacement(runtime, range, text.as_ref()) {
-            Ok(true) => {
-                self.mark_dirty(cx);
-                self.sync_slash_menu_from_runtime(cx);
-                cx.notify();
-            }
-            Ok(false) => {}
-            Err(error) => {
-                self.save_status = crate::persistence::EditorSaveStatus::Failed(error);
-                cx.notify();
-            }
-        }
+        self.apply_document_realtime_replacement(range_utf16, text, cx);
     }
 
     fn replace_and_mark_text_in_range(
@@ -482,49 +432,7 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
-        if self.readonly {
-            return;
-        }
-        let registered_target = self.platform_input_target;
-        let registered_identity = self.platform_input_session_identity;
-        let Some(runtime) = self.ready_runtime() else {
-            return;
-        };
-        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
-            trace_input(
-                "replace_and_mark_text_in_range.rejected_target",
-                format_args!(
-                    "registered={:?} runtime={:?}",
-                    registered_target,
-                    runtime.input_session_target()
-                ),
-            );
-            return;
-        }
-        let Some(block_id) = runtime.focused_block_id() else {
-            return;
-        };
-        let range_from_ime = ime_replacement_range(runtime, range_utf16.clone());
-        let range = range_from_ime
-            .clone()
-            .unwrap_or_else(|| platform_input_fallback_range(runtime, block_id));
-        let selected_range = new_selected_range
-            .clone()
-            .map(|range| utf16_range_to_utf8_range(new_text, &range));
-        trace_input(
-            "replace_and_mark_text_in_range",
-            format_args!(
-                "block={block_id} range_utf16={range_utf16:?} range_from_ime={range_from_ime:?} resolved_utf8={range:?} new_text_len={} new_selected_utf16={new_selected_range:?} selected_utf8={selected_range:?}",
-                new_text.len()
-            ),
-        );
-        if runtime
-            .begin_or_update_composition_with_selection(block_id, range, new_text, selected_range)
-            .is_ok()
-        {
-            self.sync_slash_menu_from_runtime(cx);
-            cx.notify();
-        }
+        self.apply_document_realtime_composition(range_utf16, new_text, new_selected_range, cx);
     }
 
     fn bounds_for_range(

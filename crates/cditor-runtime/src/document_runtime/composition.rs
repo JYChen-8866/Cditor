@@ -1,6 +1,12 @@
 use super::*;
 
 impl DocumentRuntime {
+    pub fn has_pending_composition(&self) -> bool {
+        self.editing
+            .as_ref()
+            .is_some_and(|editing| editing.composition.is_some())
+    }
+
     pub fn active_composition(&self) -> Option<&CompositionState> {
         if !self.input_session_is_current() {
             return None;
@@ -63,7 +69,8 @@ impl DocumentRuntime {
         Some(normalized_grapheme_range(&preview_text, start..end))
     }
 
-    pub fn begin_or_update_composition(
+    #[cfg(test)]
+    pub(crate) fn begin_or_update_composition(
         &mut self,
         block_id: BlockId,
         range: Range<usize>,
@@ -72,7 +79,7 @@ impl DocumentRuntime {
         self.begin_or_update_composition_with_selection(block_id, range, preview_text, None)
     }
 
-    pub fn begin_or_update_composition_with_selection(
+    pub(crate) fn begin_or_update_composition_with_selection(
         &mut self,
         block_id: BlockId,
         range: Range<usize>,
@@ -172,7 +179,7 @@ impl DocumentRuntime {
         Ok(())
     }
 
-    pub fn cancel_composition(&mut self) {
+    pub(crate) fn cancel_composition(&mut self) {
         let restore = self.editing.as_ref().and_then(|editing| {
             editing
                 .composition
@@ -211,7 +218,7 @@ impl DocumentRuntime {
         }
     }
 
-    pub fn commit_composition(&mut self) -> Result<bool, String> {
+    pub(crate) fn commit_composition(&mut self) -> Result<bool, String> {
         let Some(composition) = self
             .editing
             .as_ref()

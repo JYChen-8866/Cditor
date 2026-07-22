@@ -8,6 +8,16 @@ use cditor_core::rich_text::{
 use cditor_editor_protocol::command::CommandOutcomeStatus;
 use gpui::{AppContext, TestAppContext};
 
+fn realtime_replace(runtime: &mut cditor_runtime::DocumentRuntime, text: &str) {
+    let expected = runtime.input_session_identity().unwrap();
+    runtime
+        .apply_realtime_input(cditor_runtime::RealtimeInputRequest {
+            expected,
+            input: cditor_runtime::RealtimeInput::ReplaceText { range: None, text },
+        })
+        .unwrap();
+}
+
 /// P4-015：每个 command variant 一个代表性实例（参数只需类型合法）。
 fn representative_commands() -> Vec<CditorCommand> {
     use cditor_editor_protocol::command::BlockTransform;
@@ -331,8 +341,8 @@ fn dispatched_command_breaks_runtime_typing_coalescing(cx: &mut TestAppContext) 
         runtime
             .focus_block_at_offset(1, "hello world".len())
             .unwrap();
-        runtime.replace_text_from_platform(None, "a").unwrap();
-        runtime.replace_text_from_platform(None, "b").unwrap();
+        realtime_replace(&mut runtime, "a");
+        realtime_replace(&mut runtime, "b");
         CditorV2View::from_runtime_with_options(runtime, false, false, cx)
     });
 
@@ -343,10 +353,7 @@ fn dispatched_command_breaks_runtime_typing_coalescing(cx: &mut TestAppContext) 
             cx,
         )
         .unwrap();
-        view.ready_runtime()
-            .unwrap()
-            .replace_text_from_platform(None, "c")
-            .unwrap();
+        realtime_replace(view.ready_runtime().unwrap(), "c");
 
         view.dispatch_command(CditorCommand::Undo, CommandSource::Keyboard, cx)
             .unwrap();

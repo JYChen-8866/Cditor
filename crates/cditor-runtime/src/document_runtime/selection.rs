@@ -562,7 +562,7 @@ impl DocumentRuntime {
                 .is_some_and(|range| !range.is_empty())
     }
 
-    pub fn delete_active_selection(&mut self) -> Result<bool, String> {
+    pub(crate) fn delete_active_selection(&mut self) -> Result<bool, String> {
         let route = if !self.selected_block_ids.is_empty() {
             "selected_blocks"
         } else if self
