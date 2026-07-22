@@ -192,6 +192,60 @@ fn block_focus_dispatch_changes_session_without_changing_document_revision() {
 }
 
 #[test]
+fn table_cell_focus_and_blur_dispatch_only_change_session_state() {
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
+    let before_revision = runtime.revision();
+
+    let focused = dispatch(
+        &mut runtime,
+        EditorCommand::FocusTableCell {
+            block_id: 10,
+            row: 0,
+            col: 1,
+            offset: Some(0),
+            affinity: TextAffinity::Upstream,
+        },
+    );
+
+    assert!(focused.changed());
+    assert_eq!(focused.affected_blocks, vec![10]);
+    assert!(focused.transaction_ids.is_empty());
+    assert_eq!(
+        runtime.focused_table_cell_text_position(),
+        Some((10, 0, 1, 0, TextAffinity::Upstream))
+    );
+    assert_eq!(runtime.revision(), before_revision);
+
+    let blurred = dispatch(&mut runtime, EditorCommand::BlurTableCell);
+    assert!(blurred.changed());
+    assert_eq!(runtime.focused_table_cell_offset(), None);
+    assert_eq!(runtime.focused_block_id(), Some(10));
+    assert_eq!(runtime.revision(), before_revision);
+
+    let error = runtime
+        .dispatch(
+            CommandEnvelope::new(
+                EditorCommand::FocusTableCell {
+                    block_id: 10,
+                    row: 0,
+                    col: 0,
+                    offset: None,
+                    affinity: TextAffinity::Downstream,
+                },
+                CommandSource::Toolbar,
+            )
+            .expecting_revision(before_revision + 1),
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        cditor_editor_protocol::ProtocolErrorCode::StalePrecondition
+    );
+    assert_eq!(runtime.focused_table_cell_offset(), None);
+    assert_eq!(runtime.revision(), before_revision);
+}
+
+#[test]
 fn structure_input_commands_dispatch_without_false_document_changes() {
     let mut runtime = runtime_with_kind_depths(vec![
         (RichBlockKind::BulletedList, 0, None),

@@ -178,6 +178,17 @@ if [ -n "$direct_interaction_focus_violations" ]; then
   exit 1
 fi
 
+direct_table_cell_focus_violations=$(
+  grep -n -E '\.(focus_table_cell|focus_table_cell_at_offset|blur_table_cell)\(' \
+    crates/cditor-editor/src/app/cditor_v2_view/table_actions.rs \
+    crates/cditor-editor/src/app/input/actions.rs || true
+)
+if [ -n "$direct_table_cell_focus_violations" ]; then
+  echo 'error: table cell focus and blur must route through Runtime dispatch:' >&2
+  echo "$direct_table_cell_focus_violations" >&2
+  exit 1
+fi
+
 printable_keydown_violations=$(
   grep -R -n -E 'InsertChar|InsertSpaceOrMarkdownShortcut' --include='*.rs' crates/cditor-editor/src || true
 )

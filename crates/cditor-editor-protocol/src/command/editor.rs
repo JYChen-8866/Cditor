@@ -152,6 +152,16 @@ pub enum EditorCommand {
     FocusBlock {
         block_id: cditor_core::ids::BlockId,
     },
+    #[doc(hidden)]
+    FocusTableCell {
+        block_id: cditor_core::ids::BlockId,
+        row: usize,
+        col: usize,
+        offset: Option<usize>,
+        affinity: cditor_core::edit::TextAffinity,
+    },
+    #[doc(hidden)]
+    BlurTableCell,
     MoveCaret {
         direction: CaretDirection,
         extend_selection: bool,
@@ -264,6 +274,8 @@ impl EditorCommand {
             Self::DeleteForward => builtin::TEXT_DELETE_FORWARD,
             Self::SetDocumentSelection { .. } => builtin::SELECTION_SET_DOCUMENT,
             Self::FocusBlock { .. } => builtin::SELECTION_FOCUS_BLOCK,
+            Self::FocusTableCell { .. } => builtin::SELECTION_FOCUS_TABLE_CELL,
+            Self::BlurTableCell => builtin::SELECTION_BLUR_TABLE_CELL,
             Self::MoveCaret { .. } => builtin::TEXT_MOVE_CARET,
             Self::ApplySlashBlock { .. } => builtin::BLOCK_APPLY_SLASH,
             Self::TableToggleHeader { .. } => builtin::TABLE_TOGGLE_HEADER,
@@ -367,6 +379,19 @@ impl EditorCommand {
                 extend_selection: *extend_selection,
             },
             Self::SetDocumentSelection { selection } => CommandArgs::DocumentSelection(*selection),
+            Self::FocusTableCell {
+                block_id,
+                row,
+                col,
+                offset,
+                affinity,
+            } => CommandArgs::TableCellFocus {
+                block_id: *block_id,
+                row: *row,
+                col: *col,
+                offset: *offset,
+                affinity: *affinity,
+            },
             Self::ApplySlashBlock {
                 block_id,
                 trigger_range,
@@ -592,5 +617,33 @@ mod tests {
             .cloned()
             .expect("focus command must be registered");
         assert_eq!(definition.mutability, CommandMutability::ReadOnly);
+    }
+
+    #[test]
+    fn table_cell_focus_command_preserves_geometry_adapter_output() {
+        let command = EditorCommand::FocusTableCell {
+            block_id: 8,
+            row: 2,
+            col: 3,
+            offset: Some(5),
+            affinity: cditor_core::edit::TextAffinity::Upstream,
+        };
+        let invocation = command.invocation(CommandSource::Toolbar);
+
+        assert_eq!(invocation.id.as_str(), builtin::SELECTION_FOCUS_TABLE_CELL);
+        assert!(matches!(
+            invocation.args,
+            CommandArgs::TableCellFocus {
+                block_id: 8,
+                row: 2,
+                col: 3,
+                offset: Some(5),
+                affinity: cditor_core::edit::TextAffinity::Upstream,
+            }
+        ));
+        assert_eq!(
+            CommandCatalog::builtin().validate_invocation(&invocation),
+            Ok(())
+        );
     }
 }

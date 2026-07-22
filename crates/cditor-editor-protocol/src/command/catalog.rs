@@ -131,6 +131,8 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(TEXT_MOVE_CARET, Args::MoveCaret, ReadOnly),
         definition(SELECTION_SET_DOCUMENT, Args::DocumentSelection, ReadOnly),
         definition(SELECTION_FOCUS_BLOCK, Args::BlockTarget, ReadOnly),
+        definition(SELECTION_FOCUS_TABLE_CELL, Args::TableCellFocus, ReadOnly),
+        definition(SELECTION_BLUR_TABLE_CELL, Args::None, ReadOnly),
         definition(TEXT_INSERT_SOFT_BREAK, Args::None, Document),
         definition(FORMAT_TOGGLE_MARK, Args::InlineMark, Document),
         definition(FORMAT_TOGGLE_BOLD, Args::InlineMark, Document),

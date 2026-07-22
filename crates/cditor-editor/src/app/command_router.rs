@@ -144,6 +144,11 @@ impl CditorV2View {
                     && runtime.block_kind(selection.focus.block_id).is_some()
             }
             CditorCommand::FocusBlock { block_id } => runtime.block_kind(*block_id).is_some(),
+            CditorCommand::FocusTableCell {
+                block_id, row, col, ..
+            } => table_dimensions(runtime, *block_id)
+                .is_some_and(|(rows, columns)| *row < rows && *col < columns),
+            CditorCommand::BlurTableCell => runtime.focused_table_cell_offset().is_some(),
             CditorCommand::CopySelection
             | CditorCommand::CutSelection
             | CditorCommand::DeleteSelection => runtime.has_active_selection(),
@@ -290,6 +295,8 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
         CditorCommand::SelectAll
             | CditorCommand::SetDocumentSelection { .. }
             | CditorCommand::FocusBlock { .. }
+            | CditorCommand::FocusTableCell { .. }
+            | CditorCommand::BlurTableCell
             | CditorCommand::DeleteSelection
             | CditorCommand::ApplyClipboardData { .. }
             | CditorCommand::InsertImageAsset { .. }
@@ -486,6 +493,8 @@ fn command_mutates_document(command: &CditorCommand) -> bool {
         CditorCommand::SelectAll
             | CditorCommand::SetDocumentSelection { .. }
             | CditorCommand::FocusBlock { .. }
+            | CditorCommand::FocusTableCell { .. }
+            | CditorCommand::BlurTableCell
             | CditorCommand::CopySelection
             | CditorCommand::CopyBlockText { .. }
             | CditorCommand::MoveCaret { .. }

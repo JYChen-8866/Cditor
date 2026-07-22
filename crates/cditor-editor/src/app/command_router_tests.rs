@@ -103,6 +103,14 @@ fn representative_commands() -> Vec<CditorCommand> {
             },
         },
         CditorCommand::FocusBlock { block_id: 1 },
+        CditorCommand::FocusTableCell {
+            block_id: 3,
+            row: 0,
+            col: 0,
+            offset: Some(0),
+            affinity: cditor_core::edit::TextAffinity::Downstream,
+        },
+        CditorCommand::BlurTableCell,
         CditorCommand::MoveCaret {
             direction: CaretDirection::NextVisual,
             extend_selection: false,

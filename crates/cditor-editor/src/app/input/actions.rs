@@ -308,7 +308,10 @@ impl CditorV2View {
         }
         match action {
             BoundInputAction::Cancel => {
-                runtime.blur_table_cell();
+                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::CditorCommand::BlurTableCell,
+                    cditor_editor_protocol::command::CommandSource::Keyboard,
+                ));
                 false
             }
             BoundInputAction::Tab { backwards } => runtime

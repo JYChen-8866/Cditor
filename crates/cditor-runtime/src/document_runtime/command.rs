@@ -56,6 +56,27 @@ impl DocumentRuntime {
                 self.try_focus_block(block_id).map_err(apply_error)?;
                 before != self.focused_block_id()
             }
+            EditorCommand::FocusTableCell {
+                block_id,
+                row,
+                col,
+                offset,
+                affinity,
+            } => {
+                affected_blocks.push(block_id);
+                let before = self.focused_table_cell_text_position();
+                if let Some(offset) = offset {
+                    self.focus_table_cell_at_offset(block_id, row, col, offset)
+                        .map_err(apply_error)?;
+                    self.move_focused_table_cell_to_text_position(offset, affinity, false)
+                        .map_err(apply_error)?;
+                } else {
+                    self.focus_table_cell(block_id, row, col)
+                        .map_err(apply_error)?;
+                }
+                before != self.focused_table_cell_text_position()
+            }
+            EditorCommand::BlurTableCell => self.try_blur_table_cell().map_err(apply_error)?,
             EditorCommand::DeleteSelection => {
                 self.delete_active_selection().map_err(apply_error)?
             }

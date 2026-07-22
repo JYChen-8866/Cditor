@@ -72,7 +72,16 @@ impl CditorV2View {
                 (focused_block_id, focused_row, focused_col) == (block_id, row, col)
             });
         if !already_focused && let Some(runtime) = self.ready_runtime() {
-            let _ = runtime.focus_table_cell(block_id, row, col);
+            let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                CditorCommand::FocusTableCell {
+                    block_id,
+                    row,
+                    col,
+                    offset: None,
+                    affinity: cditor_core::edit::TextAffinity::Downstream,
+                },
+                CommandSource::Toolbar,
+            ));
         }
         self.table_interaction_mode =
             GuiTableInteractionMode::CellMenu(TableCellSelection::new(block_id, row, col));
@@ -103,15 +112,27 @@ impl CditorV2View {
         );
         if let CditorViewState::Ready(runtime) = &mut self.state {
             if let Some(text_position) = text_position {
-                let _ =
-                    runtime.focus_table_cell_at_offset(block_id, row, col, text_position.offset);
-                let _ = runtime.move_focused_table_cell_to_text_position(
-                    text_position.offset,
-                    text_position.affinity,
-                    false,
-                );
+                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    CditorCommand::FocusTableCell {
+                        block_id,
+                        row,
+                        col,
+                        offset: Some(text_position.offset),
+                        affinity: text_position.affinity,
+                    },
+                    CommandSource::Toolbar,
+                ));
             } else {
-                let _ = runtime.focus_table_cell(block_id, row, col);
+                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    CditorCommand::FocusTableCell {
+                        block_id,
+                        row,
+                        col,
+                        offset: None,
+                        affinity: cditor_core::edit::TextAffinity::Downstream,
+                    },
+                    CommandSource::Toolbar,
+                ));
             }
             let payload_state = runtime
                 .block_payload_record(block_id)

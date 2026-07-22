@@ -45,6 +45,8 @@ impl DocumentRuntime {
             builtin::EDIT_SELECT_ALL => self.focused_block_id().is_some(),
             builtin::SELECTION_SET_DOCUMENT => self.document_block_count() > 0,
             builtin::SELECTION_FOCUS_BLOCK => self.document_block_count() > 0,
+            builtin::SELECTION_FOCUS_TABLE_CELL => self.document_block_count() > 0,
+            builtin::SELECTION_BLUR_TABLE_CELL => self.focused_table_cell_offset().is_some(),
             builtin::EDIT_DELETE_SELECTION => self.has_active_selection(),
             builtin::EDIT_APPLY_CLIPBOARD_DATA | builtin::ASSET_INSERT_IMAGE_PAYLOAD => {
                 self.focused_block_id().is_some()
