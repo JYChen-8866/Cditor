@@ -33,334 +33,295 @@ impl DocumentRuntime {
         let before_selection = self.document_selection_snapshot();
         let focused_before = self.focused_block_id();
         let mut affected_blocks = Vec::new();
+        let selection_result = self
+            .dispatch_selection_command(&command)
+            .map_err(apply_error)?;
 
-        let changed = match command {
-            EditorCommand::Undo => self.undo_focused_block().map_err(apply_error)?,
-            EditorCommand::Redo => self.redo_focused_block().map_err(apply_error)?,
-            EditorCommand::SelectAll => self.select_all_command(),
-            EditorCommand::SetDocumentSelection { selection } => self
-                .set_document_selection(selection)
-                .map_err(apply_error)?,
-            EditorCommand::FocusBlock { block_id } => {
-                affected_blocks.push(block_id);
-                self.focus_block_command(block_id).map_err(apply_error)?
-            }
-            EditorCommand::FocusTableCell {
-                block_id,
-                row,
-                col,
-                offset,
-                affinity,
-            } => {
-                affected_blocks.push(block_id);
-                self.focus_table_cell_command(block_id, row, col, offset, affinity)
-                    .map_err(apply_error)?
-            }
-            EditorCommand::BlurTableCell => self.try_blur_table_cell().map_err(apply_error)?,
-            EditorCommand::SetTableCellSelection {
-                block_id,
-                row,
-                col,
-                anchor_offset,
-                focus_offset,
-                focus_affinity,
-            } => {
-                affected_blocks.push(block_id);
-                self.set_table_cell_selection_command(
+        let changed = if let Some(selection_result) = selection_result {
+            affected_blocks.extend(selection_result.affected_blocks);
+            selection_result.changed
+        } else {
+            match command {
+                EditorCommand::Undo => self.undo_focused_block().map_err(apply_error)?,
+                EditorCommand::Redo => self.redo_focused_block().map_err(apply_error)?,
+                EditorCommand::SelectAll
+                | EditorCommand::SetDocumentSelection { .. }
+                | EditorCommand::FocusBlock { .. }
+                | EditorCommand::FocusTableCell { .. }
+                | EditorCommand::BlurTableCell
+                | EditorCommand::SetTableCellSelection { .. }
+                | EditorCommand::SetTextSurfaceSelection { .. } => {
+                    unreachable!("selection commands are dispatched before document commands")
+                }
+                EditorCommand::DeleteSelection => {
+                    self.delete_active_selection().map_err(apply_error)?
+                }
+                EditorCommand::ApplyClipboardData {
+                    text,
+                    metadata_json,
+                } => self
+                    .apply_clipboard_data(&text, metadata_json.as_deref())
+                    .map_err(apply_error)?,
+                EditorCommand::InsertImageAsset { payload } => {
+                    let (image, trailing) = self
+                        .insert_image_asset_after_focused(payload)
+                        .map_err(apply_error)?;
+                    affected_blocks.extend([image, trailing]);
+                    true
+                }
+                EditorCommand::DeleteSelectedBlocks => self
+                    .delete_selected_block_selection()
+                    .map_err(apply_error)?,
+                EditorCommand::ToggleBold => self
+                    .toggle_inline_mark_on_selection(InlineMark::Bold)
+                    .map_err(apply_error)?,
+                EditorCommand::ToggleItalic => self
+                    .toggle_inline_mark_on_selection(InlineMark::Italic)
+                    .map_err(apply_error)?,
+                EditorCommand::ToggleUnderline => self
+                    .toggle_inline_mark_on_selection(InlineMark::Underline)
+                    .map_err(apply_error)?,
+                EditorCommand::ToggleStrike => self
+                    .toggle_inline_mark_on_selection(InlineMark::Strike)
+                    .map_err(apply_error)?,
+                EditorCommand::ToggleInlineCode => self
+                    .toggle_inline_mark_on_selection(InlineMark::Code)
+                    .map_err(apply_error)?,
+                EditorCommand::SetInlineColor { target, color } => self
+                    .set_inline_color_on_selection(target, color.as_deref())
+                    .map_err(apply_error)?,
+                EditorCommand::SetBlockColor {
                     block_id,
-                    row,
-                    col,
-                    anchor_offset,
-                    focus_offset,
-                    focus_affinity,
-                )
-                .map_err(apply_error)?
-            }
-            EditorCommand::SetTextSurfaceSelection {
-                surface_id,
-                anchor_offset,
-                focus_offset,
-                focus_affinity,
-            } => {
-                if let Some(block_id) = surface_id.block_id() {
+                    target,
+                    color,
+                } => {
                     affected_blocks.push(block_id);
+                    self.set_block_color(block_id, target, color.as_deref())
+                        .map_err(apply_error)?
                 }
-                self.set_auxiliary_text_surface_selection(
-                    surface_id,
-                    anchor_offset,
-                    focus_offset,
-                    focus_affinity,
-                )
-                .map_err(apply_error)?
-            }
-            EditorCommand::DeleteSelection => {
-                self.delete_active_selection().map_err(apply_error)?
-            }
-            EditorCommand::ApplyClipboardData {
-                text,
-                metadata_json,
-            } => self
-                .apply_clipboard_data(&text, metadata_json.as_deref())
-                .map_err(apply_error)?,
-            EditorCommand::InsertImageAsset { payload } => {
-                let (image, trailing) = self
-                    .insert_image_asset_after_focused(payload)
-                    .map_err(apply_error)?;
-                affected_blocks.extend([image, trailing]);
-                true
-            }
-            EditorCommand::DeleteSelectedBlocks => self
-                .delete_selected_block_selection()
-                .map_err(apply_error)?,
-            EditorCommand::ToggleBold => self
-                .toggle_inline_mark_on_selection(InlineMark::Bold)
-                .map_err(apply_error)?,
-            EditorCommand::ToggleItalic => self
-                .toggle_inline_mark_on_selection(InlineMark::Italic)
-                .map_err(apply_error)?,
-            EditorCommand::ToggleUnderline => self
-                .toggle_inline_mark_on_selection(InlineMark::Underline)
-                .map_err(apply_error)?,
-            EditorCommand::ToggleStrike => self
-                .toggle_inline_mark_on_selection(InlineMark::Strike)
-                .map_err(apply_error)?,
-            EditorCommand::ToggleInlineCode => self
-                .toggle_inline_mark_on_selection(InlineMark::Code)
-                .map_err(apply_error)?,
-            EditorCommand::SetInlineColor { target, color } => self
-                .set_inline_color_on_selection(target, color.as_deref())
-                .map_err(apply_error)?,
-            EditorCommand::SetBlockColor {
-                block_id,
-                target,
-                color,
-            } => {
-                affected_blocks.push(block_id);
-                self.set_block_color(block_id, target, color.as_deref())
-                    .map_err(apply_error)?
-            }
-            EditorCommand::InsertParagraphAfterBlock { block_id } => {
-                let inserted = self
-                    .insert_paragraph_after_block(block_id)
-                    .map_err(apply_error)?;
-                affected_blocks.extend([block_id, inserted]);
-                true
-            }
-            EditorCommand::MoveBlockBefore {
-                block_id,
-                before_block_id,
-            } => {
-                affected_blocks.push(block_id);
-                self.move_block_subtree_before(block_id, before_block_id)
-                    .map_err(apply_error)?
-            }
-            EditorCommand::MoveBlockToParent {
-                block_id,
-                parent_id,
-                sibling_index,
-            } => {
-                affected_blocks.push(block_id);
-                self.move_block_subtree_to_parent(block_id, parent_id, sibling_index)
-                    .map_err(apply_error)?
-            }
-            EditorCommand::InsertParagraphAfterFocused => {
-                let focused = self.focused_block_id().ok_or_else(|| {
-                    ProtocolError::new(
-                        ProtocolErrorCode::ApplyFailed,
-                        "insert paragraph requires a focused block",
-                    )
-                })?;
-                let inserted = self.insert_paragraph_after_focused().map_err(apply_error)?;
-                affected_blocks.extend([focused, inserted]);
-                true
-            }
-            EditorCommand::EnsureTrailingParagraph => {
-                let previous_last = self.visible_index.visible_block_ids.last().copied();
-                let changed = self
-                    .focus_or_create_down_placer_paragraph()
-                    .map_err(apply_error)?;
-                if let Some(block_id) = previous_last {
+                EditorCommand::InsertParagraphAfterBlock { block_id } => {
+                    let inserted = self
+                        .insert_paragraph_after_block(block_id)
+                        .map_err(apply_error)?;
+                    affected_blocks.extend([block_id, inserted]);
+                    true
+                }
+                EditorCommand::MoveBlockBefore {
+                    block_id,
+                    before_block_id,
+                } => {
                     affected_blocks.push(block_id);
+                    self.move_block_subtree_before(block_id, before_block_id)
+                        .map_err(apply_error)?
                 }
-                if changed
-                    && let Some(block_id) = self.focused_block_id()
-                    && Some(block_id) != previous_last
-                {
+                EditorCommand::MoveBlockToParent {
+                    block_id,
+                    parent_id,
+                    sibling_index,
+                } => {
                     affected_blocks.push(block_id);
+                    self.move_block_subtree_to_parent(block_id, parent_id, sibling_index)
+                        .map_err(apply_error)?
                 }
-                changed
-            }
-            EditorCommand::InsertSoftLineBreak => {
-                self.insert_soft_line_break().map_err(apply_error)?;
-                true
-            }
-            EditorCommand::HandleEnter => {
-                self.handle_enter().map_err(apply_error)?;
-                true
-            }
-            EditorCommand::IndentBlock => self.indent_focused_block().map_err(apply_error)?,
-            EditorCommand::OutdentBlock => self.outdent_focused_block().map_err(apply_error)?,
-            EditorCommand::DeleteBackward => self.delete_backward().map_err(apply_error)?,
-            EditorCommand::DeleteForward => self.delete_forward().map_err(apply_error)?,
-            EditorCommand::DeleteBlock { block_id } => {
-                affected_blocks.push(block_id);
-                self.delete_block_by_id(block_id).map_err(apply_error)?
-            }
-            EditorCommand::ToggleTodo { block_id } => {
-                affected_blocks.push(block_id);
-                self.toggle_todo_checked(block_id).map_err(apply_error)?
-            }
-            EditorCommand::SetCodeLanguage { block_id, language } => {
-                affected_blocks.push(block_id);
-                self.set_code_block_language(block_id, language)
+                EditorCommand::InsertParagraphAfterFocused => {
+                    let focused = self.focused_block_id().ok_or_else(|| {
+                        ProtocolError::new(
+                            ProtocolErrorCode::ApplyFailed,
+                            "insert paragraph requires a focused block",
+                        )
+                    })?;
+                    let inserted = self.insert_paragraph_after_focused().map_err(apply_error)?;
+                    affected_blocks.extend([focused, inserted]);
+                    true
+                }
+                EditorCommand::EnsureTrailingParagraph => {
+                    let previous_last = self.visible_index.visible_block_ids.last().copied();
+                    let changed = self
+                        .focus_or_create_down_placer_paragraph()
+                        .map_err(apply_error)?;
+                    if let Some(block_id) = previous_last {
+                        affected_blocks.push(block_id);
+                    }
+                    if changed
+                        && let Some(block_id) = self.focused_block_id()
+                        && Some(block_id) != previous_last
+                    {
+                        affected_blocks.push(block_id);
+                    }
+                    changed
+                }
+                EditorCommand::InsertSoftLineBreak => {
+                    self.insert_soft_line_break().map_err(apply_error)?;
+                    true
+                }
+                EditorCommand::HandleEnter => {
+                    self.handle_enter().map_err(apply_error)?;
+                    true
+                }
+                EditorCommand::IndentBlock => self.indent_focused_block().map_err(apply_error)?,
+                EditorCommand::OutdentBlock => self.outdent_focused_block().map_err(apply_error)?,
+                EditorCommand::DeleteBackward => self.delete_backward().map_err(apply_error)?,
+                EditorCommand::DeleteForward => self.delete_forward().map_err(apply_error)?,
+                EditorCommand::DeleteBlock { block_id } => {
+                    affected_blocks.push(block_id);
+                    self.delete_block_by_id(block_id).map_err(apply_error)?
+                }
+                EditorCommand::ToggleTodo { block_id } => {
+                    affected_blocks.push(block_id);
+                    self.toggle_todo_checked(block_id).map_err(apply_error)?
+                }
+                EditorCommand::SetCodeLanguage { block_id, language } => {
+                    affected_blocks.push(block_id);
+                    self.set_code_block_language(block_id, language)
+                        .map_err(apply_error)?
+                }
+                EditorCommand::TransformBlock(BlockTransform::Kind(kind)) => {
+                    self.convert_focused_block_kind(kind).map_err(apply_error)?
+                }
+                EditorCommand::ApplySlashBlock {
+                    block_id,
+                    trigger_range,
+                    kind,
+                } => {
+                    affected_blocks.push(block_id);
+                    self.apply_slash_block_kind(block_id, trigger_range, kind)
+                        .map_err(apply_error)?
+                }
+                EditorCommand::ApplyAiPreview { mode } => {
+                    let mode = match mode {
+                        AiApplyCommandMode::Replace => AiApplyMode::Replace,
+                        AiApplyCommandMode::InsertAfter => AiApplyMode::InsertAfter,
+                    };
+                    self.apply_ai_preview(mode).map_err(apply_error)?
+                }
+                EditorCommand::TableToggleHeader { block_id, axis } => {
+                    affected_blocks.push(block_id);
+                    let Some(record) = self.block_payload_record(block_id) else {
+                        return Err(missing_table_error(block_id));
+                    };
+                    let BlockPayload::Table(table) = &record.payload else {
+                        return Err(missing_table_error(block_id));
+                    };
+                    let enabled = match axis {
+                        TableAxis::Row => table.header_rows > 0,
+                        TableAxis::Column => table.header_cols > 0,
+                    };
+                    let count = usize::from(!enabled);
+                    match axis {
+                        TableAxis::Row => self.set_table_header_rows(block_id, count),
+                        TableAxis::Column => self.set_table_header_columns(block_id, count),
+                    }
                     .map_err(apply_error)?
-            }
-            EditorCommand::TransformBlock(BlockTransform::Kind(kind)) => {
-                self.convert_focused_block_kind(kind).map_err(apply_error)?
-            }
-            EditorCommand::ApplySlashBlock {
-                block_id,
-                trigger_range,
-                kind,
-            } => {
-                affected_blocks.push(block_id);
-                self.apply_slash_block_kind(block_id, trigger_range, kind)
+                }
+                EditorCommand::TableInsertAxis {
+                    block_id,
+                    axis,
+                    index,
+                } => {
+                    affected_blocks.push(block_id);
+                    match axis {
+                        TableAxis::Row => self.insert_table_row(block_id, index),
+                        TableAxis::Column => self.insert_table_column(block_id, index),
+                    }
                     .map_err(apply_error)?
-            }
-            EditorCommand::ApplyAiPreview { mode } => {
-                let mode = match mode {
-                    AiApplyCommandMode::Replace => AiApplyMode::Replace,
-                    AiApplyCommandMode::InsertAfter => AiApplyMode::InsertAfter,
-                };
-                self.apply_ai_preview(mode).map_err(apply_error)?
-            }
-            EditorCommand::TableToggleHeader { block_id, axis } => {
-                affected_blocks.push(block_id);
-                let Some(record) = self.block_payload_record(block_id) else {
-                    return Err(missing_table_error(block_id));
-                };
-                let BlockPayload::Table(table) = &record.payload else {
-                    return Err(missing_table_error(block_id));
-                };
-                let enabled = match axis {
-                    TableAxis::Row => table.header_rows > 0,
-                    TableAxis::Column => table.header_cols > 0,
-                };
-                let count = usize::from(!enabled);
-                match axis {
-                    TableAxis::Row => self.set_table_header_rows(block_id, count),
-                    TableAxis::Column => self.set_table_header_columns(block_id, count),
                 }
-                .map_err(apply_error)?
-            }
-            EditorCommand::TableInsertAxis {
-                block_id,
-                axis,
-                index,
-            } => {
-                affected_blocks.push(block_id);
-                match axis {
-                    TableAxis::Row => self.insert_table_row(block_id, index),
-                    TableAxis::Column => self.insert_table_column(block_id, index),
-                }
-                .map_err(apply_error)?
-            }
-            EditorCommand::TableDeleteAxis {
-                block_id,
-                axis,
-                index,
-            } => {
-                affected_blocks.push(block_id);
-                match axis {
-                    TableAxis::Row => self.delete_table_row(block_id, index),
-                    TableAxis::Column => self.delete_table_column(block_id, index),
-                }
-                .map_err(apply_error)?
-            }
-            EditorCommand::TableDuplicateAxis {
-                block_id,
-                axis,
-                index,
-            } => {
-                affected_blocks.push(block_id);
-                match axis {
-                    TableAxis::Row => self.duplicate_table_row(block_id, index),
-                    TableAxis::Column => self.duplicate_table_column(block_id, index),
-                }
-                .map_err(apply_error)?
-            }
-            EditorCommand::TableClearRange { block_id, range } => {
-                affected_blocks.push(block_id);
-                self.clear_table_range(block_id, range)
+                EditorCommand::TableDeleteAxis {
+                    block_id,
+                    axis,
+                    index,
+                } => {
+                    affected_blocks.push(block_id);
+                    match axis {
+                        TableAxis::Row => self.delete_table_row(block_id, index),
+                        TableAxis::Column => self.delete_table_column(block_id, index),
+                    }
                     .map_err(apply_error)?
-            }
-            EditorCommand::TableSetRangeBackground {
-                block_id,
-                range,
-                color,
-            } => {
-                affected_blocks.push(block_id);
-                self.set_table_cell_background_color(block_id, range, color)
+                }
+                EditorCommand::TableDuplicateAxis {
+                    block_id,
+                    axis,
+                    index,
+                } => {
+                    affected_blocks.push(block_id);
+                    match axis {
+                        TableAxis::Row => self.duplicate_table_row(block_id, index),
+                        TableAxis::Column => self.duplicate_table_column(block_id, index),
+                    }
                     .map_err(apply_error)?
-            }
-            EditorCommand::SetMediaWidthRatio {
-                block_id,
-                ratio_milli,
-            } => {
-                affected_blocks.push(block_id);
-                self.update_image_display_width_ratio(block_id, ratio_milli)
+                }
+                EditorCommand::TableClearRange { block_id, range } => {
+                    affected_blocks.push(block_id);
+                    self.clear_table_range(block_id, range)
+                        .map_err(apply_error)?
+                }
+                EditorCommand::TableSetRangeBackground {
+                    block_id,
+                    range,
+                    color,
+                } => {
+                    affected_blocks.push(block_id);
+                    self.set_table_cell_background_color(block_id, range, color)
+                        .map_err(apply_error)?
+                }
+                EditorCommand::SetMediaWidthRatio {
+                    block_id,
+                    ratio_milli,
+                } => {
+                    affected_blocks.push(block_id);
+                    self.update_image_display_width_ratio(block_id, ratio_milli)
+                        .map_err(apply_error)?
+                }
+                EditorCommand::TableResizeAxis {
+                    block_id,
+                    axis,
+                    index,
+                    size_px,
+                } => {
+                    affected_blocks.push(block_id);
+                    let size = TableTrackSize::Px(size_px.max(1));
+                    match axis {
+                        TableAxis::Row => self.set_table_row_height(block_id, index, size),
+                        TableAxis::Column => self.set_table_column_width(block_id, index, size),
+                    }
                     .map_err(apply_error)?
-            }
-            EditorCommand::TableResizeAxis {
-                block_id,
-                axis,
-                index,
-                size_px,
-            } => {
-                affected_blocks.push(block_id);
-                let size = TableTrackSize::Px(size_px.max(1));
-                match axis {
-                    TableAxis::Row => self.set_table_row_height(block_id, index, size),
-                    TableAxis::Column => self.set_table_column_width(block_id, index, size),
                 }
-                .map_err(apply_error)?
-            }
-            EditorCommand::TableMoveAxis {
-                block_id,
-                axis,
-                from_index,
-                to_index,
-            } => {
-                affected_blocks.push(block_id);
-                match axis {
-                    TableAxis::Row => self.move_table_row(block_id, from_index, to_index),
-                    TableAxis::Column => self.move_table_column(block_id, from_index, to_index),
+                EditorCommand::TableMoveAxis {
+                    block_id,
+                    axis,
+                    from_index,
+                    to_index,
+                } => {
+                    affected_blocks.push(block_id);
+                    match axis {
+                        TableAxis::Row => self.move_table_row(block_id, from_index, to_index),
+                        TableAxis::Column => self.move_table_column(block_id, from_index, to_index),
+                    }
+                    .map_err(apply_error)?
                 }
-                .map_err(apply_error)?
-            }
-            command @ (EditorCommand::FoldHeading | EditorCommand::UnfoldHeading) => {
-                let should_fold = matches!(command, EditorCommand::FoldHeading);
-                let block_id = self.focused_block_id().ok_or_else(|| {
-                    ProtocolError::new(
-                        ProtocolErrorCode::ApplyFailed,
-                        "heading fold command requires a focused block",
-                    )
-                })?;
-                affected_blocks.push(block_id);
-                if self.is_block_folded(block_id) == should_fold {
-                    false
-                } else {
-                    self.toggle_block_fold(block_id).map_err(apply_error)?
+                command @ (EditorCommand::FoldHeading | EditorCommand::UnfoldHeading) => {
+                    let should_fold = matches!(command, EditorCommand::FoldHeading);
+                    let block_id = self.focused_block_id().ok_or_else(|| {
+                        ProtocolError::new(
+                            ProtocolErrorCode::ApplyFailed,
+                            "heading fold command requires a focused block",
+                        )
+                    })?;
+                    affected_blocks.push(block_id);
+                    if self.is_block_folded(block_id) == should_fold {
+                        false
+                    } else {
+                        self.toggle_block_fold(block_id).map_err(apply_error)?
+                    }
                 }
-            }
-            unsupported => {
-                return Err(ProtocolError::new(
-                    ProtocolErrorCode::InvalidArguments,
-                    format!(
-                        "command {} has not migrated to Runtime dispatch",
-                        unsupported.stable_id()
-                    ),
-                ));
+                unsupported => {
+                    return Err(ProtocolError::new(
+                        ProtocolErrorCode::InvalidArguments,
+                        format!(
+                            "command {} has not migrated to Runtime dispatch",
+                            unsupported.stable_id()
+                        ),
+                    ));
+                }
             }
         };
 

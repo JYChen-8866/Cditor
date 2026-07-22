@@ -2,7 +2,77 @@ use cditor_core::{edit::TextAffinity, ids::SurfaceId};
 
 use super::*;
 
+pub(super) struct SelectionCommandResult {
+    pub changed: bool,
+    pub affected_blocks: Vec<BlockId>,
+}
+
 impl DocumentRuntime {
+    pub(super) fn dispatch_selection_command(
+        &mut self,
+        command: &cditor_editor_protocol::command::EditorCommand,
+    ) -> Result<Option<SelectionCommandResult>, String> {
+        use cditor_editor_protocol::command::EditorCommand;
+
+        let (changed, affected_blocks) = match command {
+            EditorCommand::SelectAll => (self.select_all_command(), Vec::new()),
+            EditorCommand::SetDocumentSelection { selection } => {
+                (self.set_document_selection(*selection)?, Vec::new())
+            }
+            EditorCommand::FocusBlock { block_id } => {
+                (self.focus_block_command(*block_id)?, vec![*block_id])
+            }
+            EditorCommand::FocusTableCell {
+                block_id,
+                row,
+                col,
+                offset,
+                affinity,
+            } => (
+                self.focus_table_cell_command(*block_id, *row, *col, *offset, *affinity)?,
+                vec![*block_id],
+            ),
+            EditorCommand::BlurTableCell => (self.try_blur_table_cell()?, Vec::new()),
+            EditorCommand::SetTableCellSelection {
+                block_id,
+                row,
+                col,
+                anchor_offset,
+                focus_offset,
+                focus_affinity,
+            } => (
+                self.set_table_cell_selection_command(
+                    *block_id,
+                    *row,
+                    *col,
+                    *anchor_offset,
+                    *focus_offset,
+                    *focus_affinity,
+                )?,
+                vec![*block_id],
+            ),
+            EditorCommand::SetTextSurfaceSelection {
+                surface_id,
+                anchor_offset,
+                focus_offset,
+                focus_affinity,
+            } => (
+                self.set_auxiliary_text_surface_selection(
+                    *surface_id,
+                    *anchor_offset,
+                    *focus_offset,
+                    *focus_affinity,
+                )?,
+                surface_id.block_id().into_iter().collect(),
+            ),
+            _ => return Ok(None),
+        };
+        Ok(Some(SelectionCommandResult {
+            changed,
+            affected_blocks,
+        }))
+    }
+
     pub(super) fn focus_block_command(&mut self, block_id: BlockId) -> Result<bool, String> {
         let before = self.focused_block_id();
         self.try_focus_block(block_id)?;
