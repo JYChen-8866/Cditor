@@ -6,7 +6,7 @@ use cditor_runtime::DocumentRuntime;
 
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::overlay::{ActiveColor, ColorMenuAction, PaletteColor};
-use cditor_api::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
+use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 use super::super::CditorV2View;
 

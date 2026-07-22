@@ -9,7 +9,7 @@ use crate::persistence::EditorSaveStatus;
 use crate::text::platform_range_bounds;
 use cditor_runtime::AiRequestPresentation;
 
-use cditor_api::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
+use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 impl CditorV2View {
     pub(crate) fn sync_slash_menu_from_runtime(&mut self, cx: &mut Context<Self>) {

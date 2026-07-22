@@ -3,7 +3,7 @@ use gpui::{Context, Window};
 
 use crate::app::cditor_v2_view::CditorV2View;
 use crate::persistence::EditorSaveStatus;
-use cditor_api::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
+use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 pub(in crate::app) fn block_focus_offset_after_missed_hit_test(
     focused_block_id: Option<BlockId>,

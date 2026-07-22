@@ -3,7 +3,9 @@ use cditor_core::ids::BlockId;
 use cditor_core::rich_text::InlineMark;
 
 use crate::overlay::{BlockTransformAction, InlineFormatAction};
-use cditor_api::command::{BlockTransform, CditorCommand, CommandOutcomeStatus, CommandSource};
+use cditor_editor_protocol::command::{
+    BlockTransform, CditorCommand, CommandOutcomeStatus, CommandSource,
+};
 
 use super::super::CditorV2View;
 

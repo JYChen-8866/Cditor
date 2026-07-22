@@ -10,9 +10,8 @@ use gpui::{AppContext, TestAppContext};
 
 /// P4-015：每个 command variant 一个代表性实例（参数只需类型合法）。
 fn representative_commands() -> Vec<CditorCommand> {
-    use cditor_api::command::BlockTransform;
-    use cditor_api::document::BlockInput;
-    use cditor_editor_protocol::command::AiApplyCommandMode;
+    use cditor_editor_protocol::command::BlockTransform;
+    use cditor_editor_protocol::command::{AiApplyCommandMode, BlockInput};
     vec![
         CditorCommand::Undo,
         CditorCommand::Redo,

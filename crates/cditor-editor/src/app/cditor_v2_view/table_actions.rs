@@ -10,7 +10,7 @@ use crate::block::table::menu::{
 use crate::block::table::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
 };
-use cditor_api::command::{
+use cditor_editor_protocol::command::{
     CditorCommand, CommandOutcomeStatus, CommandSource, TableAxis as CommandTableAxis,
 };
 

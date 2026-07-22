@@ -7,7 +7,7 @@ use crate::input::{
     CodeLanguagePopupPlacement, apply_code_language_action,
 };
 use crate::menu_metrics::EditorViewport;
-use cditor_api::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
+use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 impl CditorV2View {
     pub(crate) fn toggle_code_language_dropdown_from_gui(

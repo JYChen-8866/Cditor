@@ -2,7 +2,7 @@ use gpui::{Context, Window};
 
 use cditor_core::ids::BlockId;
 
-use cditor_api::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
+use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 use super::CditorV2View;
 

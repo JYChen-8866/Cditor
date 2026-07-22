@@ -2,18 +2,18 @@ use gpui::{AppContext, Context, EventEmitter, Task, Window};
 
 use crate::app::CditorV2View;
 use crate::persistence::{EditorSaveStatus, PersistenceBarrierKind};
-use cditor_api::CditorError;
 use cditor_api::CditorViewContract;
-use cditor_api::command::{
-    BlockTransform, CditorCommand, CommandOutcome, CommandSource, CommandState,
-};
 use cditor_api::diagnostics::CditorDiagnostics;
 use cditor_api::document::{
     Affinity, CloseGuard, DocumentInfo, DocumentPosition, DocumentSelection, SaveReport,
     SaveStatus, ScrollAlignment, TextOffset,
 };
 use cditor_api::event::CditorEvent;
+use cditor_api::{CditorError, command::CommandState};
 use cditor_core::edit::ChangeOrigin;
+use cditor_editor_protocol::command::{
+    BlockTransform, CditorCommand, CommandOutcome, CommandSource,
+};
 
 impl EventEmitter<CditorEvent> for CditorV2View {}
 

@@ -3,13 +3,12 @@ use std::sync::OnceLock;
 
 use crate::app::cditor_v2_view::CditorV2View;
 use crate::input::GuiInputCommand;
-use cditor_api::CditorError;
-use cditor_api::command::{
-    AiApplyCommandMode, CaretDirection, CditorCommand, CommandCatalog, CommandCheckState,
-    CommandOutcome, CommandQueryState, CommandSource, CommandState, CommandUnavailableReason,
-    TableAxis,
-};
+use cditor_api::{CditorError, command::CommandState};
 use cditor_core::edit::ChangeOrigin;
+use cditor_editor_protocol::command::{
+    AiApplyCommandMode, CaretDirection, CditorCommand, CommandCatalog, CommandCheckState,
+    CommandOutcome, CommandQueryState, CommandSource, CommandUnavailableReason, TableAxis,
+};
 
 impl CditorV2View {
     pub(in crate::app) fn apply_input_command(
@@ -218,11 +217,11 @@ impl CditorV2View {
                         && !session.preview.is_empty()
                 })
             }
-            CditorCommand::TransformBlock(cditor_api::command::BlockTransform::Kind(kind)) => {
-                runtime
-                    .focused_block_id()
-                    .is_some_and(|block_id| runtime.can_convert_block_kind(block_id, kind))
-            }
+            CditorCommand::TransformBlock(
+                cditor_editor_protocol::command::BlockTransform::Kind(kind),
+            ) => runtime
+                .focused_block_id()
+                .is_some_and(|block_id| runtime.can_convert_block_kind(block_id, kind)),
             CditorCommand::DeleteSelectedBlocks => runtime.has_selected_blocks(),
             CditorCommand::FoldHeading | CditorCommand::UnfoldHeading => {
                 runtime.focused_block_id().is_some_and(|block_id| {

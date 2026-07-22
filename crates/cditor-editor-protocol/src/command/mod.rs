@@ -12,10 +12,13 @@ use cditor_core::{
 use serde::{Deserialize, Serialize};
 
 mod catalog;
+mod editor;
 
 pub use catalog::{
     CommandCatalog, CommandCatalogRegistrationError, CommandDefinition, CommandMutability,
 };
+pub use editor::EditorCommand as CditorCommand;
+pub use editor::{BlockInput, BlockTransform, EditorCommand};
 
 pub const CURRENT_COMMAND_SCHEMA_VERSION: u16 = 1;
 

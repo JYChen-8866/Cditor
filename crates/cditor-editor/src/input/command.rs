@@ -36,8 +36,8 @@ impl GuiInputCommand {
         !matches!(self, Self::Ignore)
     }
 
-    pub fn cditor_command(self) -> Option<cditor_api::command::CditorCommand> {
-        use cditor_api::command::{CaretDirection, CditorCommand};
+    pub fn cditor_command(self) -> Option<cditor_editor_protocol::command::CditorCommand> {
+        use cditor_editor_protocol::command::{CaretDirection, CditorCommand};
 
         Some(match self {
             Self::Ignore | Self::ToggleDebugOverlay => return None,
@@ -105,7 +105,7 @@ impl GuiInputCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cditor_api::command::CditorCommand;
+    use cditor_editor_protocol::command::CditorCommand;
     use cditor_editor_protocol::command::{CaretDirection, CommandArgs, CommandSource};
 
     #[test]

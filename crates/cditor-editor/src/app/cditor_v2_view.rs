@@ -162,11 +162,11 @@ impl CditorV2View {
     pub(crate) fn copy_code_block_from_gui(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
         if matches!(
             self.dispatch_command(
-                cditor_api::command::CditorCommand::CopyBlockText { block_id },
-                cditor_api::command::CommandSource::Toolbar,
+                cditor_editor_protocol::command::CditorCommand::CopyBlockText { block_id },
+                cditor_editor_protocol::command::CommandSource::Toolbar,
                 cx,
             ),
-            Ok(outcome) if outcome.status == cditor_api::command::CommandOutcomeStatus::Applied
+            Ok(outcome) if outcome.status == cditor_editor_protocol::command::CommandOutcomeStatus::Applied
         ) {
             self.show_toast("已将代码拷贝到剪贴板", Duration::from_secs(3), cx);
         }
@@ -372,8 +372,8 @@ impl CditorV2View {
 
     pub(crate) fn toggle_todo_from_gui(&mut self, block_id: BlockId, cx: &mut Context<Self>) {
         let _ = self.dispatch_command(
-            cditor_api::command::CditorCommand::ToggleTodo { block_id },
-            cditor_api::command::CommandSource::Toolbar,
+            cditor_editor_protocol::command::CditorCommand::ToggleTodo { block_id },
+            cditor_editor_protocol::command::CommandSource::Toolbar,
             cx,
         );
     }

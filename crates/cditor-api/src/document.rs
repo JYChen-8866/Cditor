@@ -4,6 +4,7 @@ use cditor_core::{
     ids::{BlockId, DocumentId},
     rich_text::{BlockAttrs, BlockPayload, RichBlockKind},
 };
+pub use cditor_editor_protocol::command::BlockInput;
 
 pub const CURRENT_DOCUMENT_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
@@ -114,13 +115,6 @@ pub struct BlockSnapshot {
     pub attrs: BlockAttrs,
     pub payload: BlockPayload,
     pub content_version: u64,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct BlockInput {
-    pub kind: RichBlockKind,
-    pub attrs: BlockAttrs,
-    pub payload: BlockPayload,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

@@ -10,7 +10,9 @@ use gpui::{AppContext, Context, px};
 use crate::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::input::{AiPromptEditAction, AiPromptKeyResult, AiPromptState, apply_ai_prompt_action};
 use crate::persistence::EditorSaveStatus;
-use cditor_api::command::{AiApplyCommandMode, CditorCommand, CommandOutcomeStatus, CommandSource};
+use cditor_editor_protocol::command::{
+    AiApplyCommandMode, CditorCommand, CommandOutcomeStatus, CommandSource,
+};
 
 pub(in crate::app) fn default_ai_provider() -> Arc<dyn AiProvider> {
     OpenAiCompatibleProvider::from_env()
