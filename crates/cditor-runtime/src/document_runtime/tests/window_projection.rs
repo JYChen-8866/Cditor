@@ -91,7 +91,7 @@ fn planned_projection_separates_render_payload_and_layout_prefetch_ranges() {
 #[test]
 fn document_runtime_projects_v2_blocks_without_ui_truth() {
     let runtime = DocumentRuntime::demo();
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.total_visible_blocks, 4);
     assert_eq!(projection.blocks.len(), 4);
     assert_eq!(projection.blocks[0].block_id, 1);

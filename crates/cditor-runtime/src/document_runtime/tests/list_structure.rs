@@ -150,7 +150,7 @@ fn indent_focused_block_requires_previous_block_that_supports_children() {
     assert_eq!(runtime.index.structure_version, before_version + 1);
     assert_eq!(runtime.index.parent_ids[1], Some(1));
     assert_eq!(runtime.index.depths[1], 1);
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert!(projection.blocks[0].chrome.has_children);
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 1);
 
@@ -383,7 +383,7 @@ fn outdent_focused_block_moves_subtree_up_one_level() {
     assert_eq!(runtime.index.depths[1], 0);
     assert_eq!(runtime.index.parent_ids[2], Some(2));
     assert_eq!(runtime.index.depths[2], 1);
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 0);
     assert_eq!(projection.blocks[2].chrome.list_info.depth, 1);
 }

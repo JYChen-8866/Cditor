@@ -28,7 +28,7 @@ fn enter_on_empty_root_list_turns_it_into_paragraph() {
         runtime.payload_window.get(1).map(|record| &record.kind),
         Some(RichBlockKind::Paragraph)
     ));
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert!(matches!(
         projection.blocks[0].kind,
         RichBlockKind::Paragraph
@@ -55,7 +55,7 @@ fn enter_on_empty_nested_list_outdents_it() {
     ));
     assert_eq!(runtime.index.parent_ids[1], None);
     assert_eq!(runtime.index.depths[1], 0);
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 0);
 }
 
@@ -75,7 +75,7 @@ fn enter_on_empty_root_todo_turns_paragraph_and_clears_checkbox() {
         runtime.payload_window.get(1).map(|record| &record.kind),
         Some(RichBlockKind::Paragraph)
     ));
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.blocks.len(), 1);
     assert_eq!(
         projection.blocks[0].chrome.prefix,
@@ -99,7 +99,7 @@ fn enter_on_empty_nested_todo_outdents_and_preserves_todo_kind() {
     ));
     assert_eq!(runtime.index.parent_ids[1], None);
     assert_eq!(runtime.index.depths[1], 0);
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 0);
     assert_eq!(
         projection.blocks[1].chrome.prefix,

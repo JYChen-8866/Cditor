@@ -115,8 +115,8 @@ mod tests {
         assert_eq!(runtime.visible_index.visible_block_ids, vec![1, 7, 8]);
         assert_eq!(runtime.height_index.len(), 3);
         assert!(runtime.height_index.total_height() < expanded_height);
-        assert_eq!(runtime.projection().total_visible_blocks, 3);
-        let heading = &runtime.projection().blocks[0];
+        assert_eq!(runtime.full_projection_for_tests().total_visible_blocks, 3);
+        let heading = &runtime.full_projection_for_tests().blocks[0];
         assert!(heading.chrome.collapsed);
         assert_eq!(
             heading.chrome.prefix,
@@ -201,7 +201,7 @@ mod tests {
         assert!(runtime.is_block_folded(1));
         assert_eq!(runtime.visible_index.visible_block_ids, vec![1]);
         assert_eq!(
-            runtime.projection().blocks[0].chrome.prefix,
+            runtime.full_projection_for_tests().blocks[0].chrome.prefix,
             cditor_core::block::BlockPrefixSnapshot::Heading { collapsed: true }
         );
 
@@ -227,7 +227,7 @@ mod tests {
         assert!(runtime.has_document_text_selection());
         assert!(
             runtime
-                .projection()
+                .full_projection_for_tests()
                 .blocks
                 .iter()
                 .all(|block| block.block_id != 2 && block.block_id != 6)

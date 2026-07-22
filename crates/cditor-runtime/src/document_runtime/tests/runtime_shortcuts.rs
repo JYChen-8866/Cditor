@@ -40,7 +40,7 @@ fn document_runtime_insert_char_updates_payload_and_pins_editing_block() {
     let mut runtime = DocumentRuntime::demo();
     runtime.focus_block(3);
     runtime.insert_char('!').unwrap();
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     let block = projection
         .blocks
         .iter()
@@ -69,7 +69,7 @@ fn document_runtime_delete_backward_removes_one_grapheme() {
 
     assert!(runtime.delete_backward().unwrap());
 
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     let BlockPayloadView::Loaded(payload) = &projection.blocks[0].payload else {
         panic!("payload should be loaded");
     };
@@ -81,7 +81,7 @@ fn select_all_marks_visible_projection_without_ui_truth() {
     let mut runtime = DocumentRuntime::demo();
     assert!(runtime.select_all_visible_blocks());
 
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert!(projection.blocks.iter().all(|block| block.selected));
     assert_eq!(projection.blocks.len(), 4);
 }
@@ -93,7 +93,7 @@ fn undo_and_redo_restore_focused_block_text_snapshot() {
     runtime.insert_char('!').unwrap();
 
     assert!(runtime.undo_focused_block().unwrap());
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     let block = projection
         .blocks
         .iter()
@@ -105,7 +105,7 @@ fn undo_and_redo_restore_focused_block_text_snapshot() {
     assert_eq!(payload.plain_text(), "点击窗口后直接输入文本。");
 
     assert!(runtime.redo_focused_block().unwrap());
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     let block = projection
         .blocks
         .iter()
@@ -132,12 +132,12 @@ fn undo_and_redo_restore_block_kind_style_snapshot() {
 
     runtime.insert_space_or_markdown_shortcut().unwrap();
     assert!(matches!(
-        runtime.projection().blocks[0].kind,
+        runtime.full_projection_for_tests().blocks[0].kind,
         RichBlockKind::Heading { level: 1 }
     ));
 
     assert!(runtime.undo_focused_block().unwrap());
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.blocks[0].kind, RichBlockKind::Paragraph);
     let BlockPayloadView::Loaded(payload) = &projection.blocks[0].payload else {
         panic!("payload should be loaded");
@@ -145,7 +145,7 @@ fn undo_and_redo_restore_block_kind_style_snapshot() {
     assert_eq!(payload.plain_text(), "#");
 
     assert!(runtime.redo_focused_block().unwrap());
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert!(matches!(
         projection.blocks[0].kind,
         RichBlockKind::Heading { level: 1 }
@@ -229,7 +229,7 @@ fn ctrl_enter_inserts_new_paragraph_after_focused_block() {
 
     assert_eq!(new_block_id, 5);
     assert_eq!(runtime.focused_block_id(), Some(5));
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.blocks.len(), 5);
     assert_eq!(projection.blocks[3].block_id, 5);
     assert!(matches!(
@@ -327,12 +327,14 @@ fn shift_enter_inserts_soft_line_break_in_focused_block() {
         720.0,
     );
     runtime.focus_block(1);
-    let before_height = runtime.projection().blocks[0].layout.effective_height();
+    let before_height = runtime.full_projection_for_tests().blocks[0]
+        .layout
+        .effective_height();
     let before_total_height = runtime.height_index.total_height();
 
     runtime.insert_soft_line_break().unwrap();
 
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     let block = &projection.blocks[0];
     let BlockPayloadView::Loaded(payload) = &block.payload else {
         panic!("payload should be loaded");
@@ -369,7 +371,7 @@ fn space_shortcut_turns_marker_into_heading_block() {
 
     runtime.insert_space_or_markdown_shortcut().unwrap();
 
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert!(matches!(
         projection.blocks[0].kind,
         RichBlockKind::Heading { level: 1 }
@@ -433,7 +435,7 @@ fn space_shortcut_turns_markdown_task_marker_into_todo_block() {
 
     runtime.insert_space_or_markdown_shortcut().unwrap();
 
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(
         projection.blocks[0].kind,
         RichBlockKind::Todo { checked: false }
@@ -459,7 +461,7 @@ fn space_shortcut_turns_checked_markdown_task_marker_into_todo_block() {
 
     runtime.insert_space_or_markdown_shortcut().unwrap();
 
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(
         projection.blocks[0].kind,
         RichBlockKind::Todo { checked: true }
@@ -485,7 +487,7 @@ fn typing_markdown_task_marker_from_empty_block_turns_bullet_into_todo() {
 
     runtime.insert_space_or_markdown_shortcut().unwrap();
     assert_eq!(
-        runtime.projection().blocks[0].kind,
+        runtime.full_projection_for_tests().blocks[0].kind,
         RichBlockKind::BulletedList
     );
 
@@ -494,7 +496,7 @@ fn typing_markdown_task_marker_from_empty_block_turns_bullet_into_todo() {
     runtime.insert_char(']').unwrap();
     runtime.insert_space_or_markdown_shortcut().unwrap();
 
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(
         projection.blocks[0].kind,
         RichBlockKind::Todo { checked: false }
@@ -520,7 +522,7 @@ fn enter_shortcut_turns_code_fence_into_code_block() {
 
     runtime.handle_enter().unwrap();
 
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert!(matches!(
         projection.blocks[0].kind,
         RichBlockKind::Code { ref language } if language.as_deref() == Some("rust")
@@ -545,7 +547,7 @@ fn inline_markdown_shortcut_updates_payload_spans() {
     runtime.focus_block(1);
     runtime.insert_char('!').unwrap();
 
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     let BlockPayloadView::Loaded(payload) = &projection.blocks[0].payload else {
         panic!("payload should be loaded");
     };

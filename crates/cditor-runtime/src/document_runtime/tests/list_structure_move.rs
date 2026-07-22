@@ -20,7 +20,7 @@ fn move_block_subtree_before_moves_children_and_preserves_total_height() {
     assert_eq!(runtime.index.depths[1], 0);
     assert_eq!(runtime.index.depths[2], 1);
     assert_eq!(runtime.height_index.total_height(), total_height);
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert_eq!(
         projection.blocks[0].chrome.prefix,
         BlockPrefixSnapshot::Number { ordinal: 1 }
@@ -82,7 +82,7 @@ fn move_block_subtree_to_parent_reparents_and_updates_depth_delta() {
     assert_eq!(runtime.index.parent_ids[2], Some(2));
     assert_eq!(runtime.index.depths[2], 2);
     assert_eq!(runtime.height_index.total_height(), total_height);
-    let projection = runtime.projection();
+    let projection = runtime.full_projection_for_tests();
     assert!(projection.blocks[0].chrome.has_children);
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 1);
     assert_eq!(projection.blocks[2].chrome.list_info.depth, 2);

@@ -184,7 +184,7 @@ mod tests {
         );
 
         let block = runtime
-            .projection()
+            .full_projection_for_tests()
             .blocks
             .into_iter()
             .find(|block| block.block_id == 2)

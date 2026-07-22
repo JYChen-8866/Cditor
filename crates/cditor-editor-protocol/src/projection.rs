@@ -19,6 +19,7 @@ pub struct ProjectionRequest {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditorProjection<Scroll, Window, Diagnostics> {
     pub document_id: DocumentId,
+    pub viewport_revision: u64,
     pub scroll: Scroll,
     pub render_window: Window,
     pub payload_prefetch_block_range: Range<usize>,

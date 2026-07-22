@@ -1,4 +1,5 @@
 use super::*;
+use cditor_editor_protocol::projection::ProjectionRequest;
 
 impl DocumentRuntime {
     pub fn block_content_version(&self, block_id: BlockId) -> Option<u64> {
@@ -81,7 +82,21 @@ impl DocumentRuntime {
                 .min(self.visible_index.total_visible_count())
     }
 
-    pub fn projection(&self) -> EditorViewProjection {
+    pub fn projection(&mut self, request: ProjectionRequest) -> EditorViewProjection {
+        let mut projection = self.projection_for_window_planned();
+        projection.viewport_revision = request.viewport_revision;
+        if !request.include_diagnostics {
+            projection.debug = DebugOverlaySnapshot::from_scroll_state(
+                &projection.scroll,
+                0,
+                projection.render_window.page_range.clone(),
+            );
+        }
+        projection
+    }
+
+    #[cfg(test)]
+    pub(crate) fn full_projection_for_tests(&self) -> EditorViewProjection {
         self.projection_for_ranges(
             0..self.page_layout.page_count(),
             0..self.visible_index.total_visible_count(),
@@ -405,6 +420,7 @@ impl DocumentRuntime {
         );
         EditorViewProjection {
             document_id: self.document_id,
+            viewport_revision: 0,
             scroll: self.scroll,
             render_window,
             payload_prefetch_block_range: block_range.clone(),
@@ -501,6 +517,7 @@ impl DocumentRuntime {
         .with_entity_stats(0, 0);
         EditorViewProjection {
             document_id: self.document_id,
+            viewport_revision: 0,
             scroll: self.scroll,
             render_window,
             payload_prefetch_block_range: block_range.clone(),

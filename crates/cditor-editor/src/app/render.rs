@@ -400,7 +400,11 @@ impl Render for CditorV2View {
                 };
                 let _ = runtime
                     .flush_pending_height_corrections_with_priority(height_correction_priority);
-                let projection = runtime.projection_for_window_planned();
+                let projection =
+                    runtime.projection(cditor_editor_protocol::projection::ProjectionRequest {
+                        viewport_revision: runtime.revision(),
+                        include_diagnostics: self.show_debug,
+                    });
                 let has_missing_payloads = projection.render_window.is_placeholder()
                     || projection.blocks.iter().any(|block| block.placeholder);
                 if payload_storage_session.is_some() && has_missing_payloads {
