@@ -44,6 +44,9 @@ impl DocumentRuntime {
             builtin::EDIT_REDO => self.can_redo(),
             builtin::EDIT_SELECT_ALL => self.focused_block_id().is_some(),
             builtin::EDIT_DELETE_SELECTION => self.has_active_selection(),
+            builtin::EDIT_APPLY_CLIPBOARD_DATA | builtin::ASSET_INSERT_IMAGE_PAYLOAD => {
+                self.focused_block_id().is_some()
+            }
             builtin::FORMAT_TOGGLE_MARK
             | builtin::FORMAT_TOGGLE_BOLD
             | builtin::FORMAT_TOGGLE_ITALIC

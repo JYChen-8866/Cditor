@@ -46,6 +46,19 @@ impl DocumentRuntime {
             EditorCommand::DeleteSelection => {
                 self.delete_active_selection().map_err(apply_error)?
             }
+            EditorCommand::ApplyClipboardData {
+                text,
+                metadata_json,
+            } => self
+                .apply_clipboard_data(&text, metadata_json.as_deref())
+                .map_err(apply_error)?,
+            EditorCommand::InsertImageAsset { payload } => {
+                let (image, trailing) = self
+                    .insert_image_asset_after_focused(payload)
+                    .map_err(apply_error)?;
+                affected_blocks.extend([image, trailing]);
+                true
+            }
             EditorCommand::DeleteSelectedBlocks => self
                 .delete_selected_block_selection()
                 .map_err(apply_error)?,

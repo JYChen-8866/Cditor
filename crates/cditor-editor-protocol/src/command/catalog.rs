@@ -123,6 +123,7 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(EDIT_CUT, Args::None, Document),
         definition(EDIT_PASTE, Args::None, Document),
         definition(EDIT_DELETE_SELECTION, Args::None, Document),
+        definition(EDIT_APPLY_CLIPBOARD_DATA, Args::ClipboardData, Document),
         definition(TEXT_INSERT, Args::Text, Document),
         definition(TEXT_REPLACE, Args::ReplaceText, Document),
         definition(TEXT_DELETE_BACKWARD, Args::None, Document),
@@ -172,6 +173,7 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(TABLE_RESIZE_AXIS, Args::TableAxisResize, Document),
         definition(TABLE_MOVE_AXIS, Args::TableAxisMove, Document),
         definition(MEDIA_SET_WIDTH_RATIO, Args::MediaWidthRatio, Document),
+        definition(ASSET_INSERT_IMAGE_PAYLOAD, Args::ImageAsset, Document),
         definition(AI_APPLY, Args::AiApply, Document),
     ]
 }

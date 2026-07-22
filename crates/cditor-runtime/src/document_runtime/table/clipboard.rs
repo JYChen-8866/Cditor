@@ -59,7 +59,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn paste_delimited_table_text_at_focused_cell(
+    pub(crate) fn paste_delimited_table_text_at_focused_cell(
         &mut self,
         text: &str,
     ) -> Result<bool, String> {

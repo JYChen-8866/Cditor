@@ -6,7 +6,8 @@ use cditor_core::{
     edit::TransactionId,
     ids::BlockId,
     rich_text::{
-        BlockAttrs, BlockPayload, InlineColorTarget, InlineMark, RichBlockKind, TableRange,
+        BlockAttrs, BlockPayload, ImagePayload, InlineColorTarget, InlineMark, RichBlockKind,
+        TableRange,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -170,6 +171,13 @@ pub enum CommandArgs {
         end: usize,
         text: String,
     },
+    ClipboardData {
+        text: String,
+        metadata_json: Option<String>,
+    },
+    ImageAsset {
+        payload: ImagePayload,
+    },
     MoveCaret {
         direction: CaretDirection,
         extend_selection: bool,
@@ -257,6 +265,8 @@ impl CommandArgs {
             Self::None => CommandArgumentKind::None,
             Self::Text(_) => CommandArgumentKind::Text,
             Self::ReplaceText { .. } => CommandArgumentKind::ReplaceText,
+            Self::ClipboardData { .. } => CommandArgumentKind::ClipboardData,
+            Self::ImageAsset { .. } => CommandArgumentKind::ImageAsset,
             Self::MoveCaret { .. } => CommandArgumentKind::MoveCaret,
             Self::InlineMark(_) => CommandArgumentKind::InlineMark,
             Self::InlineColor { .. } => CommandArgumentKind::InlineColor,
@@ -286,6 +296,8 @@ pub enum CommandArgumentKind {
     None,
     Text,
     ReplaceText,
+    ClipboardData,
+    ImageAsset,
     MoveCaret,
     InlineMark,
     InlineColor,
@@ -542,6 +554,7 @@ pub mod builtin {
     pub const EDIT_CUT: &str = "edit.cut";
     pub const EDIT_PASTE: &str = "edit.paste";
     pub const EDIT_DELETE_SELECTION: &str = "edit.delete_selection";
+    pub const EDIT_APPLY_CLIPBOARD_DATA: &str = "edit.apply_clipboard_data";
     pub const TEXT_INSERT: &str = "text.insert";
     pub const TEXT_REPLACE: &str = "text.replace";
     pub const TEXT_DELETE_BACKWARD: &str = "text.delete_backward";
@@ -601,6 +614,7 @@ pub mod builtin {
     pub const ASSET_INSERT: &str = "asset.insert";
     pub const ASSET_REPLACE: &str = "asset.replace";
     pub const ASSET_UPDATE: &str = "asset.update";
+    pub const ASSET_INSERT_IMAGE_PAYLOAD: &str = "asset.insert_image_payload";
     pub const MEDIA_SET_WIDTH_RATIO: &str = "media.set_width_ratio";
     pub const AI_APPLY: &str = "ai.apply";
 }

@@ -62,6 +62,15 @@ pub enum EditorCommand {
     CopySelection,
     CutSelection,
     PasteClipboard,
+    #[doc(hidden)]
+    ApplyClipboardData {
+        text: String,
+        metadata_json: Option<String>,
+    },
+    #[doc(hidden)]
+    InsertImageAsset {
+        payload: cditor_core::rich_text::ImagePayload,
+    },
     DeleteSelection,
     ToggleBold,
     ToggleItalic,
@@ -196,6 +205,8 @@ impl EditorCommand {
             Self::CopySelection => "edit.copy",
             Self::CutSelection => "edit.cut",
             Self::PasteClipboard => "edit.paste",
+            Self::ApplyClipboardData { .. } => builtin::EDIT_APPLY_CLIPBOARD_DATA,
+            Self::InsertImageAsset { .. } => builtin::ASSET_INSERT_IMAGE_PAYLOAD,
             Self::DeleteSelection => "edit.delete_selection",
             Self::ToggleBold => "format.toggle_bold",
             Self::ToggleItalic => "format.toggle_italic",
@@ -251,6 +262,16 @@ impl EditorCommand {
 
     pub fn arguments(&self) -> CommandArgs {
         match self {
+            Self::ApplyClipboardData {
+                text,
+                metadata_json,
+            } => CommandArgs::ClipboardData {
+                text: text.clone(),
+                metadata_json: metadata_json.clone(),
+            },
+            Self::InsertImageAsset { payload } => CommandArgs::ImageAsset {
+                payload: payload.clone(),
+            },
             Self::ToggleBold => CommandArgs::InlineMark(InlineMark::Bold),
             Self::ToggleItalic => CommandArgs::InlineMark(InlineMark::Italic),
             Self::ToggleUnderline => CommandArgs::InlineMark(InlineMark::Underline),
@@ -436,6 +457,13 @@ mod tests {
     #[test]
     fn drag_commit_commands_keep_typed_catalog_arguments() {
         let commands = [
+            EditorCommand::ApplyClipboardData {
+                text: "plain".to_owned(),
+                metadata_json: None,
+            },
+            EditorCommand::InsertImageAsset {
+                payload: cditor_core::rich_text::ImagePayload::default(),
+            },
             EditorCommand::SetMediaWidthRatio {
                 block_id: 7,
                 ratio_milli: 750,

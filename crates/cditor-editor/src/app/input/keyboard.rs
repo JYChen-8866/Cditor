@@ -6,36 +6,14 @@ use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::block::table::{TableAxis, TableAxisSelection};
 use crate::clipboard_assets::image_asset_from_clipboard_item;
 use crate::input::GuiInputCommand;
-use crate::platform::normalize_external_line_endings;
 use crate::text::{
     ParleyMoveCommand, ParleySelection, ParleyTextPosition, RichTextPlatformLayout,
     TextGeometryOperation, record_snapshot_geometry, record_unavailable_geometry,
 };
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::{BlockId, SurfaceId};
-use cditor_import_export::clipboard::{CditorClipboardEnvelope, ClipboardSelection};
-use cditor_import_export::markdown::looks_like_markdown_paste;
+use cditor_import_export::clipboard::ClipboardSelection;
 use cditor_runtime::DocumentRuntime;
-
-fn trace_clipboard_markdown(event: &str, details: impl std::fmt::Display) {
-    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    let enabled = *ENABLED.get_or_init(|| {
-        std::env::var("CDITOR_TRACE_MARKDOWN")
-            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
-            .unwrap_or(false)
-    });
-    if enabled {
-        eprintln!("[cditor][markdown][clipboard.{event}] {details}");
-    }
-}
-
-fn clipboard_trace_preview(text: &str) -> String {
-    text.chars()
-        .take(160)
-        .collect::<String>()
-        .replace('\r', "\\r")
-        .replace('\n', "\\n")
-}
 
 impl CditorV2View {
     pub(in crate::app) fn execute_gui_input_command_handler(
@@ -176,23 +154,22 @@ impl CditorV2View {
                 }
                 GuiInputCommand::PasteClipboard => {
                     if let Some(item) = cx.read_from_clipboard() {
-                        let changed = if let Some(asset) = image_asset_from_clipboard_item(&item) {
-                            runtime
-                                .insert_image_asset_after_focused(asset.payload)
-                                .is_ok()
+                        deferred_command = if let Some(asset) =
+                            image_asset_from_clipboard_item(&item)
+                        {
+                            Some(
+                                cditor_editor_protocol::command::EditorCommand::InsertImageAsset {
+                                    payload: asset.payload,
+                                },
+                            )
                         } else if let Some(text) = item.text() {
-                            let metadata_selection = item.metadata().and_then(|json| {
-                                CditorClipboardEnvelope::decode_metadata(json, &text)
-                                    .ok()
-                                    .map(|envelope| envelope.selection)
-                            });
-                            paste_text_from_clipboard(runtime, &text, metadata_selection.as_ref())
+                            Some(cditor_editor_protocol::command::EditorCommand::ApplyClipboardData {
+                                text,
+                                metadata_json: item.metadata().cloned(),
+                            })
                         } else {
-                            false
+                            None
                         };
-                        if changed {
-                            self.mark_dirty(cx);
-                        }
                     }
                 }
                 GuiInputCommand::UndoFocusedBlock | GuiInputCommand::RedoFocusedBlock => {
@@ -381,71 +358,6 @@ fn selected_table_axis_range(
         }
     }?;
     Some((selection.block_id, range))
-}
-
-fn paste_text_from_clipboard(
-    runtime: &mut DocumentRuntime,
-    text: &str,
-    metadata_selection: Option<&ClipboardSelection>,
-) -> bool {
-    let text = normalize_external_line_endings(text);
-    let text = text.as_ref();
-    let markdown_detected = looks_like_markdown_paste(text);
-    trace_clipboard_markdown(
-        "received",
-        format_args!(
-            "bytes={} metadata={} detected={} focus={:?} preview=\"{}\"",
-            text.len(),
-            metadata_selection.is_some(),
-            markdown_detected,
-            runtime.focused_block_id(),
-            clipboard_trace_preview(text)
-        ),
-    );
-    if let Some(selection @ ClipboardSelection::Table { .. }) = metadata_selection {
-        match runtime.paste_clipboard_selection(selection) {
-            Ok(true) => {
-                trace_clipboard_markdown("result", "route=table_metadata changed=true");
-                return true;
-            }
-            Ok(false) => {}
-            Err(error) => trace_clipboard_markdown("metadata_error", format_args!("error={error}")),
-        }
-    }
-    match runtime.paste_delimited_table_text_at_focused_cell(text) {
-        Ok(true) => {
-            trace_clipboard_markdown("result", "route=table changed=true");
-            return true;
-        }
-        Ok(false) => {}
-        Err(error) => trace_clipboard_markdown("table_error", format_args!("error={error}")),
-    }
-    if markdown_detected {
-        match runtime.insert_markdown_paste(text) {
-            Ok(true) => {
-                trace_clipboard_markdown("result", "route=markdown changed=true");
-                return true;
-            }
-            result => trace_clipboard_markdown(
-                "markdown_error",
-                format_args!("markdown_result={result:?}"),
-            ),
-        }
-    }
-    if let Some(selection) = metadata_selection {
-        match runtime.paste_clipboard_selection(selection) {
-            Ok(true) => {
-                trace_clipboard_markdown("result", "route=rich_metadata changed=true");
-                return true;
-            }
-            Ok(false) => {}
-            Err(error) => trace_clipboard_markdown("metadata_error", format_args!("error={error}")),
-        }
-    }
-    trace_clipboard_markdown("fallback", "route=plain_text");
-    let changed = runtime.replace_text_from_paste(None, text).unwrap_or(false);
-    trace_clipboard_markdown("result", format_args!("route=plain_text changed={changed}"));
-    changed
 }
 
 fn move_caret_with_parley(

@@ -161,3 +161,38 @@ fn drag_commit_commands_dispatch_once_with_typed_payloads() {
     assert_eq!(table.columns[0].width, TableTrackSize::Px(180));
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("C"));
 }
+
+#[test]
+fn clipboard_and_image_payload_commands_own_import_mutations() {
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "start ")]);
+    runtime.focus_block_at_offset(1, 6).unwrap();
+
+    let paste = dispatch(
+        &mut runtime,
+        EditorCommand::ApplyClipboardData {
+            text: "a\r\nb".to_owned(),
+            metadata_json: Some("{invalid".to_owned()),
+        },
+    );
+    assert!(paste.changed());
+    assert_eq!(
+        runtime.block_payload_record(1).unwrap().plain_text(),
+        "start a\nb"
+    );
+    assert_eq!(paste.transaction_ids.len(), 1);
+
+    let image = dispatch(
+        &mut runtime,
+        EditorCommand::InsertImageAsset {
+            payload: cditor_core::rich_text::ImagePayload::default(),
+        },
+    );
+    assert!(image.changed());
+    assert_eq!(image.affected_blocks.len(), 2);
+    assert!(matches!(
+        runtime.block_kind(image.affected_blocks[0]),
+        Some(RichBlockKind::Image)
+    ));
+    assert_eq!(image.transaction_ids.len(), 1);
+}

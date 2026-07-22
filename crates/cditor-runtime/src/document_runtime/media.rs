@@ -1,7 +1,7 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn insert_image_asset_after_focused(
+    pub(crate) fn insert_image_asset_after_focused(
         &mut self,
         image: ImagePayload,
     ) -> Result<(BlockId, BlockId), String> {

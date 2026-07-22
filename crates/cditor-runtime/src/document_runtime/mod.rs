@@ -3,6 +3,7 @@ mod block_attrs;
 mod capabilities;
 mod clipboard;
 mod clipboard_blocks;
+mod clipboard_input;
 mod cold_start;
 mod columns;
 mod command;

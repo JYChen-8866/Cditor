@@ -24,7 +24,7 @@ pub(super) fn markdown_trace_preview(text: &str) -> String {
 }
 
 impl DocumentRuntime {
-    pub fn insert_markdown_paste(&mut self, markdown: &str) -> Result<bool, String> {
+    pub(crate) fn insert_markdown_paste(&mut self, markdown: &str) -> Result<bool, String> {
         let detected = looks_like_markdown_paste(markdown);
         trace_markdown(
             "paste.detect",

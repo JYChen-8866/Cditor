@@ -1,7 +1,7 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn paste_clipboard_selection(
+    pub(crate) fn paste_clipboard_selection(
         &mut self,
         selection: &ClipboardSelection,
     ) -> Result<bool, String> {

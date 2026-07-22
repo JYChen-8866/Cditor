@@ -61,7 +61,7 @@ impl DocumentRuntime {
         )
     }
 
-    pub fn replace_text_from_paste(
+    pub(crate) fn replace_text_from_paste(
         &mut self,
         range: Option<Range<usize>>,
         text: &str,

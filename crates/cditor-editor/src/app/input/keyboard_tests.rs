@@ -25,7 +25,29 @@ use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineMark, InlineSpan, RichBlockKind, TableCellPayload,
     TablePayload, TableRowPayload,
 };
+use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
+use cditor_import_export::clipboard::CditorClipboardEnvelope;
 use gpui::{Bounds, point, px, size};
+
+fn dispatch_clipboard_data(
+    runtime: &mut DocumentRuntime,
+    text: &str,
+    selection: Option<&ClipboardSelection>,
+) -> bool {
+    let metadata_json = selection.map(|selection| {
+        serde_json::to_string(&CditorClipboardEnvelope::new(None, selection.clone(), text)).unwrap()
+    });
+    runtime
+        .dispatch(CommandEnvelope::new(
+            EditorCommand::ApplyClipboardData {
+                text: text.to_owned(),
+                metadata_json,
+            },
+            CommandSource::Keyboard,
+        ))
+        .unwrap()
+        .changed()
+}
 
 fn paragraph_runtime(text: &str) -> DocumentRuntime {
     let mut runtime = DocumentRuntime::from_payloads(
@@ -140,7 +162,7 @@ fn paste_text_from_clipboard_uses_validated_rich_metadata() {
         }],
     };
 
-    assert!(paste_text_from_clipboard(
+    assert!(dispatch_clipboard_data(
         &mut runtime,
         "bold",
         Some(&selection)
@@ -219,7 +241,7 @@ fn repeated_vertical_navigation_preserves_original_x_across_a_short_line() {
 fn paste_text_from_clipboard_never_reuses_stale_rich_state_for_external_text() {
     let mut runtime = paragraph_runtime("hello ");
 
-    assert!(paste_text_from_clipboard(&mut runtime, "plain", None));
+    assert!(dispatch_clipboard_data(&mut runtime, "plain", None));
 
     let payload = runtime.payload_window.get(1).unwrap();
     match &payload.payload {
@@ -239,7 +261,7 @@ fn paste_text_from_clipboard_never_reuses_stale_rich_state_for_external_text() {
 fn paste_text_from_external_clipboard_parses_inline_markdown() {
     let mut runtime = paragraph_runtime("");
 
-    assert!(paste_text_from_clipboard(
+    assert!(dispatch_clipboard_data(
         &mut runtime,
         "**bold** and `code`",
         None
@@ -269,7 +291,7 @@ fn paste_text_with_rich_metadata_prefers_detected_markdown_structure() {
     };
     let mut runtime = paragraph_runtime("");
 
-    assert!(paste_text_from_clipboard(
+    assert!(dispatch_clipboard_data(
         &mut runtime,
         markdown,
         Some(&selection)
@@ -301,7 +323,7 @@ fn paste_text_from_clipboard_uses_validated_table_metadata() {
     let mut target = table_runtime(2, &[&["x"]]);
     target.focus_table_cell_at_offset(2, 0, 0, 0).unwrap();
 
-    assert!(paste_text_from_clipboard(
+    assert!(dispatch_clipboard_data(
         &mut target,
         &snapshot.plain_text,
         Some(&selection)
@@ -322,7 +344,7 @@ fn paste_text_from_clipboard_treats_external_tsv_as_table_range_when_cell_is_foc
     let mut target = table_runtime(2, &[&["x"]]);
     target.focus_table_cell_at_offset(2, 0, 0, 0).unwrap();
 
-    assert!(paste_text_from_clipboard(&mut target, "a\tb\nc\td", None));
+    assert!(dispatch_clipboard_data(&mut target, "a\tb\nc\td", None));
 
     let payload = target.payload_window.get(2).unwrap();
     let BlockPayload::Table(table) = &payload.payload else {

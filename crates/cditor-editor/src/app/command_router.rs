@@ -139,6 +139,9 @@ impl CditorV2View {
             | CditorCommand::CutSelection
             | CditorCommand::DeleteSelection => runtime.has_active_selection(),
             CditorCommand::PasteClipboard => runtime.focused_block_id().is_some(),
+            CditorCommand::ApplyClipboardData { .. } | CditorCommand::InsertImageAsset { .. } => {
+                runtime.focused_block_id().is_some()
+            }
             CditorCommand::ToggleBold
             | CditorCommand::ToggleItalic
             | CditorCommand::ToggleUnderline
@@ -261,6 +264,8 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
         command,
         CditorCommand::SelectAll
             | CditorCommand::DeleteSelection
+            | CditorCommand::ApplyClipboardData { .. }
+            | CditorCommand::InsertImageAsset { .. }
             | CditorCommand::ToggleBold
             | CditorCommand::ToggleItalic
             | CditorCommand::ToggleUnderline

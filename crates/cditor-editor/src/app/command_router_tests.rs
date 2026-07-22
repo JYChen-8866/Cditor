@@ -29,6 +29,13 @@ fn representative_commands() -> Vec<CditorCommand> {
         CditorCommand::CopySelection,
         CditorCommand::CutSelection,
         CditorCommand::PasteClipboard,
+        CditorCommand::ApplyClipboardData {
+            text: "plain".to_owned(),
+            metadata_json: None,
+        },
+        CditorCommand::InsertImageAsset {
+            payload: cditor_core::rich_text::ImagePayload::default(),
+        },
         CditorCommand::DeleteSelection,
         CditorCommand::ToggleBold,
         CditorCommand::ToggleItalic,
