@@ -190,8 +190,9 @@ if [ -n "$direct_table_cell_focus_violations" ]; then
 fi
 
 direct_auxiliary_surface_focus_violations=$(
-  sed '/^#\[cfg(test)\]/,$d' crates/cditor-editor/src/app/cditor_v2_view/text_surface.rs \
-    | grep -n -E '\.(focus_text_surface_at_offset|move_focused_text_surface_to_offset)\(' || true
+  {
+    sed '/^#\[cfg(test)\]/,$d' crates/cditor-editor/src/app/cditor_v2_view/text_surface.rs
+  } | grep -n -E '\.(focus_text_surface_at_offset|move_focused_text_surface_to_offset)\(' || true
 )
 if [ -n "$direct_auxiliary_surface_focus_violations" ]; then
   echo 'error: auxiliary text surface focus must route through Runtime dispatch:' >&2

@@ -433,12 +433,34 @@ fn move_caret_with_parley(
     if moved.focus.offset == caret_offset && moved.focus.affinity == caret_affinity {
         return Ok(false);
     }
-    runtime.move_focused_text_surface_to_offset(
+    if matches!(
         surface_id,
-        moved.focus.offset,
-        moved.focus.affinity,
-        extend_selection,
-    )?;
+        SurfaceId::ImageCaption { .. } | SurfaceId::CollectionTitle { .. }
+    ) {
+        let anchor_offset = if extend_selection {
+            anchor_offset
+        } else {
+            moved.focus.offset
+        };
+        runtime
+            .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                cditor_editor_protocol::command::CditorCommand::SetTextSurfaceSelection {
+                    surface_id,
+                    anchor_offset,
+                    focus_offset: moved.focus.offset,
+                    focus_affinity: moved.focus.affinity,
+                },
+                cditor_editor_protocol::command::CommandSource::Keyboard,
+            ))
+            .map_err(|error| error.to_string())?;
+    } else {
+        runtime.move_focused_text_surface_to_offset(
+            surface_id,
+            moved.focus.offset,
+            moved.focus.affinity,
+            extend_selection,
+        )?;
+    }
     Ok(true)
 }
 
