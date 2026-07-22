@@ -70,7 +70,7 @@ impl DocumentRuntime {
             .is_some()
     }
 
-    pub fn indent_focused_block(&mut self) -> Result<bool, String> {
+    pub(crate) fn indent_focused_block(&mut self) -> Result<bool, String> {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -81,7 +81,7 @@ impl DocumentRuntime {
         self.indent_block(block_id)
     }
 
-    pub fn outdent_focused_block(&mut self) -> Result<bool, String> {
+    pub(crate) fn outdent_focused_block(&mut self) -> Result<bool, String> {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };

@@ -237,7 +237,7 @@ impl DocumentRuntime {
         Ok(())
     }
 
-    pub fn insert_soft_line_break(&mut self) -> Result<(), String> {
+    pub(crate) fn insert_soft_line_break(&mut self) -> Result<(), String> {
         match self.focused_text_surface_id() {
             Some(cditor_core::ids::SurfaceId::ImageCaption { .. }) => {
                 self.replace_text_in_focused_range(None, "\n")?;
@@ -352,7 +352,7 @@ impl DocumentRuntime {
         Ok(changed)
     }
 
-    pub fn delete_backward(&mut self) -> Result<bool, String> {
+    pub(crate) fn delete_backward(&mut self) -> Result<bool, String> {
         if self.focused_table_cell.is_some() {
             return self.delete_backward_in_focused_table_cell();
         }
@@ -428,7 +428,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn delete_forward(&mut self) -> Result<bool, String> {
+    pub(crate) fn delete_forward(&mut self) -> Result<bool, String> {
         if self.focused_table_cell.is_some() {
             return self.delete_forward_in_focused_table_cell();
         }

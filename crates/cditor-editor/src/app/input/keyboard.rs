@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use gpui::{ClipboardItem, Context};
 
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
-use crate::app::input_trace::trace_input;
 use crate::block::table::{TableAxis, TableAxisSelection};
 use crate::clipboard_assets::image_asset_from_clipboard_item;
 use crate::input::GuiInputCommand;
@@ -199,44 +198,14 @@ impl CditorV2View {
                 GuiInputCommand::UndoFocusedBlock | GuiInputCommand::RedoFocusedBlock => {
                     unreachable!("history returns through Runtime dispatch before the GUI handler")
                 }
-                GuiInputCommand::InsertParagraphAfterFocused => {
-                    if runtime.insert_paragraph_after_focused().is_ok() {
-                        self.mark_dirty(cx);
-                    }
-                }
-                GuiInputCommand::InsertSoftLineBreak => {
-                    if runtime.insert_soft_line_break().is_ok() {
-                        self.mark_dirty(cx);
-                    }
-                }
-                GuiInputCommand::HandleEnter => {
-                    if runtime.handle_enter().is_ok() {
-                        self.mark_dirty(cx);
-                    }
-                }
-                GuiInputCommand::IndentBlock => {
-                    if runtime.indent_focused_block().unwrap_or(false) {
-                        self.mark_dirty(cx);
-                    }
-                }
-                GuiInputCommand::OutdentBlock => {
-                    if runtime.outdent_focused_block().unwrap_or(false) {
-                        self.mark_dirty(cx);
-                    }
-                }
-                GuiInputCommand::DeleteBackward => {
-                    let result = runtime.delete_backward();
-                    trace_input("delete_backward.result", format_args!("{result:?}"));
-                    if matches!(result, Ok(true)) {
-                        self.mark_dirty(cx);
-                    }
-                }
-                GuiInputCommand::DeleteForward => {
-                    let result = runtime.delete_forward();
-                    trace_input("delete_forward.result", format_args!("{result:?}"));
-                    if matches!(result, Ok(true)) {
-                        self.mark_dirty(cx);
-                    }
+                GuiInputCommand::InsertParagraphAfterFocused
+                | GuiInputCommand::InsertSoftLineBreak
+                | GuiInputCommand::HandleEnter
+                | GuiInputCommand::IndentBlock
+                | GuiInputCommand::OutdentBlock
+                | GuiInputCommand::DeleteBackward
+                | GuiInputCommand::DeleteForward => {
+                    unreachable!("keyboard document mutations return through Runtime dispatch")
                 }
                 GuiInputCommand::MoveCaretLeft { extend_selection } => {
                     let moved = move_caret_with_parley(

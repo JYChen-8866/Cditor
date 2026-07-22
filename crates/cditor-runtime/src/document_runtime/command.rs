@@ -64,6 +64,13 @@ impl DocumentRuntime {
             | builtin::BLOCK_TOGGLE_TODO
             | builtin::CODE_SET_LANGUAGE
             | builtin::BLOCK_TRANSFORM => self.focused_block_id().is_some(),
+            builtin::BLOCK_INSERT_AFTER_FOCUSED
+            | builtin::TEXT_DELETE_BACKWARD
+            | builtin::TEXT_DELETE_FORWARD => self.focused_block_id().is_some(),
+            builtin::TEXT_INSERT_SOFT_BREAK => self.can_insert_soft_line_break(),
+            builtin::BLOCK_ENTER => self.can_handle_enter(),
+            builtin::BLOCK_INDENT => self.can_indent_focused_block(),
+            builtin::BLOCK_OUTDENT => self.can_outdent_focused_block(),
             builtin::BLOCK_DELETE_SELECTED => self.has_selected_blocks(),
             builtin::BLOCK_APPLY_SLASH => self.focused_block_id().is_some(),
             builtin::HEADING_FOLD | builtin::HEADING_UNFOLD => {
@@ -157,6 +164,29 @@ impl DocumentRuntime {
                 affected_blocks.extend([block_id, inserted]);
                 true
             }
+            EditorCommand::InsertParagraphAfterFocused => {
+                let focused = self.focused_block_id().ok_or_else(|| {
+                    ProtocolError::new(
+                        ProtocolErrorCode::ApplyFailed,
+                        "insert paragraph requires a focused block",
+                    )
+                })?;
+                let inserted = self.insert_paragraph_after_focused().map_err(apply_error)?;
+                affected_blocks.extend([focused, inserted]);
+                true
+            }
+            EditorCommand::InsertSoftLineBreak => {
+                self.insert_soft_line_break().map_err(apply_error)?;
+                true
+            }
+            EditorCommand::HandleEnter => {
+                self.handle_enter().map_err(apply_error)?;
+                true
+            }
+            EditorCommand::IndentBlock => self.indent_focused_block().map_err(apply_error)?,
+            EditorCommand::OutdentBlock => self.outdent_focused_block().map_err(apply_error)?,
+            EditorCommand::DeleteBackward => self.delete_backward().map_err(apply_error)?,
+            EditorCommand::DeleteForward => self.delete_forward().map_err(apply_error)?,
             EditorCommand::DeleteBlock { block_id } => {
                 affected_blocks.push(block_id);
                 self.delete_block_by_id(block_id).map_err(apply_error)?

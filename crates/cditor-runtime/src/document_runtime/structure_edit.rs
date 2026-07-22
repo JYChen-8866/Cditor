@@ -77,7 +77,7 @@ impl DocumentRuntime {
         )
     }
 
-    pub fn handle_enter(&mut self) -> Result<(), String> {
+    pub(crate) fn handle_enter(&mut self) -> Result<(), String> {
         let Some(block_id) = self.focused_block_id() else {
             self.insert_paragraph_after_focused()?;
             return Ok(());

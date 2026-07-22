@@ -402,6 +402,20 @@ fn every_keyboard_document_command_has_a_router_handler() {
 }
 
 #[test]
+fn keyboard_document_mutations_are_owned_by_runtime_dispatch() {
+    let commands = [
+        CditorCommand::InsertParagraphAfterFocused,
+        CditorCommand::InsertSoftLineBreak,
+        CditorCommand::HandleEnter,
+        CditorCommand::IndentBlock,
+        CditorCommand::OutdentBlock,
+        CditorCommand::DeleteBackward,
+        CditorCommand::DeleteForward,
+    ];
+    assert!(commands.iter().all(runtime_dispatches));
+}
+
+#[test]
 fn readonly_policy_allows_query_and_clipboard_without_allowing_mutation() {
     assert!(!command_mutates_document(&CditorCommand::SelectAll));
     assert!(!command_mutates_document(&CditorCommand::CopySelection));

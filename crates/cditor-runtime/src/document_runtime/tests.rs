@@ -128,6 +128,8 @@ mod ai;
 mod capabilities;
 #[path = "tests/clipboard.rs"]
 mod clipboard;
+#[path = "tests/command_input.rs"]
+mod command_input;
 #[path = "tests/complex_block_input.rs"]
 mod complex_block_input;
 #[path = "tests/composition_input.rs"]

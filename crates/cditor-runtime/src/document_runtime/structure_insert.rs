@@ -6,7 +6,7 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn insert_paragraph_after_focused(&mut self) -> Result<BlockId, String> {
+    pub(crate) fn insert_paragraph_after_focused(&mut self) -> Result<BlockId, String> {
         let block_id = self
             .focused_block_id()
             .or_else(|| self.visible_index.visible_block_ids.last().copied())

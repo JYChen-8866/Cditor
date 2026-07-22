@@ -250,6 +250,13 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::SetInlineColor { .. }
             | CditorCommand::SetBlockColor { .. }
             | CditorCommand::InsertParagraphAfterBlock { .. }
+            | CditorCommand::InsertParagraphAfterFocused
+            | CditorCommand::InsertSoftLineBreak
+            | CditorCommand::HandleEnter
+            | CditorCommand::IndentBlock
+            | CditorCommand::OutdentBlock
+            | CditorCommand::DeleteBackward
+            | CditorCommand::DeleteForward
             | CditorCommand::DeleteBlock { .. }
             | CditorCommand::ToggleTodo { .. }
             | CditorCommand::SetCodeLanguage { .. }
