@@ -350,15 +350,18 @@ impl CditorV2View {
                 return;
             }
             if let Some(text_position) = text_position {
-                let _ = runtime.focus_block_at_offset(block_id, text_position.offset);
-                let _ = runtime.move_focused_caret_to_text_position(
-                    cditor_core::edit::TextPosition {
-                        block_id,
-                        offset: text_position.offset,
-                        affinity: text_position.affinity,
+                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
+                        selection: cditor_core::edit::DocumentSelection::caret(
+                            cditor_core::edit::TextPosition {
+                                block_id,
+                                offset: text_position.offset,
+                                affinity: text_position.affinity,
+                            },
+                        ),
                     },
-                    false,
-                );
+                    cditor_editor_protocol::command::CommandSource::Toolbar,
+                ));
                 self.text_drag_selection = Some(GuiTextDragSelection {
                     anchor_block_id: block_id,
                     anchor_position: text_position,
@@ -370,7 +373,14 @@ impl CditorV2View {
                     block_id,
                     runtime.caret_offset_for_block(block_id),
                 );
-                let _ = runtime.focus_block_at_offset(block_id, anchor_offset);
+                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
+                        selection: cditor_core::edit::DocumentSelection::caret(
+                            cditor_core::edit::TextPosition::downstream(block_id, anchor_offset),
+                        ),
+                    },
+                    cditor_editor_protocol::command::CommandSource::Toolbar,
+                ));
                 self.text_drag_selection = Some(GuiTextDragSelection {
                     anchor_block_id: block_id,
                     anchor_position: crate::text::ParleyTextPosition::downstream(anchor_offset),

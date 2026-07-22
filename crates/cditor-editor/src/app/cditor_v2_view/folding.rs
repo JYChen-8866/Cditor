@@ -34,7 +34,14 @@ impl CditorV2View {
             return false;
         };
         if let Some(runtime) = self.ready_runtime() {
-            let _ = runtime.focus_block_at_offset(block_id, 0);
+            let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
+                    selection: cditor_core::edit::DocumentSelection::caret(
+                        cditor_core::edit::TextPosition::downstream(block_id, 0),
+                    ),
+                },
+                cditor_editor_protocol::command::CommandSource::Toolbar,
+            ));
         }
         let result = self.dispatch_command(command, CommandSource::Toolbar, cx);
         match result {

@@ -86,7 +86,16 @@ impl CditorV2View {
             .ok_or_else(|| "runtime is not ready".to_owned())
             .and_then(|runtime| {
                 if runtime.focused_block_id() != Some(block_id) {
-                    runtime.focus_block_at_offset(block_id, 0)?;
+                    runtime
+                        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                            CditorCommand::SetDocumentSelection {
+                                selection: cditor_core::edit::DocumentSelection::caret(
+                                    cditor_core::edit::TextPosition::downstream(block_id, 0),
+                                ),
+                            },
+                            CommandSource::Toolbar,
+                        ))
+                        .map_err(|error| error.to_string())?;
                 }
                 Ok(())
             });
