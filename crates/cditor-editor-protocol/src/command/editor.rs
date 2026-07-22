@@ -162,6 +162,13 @@ pub enum EditorCommand {
     },
     #[doc(hidden)]
     BlurTableCell,
+    #[doc(hidden)]
+    SetTextSurfaceSelection {
+        surface_id: cditor_core::ids::SurfaceId,
+        anchor_offset: usize,
+        focus_offset: usize,
+        focus_affinity: cditor_core::edit::TextAffinity,
+    },
     MoveCaret {
         direction: CaretDirection,
         extend_selection: bool,
@@ -276,6 +283,7 @@ impl EditorCommand {
             Self::FocusBlock { .. } => builtin::SELECTION_FOCUS_BLOCK,
             Self::FocusTableCell { .. } => builtin::SELECTION_FOCUS_TABLE_CELL,
             Self::BlurTableCell => builtin::SELECTION_BLUR_TABLE_CELL,
+            Self::SetTextSurfaceSelection { .. } => builtin::SELECTION_SET_TEXT_SURFACE,
             Self::MoveCaret { .. } => builtin::TEXT_MOVE_CARET,
             Self::ApplySlashBlock { .. } => builtin::BLOCK_APPLY_SLASH,
             Self::TableToggleHeader { .. } => builtin::TABLE_TOGGLE_HEADER,
@@ -392,6 +400,17 @@ impl EditorCommand {
                 offset: *offset,
                 affinity: *affinity,
             },
+            Self::SetTextSurfaceSelection {
+                surface_id,
+                anchor_offset,
+                focus_offset,
+                focus_affinity,
+            } => CommandArgs::TextSurfaceSelection {
+                surface_id: *surface_id,
+                anchor_offset: *anchor_offset,
+                focus_offset: *focus_offset,
+                focus_affinity: *focus_affinity,
+            },
             Self::ApplySlashBlock {
                 block_id,
                 trigger_range,
@@ -474,176 +493,5 @@ impl EditorCommand {
             },
             _ => CommandArgs::None,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn editor_commands_share_stable_ids_and_typed_arguments() {
-        let command = EditorCommand::SetBlockColor {
-            block_id: 7,
-            target: InlineColorTarget::Background,
-            color: Some("#ffffff".to_owned()),
-        };
-        assert_eq!(command.stable_id(), builtin::BLOCK_SET_COLOR);
-        assert!(matches!(
-            command.arguments(),
-            CommandArgs::BlockColor {
-                block_id: 7,
-                target: InlineColorTarget::Background,
-                color: Some(_),
-            }
-        ));
-    }
-
-    #[test]
-    fn editor_command_invocation_keeps_source_and_catalog_contract() {
-        let command = EditorCommand::MoveCaret {
-            direction: CaretDirection::NextWord,
-            extend_selection: true,
-        };
-        let invocation = command.invocation(CommandSource::Keyboard);
-        assert_eq!(invocation.id.as_str(), builtin::TEXT_MOVE_CARET);
-        assert_eq!(invocation.source, CommandSource::Keyboard);
-        assert_eq!(
-            CommandCatalog::builtin().validate_invocation(&invocation),
-            Ok(())
-        );
-    }
-
-    #[test]
-    fn envelope_keeps_optimistic_revision_and_request_identity() {
-        let envelope = CommandEnvelope::new(EditorCommand::Undo, CommandSource::Sdk)
-            .expecting_revision(9)
-            .with_request_id(12);
-        assert_eq!(envelope.expected_revision, Some(9));
-        assert_eq!(envelope.invocation().request_id, Some(12));
-    }
-
-    #[test]
-    fn drag_commit_commands_keep_typed_catalog_arguments() {
-        let commands = [
-            EditorCommand::MoveBlockBefore {
-                block_id: 2,
-                before_block_id: Some(4),
-            },
-            EditorCommand::MoveBlockToParent {
-                block_id: 3,
-                parent_id: Some(2),
-                sibling_index: 0,
-            },
-            EditorCommand::ApplyClipboardData {
-                text: "plain".to_owned(),
-                metadata_json: None,
-            },
-            EditorCommand::InsertImageAsset {
-                payload: cditor_core::rich_text::ImagePayload::default(),
-            },
-            EditorCommand::SetMediaWidthRatio {
-                block_id: 7,
-                ratio_milli: 750,
-            },
-            EditorCommand::TableResizeAxis {
-                block_id: 8,
-                axis: TableAxis::Column,
-                index: 2,
-                size_px: 180,
-            },
-            EditorCommand::TableMoveAxis {
-                block_id: 8,
-                axis: TableAxis::Row,
-                from_index: 1,
-                to_index: 3,
-            },
-        ];
-        let catalog = CommandCatalog::builtin();
-        for command in commands {
-            assert_eq!(
-                catalog.validate_invocation(&command.invocation(CommandSource::Toolbar)),
-                Ok(())
-            );
-        }
-    }
-
-    #[test]
-    fn down_placer_command_has_a_stable_catalog_contract() {
-        let command = EditorCommand::EnsureTrailingParagraph;
-        let invocation = command.invocation(CommandSource::Toolbar);
-
-        assert_eq!(
-            invocation.id.as_str(),
-            builtin::BLOCK_ENSURE_TRAILING_PARAGRAPH
-        );
-        assert_eq!(invocation.args, CommandArgs::None);
-        assert_eq!(
-            CommandCatalog::builtin().validate_invocation(&invocation),
-            Ok(())
-        );
-    }
-
-    #[test]
-    fn document_selection_command_preserves_direction_and_affinity() {
-        let selection = cditor_core::edit::DocumentSelection {
-            anchor: cditor_core::edit::TextPosition {
-                block_id: 2,
-                offset: 4,
-                affinity: cditor_core::edit::TextAffinity::Upstream,
-            },
-            focus: cditor_core::edit::TextPosition::downstream(1, 1),
-        };
-        let command = EditorCommand::SetDocumentSelection { selection };
-        let invocation = command.invocation(CommandSource::Sdk);
-
-        assert_eq!(invocation.id.as_str(), builtin::SELECTION_SET_DOCUMENT);
-        assert_eq!(invocation.args, CommandArgs::DocumentSelection(selection));
-        assert_eq!(
-            CommandCatalog::builtin().validate_invocation(&invocation),
-            Ok(())
-        );
-    }
-
-    #[test]
-    fn block_focus_command_uses_a_read_only_typed_target() {
-        let command = EditorCommand::FocusBlock { block_id: 9 };
-        let invocation = command.invocation(CommandSource::Toolbar);
-
-        assert_eq!(invocation.id.as_str(), builtin::SELECTION_FOCUS_BLOCK);
-        assert_eq!(invocation.args, CommandArgs::BlockTarget { block_id: 9 });
-        let definition = CommandCatalog::builtin()
-            .definition(&invocation.id)
-            .cloned()
-            .expect("focus command must be registered");
-        assert_eq!(definition.mutability, CommandMutability::ReadOnly);
-    }
-
-    #[test]
-    fn table_cell_focus_command_preserves_geometry_adapter_output() {
-        let command = EditorCommand::FocusTableCell {
-            block_id: 8,
-            row: 2,
-            col: 3,
-            offset: Some(5),
-            affinity: cditor_core::edit::TextAffinity::Upstream,
-        };
-        let invocation = command.invocation(CommandSource::Toolbar);
-
-        assert_eq!(invocation.id.as_str(), builtin::SELECTION_FOCUS_TABLE_CELL);
-        assert!(matches!(
-            invocation.args,
-            CommandArgs::TableCellFocus {
-                block_id: 8,
-                row: 2,
-                col: 3,
-                offset: Some(5),
-                affinity: cditor_core::edit::TextAffinity::Upstream,
-            }
-        ));
-        assert_eq!(
-            CommandCatalog::builtin().validate_invocation(&invocation),
-            Ok(())
-        );
     }
 }

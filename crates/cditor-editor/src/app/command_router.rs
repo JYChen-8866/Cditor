@@ -149,6 +149,9 @@ impl CditorV2View {
             } => table_dimensions(runtime, *block_id)
                 .is_some_and(|(rows, columns)| *row < rows && *col < columns),
             CditorCommand::BlurTableCell => runtime.focused_table_cell_offset().is_some(),
+            CditorCommand::SetTextSurfaceSelection { surface_id, .. } => {
+                runtime.text_surface_snapshot(*surface_id).is_some()
+            }
             CditorCommand::CopySelection
             | CditorCommand::CutSelection
             | CditorCommand::DeleteSelection => runtime.has_active_selection(),
@@ -297,6 +300,7 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::FocusBlock { .. }
             | CditorCommand::FocusTableCell { .. }
             | CditorCommand::BlurTableCell
+            | CditorCommand::SetTextSurfaceSelection { .. }
             | CditorCommand::DeleteSelection
             | CditorCommand::ApplyClipboardData { .. }
             | CditorCommand::InsertImageAsset { .. }
@@ -495,6 +499,7 @@ fn command_mutates_document(command: &CditorCommand) -> bool {
             | CditorCommand::FocusBlock { .. }
             | CditorCommand::FocusTableCell { .. }
             | CditorCommand::BlurTableCell
+            | CditorCommand::SetTextSurfaceSelection { .. }
             | CditorCommand::CopySelection
             | CditorCommand::CopyBlockText { .. }
             | CditorCommand::MoveCaret { .. }

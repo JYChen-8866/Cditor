@@ -133,6 +133,11 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(SELECTION_FOCUS_BLOCK, Args::BlockTarget, ReadOnly),
         definition(SELECTION_FOCUS_TABLE_CELL, Args::TableCellFocus, ReadOnly),
         definition(SELECTION_BLUR_TABLE_CELL, Args::None, ReadOnly),
+        definition(
+            SELECTION_SET_TEXT_SURFACE,
+            Args::TextSurfaceSelection,
+            ReadOnly,
+        ),
         definition(TEXT_INSERT_SOFT_BREAK, Args::None, Document),
         definition(FORMAT_TOGGLE_MARK, Args::InlineMark, Document),
         definition(FORMAT_TOGGLE_BOLD, Args::InlineMark, Document),

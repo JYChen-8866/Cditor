@@ -6,6 +6,7 @@ use cditor_editor_protocol::{
     },
 };
 
+use super::command_errors::{apply_error, missing_table_error};
 use super::*;
 
 impl DocumentRuntime {
@@ -52,9 +53,7 @@ impl DocumentRuntime {
                 .map_err(apply_error)?,
             EditorCommand::FocusBlock { block_id } => {
                 affected_blocks.push(block_id);
-                let before = self.focused_block_id();
-                self.try_focus_block(block_id).map_err(apply_error)?;
-                before != self.focused_block_id()
+                self.focus_block_command(block_id).map_err(apply_error)?
             }
             EditorCommand::FocusTableCell {
                 block_id,
@@ -64,19 +63,27 @@ impl DocumentRuntime {
                 affinity,
             } => {
                 affected_blocks.push(block_id);
-                let before = self.focused_table_cell_text_position();
-                if let Some(offset) = offset {
-                    self.focus_table_cell_at_offset(block_id, row, col, offset)
-                        .map_err(apply_error)?;
-                    self.move_focused_table_cell_to_text_position(offset, affinity, false)
-                        .map_err(apply_error)?;
-                } else {
-                    self.focus_table_cell(block_id, row, col)
-                        .map_err(apply_error)?;
-                }
-                before != self.focused_table_cell_text_position()
+                self.focus_table_cell_command(block_id, row, col, offset, affinity)
+                    .map_err(apply_error)?
             }
             EditorCommand::BlurTableCell => self.try_blur_table_cell().map_err(apply_error)?,
+            EditorCommand::SetTextSurfaceSelection {
+                surface_id,
+                anchor_offset,
+                focus_offset,
+                focus_affinity,
+            } => {
+                if let Some(block_id) = surface_id.block_id() {
+                    affected_blocks.push(block_id);
+                }
+                self.set_auxiliary_text_surface_selection(
+                    surface_id,
+                    anchor_offset,
+                    focus_offset,
+                    focus_affinity,
+                )
+                .map_err(apply_error)?
+            }
             EditorCommand::DeleteSelection => {
                 self.delete_active_selection().map_err(apply_error)?
             }
@@ -375,17 +382,6 @@ impl DocumentRuntime {
         outcome.request_repaint = changed || selection_changed;
         Ok(outcome)
     }
-}
-
-fn apply_error(message: String) -> ProtocolError {
-    ProtocolError::new(ProtocolErrorCode::ApplyFailed, message)
-}
-
-fn missing_table_error(block_id: BlockId) -> ProtocolError {
-    ProtocolError::new(
-        ProtocolErrorCode::ApplyFailed,
-        format!("block {block_id} is not a loaded table"),
-    )
 }
 
 #[cfg(test)]

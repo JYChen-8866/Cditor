@@ -79,26 +79,32 @@ impl CditorV2View {
         self.table_menu_ui = Default::default();
         self.clear_gutter_action();
         if let Some(runtime) = self.ready_runtime() {
-            let focus_result = if let Some(selection) = click_selection {
-                runtime
-                    .focus_text_surface_at_offset(surface_id, selection.anchor.offset)
-                    .and_then(|()| {
-                        runtime
-                            .move_focused_text_surface_to_offset(
-                                surface_id,
-                                selection.focus.offset,
-                                selection.focus.affinity,
-                                true,
-                            )
-                            .map(|_| ())
-                    })
+            let command = if let Some(selection) = click_selection {
+                cditor_editor_protocol::command::CditorCommand::SetTextSurfaceSelection {
+                    surface_id,
+                    anchor_offset: selection.anchor.offset,
+                    focus_offset: selection.focus.offset,
+                    focus_affinity: selection.focus.affinity,
+                }
             } else {
-                runtime.focus_text_surface_at_offset(surface_id, hit.unwrap_or(fallback))
+                let offset = hit.unwrap_or(fallback);
+                cditor_editor_protocol::command::CditorCommand::SetTextSurfaceSelection {
+                    surface_id,
+                    anchor_offset: offset,
+                    focus_offset: offset,
+                    focus_affinity: TextAffinity::Downstream,
+                }
             };
+            let focus_result =
+                runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    command,
+                    cditor_editor_protocol::command::CommandSource::Toolbar,
+                ));
             match focus_result {
-                Ok(()) => cx.notify(),
+                Ok(_) => cx.notify(),
                 Err(error) => {
-                    self.save_status = crate::persistence::EditorSaveStatus::Failed(error);
+                    self.save_status =
+                        crate::persistence::EditorSaveStatus::Failed(error.to_string());
                     cx.notify();
                 }
             }

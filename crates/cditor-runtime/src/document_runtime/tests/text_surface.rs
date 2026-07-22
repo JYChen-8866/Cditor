@@ -2,6 +2,10 @@ use cditor_core::ids::SurfaceId;
 use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, ImagePayload, InlineMark, RichBlockKind,
 };
+use cditor_editor_protocol::{
+    ProtocolErrorCode,
+    command::{CommandEnvelope, CommandSource, EditorCommand},
+};
 
 use super::*;
 use crate::{RichTextDelta, TextSurface, TextSurfaceRole};
@@ -82,6 +86,53 @@ fn registry_discovers_block_table_caption_and_collection_title_without_text_copi
     assert_eq!(collection.properties.len(), 1);
     assert_eq!(collection.views.len(), 1);
     assert!(runtime.validate_text_surface_identity(caption.identity));
+}
+
+#[test]
+fn auxiliary_surface_selection_dispatch_is_session_only_and_stale_safe() {
+    let mut runtime = runtime_with_auxiliary_surfaces();
+    let surface_id = SurfaceId::ImageCaption { block_id: 10 };
+    let before_revision = runtime.revision();
+    let command = EditorCommand::SetTextSurfaceSelection {
+        surface_id,
+        anchor_offset: 1,
+        focus_offset: 4,
+        focus_affinity: TextAffinity::Upstream,
+    };
+
+    let outcome = runtime
+        .dispatch(CommandEnvelope::new(command, CommandSource::Toolbar))
+        .unwrap();
+
+    assert!(outcome.changed());
+    assert_eq!(outcome.affected_blocks, vec![10]);
+    assert!(outcome.transaction_ids.is_empty());
+    assert_eq!(runtime.focused_text_surface_id(), Some(surface_id));
+    assert_eq!(runtime.text_surface_selection_range(surface_id), Some(1..4));
+    assert!(runtime.input_session_selection_reversed() == false);
+    assert_eq!(runtime.revision(), before_revision);
+
+    let before_range = runtime.text_surface_selection_range(surface_id);
+    let error = runtime
+        .dispatch(
+            CommandEnvelope::new(
+                EditorCommand::SetTextSurfaceSelection {
+                    surface_id,
+                    anchor_offset: 0,
+                    focus_offset: 0,
+                    focus_affinity: TextAffinity::Downstream,
+                },
+                CommandSource::Toolbar,
+            )
+            .expecting_revision(before_revision + 1),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, ProtocolErrorCode::StalePrecondition);
+    assert_eq!(
+        runtime.text_surface_selection_range(surface_id),
+        before_range
+    );
+    assert_eq!(runtime.revision(), before_revision);
 }
 
 #[test]

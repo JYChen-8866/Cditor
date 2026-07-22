@@ -111,6 +111,12 @@ fn representative_commands() -> Vec<CditorCommand> {
             affinity: cditor_core::edit::TextAffinity::Downstream,
         },
         CditorCommand::BlurTableCell,
+        CditorCommand::SetTextSurfaceSelection {
+            surface_id: cditor_core::ids::SurfaceId::ImageCaption { block_id: 1 },
+            anchor_offset: 0,
+            focus_offset: 0,
+            focus_affinity: cditor_core::edit::TextAffinity::Downstream,
+        },
         CditorCommand::MoveCaret {
             direction: CaretDirection::NextVisual,
             extend_selection: false,
