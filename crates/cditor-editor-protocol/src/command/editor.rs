@@ -163,6 +163,15 @@ pub enum EditorCommand {
     #[doc(hidden)]
     BlurTableCell,
     #[doc(hidden)]
+    SetTableCellSelection {
+        block_id: cditor_core::ids::BlockId,
+        row: usize,
+        col: usize,
+        anchor_offset: usize,
+        focus_offset: usize,
+        focus_affinity: cditor_core::edit::TextAffinity,
+    },
+    #[doc(hidden)]
     SetTextSurfaceSelection {
         surface_id: cditor_core::ids::SurfaceId,
         anchor_offset: usize,
@@ -283,6 +292,7 @@ impl EditorCommand {
             Self::FocusBlock { .. } => builtin::SELECTION_FOCUS_BLOCK,
             Self::FocusTableCell { .. } => builtin::SELECTION_FOCUS_TABLE_CELL,
             Self::BlurTableCell => builtin::SELECTION_BLUR_TABLE_CELL,
+            Self::SetTableCellSelection { .. } => builtin::SELECTION_SET_TABLE_CELL,
             Self::SetTextSurfaceSelection { .. } => builtin::SELECTION_SET_TEXT_SURFACE,
             Self::MoveCaret { .. } => builtin::TEXT_MOVE_CARET,
             Self::ApplySlashBlock { .. } => builtin::BLOCK_APPLY_SLASH,
@@ -407,6 +417,21 @@ impl EditorCommand {
                 focus_affinity,
             } => CommandArgs::TextSurfaceSelection {
                 surface_id: *surface_id,
+                anchor_offset: *anchor_offset,
+                focus_offset: *focus_offset,
+                focus_affinity: *focus_affinity,
+            },
+            Self::SetTableCellSelection {
+                block_id,
+                row,
+                col,
+                anchor_offset,
+                focus_offset,
+                focus_affinity,
+            } => CommandArgs::TableCellSelection {
+                block_id: *block_id,
+                row: *row,
+                col: *col,
                 anchor_offset: *anchor_offset,
                 focus_offset: *focus_offset,
                 focus_affinity: *focus_affinity,

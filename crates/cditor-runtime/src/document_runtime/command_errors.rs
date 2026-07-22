@@ -11,3 +11,18 @@ pub(super) fn missing_table_error(block_id: BlockId) -> ProtocolError {
         format!("block {block_id} is not a loaded table"),
     )
 }
+
+pub(super) fn validate_expected_revision(
+    expected: Option<u64>,
+    current: u64,
+) -> Result<(), ProtocolError> {
+    if let Some(expected) = expected
+        && expected != current
+    {
+        return Err(ProtocolError::new(
+            ProtocolErrorCode::StalePrecondition,
+            format!("command expected revision {expected}, current revision is {current}"),
+        ));
+    }
+    Ok(())
+}

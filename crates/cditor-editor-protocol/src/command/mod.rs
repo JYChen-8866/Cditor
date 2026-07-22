@@ -193,6 +193,14 @@ pub enum CommandArgs {
         offset: Option<usize>,
         affinity: cditor_core::edit::TextAffinity,
     },
+    TableCellSelection {
+        block_id: BlockId,
+        row: usize,
+        col: usize,
+        anchor_offset: usize,
+        focus_offset: usize,
+        focus_affinity: cditor_core::edit::TextAffinity,
+    },
     TextSurfaceSelection {
         surface_id: cditor_core::ids::SurfaceId,
         anchor_offset: usize,
@@ -296,6 +304,7 @@ impl CommandArgs {
             Self::MoveCaret { .. } => CommandArgumentKind::MoveCaret,
             Self::DocumentSelection(_) => CommandArgumentKind::DocumentSelection,
             Self::TableCellFocus { .. } => CommandArgumentKind::TableCellFocus,
+            Self::TableCellSelection { .. } => CommandArgumentKind::TableCellSelection,
             Self::TextSurfaceSelection { .. } => CommandArgumentKind::TextSurfaceSelection,
             Self::InlineMark(_) => CommandArgumentKind::InlineMark,
             Self::InlineColor { .. } => CommandArgumentKind::InlineColor,
@@ -332,6 +341,7 @@ pub enum CommandArgumentKind {
     MoveCaret,
     DocumentSelection,
     TableCellFocus,
+    TableCellSelection,
     TextSurfaceSelection,
     InlineMark,
     InlineColor,
@@ -601,6 +611,7 @@ pub mod builtin {
     pub const SELECTION_FOCUS_TABLE_CELL: &str = "selection.focus_table_cell";
     pub const SELECTION_BLUR_TABLE_CELL: &str = "selection.blur_table_cell";
     pub const SELECTION_SET_TEXT_SURFACE: &str = "selection.set_text_surface";
+    pub const SELECTION_SET_TABLE_CELL: &str = "selection.set_table_cell";
     pub const TEXT_INSERT_SOFT_BREAK: &str = "text.insert_soft_break";
     pub const FORMAT_TOGGLE_MARK: &str = "format.toggle_mark";
     pub const FORMAT_TOGGLE_BOLD: &str = "format.toggle_bold";

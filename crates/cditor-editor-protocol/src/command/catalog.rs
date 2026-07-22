@@ -138,6 +138,7 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
             Args::TextSurfaceSelection,
             ReadOnly,
         ),
+        definition(SELECTION_SET_TABLE_CELL, Args::TableCellSelection, ReadOnly),
         definition(TEXT_INSERT_SOFT_BREAK, Args::None, Document),
         definition(FORMAT_TOGGLE_MARK, Args::InlineMark, Document),
         definition(FORMAT_TOGGLE_BOLD, Args::InlineMark, Document),

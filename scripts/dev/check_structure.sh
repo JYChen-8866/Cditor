@@ -179,7 +179,7 @@ if [ -n "$direct_interaction_focus_violations" ]; then
 fi
 
 direct_table_cell_focus_violations=$(
-  grep -n -E '\.(focus_table_cell|focus_table_cell_at_offset|blur_table_cell)\(' \
+  grep -n -E '\.(focus_table_cell|focus_table_cell_at_offset|blur_table_cell|move_focused_table_cell_to_text_position)\(' \
     crates/cditor-editor/src/app/cditor_v2_view/table_actions.rs \
     crates/cditor-editor/src/app/input/actions.rs || true
 )

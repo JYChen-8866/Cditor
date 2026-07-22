@@ -61,4 +61,26 @@ impl DocumentRuntime {
             || before_range != self.text_surface_selection_range(surface_id)
             || before_caret != self.text_surface_caret_offset(surface_id))
     }
+
+    pub(super) fn set_table_cell_selection_command(
+        &mut self,
+        block_id: BlockId,
+        row: usize,
+        col: usize,
+        anchor_offset: usize,
+        focus_offset: usize,
+        focus_affinity: TextAffinity,
+    ) -> Result<bool, String> {
+        let focused = self.focused_table_cell_offset();
+        if !focused.is_some_and(|(focused_block, focused_row, focused_col, _)| {
+            (focused_block, focused_row, focused_col) == (block_id, row, col)
+        }) {
+            self.focus_table_cell_at_offset(block_id, row, col, anchor_offset)?;
+        }
+        self.set_focused_table_cell_text_selection_position(
+            anchor_offset,
+            focus_offset,
+            focus_affinity,
+        )
+    }
 }

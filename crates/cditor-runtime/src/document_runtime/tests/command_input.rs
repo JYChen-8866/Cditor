@@ -246,6 +246,65 @@ fn table_cell_focus_and_blur_dispatch_only_change_session_state() {
 }
 
 #[test]
+fn table_cell_selection_dispatch_preserves_direction_without_document_change() {
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
+    runtime.focus_table_cell_at_offset(10, 0, 1, 1).unwrap();
+    let before_revision = runtime.revision();
+
+    let outcome = dispatch(
+        &mut runtime,
+        EditorCommand::SetTableCellSelection {
+            block_id: 10,
+            row: 0,
+            col: 1,
+            anchor_offset: 1,
+            focus_offset: 0,
+            focus_affinity: TextAffinity::Upstream,
+        },
+    );
+
+    assert!(outcome.changed());
+    assert_eq!(outcome.affected_blocks, vec![10]);
+    assert!(outcome.transaction_ids.is_empty());
+    assert_eq!(runtime.revision(), before_revision);
+    assert_eq!(
+        runtime.focused_table_cell_selection_state(),
+        Some((10, 0, 1, 0..1, true, None))
+    );
+    assert_eq!(
+        runtime.focused_table_cell_text_position(),
+        Some((10, 0, 1, 0, TextAffinity::Upstream))
+    );
+
+    let before_selection = runtime.focused_table_cell_selection_state();
+    let error = runtime
+        .dispatch(
+            CommandEnvelope::new(
+                EditorCommand::SetTableCellSelection {
+                    block_id: 10,
+                    row: 0,
+                    col: 1,
+                    anchor_offset: 0,
+                    focus_offset: 1,
+                    focus_affinity: TextAffinity::Downstream,
+                },
+                CommandSource::Keyboard,
+            )
+            .expecting_revision(before_revision + 1),
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        cditor_editor_protocol::ProtocolErrorCode::StalePrecondition
+    );
+    assert_eq!(
+        runtime.focused_table_cell_selection_state(),
+        before_selection
+    );
+    assert_eq!(runtime.revision(), before_revision);
+}
+
+#[test]
 fn structure_input_commands_dispatch_without_false_document_changes() {
     let mut runtime = runtime_with_kind_depths(vec![
         (RichBlockKind::BulletedList, 0, None),

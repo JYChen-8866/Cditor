@@ -6,7 +6,7 @@ use cditor_editor_protocol::{
     },
 };
 
-use super::command_errors::{apply_error, missing_table_error};
+use super::command_errors::{apply_error, missing_table_error, validate_expected_revision};
 use super::*;
 
 impl DocumentRuntime {
@@ -18,17 +18,7 @@ impl DocumentRuntime {
         catalog.validate_invocation(&invocation).map_err(|error| {
             ProtocolError::new(ProtocolErrorCode::InvalidArguments, error.to_string())
         })?;
-        if let Some(expected) = envelope.expected_revision
-            && expected != self.revision()
-        {
-            return Err(ProtocolError::new(
-                ProtocolErrorCode::StalePrecondition,
-                format!(
-                    "command expected revision {expected}, current revision is {}",
-                    self.revision()
-                ),
-            ));
-        }
+        validate_expected_revision(envelope.expected_revision, self.revision())?;
 
         self.break_typing_coalescing();
         let command = envelope.command;
@@ -67,6 +57,25 @@ impl DocumentRuntime {
                     .map_err(apply_error)?
             }
             EditorCommand::BlurTableCell => self.try_blur_table_cell().map_err(apply_error)?,
+            EditorCommand::SetTableCellSelection {
+                block_id,
+                row,
+                col,
+                anchor_offset,
+                focus_offset,
+                focus_affinity,
+            } => {
+                affected_blocks.push(block_id);
+                self.set_table_cell_selection_command(
+                    block_id,
+                    row,
+                    col,
+                    anchor_offset,
+                    focus_offset,
+                    focus_affinity,
+                )
+                .map_err(apply_error)?
+            }
             EditorCommand::SetTextSurfaceSelection {
                 surface_id,
                 anchor_offset,

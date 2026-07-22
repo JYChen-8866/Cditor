@@ -320,15 +320,7 @@ impl CditorV2View {
             BoundInputAction::MoveLeft {
                 extend_selection: true,
             } => parley_target
-                .and_then(|position| {
-                    runtime
-                        .move_focused_table_cell_to_text_position(
-                            position.offset,
-                            position.affinity,
-                            true,
-                        )
-                        .ok()
-                })
+                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, true))
                 .unwrap_or_else(|| {
                     runtime
                         .extend_focused_table_cell_selection_left()
@@ -337,28 +329,12 @@ impl CditorV2View {
             BoundInputAction::MoveLeft {
                 extend_selection: false,
             } => parley_target
-                .and_then(|position| {
-                    runtime
-                        .move_focused_table_cell_to_text_position(
-                            position.offset,
-                            position.affinity,
-                            false,
-                        )
-                        .ok()
-                })
+                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
                 .unwrap_or_else(|| runtime.move_focused_table_cell_left().unwrap_or(false)),
             BoundInputAction::MoveRight {
                 extend_selection: true,
             } => parley_target
-                .and_then(|position| {
-                    runtime
-                        .move_focused_table_cell_to_text_position(
-                            position.offset,
-                            position.affinity,
-                            true,
-                        )
-                        .ok()
-                })
+                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, true))
                 .unwrap_or_else(|| {
                     runtime
                         .extend_focused_table_cell_selection_right()
@@ -367,15 +343,7 @@ impl CditorV2View {
             BoundInputAction::MoveRight {
                 extend_selection: false,
             } => parley_target
-                .and_then(|position| {
-                    runtime
-                        .move_focused_table_cell_to_text_position(
-                            position.offset,
-                            position.affinity,
-                            false,
-                        )
-                        .ok()
-                })
+                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
                 .unwrap_or_else(|| runtime.move_focused_table_cell_right().unwrap_or(false)),
             BoundInputAction::MoveUp {
                 extend_selection: true,
@@ -383,15 +351,7 @@ impl CditorV2View {
             | BoundInputAction::MoveDown {
                 extend_selection: true,
             } => parley_target
-                .and_then(|position| {
-                    runtime
-                        .move_focused_table_cell_to_text_position(
-                            position.offset,
-                            position.affinity,
-                            true,
-                        )
-                        .ok()
-                })
+                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, true))
                 .or_else(|| {
                     vertical_selection_target.and_then(|target| {
                         runtime
@@ -403,41 +363,19 @@ impl CditorV2View {
             BoundInputAction::MoveUp {
                 extend_selection: false,
             } => parley_target
-                .and_then(|position| {
-                    runtime
-                        .move_focused_table_cell_to_text_position(
-                            position.offset,
-                            position.affinity,
-                            false,
-                        )
-                        .ok()
-                })
+                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
                 .unwrap_or_else(|| runtime.move_focused_table_cell_up().unwrap_or(false)),
             BoundInputAction::MoveDown {
                 extend_selection: false,
             } => parley_target
-                .and_then(|position| {
-                    runtime
-                        .move_focused_table_cell_to_text_position(
-                            position.offset,
-                            position.affinity,
-                            false,
-                        )
-                        .ok()
-                })
+                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
                 .unwrap_or_else(|| runtime.move_focused_table_cell_down().unwrap_or(false)),
             BoundInputAction::MoveToLineStart { extend_selection }
             | BoundInputAction::MoveToLineEnd { extend_selection }
             | BoundInputAction::MoveToPreviousWord { extend_selection }
             | BoundInputAction::MoveToNextWord { extend_selection } => parley_target
                 .and_then(|position| {
-                    runtime
-                        .move_focused_table_cell_to_text_position(
-                            position.offset,
-                            position.affinity,
-                            extend_selection,
-                        )
-                        .ok()
+                    dispatch_table_cell_parley_selection(runtime, position, extend_selection)
                 })
                 .unwrap_or(false),
             _ => return false,
@@ -587,6 +525,44 @@ fn table_cell_vertical_selection_target(
     } else {
         next
     })
+}
+
+fn dispatch_table_cell_parley_selection(
+    runtime: &mut DocumentRuntime,
+    position: crate::text::ParleyTextPosition,
+    extend_selection: bool,
+) -> Option<bool> {
+    let (block_id, row, col, caret, _) = runtime.focused_table_cell_text_position()?;
+    let anchor_offset = if extend_selection {
+        runtime
+            .focused_table_cell_selection_state()
+            .map(|(_, _, _, range, reversed, _)| {
+                if range.is_empty() {
+                    caret
+                } else if reversed {
+                    range.end
+                } else {
+                    range.start
+                }
+            })
+            .unwrap_or(caret)
+    } else {
+        position.offset
+    };
+    runtime
+        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+            cditor_editor_protocol::command::CditorCommand::SetTableCellSelection {
+                block_id,
+                row,
+                col,
+                anchor_offset,
+                focus_offset: position.offset,
+                focus_affinity: position.affinity,
+            },
+            cditor_editor_protocol::command::CommandSource::Keyboard,
+        ))
+        .ok()
+        .map(|outcome| outcome.changed())
 }
 
 fn command_for_bound_action(action: BoundInputAction) -> GuiInputCommand {

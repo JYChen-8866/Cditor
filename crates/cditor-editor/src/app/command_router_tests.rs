@@ -111,6 +111,14 @@ fn representative_commands() -> Vec<CditorCommand> {
             affinity: cditor_core::edit::TextAffinity::Downstream,
         },
         CditorCommand::BlurTableCell,
+        CditorCommand::SetTableCellSelection {
+            block_id: 3,
+            row: 0,
+            col: 0,
+            anchor_offset: 0,
+            focus_offset: 0,
+            focus_affinity: cditor_core::edit::TextAffinity::Downstream,
+        },
         CditorCommand::SetTextSurfaceSelection {
             surface_id: cditor_core::ids::SurfaceId::ImageCaption { block_id: 1 },
             anchor_offset: 0,

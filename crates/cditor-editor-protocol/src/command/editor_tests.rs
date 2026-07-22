@@ -161,3 +161,31 @@ fn auxiliary_surface_selection_keeps_surface_and_affinity() {
         Ok(())
     );
 }
+
+#[test]
+fn table_cell_selection_keeps_direction_and_geometry_affinity() {
+    let invocation = EditorCommand::SetTableCellSelection {
+        block_id: 10,
+        row: 1,
+        col: 2,
+        anchor_offset: 7,
+        focus_offset: 3,
+        focus_affinity: cditor_core::edit::TextAffinity::Upstream,
+    }
+    .invocation(CommandSource::Keyboard);
+
+    assert_eq!(invocation.id.as_str(), builtin::SELECTION_SET_TABLE_CELL);
+    assert!(matches!(
+        invocation.args,
+        CommandArgs::TableCellSelection {
+            anchor_offset: 7,
+            focus_offset: 3,
+            focus_affinity: cditor_core::edit::TextAffinity::Upstream,
+            ..
+        }
+    ));
+    assert_eq!(
+        CommandCatalog::builtin().validate_invocation(&invocation),
+        Ok(())
+    );
+}
