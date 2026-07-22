@@ -219,7 +219,7 @@ impl DocumentRuntime {
         self.pending_structure_transactions = transactions;
     }
 
-    pub fn move_block_subtree_before(
+    pub(crate) fn move_block_subtree_before(
         &mut self,
         block_id: BlockId,
         before_block_id: Option<BlockId>,
@@ -258,7 +258,7 @@ impl DocumentRuntime {
         self.move_block_subtree_to_parent(block_id, target_parent, sibling_index)
     }
 
-    pub fn move_block_subtree_to_parent(
+    pub(crate) fn move_block_subtree_to_parent(
         &mut self,
         block_id: BlockId,
         new_parent_id: Option<BlockId>,

@@ -645,7 +645,18 @@ mod tests {
                 .collect(),
             720.0,
         );
-        assert!(runtime.move_block_subtree_before(1, Some(3)).unwrap());
+        assert!(
+            runtime
+                .dispatch(CommandEnvelope::new(
+                    EditorCommand::MoveBlockBefore {
+                        block_id: 1,
+                        before_block_id: Some(3),
+                    },
+                    CommandSource::Sdk,
+                ))
+                .unwrap()
+                .changed()
+        );
         let session = StorageSession::new(storage.clone(), 1);
         let view = cx.new(|cx| {
             CditorV2View::from_runtime_with_storage_options(

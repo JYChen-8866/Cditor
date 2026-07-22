@@ -168,6 +168,21 @@ impl CditorV2View {
             CditorCommand::CopyBlockText { block_id } => {
                 runtime.block_payload_record(*block_id).is_some()
             }
+            CditorCommand::MoveBlockBefore {
+                block_id,
+                before_block_id,
+            } => {
+                runtime.block_kind(*block_id).is_some()
+                    && before_block_id.is_none_or(|target| runtime.block_kind(target).is_some())
+            }
+            CditorCommand::MoveBlockToParent {
+                block_id,
+                parent_id,
+                ..
+            } => {
+                runtime.block_kind(*block_id).is_some()
+                    && parent_id.is_none_or(|parent| runtime.block_kind(parent).is_some())
+            }
             CditorCommand::ApplyAiPreview { .. } => {
                 runtime.ai_session_snapshot().is_some_and(|session| {
                     matches!(session.status, cditor_runtime::AiSessionStatus::Ready)
@@ -274,6 +289,8 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::SetInlineColor { .. }
             | CditorCommand::SetBlockColor { .. }
             | CditorCommand::InsertParagraphAfterBlock { .. }
+            | CditorCommand::MoveBlockBefore { .. }
+            | CditorCommand::MoveBlockToParent { .. }
             | CditorCommand::InsertParagraphAfterFocused
             | CditorCommand::InsertSoftLineBreak
             | CditorCommand::HandleEnter

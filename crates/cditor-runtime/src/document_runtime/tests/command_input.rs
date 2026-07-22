@@ -196,3 +196,36 @@ fn clipboard_and_image_payload_commands_own_import_mutations() {
     ));
     assert_eq!(image.transaction_ids.len(), 1);
 }
+
+#[test]
+fn block_drag_commands_dispatch_one_structure_transaction() {
+    let mut runtime = runtime_with_kind_depths(vec![
+        (RichBlockKind::BulletedList, 0, None),
+        (RichBlockKind::BulletedList, 0, None),
+        (RichBlockKind::BulletedList, 0, None),
+    ]);
+
+    let before = dispatch(
+        &mut runtime,
+        EditorCommand::MoveBlockBefore {
+            block_id: 1,
+            before_block_id: Some(3),
+        },
+    );
+    assert!(before.changed());
+    assert_eq!(before.transaction_ids.len(), 1);
+    assert_eq!(runtime.full_projection_for_tests().blocks[1].block_id, 1);
+
+    let nested = dispatch(
+        &mut runtime,
+        EditorCommand::MoveBlockToParent {
+            block_id: 3,
+            parent_id: Some(1),
+            sibling_index: 0,
+        },
+    );
+    assert!(nested.changed());
+    assert_eq!(nested.transaction_ids.len(), 1);
+    let index = runtime.index.index_of(3).unwrap();
+    assert_eq!(runtime.index.parent_ids[index], Some(1));
+}

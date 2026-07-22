@@ -108,6 +108,17 @@ pub enum EditorCommand {
         block_id: cditor_core::ids::BlockId,
     },
     #[doc(hidden)]
+    MoveBlockBefore {
+        block_id: cditor_core::ids::BlockId,
+        before_block_id: Option<cditor_core::ids::BlockId>,
+    },
+    #[doc(hidden)]
+    MoveBlockToParent {
+        block_id: cditor_core::ids::BlockId,
+        parent_id: Option<cditor_core::ids::BlockId>,
+        sibling_index: usize,
+    },
+    #[doc(hidden)]
     ApplyAiPreview {
         mode: AiApplyCommandMode,
     },
@@ -220,6 +231,8 @@ impl EditorCommand {
             Self::ToggleTodo { .. } => builtin::BLOCK_TOGGLE_TODO,
             Self::SetCodeLanguage { .. } => builtin::CODE_SET_LANGUAGE,
             Self::CopyBlockText { .. } => builtin::BLOCK_COPY_TEXT,
+            Self::MoveBlockBefore { .. } => builtin::BLOCK_MOVE_BEFORE,
+            Self::MoveBlockToParent { .. } => builtin::BLOCK_MOVE_TO_PARENT,
             Self::ApplyAiPreview { .. } => builtin::AI_APPLY,
             Self::InsertBlock(_) => "block.insert",
             Self::TransformBlock(_) => "block.transform",
@@ -295,6 +308,22 @@ impl EditorCommand {
             | Self::ToggleTodo { block_id }
             | Self::CopyBlockText { block_id } => CommandArgs::BlockTarget {
                 block_id: *block_id,
+            },
+            Self::MoveBlockBefore {
+                block_id,
+                before_block_id,
+            } => CommandArgs::BlockMoveBefore {
+                block_id: *block_id,
+                before_block_id: *before_block_id,
+            },
+            Self::MoveBlockToParent {
+                block_id,
+                parent_id,
+                sibling_index,
+            } => CommandArgs::BlockMoveToParent {
+                block_id: *block_id,
+                parent_id: *parent_id,
+                sibling_index: *sibling_index,
             },
             Self::SetCodeLanguage { block_id, language } => CommandArgs::CodeLanguage {
                 block_id: *block_id,
@@ -457,6 +486,15 @@ mod tests {
     #[test]
     fn drag_commit_commands_keep_typed_catalog_arguments() {
         let commands = [
+            EditorCommand::MoveBlockBefore {
+                block_id: 2,
+                before_block_id: Some(4),
+            },
+            EditorCommand::MoveBlockToParent {
+                block_id: 3,
+                parent_id: Some(2),
+                sibling_index: 0,
+            },
             EditorCommand::ApplyClipboardData {
                 text: "plain".to_owned(),
                 metadata_json: None,

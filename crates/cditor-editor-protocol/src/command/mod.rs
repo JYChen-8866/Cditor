@@ -214,6 +214,15 @@ pub enum CommandArgs {
     BlockTarget {
         block_id: BlockId,
     },
+    BlockMoveBefore {
+        block_id: BlockId,
+        before_block_id: Option<BlockId>,
+    },
+    BlockMoveToParent {
+        block_id: BlockId,
+        parent_id: Option<BlockId>,
+        sibling_index: usize,
+    },
     InsertTable {
         rows: usize,
         columns: usize,
@@ -277,6 +286,8 @@ impl CommandArgs {
             Self::InsertBlock { .. } => CommandArgumentKind::InsertBlock,
             Self::SlashBlock { .. } => CommandArgumentKind::SlashBlock,
             Self::BlockTarget { .. } => CommandArgumentKind::BlockTarget,
+            Self::BlockMoveBefore { .. } => CommandArgumentKind::BlockMoveBefore,
+            Self::BlockMoveToParent { .. } => CommandArgumentKind::BlockMoveToParent,
             Self::InsertTable { .. } => CommandArgumentKind::InsertTable,
             Self::TableAxisTarget { .. } => CommandArgumentKind::TableAxisTarget,
             Self::TableInsertAxis { .. } => CommandArgumentKind::TableInsertAxis,
@@ -308,6 +319,8 @@ pub enum CommandArgumentKind {
     InsertBlock,
     SlashBlock,
     BlockTarget,
+    BlockMoveBefore,
+    BlockMoveToParent,
     InsertTable,
     TableAxisTarget,
     TableInsertAxis,
@@ -583,6 +596,8 @@ pub mod builtin {
     pub const BLOCK_DELETE: &str = "block.delete";
     pub const BLOCK_DUPLICATE: &str = "block.duplicate";
     pub const BLOCK_COPY_TEXT: &str = "block.copy_text";
+    pub const BLOCK_MOVE_BEFORE: &str = "block.move_before";
+    pub const BLOCK_MOVE_TO_PARENT: &str = "block.move_to_parent";
     pub const BLOCK_ENTER: &str = "block.enter";
     pub const BLOCK_INDENT: &str = "block.indent";
     pub const BLOCK_OUTDENT: &str = "block.outdent";

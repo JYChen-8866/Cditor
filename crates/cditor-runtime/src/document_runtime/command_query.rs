@@ -63,6 +63,9 @@ impl DocumentRuntime {
             builtin::BLOCK_INSERT_AFTER_FOCUSED
             | builtin::TEXT_DELETE_BACKWARD
             | builtin::TEXT_DELETE_FORWARD => self.focused_block_id().is_some(),
+            builtin::BLOCK_MOVE_BEFORE | builtin::BLOCK_MOVE_TO_PARENT => {
+                self.focused_block_id().is_some()
+            }
             builtin::TEXT_INSERT_SOFT_BREAK => self.can_insert_soft_line_break(),
             builtin::BLOCK_ENTER => self.can_handle_enter(),
             builtin::BLOCK_INDENT => self.can_indent_focused_block(),

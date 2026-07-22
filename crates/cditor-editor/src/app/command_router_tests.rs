@@ -52,6 +52,15 @@ fn representative_commands() -> Vec<CditorCommand> {
             color: None,
         },
         CditorCommand::InsertParagraphAfterBlock { block_id: 1 },
+        CditorCommand::MoveBlockBefore {
+            block_id: 1,
+            before_block_id: Some(2),
+        },
+        CditorCommand::MoveBlockToParent {
+            block_id: 2,
+            parent_id: None,
+            sibling_index: 0,
+        },
         CditorCommand::DeleteBlock { block_id: 1 },
         CditorCommand::ToggleTodo { block_id: 1 },
         CditorCommand::SetCodeLanguage {

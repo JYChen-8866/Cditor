@@ -488,7 +488,18 @@ mod tests {
                 .collect(),
             720.0,
         );
-        assert!(runtime.move_block_subtree_before(1, Some(3)).unwrap());
+        assert!(
+            runtime
+                .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::EditorCommand::MoveBlockBefore {
+                        block_id: 1,
+                        before_block_id: Some(3),
+                    },
+                    cditor_editor_protocol::command::CommandSource::Sdk,
+                ))
+                .unwrap()
+                .changed()
+        );
         let mut persistence = persistence();
         persistence.mark_loaded_structure_version(1);
         persistence.mark_dirty();

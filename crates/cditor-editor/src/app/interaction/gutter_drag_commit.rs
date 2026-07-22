@@ -1,6 +1,7 @@
 use gpui::Context;
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::app::cditor_v2_view::CditorV2View;
+use cditor_editor_protocol::command::{CommandSource, EditorCommand};
 
 use super::geometry::parent_drop_target_from_rects;
 
@@ -27,24 +28,19 @@ impl CditorV2View {
                 parent_drop_target_from_rects(&self.projected_block_rects, drag.block_id, target)
             })
             .flatten();
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let moved = if let Some(parent_target) = parent_target {
-                runtime
-                    .move_block_subtree_to_parent(
-                        drag.block_id,
-                        Some(parent_target.parent_id),
-                        parent_target.sibling_index,
-                    )
-                    .unwrap_or(false)
-            } else {
-                runtime
-                    .move_block_subtree_before(drag.block_id, target.insert_before_block_id)
-                    .unwrap_or(false)
-            };
-            if moved {
-                self.mark_dirty(cx);
+        let command = if let Some(parent_target) = parent_target {
+            EditorCommand::MoveBlockToParent {
+                block_id: drag.block_id,
+                parent_id: Some(parent_target.parent_id),
+                sibling_index: parent_target.sibling_index,
             }
-        }
+        } else {
+            EditorCommand::MoveBlockBefore {
+                block_id: drag.block_id,
+                before_block_id: target.insert_before_block_id,
+            }
+        };
+        let _ = self.dispatch_command(command, CommandSource::Toolbar, cx);
         cx.notify();
         true
     }

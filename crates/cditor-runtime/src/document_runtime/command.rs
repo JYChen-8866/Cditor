@@ -96,6 +96,23 @@ impl DocumentRuntime {
                 affected_blocks.extend([block_id, inserted]);
                 true
             }
+            EditorCommand::MoveBlockBefore {
+                block_id,
+                before_block_id,
+            } => {
+                affected_blocks.push(block_id);
+                self.move_block_subtree_before(block_id, before_block_id)
+                    .map_err(apply_error)?
+            }
+            EditorCommand::MoveBlockToParent {
+                block_id,
+                parent_id,
+                sibling_index,
+            } => {
+                affected_blocks.push(block_id);
+                self.move_block_subtree_to_parent(block_id, parent_id, sibling_index)
+                    .map_err(apply_error)?
+            }
             EditorCommand::InsertParagraphAfterFocused => {
                 let focused = self.focused_block_id().ok_or_else(|| {
                     ProtocolError::new(
