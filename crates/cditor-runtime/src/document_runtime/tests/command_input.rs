@@ -115,3 +115,49 @@ fn runtime_query_matches_keyboard_input_preconditions() {
     }
     assert!(!runtime.can_outdent_focused_block());
 }
+
+#[test]
+fn drag_commit_commands_dispatch_once_with_typed_payloads() {
+    let image = BlockPayloadRecord {
+        block_id: 1,
+        content_version: 1,
+        kind: RichBlockKind::Image,
+        payload: BlockPayload::Image(cditor_core::rich_text::ImagePayload::default()),
+    };
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![image, sample_table_payload()], 720.0);
+
+    for command in [
+        EditorCommand::SetMediaWidthRatio {
+            block_id: 1,
+            ratio_milli: 750,
+        },
+        EditorCommand::TableResizeAxis {
+            block_id: 10,
+            axis: cditor_editor_protocol::command::TableAxis::Column,
+            index: 0,
+            size_px: 180,
+        },
+        EditorCommand::TableMoveAxis {
+            block_id: 10,
+            axis: cditor_editor_protocol::command::TableAxis::Row,
+            from_index: 0,
+            to_index: 1,
+        },
+    ] {
+        let before_revision = runtime.revision();
+        let outcome = dispatch(&mut runtime, command);
+        assert!(outcome.changed());
+        assert_eq!(runtime.revision(), before_revision + 1);
+        assert_eq!(outcome.transaction_ids.len(), 1);
+    }
+
+    let BlockPayload::Image(image) = runtime.block_payload_record(1).unwrap().payload else {
+        panic!("image payload");
+    };
+    assert_eq!(image.display_width_ratio_milli, Some(750));
+    let BlockPayload::Table(table) = runtime.block_payload_record(10).unwrap().payload else {
+        panic!("table payload");
+    };
+    assert_eq!(table.columns[0].width, TableTrackSize::Px(180));
+    assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("C"));
+}

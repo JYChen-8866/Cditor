@@ -5,6 +5,7 @@ use crate::block::media::image_width_ratio_milli_for_width;
 use crate::input::BlockDragSelectionController;
 use crate::persistence::EditorSaveStatus;
 use cditor_core::ids::BlockId;
+use cditor_editor_protocol::command::{CommandSource, EditorCommand};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(in crate::app) struct GuiImageResizeDrag {
@@ -79,23 +80,15 @@ impl CditorV2View {
         };
         clear_committed_image_resize_action(&mut self.action_block_id, drag.block_id);
         let ratio = image_width_ratio_milli_for_width(drag.current_width_px, drag.max_width_px);
-        let commit = match &mut self.state {
-            CditorViewState::Ready(runtime) => Some((
-                runtime.update_image_display_width_ratio(drag.block_id, ratio),
-                runtime.revision(),
-            )),
-            _ => None,
-        };
-        if let Some((result, revision)) = commit {
-            match result {
-                Ok(true) => {
-                    self.mark_dirty_at_revision(cditor_core::edit::ChangeOrigin::User, revision, cx)
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    self.save_status = EditorSaveStatus::Failed(error);
-                }
-            }
+        if let Err(error) = self.dispatch_command(
+            EditorCommand::SetMediaWidthRatio {
+                block_id: drag.block_id,
+                ratio_milli: ratio,
+            },
+            CommandSource::Toolbar,
+            cx,
+        ) {
+            self.save_status = EditorSaveStatus::Failed(error.to_string());
         }
         cx.notify();
         true

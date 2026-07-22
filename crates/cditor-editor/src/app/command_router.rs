@@ -220,6 +220,25 @@ impl CditorV2View {
             | CditorCommand::TableSetRangeBackground {
                 block_id, range, ..
             } => table_range_is_valid(runtime, *block_id, *range),
+            CditorCommand::SetMediaWidthRatio { block_id, .. } => matches!(
+                runtime.block_kind(*block_id),
+                Some(cditor_core::rich_text::RichBlockKind::Image)
+            ),
+            CditorCommand::TableResizeAxis {
+                block_id,
+                axis,
+                index,
+                ..
+            } => table_axis_index_is_valid(runtime, *block_id, *axis, *index),
+            CditorCommand::TableMoveAxis {
+                block_id,
+                axis,
+                from_index,
+                to_index,
+            } => {
+                table_axis_index_is_valid(runtime, *block_id, *axis, *from_index)
+                    && table_axis_index_is_valid(runtime, *block_id, *axis, *to_index)
+            }
             CditorCommand::InsertBlock(_)
             | CditorCommand::DuplicateSelectedBlocks
             | CditorCommand::InsertTable { .. }
@@ -272,6 +291,9 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::TableDuplicateAxis { .. }
             | CditorCommand::TableClearRange { .. }
             | CditorCommand::TableSetRangeBackground { .. }
+            | CditorCommand::SetMediaWidthRatio { .. }
+            | CditorCommand::TableResizeAxis { .. }
+            | CditorCommand::TableMoveAxis { .. }
     )
 }
 

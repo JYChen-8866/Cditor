@@ -1,7 +1,7 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn set_table_row_height(
+    pub(crate) fn set_table_row_height(
         &mut self,
         block_id: BlockId,
         row: usize,
@@ -37,7 +37,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn set_table_column_width(
+    pub(crate) fn set_table_column_width(
         &mut self,
         block_id: BlockId,
         col: usize,

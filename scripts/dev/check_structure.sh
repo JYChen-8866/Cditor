@@ -135,7 +135,7 @@ fi
 
 migrated_runtime_mutation_violations=$(
   grep -R -n -E \
-    '\.(undo_focused_block|redo_focused_block|select_all_command|delete_selected_block_selection|apply_slash_block_kind|toggle_block_fold|apply_ai_preview|set_block_color|toggle_inline_mark_on_selection|set_inline_color_on_selection|insert_paragraph_after_block|insert_paragraph_after_focused|insert_soft_line_break|handle_enter|indent_focused_block|outdent_focused_block|delete_block_by_id|toggle_todo_checked|set_code_block_language|convert_focused_block_kind|set_table_header_rows|set_table_header_columns|insert_table_row|insert_table_column|delete_table_row|delete_table_column|duplicate_table_row|duplicate_table_column|clear_table_range|set_table_cell_background_color)\(|runtime\.(delete_backward|delete_forward)\(' \
+    '\.(undo_focused_block|redo_focused_block|select_all_command|delete_selected_block_selection|apply_slash_block_kind|toggle_block_fold|apply_ai_preview|set_block_color|toggle_inline_mark_on_selection|set_inline_color_on_selection|insert_paragraph_after_block|insert_paragraph_after_focused|insert_soft_line_break|handle_enter|indent_focused_block|outdent_focused_block|delete_block_by_id|toggle_todo_checked|set_code_block_language|convert_focused_block_kind|set_table_header_rows|set_table_header_columns|insert_table_row|insert_table_column|delete_table_row|delete_table_column|duplicate_table_row|duplicate_table_column|clear_table_range|set_table_cell_background_color|update_image_display_width_ratio|set_table_row_height|set_table_column_width|move_table_row|move_table_column)\(|runtime\.(delete_backward|delete_forward)\(' \
     --include='*.rs' crates/cditor-editor/src || true
 )
 if [ -n "$migrated_runtime_mutation_violations" ]; then

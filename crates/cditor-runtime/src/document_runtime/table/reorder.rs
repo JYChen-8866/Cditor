@@ -1,7 +1,7 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn move_table_row(
+    pub(crate) fn move_table_row(
         &mut self,
         block_id: BlockId,
         from: usize,
@@ -33,7 +33,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn move_table_column(
+    pub(crate) fn move_table_column(
         &mut self,
         block_id: BlockId,
         from: usize,

@@ -169,6 +169,9 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(TABLE_SET_RANGE_COLOR, Args::TableRangeColor, Document),
         definition(TABLE_MERGE_CELLS, Args::TableRangeTarget, Document),
         definition(TABLE_SPLIT_CELL, Args::TableRangeTarget, Document),
+        definition(TABLE_RESIZE_AXIS, Args::TableAxisResize, Document),
+        definition(TABLE_MOVE_AXIS, Args::TableAxisMove, Document),
+        definition(MEDIA_SET_WIDTH_RATIO, Args::MediaWidthRatio, Document),
         definition(AI_APPLY, Args::AiApply, Document),
     ]
 }

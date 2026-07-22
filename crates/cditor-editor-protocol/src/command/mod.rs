@@ -220,6 +220,22 @@ pub enum CommandArgs {
         axis: TableAxis,
         index: usize,
     },
+    MediaWidthRatio {
+        block_id: BlockId,
+        ratio_milli: u16,
+    },
+    TableAxisResize {
+        block_id: BlockId,
+        axis: TableAxis,
+        index: usize,
+        size_px: u16,
+    },
+    TableAxisMove {
+        block_id: BlockId,
+        axis: TableAxis,
+        from_index: usize,
+        to_index: usize,
+    },
     TableRangeTarget {
         block_id: BlockId,
         range: TableRange,
@@ -254,6 +270,9 @@ impl CommandArgs {
             Self::InsertTable { .. } => CommandArgumentKind::InsertTable,
             Self::TableAxisTarget { .. } => CommandArgumentKind::TableAxisTarget,
             Self::TableInsertAxis { .. } => CommandArgumentKind::TableInsertAxis,
+            Self::MediaWidthRatio { .. } => CommandArgumentKind::MediaWidthRatio,
+            Self::TableAxisResize { .. } => CommandArgumentKind::TableAxisResize,
+            Self::TableAxisMove { .. } => CommandArgumentKind::TableAxisMove,
             Self::TableRangeTarget { .. } => CommandArgumentKind::TableRangeTarget,
             Self::TableRangeColor { .. } => CommandArgumentKind::TableRangeColor,
             Self::Extension { .. } => CommandArgumentKind::Extension,
@@ -280,6 +299,9 @@ pub enum CommandArgumentKind {
     InsertTable,
     TableAxisTarget,
     TableInsertAxis,
+    MediaWidthRatio,
+    TableAxisResize,
+    TableAxisMove,
     TableRangeTarget,
     TableRangeColor,
     Extension,
@@ -566,6 +588,8 @@ pub mod builtin {
     pub const TABLE_SET_RANGE_COLOR: &str = "table.set_range_color";
     pub const TABLE_MERGE_CELLS: &str = "table.merge_cells";
     pub const TABLE_SPLIT_CELL: &str = "table.split_cell";
+    pub const TABLE_RESIZE_AXIS: &str = "table.resize_axis";
+    pub const TABLE_MOVE_AXIS: &str = "table.move_axis";
     pub const COLLECTION_INSERT_RECORD: &str = "collection.insert_record";
     pub const COLLECTION_DELETE_RECORD: &str = "collection.delete_record";
     pub const COLLECTION_ADD_PROPERTY: &str = "collection.add_property";
@@ -577,6 +601,7 @@ pub mod builtin {
     pub const ASSET_INSERT: &str = "asset.insert";
     pub const ASSET_REPLACE: &str = "asset.replace";
     pub const ASSET_UPDATE: &str = "asset.update";
+    pub const MEDIA_SET_WIDTH_RATIO: &str = "media.set_width_ratio";
     pub const AI_APPLY: &str = "ai.apply";
 }
 

@@ -116,6 +116,22 @@ fn representative_commands() -> Vec<CditorCommand> {
             range: TableRange::normalized(0, 0, 0, 0),
             color: Some("#fff8c5".to_owned()),
         },
+        CditorCommand::SetMediaWidthRatio {
+            block_id: 1,
+            ratio_milli: 800,
+        },
+        CditorCommand::TableResizeAxis {
+            block_id: 3,
+            axis: TableAxis::Column,
+            index: 0,
+            size_px: 180,
+        },
+        CditorCommand::TableMoveAxis {
+            block_id: 3,
+            axis: TableAxis::Row,
+            from_index: 0,
+            to_index: 1,
+        },
     ]
 }
 

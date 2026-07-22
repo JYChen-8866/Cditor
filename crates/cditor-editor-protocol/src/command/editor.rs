@@ -166,6 +166,25 @@ pub enum EditorCommand {
         range: cditor_core::rich_text::TableRange,
         color: Option<String>,
     },
+    #[doc(hidden)]
+    SetMediaWidthRatio {
+        block_id: cditor_core::ids::BlockId,
+        ratio_milli: u16,
+    },
+    #[doc(hidden)]
+    TableResizeAxis {
+        block_id: cditor_core::ids::BlockId,
+        axis: TableAxis,
+        index: usize,
+        size_px: u16,
+    },
+    #[doc(hidden)]
+    TableMoveAxis {
+        block_id: cditor_core::ids::BlockId,
+        axis: TableAxis,
+        from_index: usize,
+        to_index: usize,
+    },
 }
 
 impl EditorCommand {
@@ -216,6 +235,9 @@ impl EditorCommand {
             Self::TableDuplicateAxis { .. } => builtin::TABLE_DUPLICATE_AXIS,
             Self::TableClearRange { .. } => builtin::TABLE_CLEAR_RANGE,
             Self::TableSetRangeBackground { .. } => builtin::TABLE_SET_RANGE_COLOR,
+            Self::SetMediaWidthRatio { .. } => builtin::MEDIA_SET_WIDTH_RATIO,
+            Self::TableResizeAxis { .. } => builtin::TABLE_RESIZE_AXIS,
+            Self::TableMoveAxis { .. } => builtin::TABLE_MOVE_AXIS,
         }
     }
 
@@ -331,6 +353,35 @@ impl EditorCommand {
                 range: *range,
                 color: color.clone(),
             },
+            Self::SetMediaWidthRatio {
+                block_id,
+                ratio_milli,
+            } => CommandArgs::MediaWidthRatio {
+                block_id: *block_id,
+                ratio_milli: *ratio_milli,
+            },
+            Self::TableResizeAxis {
+                block_id,
+                axis,
+                index,
+                size_px,
+            } => CommandArgs::TableAxisResize {
+                block_id: *block_id,
+                axis: *axis,
+                index: *index,
+                size_px: *size_px,
+            },
+            Self::TableMoveAxis {
+                block_id,
+                axis,
+                from_index,
+                to_index,
+            } => CommandArgs::TableAxisMove {
+                block_id: *block_id,
+                axis: *axis,
+                from_index: *from_index,
+                to_index: *to_index,
+            },
             _ => CommandArgs::None,
         }
     }
@@ -380,5 +431,34 @@ mod tests {
             .with_request_id(12);
         assert_eq!(envelope.expected_revision, Some(9));
         assert_eq!(envelope.invocation().request_id, Some(12));
+    }
+
+    #[test]
+    fn drag_commit_commands_keep_typed_catalog_arguments() {
+        let commands = [
+            EditorCommand::SetMediaWidthRatio {
+                block_id: 7,
+                ratio_milli: 750,
+            },
+            EditorCommand::TableResizeAxis {
+                block_id: 8,
+                axis: TableAxis::Column,
+                index: 2,
+                size_px: 180,
+            },
+            EditorCommand::TableMoveAxis {
+                block_id: 8,
+                axis: TableAxis::Row,
+                from_index: 1,
+                to_index: 3,
+            },
+        ];
+        let catalog = CommandCatalog::builtin();
+        for command in commands {
+            assert_eq!(
+                catalog.validate_invocation(&command.invocation(CommandSource::Toolbar)),
+                Ok(())
+            );
+        }
     }
 }

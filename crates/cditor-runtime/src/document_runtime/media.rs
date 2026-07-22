@@ -67,7 +67,7 @@ impl DocumentRuntime {
         Ok((image_block_id, trailing_block_id))
     }
 
-    pub fn update_image_display_width_ratio(
+    pub(crate) fn update_image_display_width_ratio(
         &mut self,
         block_id: BlockId,
         display_width_ratio_milli: u16,

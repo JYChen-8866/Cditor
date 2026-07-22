@@ -6,6 +6,7 @@ mod clipboard_blocks;
 mod cold_start;
 mod columns;
 mod command;
+mod command_query;
 mod composition;
 mod constructors;
 mod domain_state;

@@ -6,7 +6,9 @@ use crate::block::table::TableAxis;
 use crate::input::BlockDragSelectionController;
 use crate::persistence::EditorSaveStatus;
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::TableTrackSize;
+use cditor_editor_protocol::command::{
+    CommandSource, EditorCommand, TableAxis as CommandTableAxis,
+};
 
 const TABLE_RESIZE_MIN_SIZE_PX: f32 = 24.0;
 
@@ -98,30 +100,22 @@ impl CditorV2View {
         {
             self.table_interaction_mode = GuiTableInteractionMode::Idle;
         }
-        let size =
-            TableTrackSize::Px(drag.current_size_px.round().clamp(1.0, u16::MAX as f32) as u16);
-        let commit = match &mut self.state {
-            CditorViewState::Ready(runtime) => {
-                let result = match drag.axis {
-                    TableAxis::Row => runtime.set_table_row_height(drag.block_id, drag.index, size),
-                    TableAxis::Column => {
-                        runtime.set_table_column_width(drag.block_id, drag.index, size)
-                    }
-                };
-                Some((result, runtime.revision()))
-            }
-            _ => None,
+        let size_px = drag.current_size_px.round().clamp(1.0, u16::MAX as f32) as u16;
+        let axis = match drag.axis {
+            TableAxis::Row => CommandTableAxis::Row,
+            TableAxis::Column => CommandTableAxis::Column,
         };
-        if let Some((result, revision)) = commit {
-            match result {
-                Ok(true) => {
-                    self.mark_dirty_at_revision(cditor_core::edit::ChangeOrigin::User, revision, cx)
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    self.save_status = EditorSaveStatus::Failed(error);
-                }
-            }
+        if let Err(error) = self.dispatch_command(
+            EditorCommand::TableResizeAxis {
+                block_id: drag.block_id,
+                axis,
+                index: drag.index,
+                size_px,
+            },
+            CommandSource::Toolbar,
+            cx,
+        ) {
+            self.save_status = EditorSaveStatus::Failed(error.to_string());
         }
         cx.notify();
         true

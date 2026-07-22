@@ -6,6 +6,9 @@ use crate::block::table::TableAxis;
 use crate::input::BlockDragSelectionController;
 use crate::persistence::EditorSaveStatus;
 use cditor_core::ids::BlockId;
+use cditor_editor_protocol::command::{
+    CommandSource, EditorCommand, TableAxis as CommandTableAxis,
+};
 
 const TABLE_REORDER_MIN_DRAG_DELTA_PX: f32 = 4.0;
 
@@ -117,30 +120,21 @@ impl CditorV2View {
             cx.notify();
             return true;
         }
-        let commit = match &mut self.state {
-            CditorViewState::Ready(runtime) => {
-                let result = match drag.axis {
-                    TableAxis::Row => {
-                        runtime.move_table_row(drag.block_id, drag.from_index, drag.target_index)
-                    }
-                    TableAxis::Column => {
-                        runtime.move_table_column(drag.block_id, drag.from_index, drag.target_index)
-                    }
-                };
-                Some((result, runtime.revision()))
-            }
-            _ => None,
+        let axis = match drag.axis {
+            TableAxis::Row => CommandTableAxis::Row,
+            TableAxis::Column => CommandTableAxis::Column,
         };
-        if let Some((result, revision)) = commit {
-            match result {
-                Ok(true) => {
-                    self.mark_dirty_at_revision(cditor_core::edit::ChangeOrigin::User, revision, cx)
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    self.save_status = EditorSaveStatus::Failed(error);
-                }
-            }
+        if let Err(error) = self.dispatch_command(
+            EditorCommand::TableMoveAxis {
+                block_id: drag.block_id,
+                axis,
+                from_index: drag.from_index,
+                to_index: drag.target_index,
+            },
+            CommandSource::Toolbar,
+            cx,
+        ) {
+            self.save_status = EditorSaveStatus::Failed(error.to_string());
         }
         cx.notify();
         true
