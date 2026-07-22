@@ -327,12 +327,23 @@ impl CditorV2View {
         );
         if let CditorViewState::Ready(runtime) = &mut self.state {
             if let Some(selection) = click_selection {
-                let _ = runtime.set_document_text_selection(
-                    block_id,
-                    selection.anchor.offset,
-                    block_id,
-                    selection.focus.offset,
-                );
+                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
+                        selection: cditor_core::edit::DocumentSelection {
+                            anchor: cditor_core::edit::TextPosition {
+                                block_id,
+                                offset: selection.anchor.offset,
+                                affinity: selection.anchor.affinity,
+                            },
+                            focus: cditor_core::edit::TextPosition {
+                                block_id,
+                                offset: selection.focus.offset,
+                                affinity: selection.focus.affinity,
+                            },
+                        },
+                    },
+                    cditor_editor_protocol::command::CommandSource::Toolbar,
+                ));
                 self.text_drag_selection = None;
                 cx.stop_propagation();
                 cx.notify();

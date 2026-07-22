@@ -44,7 +44,19 @@ impl CditorV2View {
                         return Some(false);
                     }
                     runtime
-                        .set_document_text_selection(block_id, 0, block_id, text_len)
+                        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                            CditorCommand::SetDocumentSelection {
+                                selection: cditor_core::edit::DocumentSelection {
+                                    anchor: cditor_core::edit::TextPosition::downstream(
+                                        block_id, 0,
+                                    ),
+                                    focus: cditor_core::edit::TextPosition::downstream(
+                                        block_id, text_len,
+                                    ),
+                                },
+                            },
+                            CommandSource::Toolbar,
+                        ))
                         .ok()?;
                     Some(true)
                 })

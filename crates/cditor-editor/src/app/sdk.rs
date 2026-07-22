@@ -320,7 +320,12 @@ impl CditorV2View {
         let anchor = runtime_position(runtime, selection.anchor)?;
         let focus = runtime_position(runtime, selection.head)?;
         runtime
-            .set_document_selection(cditor_core::edit::DocumentSelection { anchor, focus })
+            .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                CditorCommand::SetDocumentSelection {
+                    selection: cditor_core::edit::DocumentSelection { anchor, focus },
+                },
+                CommandSource::Sdk,
+            ))
             .map_err(|_| CditorError::InvalidSelection)?;
         let applied = self.sdk_selection().ok_or(CditorError::InvalidSelection)?;
         self.last_emitted_selection = Some(applied);

@@ -139,6 +139,10 @@ impl CditorV2View {
             CditorCommand::Undo => runtime.can_undo(),
             CditorCommand::Redo => runtime.can_redo(),
             CditorCommand::SelectAll => true,
+            CditorCommand::SetDocumentSelection { selection } => {
+                runtime.block_kind(selection.anchor.block_id).is_some()
+                    && runtime.block_kind(selection.focus.block_id).is_some()
+            }
             CditorCommand::CopySelection
             | CditorCommand::CutSelection
             | CditorCommand::DeleteSelection => runtime.has_active_selection(),
@@ -283,6 +287,7 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
     matches!(
         command,
         CditorCommand::SelectAll
+            | CditorCommand::SetDocumentSelection { .. }
             | CditorCommand::DeleteSelection
             | CditorCommand::ApplyClipboardData { .. }
             | CditorCommand::InsertImageAsset { .. }
@@ -477,6 +482,7 @@ fn command_mutates_document(command: &CditorCommand) -> bool {
     !matches!(
         command,
         CditorCommand::SelectAll
+            | CditorCommand::SetDocumentSelection { .. }
             | CditorCommand::CopySelection
             | CditorCommand::CopyBlockText { .. }
             | CditorCommand::MoveCaret { .. }

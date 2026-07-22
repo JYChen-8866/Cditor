@@ -108,6 +108,56 @@ fn stale_down_placer_dispatch_has_zero_document_or_selection_mutation() {
 }
 
 #[test]
+fn document_selection_dispatch_preserves_affinity_without_changing_revision() {
+    let mut runtime = runtime_with_kind_depths_and_text(vec![
+        (RichBlockKind::Paragraph, 0, None, "alpha"),
+        (RichBlockKind::Paragraph, 0, None, "beta"),
+    ]);
+    let before_revision = runtime.revision();
+    let selection = DocumentSelection {
+        anchor: TextPosition {
+            block_id: 2,
+            offset: 3,
+            affinity: TextAffinity::Upstream,
+        },
+        focus: TextPosition::downstream(1, 1),
+    };
+
+    let outcome = dispatch(
+        &mut runtime,
+        EditorCommand::SetDocumentSelection { selection },
+    );
+
+    assert!(outcome.selection_changed);
+    assert!(outcome.transaction_ids.is_empty());
+    assert_eq!(runtime.revision(), before_revision);
+    assert_eq!(runtime.document_selection_snapshot(), Some(selection));
+    assert_eq!(runtime.focused_block_id(), Some(1));
+
+    let before_selection = runtime.document_selection_snapshot();
+    let error = runtime
+        .dispatch(
+            CommandEnvelope::new(
+                EditorCommand::SetDocumentSelection {
+                    selection: DocumentSelection {
+                        anchor: TextPosition::downstream(1, 0),
+                        focus: TextPosition::downstream(2, 4),
+                    },
+                },
+                CommandSource::Sdk,
+            )
+            .expecting_revision(before_revision + 1),
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        cditor_editor_protocol::ProtocolErrorCode::StalePrecondition
+    );
+    assert_eq!(runtime.document_selection_snapshot(), before_selection);
+    assert_eq!(runtime.revision(), before_revision);
+}
+
+#[test]
 fn structure_input_commands_dispatch_without_false_document_changes() {
     let mut runtime = runtime_with_kind_depths(vec![
         (RichBlockKind::BulletedList, 0, None),

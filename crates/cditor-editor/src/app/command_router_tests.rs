@@ -96,6 +96,12 @@ fn representative_commands() -> Vec<CditorCommand> {
         CditorCommand::OutdentBlock,
         CditorCommand::DeleteBackward,
         CditorCommand::DeleteForward,
+        CditorCommand::SetDocumentSelection {
+            selection: cditor_core::edit::DocumentSelection {
+                anchor: cditor_core::edit::TextPosition::downstream(1, 0),
+                focus: cditor_core::edit::TextPosition::downstream(1, 1),
+            },
+        },
         CditorCommand::MoveCaret {
             direction: CaretDirection::NextVisual,
             extend_selection: false,

@@ -3,6 +3,7 @@
 use std::{fmt, str::FromStr};
 
 use cditor_core::{
+    edit::DocumentSelection,
     edit::TransactionId,
     ids::BlockId,
     rich_text::{
@@ -182,6 +183,7 @@ pub enum CommandArgs {
         direction: CaretDirection,
         extend_selection: bool,
     },
+    DocumentSelection(DocumentSelection),
     InlineMark(InlineMark),
     InlineColor {
         target: InlineColorTarget,
@@ -277,6 +279,7 @@ impl CommandArgs {
             Self::ClipboardData { .. } => CommandArgumentKind::ClipboardData,
             Self::ImageAsset { .. } => CommandArgumentKind::ImageAsset,
             Self::MoveCaret { .. } => CommandArgumentKind::MoveCaret,
+            Self::DocumentSelection(_) => CommandArgumentKind::DocumentSelection,
             Self::InlineMark(_) => CommandArgumentKind::InlineMark,
             Self::InlineColor { .. } => CommandArgumentKind::InlineColor,
             Self::BlockColor { .. } => CommandArgumentKind::BlockColor,
@@ -310,6 +313,7 @@ pub enum CommandArgumentKind {
     ClipboardData,
     ImageAsset,
     MoveCaret,
+    DocumentSelection,
     InlineMark,
     InlineColor,
     BlockColor,
@@ -573,6 +577,7 @@ pub mod builtin {
     pub const TEXT_DELETE_BACKWARD: &str = "text.delete_backward";
     pub const TEXT_DELETE_FORWARD: &str = "text.delete_forward";
     pub const TEXT_MOVE_CARET: &str = "text.move_caret";
+    pub const SELECTION_SET_DOCUMENT: &str = "selection.set_document";
     pub const TEXT_INSERT_SOFT_BREAK: &str = "text.insert_soft_break";
     pub const FORMAT_TOGGLE_MARK: &str = "format.toggle_mark";
     pub const FORMAT_TOGGLE_BOLD: &str = "format.toggle_bold";

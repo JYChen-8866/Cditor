@@ -155,6 +155,16 @@ if [ -n "$legacy_platform_input_mutation_violations" ]; then
   exit 1
 fi
 
+direct_document_selection_violations=$(
+  grep -R -n -E '\.set_document_selection\(' \
+    --include='*.rs' crates/cditor-editor/src || true
+)
+if [ -n "$direct_document_selection_violations" ]; then
+  echo 'error: Editor must route semantic document selection through Runtime dispatch:' >&2
+  echo "$direct_document_selection_violations" >&2
+  exit 1
+fi
+
 printable_keydown_violations=$(
   grep -R -n -E 'InsertChar|InsertSpaceOrMarkdownShortcut' --include='*.rs' crates/cditor-editor/src || true
 )

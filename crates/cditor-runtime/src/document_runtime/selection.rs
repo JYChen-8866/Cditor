@@ -184,7 +184,10 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn set_document_selection(&mut self, selection: DocumentSelection) -> Result<bool, String> {
+    pub(crate) fn set_document_selection(
+        &mut self,
+        selection: DocumentSelection,
+    ) -> Result<bool, String> {
         let changed = self.set_document_text_selection(
             selection.anchor.block_id,
             selection.anchor.offset,

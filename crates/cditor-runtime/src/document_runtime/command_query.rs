@@ -43,6 +43,7 @@ impl DocumentRuntime {
             builtin::EDIT_UNDO => self.can_undo(),
             builtin::EDIT_REDO => self.can_redo(),
             builtin::EDIT_SELECT_ALL => self.focused_block_id().is_some(),
+            builtin::SELECTION_SET_DOCUMENT => self.document_block_count() > 0,
             builtin::EDIT_DELETE_SELECTION => self.has_active_selection(),
             builtin::EDIT_APPLY_CLIPBOARD_DATA | builtin::ASSET_INSERT_IMAGE_PAYLOAD => {
                 self.focused_block_id().is_some()

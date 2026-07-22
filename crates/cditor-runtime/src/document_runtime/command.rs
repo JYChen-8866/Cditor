@@ -13,11 +13,10 @@ impl DocumentRuntime {
     /// Platform side effects and realtime IME updates remain narrow adapters.
     pub fn dispatch(&mut self, envelope: CommandEnvelope) -> Result<CommandOutcome, ProtocolError> {
         let invocation = envelope.invocation();
-        CommandCatalog::builtin()
-            .validate_invocation(&invocation)
-            .map_err(|error| {
-                ProtocolError::new(ProtocolErrorCode::InvalidArguments, error.to_string())
-            })?;
+        let catalog = CommandCatalog::builtin();
+        catalog.validate_invocation(&invocation).map_err(|error| {
+            ProtocolError::new(ProtocolErrorCode::InvalidArguments, error.to_string())
+        })?;
         if let Some(expected) = envelope.expected_revision
             && expected != self.revision()
         {
@@ -32,7 +31,12 @@ impl DocumentRuntime {
 
         self.break_typing_coalescing();
         let command = envelope.command;
-        let mutates_document = !matches!(command, EditorCommand::SelectAll);
+        let mutates_document = catalog
+            .definition(&invocation.id)
+            .is_some_and(|definition| {
+                definition.mutability
+                    == cditor_editor_protocol::command::CommandMutability::Document
+            });
         let before_revision = self.revision();
         let before_transaction = self.last_committed_transaction_id();
         let before_selection = self.document_selection_snapshot();
@@ -43,6 +47,9 @@ impl DocumentRuntime {
             EditorCommand::Undo => self.undo_focused_block().map_err(apply_error)?,
             EditorCommand::Redo => self.redo_focused_block().map_err(apply_error)?,
             EditorCommand::SelectAll => self.select_all_command(),
+            EditorCommand::SetDocumentSelection { selection } => self
+                .set_document_selection(selection)
+                .map_err(apply_error)?,
             EditorCommand::DeleteSelection => {
                 self.delete_active_selection().map_err(apply_error)?
             }

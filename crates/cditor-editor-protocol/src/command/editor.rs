@@ -144,6 +144,10 @@ pub enum EditorCommand {
     OutdentBlock,
     DeleteBackward,
     DeleteForward,
+    #[doc(hidden)]
+    SetDocumentSelection {
+        selection: cditor_core::edit::DocumentSelection,
+    },
     MoveCaret {
         direction: CaretDirection,
         extend_selection: bool,
@@ -254,6 +258,7 @@ impl EditorCommand {
             Self::OutdentBlock => builtin::BLOCK_OUTDENT,
             Self::DeleteBackward => builtin::TEXT_DELETE_BACKWARD,
             Self::DeleteForward => builtin::TEXT_DELETE_FORWARD,
+            Self::SetDocumentSelection { .. } => builtin::SELECTION_SET_DOCUMENT,
             Self::MoveCaret { .. } => builtin::TEXT_MOVE_CARET,
             Self::ApplySlashBlock { .. } => builtin::BLOCK_APPLY_SLASH,
             Self::TableToggleHeader { .. } => builtin::TABLE_TOGGLE_HEADER,
@@ -355,6 +360,7 @@ impl EditorCommand {
                 direction: *direction,
                 extend_selection: *extend_selection,
             },
+            Self::SetDocumentSelection { selection } => CommandArgs::DocumentSelection(*selection),
             Self::ApplySlashBlock {
                 block_id,
                 trigger_range,
@@ -541,6 +547,27 @@ mod tests {
             builtin::BLOCK_ENSURE_TRAILING_PARAGRAPH
         );
         assert_eq!(invocation.args, CommandArgs::None);
+        assert_eq!(
+            CommandCatalog::builtin().validate_invocation(&invocation),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn document_selection_command_preserves_direction_and_affinity() {
+        let selection = cditor_core::edit::DocumentSelection {
+            anchor: cditor_core::edit::TextPosition {
+                block_id: 2,
+                offset: 4,
+                affinity: cditor_core::edit::TextAffinity::Upstream,
+            },
+            focus: cditor_core::edit::TextPosition::downstream(1, 1),
+        };
+        let command = EditorCommand::SetDocumentSelection { selection };
+        let invocation = command.invocation(CommandSource::Sdk);
+
+        assert_eq!(invocation.id.as_str(), builtin::SELECTION_SET_DOCUMENT);
+        assert_eq!(invocation.args, CommandArgs::DocumentSelection(selection));
         assert_eq!(
             CommandCatalog::builtin().validate_invocation(&invocation),
             Ok(())

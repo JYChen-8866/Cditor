@@ -58,18 +58,23 @@ impl CditorV2View {
             return;
         };
         if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.set_document_selection(DocumentSelection {
-                anchor: TextPosition {
-                    block_id: drag.anchor_block_id,
-                    offset: drag.anchor_position.offset,
-                    affinity: drag.anchor_position.affinity,
+            let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
+                    selection: DocumentSelection {
+                        anchor: TextPosition {
+                            block_id: drag.anchor_block_id,
+                            offset: drag.anchor_position.offset,
+                            affinity: drag.anchor_position.affinity,
+                        },
+                        focus: TextPosition {
+                            block_id: focus_block_id,
+                            offset: focus_position.offset,
+                            affinity: focus_position.affinity,
+                        },
+                    },
                 },
-                focus: TextPosition {
-                    block_id: focus_block_id,
-                    offset: focus_position.offset,
-                    affinity: focus_position.affinity,
-                },
-            });
+                cditor_editor_protocol::command::CommandSource::Toolbar,
+            ));
             cx.stop_propagation();
             cx.notify();
         }
