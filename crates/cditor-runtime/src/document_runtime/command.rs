@@ -124,6 +124,22 @@ impl DocumentRuntime {
                 affected_blocks.extend([focused, inserted]);
                 true
             }
+            EditorCommand::EnsureTrailingParagraph => {
+                let previous_last = self.visible_index.visible_block_ids.last().copied();
+                let changed = self
+                    .focus_or_create_down_placer_paragraph()
+                    .map_err(apply_error)?;
+                if let Some(block_id) = previous_last {
+                    affected_blocks.push(block_id);
+                }
+                if changed
+                    && let Some(block_id) = self.focused_block_id()
+                    && Some(block_id) != previous_last
+                {
+                    affected_blocks.push(block_id);
+                }
+                changed
+            }
             EditorCommand::InsertSoftLineBreak => {
                 self.insert_soft_line_break().map_err(apply_error)?;
                 true

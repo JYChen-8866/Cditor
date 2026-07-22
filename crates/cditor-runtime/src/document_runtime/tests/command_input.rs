@@ -53,6 +53,61 @@ fn block_input_commands_dispatch_and_report_affected_blocks() {
 }
 
 #[test]
+fn down_placer_dispatch_creates_once_then_only_focuses_the_trailing_paragraph() {
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "body")]);
+    runtime.focus_block_at_offset(1, 2).unwrap();
+    let before_revision = runtime.revision();
+
+    let created = dispatch(&mut runtime, EditorCommand::EnsureTrailingParagraph);
+
+    assert!(created.changed());
+    assert_eq!(created.affected_blocks, vec![1, 2]);
+    assert_eq!(created.transaction_ids.len(), 1);
+    assert_eq!(runtime.revision(), before_revision + 1);
+    assert_eq!(runtime.document_block_count(), 2);
+    assert_eq!(runtime.focused_block_id(), Some(2));
+
+    runtime.focus_block_at_offset(1, 0).unwrap();
+    let after_create_revision = runtime.revision();
+    let focused = dispatch(&mut runtime, EditorCommand::EnsureTrailingParagraph);
+
+    assert!(focused.changed());
+    assert!(focused.selection_changed);
+    assert!(focused.transaction_ids.is_empty());
+    assert_eq!(runtime.revision(), after_create_revision);
+    assert_eq!(runtime.document_block_count(), 2);
+    assert_eq!(runtime.focused_block_id(), Some(2));
+}
+
+#[test]
+fn stale_down_placer_dispatch_has_zero_document_or_selection_mutation() {
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "body")]);
+    runtime.focus_block_at_offset(1, 2).unwrap();
+    let before_revision = runtime.revision();
+    let before_selection = runtime.document_selection_snapshot();
+
+    let error = runtime
+        .dispatch(
+            CommandEnvelope::new(
+                EditorCommand::EnsureTrailingParagraph,
+                CommandSource::Toolbar,
+            )
+            .expecting_revision(before_revision + 1),
+        )
+        .unwrap_err();
+
+    assert_eq!(
+        error.code,
+        cditor_editor_protocol::ProtocolErrorCode::StalePrecondition
+    );
+    assert_eq!(runtime.revision(), before_revision);
+    assert_eq!(runtime.document_selection_snapshot(), before_selection);
+    assert_eq!(runtime.document_block_count(), 1);
+}
+
+#[test]
 fn structure_input_commands_dispatch_without_false_document_changes() {
     let mut runtime = runtime_with_kind_depths(vec![
         (RichBlockKind::BulletedList, 0, None),
@@ -96,10 +151,17 @@ fn runtime_query_matches_keyboard_input_preconditions() {
             QueryResult::CommandState(state) if !state.enabled
         ));
     }
+    assert!(matches!(
+        runtime.query(CommandQuery::State {
+            command_id: CommandId::builtin(builtin::BLOCK_ENSURE_TRAILING_PARAGRAPH),
+        }),
+        QueryResult::CommandState(state) if state.enabled
+    ));
 
     runtime.focus_block(2);
     for command_id in [
         builtin::BLOCK_INSERT_AFTER_FOCUSED,
+        builtin::BLOCK_ENSURE_TRAILING_PARAGRAPH,
         builtin::TEXT_INSERT_SOFT_BREAK,
         builtin::BLOCK_ENTER,
         builtin::BLOCK_INDENT,

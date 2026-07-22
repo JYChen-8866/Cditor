@@ -76,16 +76,20 @@ impl CditorV2View {
 
         if runtime_dispatches(&command) {
             let mutates_document = command_mutates_document(&command);
+            let before_revision = self
+                .ready_runtime_ref()
+                .map(cditor_runtime::DocumentRuntime::revision)
+                .ok_or(CditorError::NotReady)?;
             let outcome = self
                 .ready_runtime()
                 .ok_or(CditorError::NotReady)?
                 .dispatch(CommandEnvelope::new(command.clone(), source))
                 .map_err(protocol_command_error)?;
-            if outcome.changed() && mutates_document {
-                let revision = self
-                    .ready_runtime_ref()
-                    .map(cditor_runtime::DocumentRuntime::revision)
-                    .ok_or(CditorError::NotReady)?;
+            let revision = self
+                .ready_runtime_ref()
+                .map(cditor_runtime::DocumentRuntime::revision)
+                .ok_or(CditorError::NotReady)?;
+            if revision != before_revision && mutates_document {
                 self.mark_dirty_at_revision(change_origin_for_source(source), revision, cx);
             }
             if outcome.selection_changed
@@ -207,6 +211,7 @@ impl CditorV2View {
             | CditorCommand::DeleteBackward
             | CditorCommand::DeleteForward
             | CditorCommand::MoveCaret { .. } => runtime.focused_block_id().is_some(),
+            CditorCommand::EnsureTrailingParagraph => runtime.document_block_count() > 0,
             CditorCommand::InsertSoftLineBreak => runtime.can_insert_soft_line_break(),
             CditorCommand::HandleEnter => runtime.can_handle_enter(),
             CditorCommand::IndentBlock => runtime.can_indent_focused_block(),
@@ -292,6 +297,7 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::MoveBlockBefore { .. }
             | CditorCommand::MoveBlockToParent { .. }
             | CditorCommand::InsertParagraphAfterFocused
+            | CditorCommand::EnsureTrailingParagraph
             | CditorCommand::InsertSoftLineBreak
             | CditorCommand::HandleEnter
             | CditorCommand::IndentBlock

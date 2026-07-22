@@ -590,6 +590,7 @@ pub mod builtin {
     pub const BLOCK_INSERT_MERMAID: &str = "block.insert_mermaid";
     pub const BLOCK_INSERT_AFTER: &str = "block.insert_after";
     pub const BLOCK_INSERT_AFTER_FOCUSED: &str = "block.insert_after_focused";
+    pub const BLOCK_ENSURE_TRAILING_PARAGRAPH: &str = "block.ensure_trailing_paragraph";
     pub const BLOCK_TRANSFORM: &str = "block.transform";
     pub const BLOCK_SET_COLOR: &str = "block.set_color";
     pub const BLOCK_APPLY_SLASH: &str = "block.apply_slash";

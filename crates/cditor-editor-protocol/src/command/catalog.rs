@@ -141,6 +141,7 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(BLOCK_INSERT, Args::InsertBlock, Document),
         definition(BLOCK_INSERT_AFTER, Args::BlockTarget, Document),
         definition(BLOCK_INSERT_AFTER_FOCUSED, Args::None, Document),
+        definition(BLOCK_ENSURE_TRAILING_PARAGRAPH, Args::None, Document),
         definition(BLOCK_TRANSFORM, Args::BlockKind, Document),
         definition(BLOCK_DELETE, Args::BlockTarget, Document),
         definition(BLOCK_DELETE_SELECTED, Args::None, Document),

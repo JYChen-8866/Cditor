@@ -136,6 +136,8 @@ pub enum EditorCommand {
     FoldHeading,
     UnfoldHeading,
     InsertParagraphAfterFocused,
+    #[doc(hidden)]
+    EnsureTrailingParagraph,
     InsertSoftLineBreak,
     HandleEnter,
     IndentBlock,
@@ -245,6 +247,7 @@ impl EditorCommand {
             Self::FoldHeading => "heading.fold",
             Self::UnfoldHeading => "heading.unfold",
             Self::InsertParagraphAfterFocused => builtin::BLOCK_INSERT_AFTER_FOCUSED,
+            Self::EnsureTrailingParagraph => builtin::BLOCK_ENSURE_TRAILING_PARAGRAPH,
             Self::InsertSoftLineBreak => builtin::TEXT_INSERT_SOFT_BREAK,
             Self::HandleEnter => builtin::BLOCK_ENTER,
             Self::IndentBlock => builtin::BLOCK_INDENT,
@@ -526,5 +529,21 @@ mod tests {
                 Ok(())
             );
         }
+    }
+
+    #[test]
+    fn down_placer_command_has_a_stable_catalog_contract() {
+        let command = EditorCommand::EnsureTrailingParagraph;
+        let invocation = command.invocation(CommandSource::Toolbar);
+
+        assert_eq!(
+            invocation.id.as_str(),
+            builtin::BLOCK_ENSURE_TRAILING_PARAGRAPH
+        );
+        assert_eq!(invocation.args, CommandArgs::None);
+        assert_eq!(
+            CommandCatalog::builtin().validate_invocation(&invocation),
+            Ok(())
+        );
     }
 }

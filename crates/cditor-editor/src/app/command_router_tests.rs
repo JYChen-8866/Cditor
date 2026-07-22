@@ -89,6 +89,7 @@ fn representative_commands() -> Vec<CditorCommand> {
         CditorCommand::FoldHeading,
         CditorCommand::UnfoldHeading,
         CditorCommand::InsertParagraphAfterFocused,
+        CditorCommand::EnsureTrailingParagraph,
         CditorCommand::InsertSoftLineBreak,
         CditorCommand::HandleEnter,
         CditorCommand::IndentBlock,
@@ -445,6 +446,43 @@ fn keyboard_document_mutations_are_owned_by_runtime_dispatch() {
         CditorCommand::DeleteForward,
     ];
     assert!(commands.iter().all(runtime_dispatches));
+}
+
+#[gpui::test]
+fn down_placer_focus_without_document_change_does_not_mark_the_editor_dirty(
+    cx: &mut TestAppContext,
+) {
+    let runtime = cditor_runtime::DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "",
+        )],
+        720.0,
+    );
+    let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+    view.update(cx, |view, cx| {
+        let before_revision = view.ready_runtime_ref().unwrap().revision();
+        let outcome = view
+            .dispatch_command(
+                CditorCommand::EnsureTrailingParagraph,
+                CommandSource::Toolbar,
+                cx,
+            )
+            .unwrap();
+
+        assert!(outcome.selection_changed);
+        assert_eq!(
+            view.ready_runtime_ref().unwrap().revision(),
+            before_revision
+        );
+        assert_eq!(
+            view.save_status(),
+            &crate::persistence::EditorSaveStatus::Clean
+        );
+    });
 }
 
 #[test]

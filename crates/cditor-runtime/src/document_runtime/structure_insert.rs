@@ -120,7 +120,7 @@ impl DocumentRuntime {
         Ok(new_block_id)
     }
 
-    pub fn focus_or_create_down_placer_paragraph(&mut self) -> Result<bool, String> {
+    pub(crate) fn focus_or_create_down_placer_paragraph(&mut self) -> Result<bool, String> {
         let Some(last_block_id) = self.visible_index.visible_block_ids.last().copied() else {
             return Ok(false);
         };

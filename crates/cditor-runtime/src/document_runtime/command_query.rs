@@ -63,6 +63,7 @@ impl DocumentRuntime {
             builtin::BLOCK_INSERT_AFTER_FOCUSED
             | builtin::TEXT_DELETE_BACKWARD
             | builtin::TEXT_DELETE_FORWARD => self.focused_block_id().is_some(),
+            builtin::BLOCK_ENSURE_TRAILING_PARAGRAPH => self.document_block_count() > 0,
             builtin::BLOCK_MOVE_BEFORE | builtin::BLOCK_MOVE_TO_PARENT => {
                 self.focused_block_id().is_some()
             }

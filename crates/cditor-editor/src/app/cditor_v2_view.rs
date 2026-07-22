@@ -387,25 +387,22 @@ impl CditorV2View {
         if self.readonly {
             return;
         }
-        let result = {
-            let CditorViewState::Ready(runtime) = &mut self.state else {
-                return;
-            };
-            let result = runtime.focus_or_create_down_placer_paragraph();
-            if result.is_ok() {
-                let _ = runtime.scroll_focused_block_into_view();
-            }
-            result
-        };
+        let result = self.dispatch_command(
+            cditor_editor_protocol::command::CditorCommand::EnsureTrailingParagraph,
+            cditor_editor_protocol::command::CommandSource::Toolbar,
+            cx,
+        );
+        if result.is_ok()
+            && let Some(runtime) = self.ready_runtime()
+        {
+            let _ = runtime.scroll_focused_block_into_view();
+        }
         match result {
-            Ok(changed) => {
-                if changed {
-                    self.mark_dirty(cx);
-                }
+            Ok(_) => {
                 cx.notify();
             }
             Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error);
+                self.save_status = EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
             }
         }
