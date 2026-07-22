@@ -1,4 +1,5 @@
 use super::*;
+use cditor_core::fixtures::unknown::{assert_unknown_plugin_bytes, unknown_plugin_payload};
 
 fn rich_record(
     block_id: BlockId,
@@ -95,6 +96,32 @@ fn cross_block_clipboard_preserves_partial_spans_and_block_boundaries() {
     assert!(target.redo_focused_block().unwrap());
     assert_eq!(target.index.block_ids, vec![10, 11, 12]);
     assert_eq!(target.payload_window.get(12).unwrap().plain_text(), "eY");
+}
+
+#[test]
+fn whole_block_copy_paste_undo_redo_preserves_opaque_plugin_bytes() {
+    let opaque = unknown_plugin_payload(1);
+    let mut source = DocumentRuntime::from_payloads(1, vec![opaque], 720.0);
+    assert!(source.select_visible_block_range(1, 1));
+    let selection = source.clipboard_selection_snapshot().unwrap();
+
+    let mut target = DocumentRuntime::from_payloads(
+        2,
+        vec![BlockPayloadRecord::rich_text(
+            10,
+            RichBlockKind::Paragraph,
+            "anchor",
+        )],
+        720.0,
+    );
+    target.focus_block_at_offset(10, 6).unwrap();
+    assert!(target.paste_clipboard_selection(&selection).unwrap());
+    assert_unknown_plugin_bytes(target.payload_window.get(11).unwrap());
+
+    assert!(target.undo_focused_block().unwrap());
+    assert!(target.payload_window.get(11).is_none());
+    assert!(target.redo_focused_block().unwrap());
+    assert_unknown_plugin_bytes(target.payload_window.get(11).unwrap());
 }
 
 #[test]

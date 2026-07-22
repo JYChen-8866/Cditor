@@ -1,14 +1,23 @@
+use crate::CditorViewContract;
 use gpui::Entity;
 
-#[derive(Clone)]
-pub struct CditorComponent {
-    pub view: Entity<()>,
-    pub handle: crate::CditorHandle,
+pub struct CditorComponent<V: CditorViewContract> {
+    pub view: Entity<V>,
+    pub handle: crate::CditorHandle<V>,
 }
 
-impl CditorComponent {
-    pub fn from_erased_view(view: Entity<()>) -> Self {
+impl<V: CditorViewContract> CditorComponent<V> {
+    pub fn from_view(view: Entity<V>) -> Self {
         let handle = crate::CditorHandle::new(view.downgrade());
         Self { view, handle }
+    }
+}
+
+impl<V: CditorViewContract> Clone for CditorComponent<V> {
+    fn clone(&self) -> Self {
+        Self {
+            view: self.view.clone(),
+            handle: self.handle.clone(),
+        }
     }
 }

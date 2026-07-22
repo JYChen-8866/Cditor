@@ -49,11 +49,22 @@ mod tests {
     }
 
     fn unique_runtime_document_id(seed: u64) -> u64 {
-        let suffix = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .subsec_nanos() as u64;
-        seed + suffix
+        const SEED_SHIFT: u32 = 32;
+        const RANDOM_SUFFIX_MASK: u64 = (1_u64 << SEED_SHIFT) - 1;
+
+        assert!(seed <= u64::MAX >> SEED_SHIFT, "test id seed is too large");
+        (seed << SEED_SHIFT) | (Uuid::new_v4().as_u128() as u64 & RANDOM_SUFFIX_MASK)
+    }
+
+    #[test]
+    fn integration_document_ids_keep_seed_namespaces_disjoint() {
+        let first = unique_runtime_document_id(130_000);
+        let second = unique_runtime_document_id(140_000);
+
+        assert_eq!(first >> 32, 130_000);
+        assert_eq!(second >> 32, 140_000);
+        assert_ne!(first, second);
+        assert!(second.checked_mul(1_000).is_some());
     }
 
     fn document_row(runtime_document_id: u64) -> DocumentRow {

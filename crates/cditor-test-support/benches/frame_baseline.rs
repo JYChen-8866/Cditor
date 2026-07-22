@@ -26,6 +26,7 @@ use cditor_core::fixtures::{
 use cditor_core::rich_text::RichTextDocument;
 use cditor_test_support::acceptance::{
     editing::{EditingAcceptanceConfig, EditingAcceptanceScenario, run_editing_acceptance},
+    mixed::{MixedAcceptanceConfig, run_mixed_acceptance},
     open::{
         AcceptanceFixture, OpenAcceptanceConfig, fixture_10mb_code_block, fixture_50k_row_table,
         fixture_100k_one_line_blocks, fixture_100k_uneven_heights, fixture_emoji_cjk_bidi,
@@ -139,6 +140,7 @@ struct FrameBenchmarkReport {
     scroll: Vec<ScrollSummary>,
     editing: Vec<EditingSummary>,
     structure: Vec<StructureSummary>,
+    mixed: MixedSummary,
 }
 
 #[derive(Debug, Serialize)]
@@ -195,6 +197,25 @@ struct StructureSummary {
     failures: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct MixedSummary {
+    fixture: &'static str,
+    runs: usize,
+    total_blocks: usize,
+    iterations: usize,
+    scroll_operations: usize,
+    jump_operations: usize,
+    edit_operations: usize,
+    drag_operations: usize,
+    worst_frame_p95_ms: f64,
+    worst_frame_max_ms: f64,
+    peak_rendered_blocks: usize,
+    peak_resident_payloads: usize,
+    peak_resident_memory_bytes: usize,
+    passed: bool,
+    failures: Vec<String>,
+}
+
 fn main() -> ExitCode {
     let mode = BenchmarkMode::from_args();
 
@@ -212,6 +233,7 @@ fn main() -> ExitCode {
         scroll: run_scroll_benchmarks(mode),
         editing: run_editing_benchmarks(mode),
         structure: run_structure_benchmarks(mode),
+        mixed: run_mixed_benchmark(mode),
     };
 
     println!(
@@ -449,6 +471,63 @@ fn run_structure_benchmarks(mode: BenchmarkMode) -> Vec<StructureSummary> {
         .collect()
 }
 
+fn run_mixed_benchmark(mode: BenchmarkMode) -> MixedSummary {
+    let fixture = fixture_100k_uneven_heights(9);
+    let iterations = match mode {
+        BenchmarkMode::Quick => 32,
+        BenchmarkMode::Standard => 128,
+        BenchmarkMode::Full => 512,
+    };
+    let mut summary = MixedSummary {
+        fixture: "100k-uneven-heights",
+        runs: mode.scenario_runs(),
+        total_blocks: fixture.records.len(),
+        iterations,
+        scroll_operations: 0,
+        jump_operations: 0,
+        edit_operations: 0,
+        drag_operations: 0,
+        worst_frame_p95_ms: 0.0,
+        worst_frame_max_ms: 0.0,
+        peak_rendered_blocks: 0,
+        peak_resident_payloads: 0,
+        peak_resident_memory_bytes: 0,
+        passed: true,
+        failures: Vec::new(),
+    };
+    for _ in 0..mode.scenario_runs() {
+        match run_mixed_acceptance(
+            &fixture,
+            MixedAcceptanceConfig {
+                iterations,
+                ..MixedAcceptanceConfig::default()
+            },
+        ) {
+            Ok(result) => {
+                summary.scroll_operations = result.scroll_operations;
+                summary.jump_operations = result.jump_operations;
+                summary.edit_operations = result.edit_operations;
+                summary.drag_operations = result.drag_operations;
+                summary.worst_frame_p95_ms = summary.worst_frame_p95_ms.max(result.frame_p95_ms);
+                summary.worst_frame_max_ms = summary.worst_frame_max_ms.max(result.frame_max_ms);
+                summary.peak_rendered_blocks = summary
+                    .peak_rendered_blocks
+                    .max(result.peak_rendered_blocks);
+                summary.peak_resident_payloads = summary
+                    .peak_resident_payloads
+                    .max(result.peak_resident_payloads);
+                summary.peak_resident_memory_bytes = summary
+                    .peak_resident_memory_bytes
+                    .max(result.peak_resident_memory_bytes);
+                summary.failures.extend(result.failures);
+            }
+            Err(error) => summary.failures.push(error),
+        }
+    }
+    summary.passed = summary.failures.is_empty();
+    summary
+}
+
 fn percentile(sorted_samples: &[f64], percentile: usize) -> f64 {
     if sorted_samples.is_empty() {
         return f64::NAN;
@@ -498,5 +577,6 @@ fn collect_failures(report: &FrameBenchmarkReport) -> Vec<String> {
             .iter()
             .flat_map(|entry| entry.failures.clone()),
     );
+    failures.extend(report.mixed.failures.clone());
     failures
 }

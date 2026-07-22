@@ -2,9 +2,10 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentB
 
 use crate::document::layout_metrics::DocumentLayoutMetrics;
 use crate::document::skeleton_window::{
-    render_document_skeleton_window, render_document_window_error,
+    PlaceholderRetryHandler, render_document_skeleton_window, render_document_window_error,
 };
 use crate::theme::GuiTheme;
+use cditor_runtime::PayloadWindowFailureView;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentSurface {
@@ -15,6 +16,7 @@ pub struct DocumentSurface {
     pub before_window_height: f64,
     pub placeholder_window_height: Option<f64>,
     pub placeholder_window_error: Option<String>,
+    pub placeholder_window_failure: Option<PayloadWindowFailureView>,
     pub after_window_height: f64,
     pub scroll_top: f64,
 }
@@ -57,6 +59,7 @@ impl DocumentSurface {
             before_window_height,
             placeholder_window_height,
             placeholder_window_error: None,
+            placeholder_window_failure: None,
             after_window_height,
             scroll_top,
         }
@@ -67,7 +70,7 @@ impl DocumentSurface {
     }
 
     fn overlay_top_px(&self) -> f32 {
-        -(self.scroll_top as f32)
+        (self.before_window_height - self.scroll_top) as f32
     }
 
     pub fn render(
@@ -75,15 +78,19 @@ impl DocumentSurface {
         theme: GuiTheme,
         block_elements: Vec<AnyElement>,
         overlay: Option<AnyElement>,
+        on_placeholder_retry: Option<PlaceholderRetryHandler>,
     ) -> AnyElement {
         let placeholder = self.placeholder_window_height.map(|height| {
             let viewport_offset = (self.scroll_top - self.before_window_height).max(0.0);
-            self.placeholder_window_error
-                .as_deref()
-                .map(|message| {
-                    render_document_window_error(height, viewport_offset, message, theme)
-                })
-                .unwrap_or_else(|| render_document_skeleton_window(height, viewport_offset, theme))
+            match (
+                self.placeholder_window_failure.as_ref(),
+                on_placeholder_retry,
+            ) {
+                (Some(failure), Some(on_retry)) => {
+                    render_document_window_error(height, viewport_offset, failure, on_retry, theme)
+                }
+                _ => render_document_skeleton_window(height, viewport_offset, theme),
+            }
         });
         div()
             .flex_1()
@@ -156,6 +163,10 @@ mod tests {
         let scrolled_surface = DocumentSurface::with_scroll(10.0, None, 20.0, 128.0);
         assert_eq!(scrolled_surface.scroll_top, 128.0);
         assert_eq!(scrolled_surface.window_top_px(), -118.0);
-        assert_eq!(scrolled_surface.overlay_top_px(), -128.0);
+        assert_eq!(scrolled_surface.overlay_top_px(), -118.0);
+
+        let far_surface = DocumentSurface::with_scroll(20_000_000.25, None, 20.0, 20_000_128.25);
+        assert_eq!(far_surface.window_top_px(), -128.0);
+        assert_eq!(far_surface.overlay_top_px(), -128.0);
     }
 }

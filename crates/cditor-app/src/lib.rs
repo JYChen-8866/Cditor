@@ -5,6 +5,12 @@ pub use cditor_runtime as runtime;
 pub use cditor_storage_postgres as storage_postgres;
 pub use cditor_storage_sqlite as storage_sqlite;
 
+pub mod backends;
+pub mod storage_host;
+pub mod wiring;
+
+pub use backends::CditorStorageExt;
+
 pub mod storage {
     pub use cditor_storage::*;
     pub use cditor_storage_postgres as postgres;

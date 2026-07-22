@@ -20,7 +20,8 @@ pub use color_menu::{
 };
 pub use floating_toolbar::{
     FloatingToolbarState, InlineFormatAction, floating_toolbar_position,
-    left_aligned_floating_toolbar_position, render_floating_toolbar,
+    gutter_floating_toolbar_position, left_aligned_floating_toolbar_position,
+    render_floating_toolbar,
 };
 pub use selection_overlay::{
     SelectionOverlayFragment, render_selection_overlay, selection_overlay_fragments,

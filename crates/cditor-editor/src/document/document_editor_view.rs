@@ -86,10 +86,6 @@ fn block_action_state_for_projection(
     }
 }
 
-fn document_block_top(before_window_height: f64, window_local_top: f64) -> f64 {
-    before_window_height + window_local_top
-}
-
 impl DocumentEditorView {
     pub fn new(theme: GuiTheme) -> Self {
         Self { theme }
@@ -132,6 +128,7 @@ impl DocumentEditorView {
             editor_viewport_width_px,
             editor_viewport_height_px,
             projection.scroll.global_scroll_top,
+            projection.before_window_height,
         );
         let mut block_y = 0.0;
         let mut table_overlay_elements = Vec::new();
@@ -140,14 +137,12 @@ impl DocumentEditorView {
             .iter()
             .map(|block| {
                 let top = block_y;
-                let document_top = document_block_top(projection.before_window_height, top);
                 let height = block.layout.effective_height();
                 block_y += height;
                 if let Some(table_view) = &block.table_view {
-                    let content_origin =
-                        table_content_editor_origin(block, document_top as f32, self.theme);
-                    let grid_origin =
-                        table_toolbar_editor_origin(block, document_top as f32, self.theme);
+                    let local_top = top as f32;
+                    let content_origin = table_content_editor_origin(block, local_top, self.theme);
+                    let grid_origin = table_toolbar_editor_origin(block, local_top, self.theme);
                     let row_track_sizes = table_axis_track_sizes(table_view, TableAxis::Row);
                     let column_track_sizes = table_axis_track_sizes(table_view, TableAxis::Column);
                     let scroll_snapshot = table_scroll_snapshots.get(&block.block_id);
@@ -318,14 +313,32 @@ impl DocumentEditorView {
                 this.child(render_block_drag_overlay(overlay, self.theme))
             })
             .into_any_element();
-        DocumentSurface::with_scroll(
+        let retry_range = projection.render_window.block_range.clone();
+        let retry_view = view.clone();
+        let on_placeholder_retry = projection.placeholder_window_failure.as_ref().map(|_| {
+            Box::new(
+                move |_event: &gpui::MouseDownEvent, _window: &mut gpui::Window, cx: &mut App| {
+                    retry_view.update(cx, |view, cx| {
+                        view.retry_payload_window(retry_range.clone(), cx);
+                    });
+                    cx.stop_propagation();
+                },
+            ) as crate::document::skeleton_window::PlaceholderRetryHandler
+        });
+        let mut surface = DocumentSurface::with_scroll(
             projection.before_window_height,
             projection.placeholder_window_height,
             projection.after_window_height,
             projection.scroll.global_scroll_top,
+        );
+        surface.placeholder_window_error = projection.placeholder_window_error.clone();
+        surface.placeholder_window_failure = projection.placeholder_window_failure.clone();
+        surface.render(
+            self.theme,
+            block_elements,
+            Some(overlay),
+            on_placeholder_retry,
         )
-        .with_placeholder_error(projection.placeholder_window_error.clone())
-        .render(self.theme, block_elements, Some(overlay))
     }
 }
 
@@ -333,10 +346,11 @@ fn document_overlay_menu_viewport(
     editor_width_px: f32,
     editor_height_px: f32,
     scroll_top: f64,
+    window_start_global_y: f64,
 ) -> MenuViewportBounds {
     let content_left = ((editor_width_px - DEFAULT_DOCUMENT_CONTENT_WIDTH_PX) / 2.0).max(0.0);
     let left = -content_left;
-    let top = scroll_top as f32 - DEFAULT_DOCUMENT_TOP_INSET_PX;
+    let top = (scroll_top - window_start_global_y) as f32 - DEFAULT_DOCUMENT_TOP_INSET_PX;
     MenuViewportBounds {
         left,
         top,
@@ -420,13 +434,8 @@ mod tests {
     }
 
     #[test]
-    fn overlay_block_top_includes_virtual_window_prefix_height() {
-        assert_eq!(document_block_top(8_000.0, 128.0), 8_128.0);
-    }
-
-    #[test]
     fn menu_viewport_is_expressed_in_centered_document_overlay_coordinates() {
-        let viewport = document_overlay_menu_viewport(1_200.0, 800.0, 0.0);
+        let viewport = document_overlay_menu_viewport(1_200.0, 800.0, 0.0, 0.0);
 
         assert_eq!(viewport.left, -170.0);
         assert_eq!(viewport.right, 1_030.0);
@@ -436,10 +445,18 @@ mod tests {
 
     #[test]
     fn menu_viewport_tracks_document_scroll_and_narrow_hosts() {
-        let viewport = document_overlay_menu_viewport(700.0, 500.0, 240.0);
+        let viewport = document_overlay_menu_viewport(700.0, 500.0, 240.0, 0.0);
 
         assert_eq!(viewport.left, 0.0);
         assert_eq!(viewport.right, 700.0);
+        assert_eq!(viewport.top, 208.0);
+        assert_eq!(viewport.bottom, 708.0);
+    }
+
+    #[test]
+    fn menu_viewport_rebases_far_global_scroll_before_f32_conversion() {
+        let viewport = document_overlay_menu_viewport(700.0, 500.0, 20_000_240.25, 20_000_000.25);
+
         assert_eq!(viewport.top, 208.0);
         assert_eq!(viewport.bottom, 708.0);
     }

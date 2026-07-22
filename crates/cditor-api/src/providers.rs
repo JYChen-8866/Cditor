@@ -1,6 +1,5 @@
 use std::{fmt, path::PathBuf};
 
-use ::ding_board::Scene as WhiteboardScene;
 use async_trait::async_trait;
 pub use cditor_ai::{AiProvider, AiProviderError, AiProviderRequest as AiRequest, AiTaskKind};
 pub use cditor_core::rich_text::AssetRef;
@@ -8,7 +7,6 @@ pub use cditor_core::rich_text::AssetRef;
 use super::command::{CommandDescriptor, SlashItem, ToolbarItem};
 
 pub type AiRequestId = u64;
-pub type WhiteboardId = u64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssetInput {
@@ -77,12 +75,6 @@ pub trait ThemeProvider: Send + Sync {
 
 pub trait TranslationProvider: Send + Sync {
     fn translate(&self, locale: &str, key: &str) -> Option<String>;
-}
-
-pub trait WhiteboardProvider: Send + Sync {
-    fn create_scene(&self) -> WhiteboardScene;
-    fn load_scene(&self, id: WhiteboardId) -> WhiteboardScene;
-    fn save_scene(&self, scene: WhiteboardScene);
 }
 
 pub trait CditorExtension: Send + Sync {

@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -18,6 +17,7 @@ use crate::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::app::interaction::table_reorder::GuiTableReorderDrag;
 use crate::app::interaction::table_resize::GuiTableResizeDrag;
 use crate::app::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
+use crate::app::platform_layout_cache::PlatformLayoutCache;
 use crate::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
 use crate::scroll::ScrollAccumulator;
 
@@ -44,10 +44,12 @@ pub(crate) mod text_surface;
 mod whiteboard;
 
 pub(in crate::app) use super::persistence_bridge::save_status_for_mode;
-pub use super::state::CditorViewState;
+pub use super::state::{CditorViewState, EditorReadonlyReason};
 pub(crate) use crate::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::app) use block_actions::block_focus_offset_after_missed_hit_test;
-pub(in crate::app) use formatting::formatting_toolbar_state;
+pub(in crate::app) use formatting::{
+    SelectionToolbarDelay, floating_toolbar_passes_selection_delay, formatting_toolbar_state,
+};
 pub(crate) use platform_input::GuiPlatformInputTarget;
 #[cfg(test)]
 pub(crate) use platform_input::platform_input_registration_allows;
@@ -63,6 +65,8 @@ pub struct CditorV2View {
     pub(in crate::app) ai_preview_scroll_handle: gpui::ScrollHandle,
     pub(in crate::app) show_debug: bool,
     pub(in crate::app) readonly: bool,
+    pub(in crate::app) requested_readonly: bool,
+    pub(in crate::app) readonly_reason: Option<EditorReadonlyReason>,
     pub(in crate::app) dirty: bool,
     pub(in crate::app) sdk_focus_observers_registered: bool,
     pub(in crate::app) last_emitted_selection: Option<cditor_api::document::DocumentSelection>,
@@ -70,9 +74,9 @@ pub struct CditorV2View {
     pub(in crate::app) last_wheel_delta_y: f64,
     pub(in crate::app) scroll_accumulator: ScrollAccumulator,
     pub(in crate::app) editor_viewport_handle: gpui::ScrollHandle,
-    pub(in crate::app) text_layouts: HashMap<BlockId, RichTextPlatformLayout>,
-    pub(in crate::app) table_cell_layouts: HashMap<TableCellLayoutKey, RichTextPlatformLayout>,
-    pub(in crate::app) text_surface_layouts: HashMap<SurfaceId, RichTextPlatformLayout>,
+    pub(in crate::app) text_layouts: PlatformLayoutCache<BlockId>,
+    pub(in crate::app) table_cell_layouts: PlatformLayoutCache<TableCellLayoutKey>,
+    pub(in crate::app) text_surface_layouts: PlatformLayoutCache<SurfaceId>,
     pub(in crate::app) table_scroll_state: GuiTableScrollState,
     pub(in crate::app) code_highlights: CodeHighlightCache,
     pub(in crate::app) mermaid_renders: MermaidRenderCache,
@@ -93,6 +97,7 @@ pub struct CditorV2View {
     pub(in crate::app) hovered_block_id: Option<BlockId>,
     pub(in crate::app) action_block_id: Option<BlockId>,
     pub(in crate::app) gutter_toolbar_block_id: Option<BlockId>,
+    pub(in crate::app) selection_toolbar_delay: SelectionToolbarDelay,
     pub(in crate::app) block_transform_menu_open: bool,
     pub(in crate::app) color_menu_open: bool,
     pub(in crate::app) color_menu_hover_generation: u64,
@@ -211,6 +216,9 @@ impl CditorV2View {
     }
 
     pub(crate) fn update_text_layout_cache(&mut self, cache: RichTextPlatformLayout) -> bool {
+        let pinned_surface = self
+            .platform_input_layout_identity
+            .map(|identity| identity.surface_id);
         if let Some(position) = cache.table_cell_position {
             trace_table(
                 "cache.table_cell",
@@ -236,17 +244,19 @@ impl CditorV2View {
                     col: position.col,
                 },
                 cache,
+                pinned_surface,
             );
             return false;
         }
         if !matches!(cache.surface_id, SurfaceId::Block(_)) {
-            self.text_surface_layouts.insert(cache.surface_id, cache);
+            self.text_surface_layouts
+                .insert(cache.surface_id, cache, pinned_surface);
             return false;
         }
         let block_id = cache.block_id;
         let content_version = cache.content_version;
         let measured_height = cache.measured_height;
-        self.text_layouts.insert(block_id, cache);
+        self.text_layouts.insert(block_id, cache, pinned_surface);
         if self.ready_runtime_ref().is_some_and(|runtime| {
             matches!(
                 runtime.block_kind(block_id),

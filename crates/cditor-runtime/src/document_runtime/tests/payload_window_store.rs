@@ -314,6 +314,20 @@ fn payload_window_store_retries_failures_but_stops_after_the_limit() {
         runtime.payload_window.failed.get(&1).map(String::as_str),
         Some("attempt 3")
     );
+
+    let failed_projection = runtime.projection_for_window();
+    let failure = failed_projection
+        .placeholder_window_failure
+        .expect("terminal failure is projected");
+    assert_eq!(failure.message, "attempt 3");
+    assert_eq!(failure.attempts, 3);
+    assert_eq!(failure.max_attempts, 3);
+    assert!(!failure.automatic_retry_pending);
+
+    assert_eq!(runtime.retry_failed_payload_window(0..2), 2);
+    assert!(runtime.payload_window.failed.is_empty());
+    assert!(runtime.payload_window.failure_attempts.is_empty());
+    assert!(runtime.plan_payload_window_load_if_needed(0..2).is_some());
 }
 
 #[test]

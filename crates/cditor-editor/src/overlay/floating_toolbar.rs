@@ -17,6 +17,7 @@ use super::color_menu::{ActiveColor, ColorMenuAction, PaletteColor, render_color
 const TOOLBAR_WIDTH_PX: f32 = 194.0;
 const TOOLBAR_HEIGHT_PX: f32 = 324.0;
 const VIEWPORT_MARGIN_PX: f32 = 10.0;
+const TOOLBAR_ANCHOR_GAP_PX: f32 = 8.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InlineFormatAction {
@@ -101,15 +102,29 @@ pub fn left_aligned_floating_toolbar_position(
     (x, y)
 }
 
+pub fn gutter_floating_toolbar_position(
+    gutter_left: f32,
+    gutter_top: f32,
+    viewport_width: f32,
+    viewport_height: f32,
+) -> (f32, f32) {
+    let x = clamp_toolbar_x(
+        gutter_left - TOOLBAR_ANCHOR_GAP_PX - TOOLBAR_WIDTH_PX,
+        viewport_width,
+    );
+    let max_y = (viewport_height - TOOLBAR_HEIGHT_PX - VIEWPORT_MARGIN_PX).max(VIEWPORT_MARGIN_PX);
+    let y = gutter_top.clamp(VIEWPORT_MARGIN_PX, max_y);
+    (x, y)
+}
+
 fn clamp_toolbar_x(x: f32, viewport_width: f32) -> f32 {
     let max_x = (viewport_width - TOOLBAR_WIDTH_PX - VIEWPORT_MARGIN_PX).max(VIEWPORT_MARGIN_PX);
     x.clamp(VIEWPORT_MARGIN_PX, max_x)
 }
 
 fn floating_toolbar_y(anchor_top: f32, anchor_bottom: f32, viewport_height: f32) -> f32 {
-    const ANCHOR_GAP_PX: f32 = 8.0;
-    let above = anchor_top - TOOLBAR_HEIGHT_PX - ANCHOR_GAP_PX;
-    let below = anchor_bottom + ANCHOR_GAP_PX;
+    let above = anchor_top - TOOLBAR_HEIGHT_PX - TOOLBAR_ANCHOR_GAP_PX;
+    let below = anchor_bottom + TOOLBAR_ANCHOR_GAP_PX;
     let max_y = (viewport_height - TOOLBAR_HEIGHT_PX - VIEWPORT_MARGIN_PX).max(VIEWPORT_MARGIN_PX);
     if above >= VIEWPORT_MARGIN_PX {
         above

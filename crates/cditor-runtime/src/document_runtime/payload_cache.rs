@@ -195,6 +195,33 @@ mod tests {
     }
 
     #[test]
+    fn cache_pressure_preserves_composition_selection_drag_and_dirty_payloads() {
+        let mut runtime = runtime_with_paragraph_blocks(10);
+        narrow_active_window(&mut runtime, 8..10);
+        runtime
+            .begin_or_update_composition(1, 0..0, "composition")
+            .unwrap();
+        runtime.selected_block_ids.extend([3, 4, 5, 6]);
+
+        let mut dirty = runtime.payload_window.get(8).unwrap().clone();
+        dirty.content_version = dirty.content_version.saturating_add(1);
+        runtime.payload_window.insert(dirty);
+
+        let report = runtime.trim_payload_cache(entry_policy(7), [7]);
+
+        assert!(!report.over_capacity);
+        assert_eq!(report.after_entries, 7);
+        // 1 is the active IME composition target; 3 and 6 are the ordered
+        // whole-block selection endpoints; 7 represents an App drag pin; 8
+        // is dirty; and 9..10 is the active payload window.
+        for block_id in [1, 3, 6, 7, 8, 9, 10] {
+            assert!(runtime.payload_window.get(block_id).is_some(), "{block_id}");
+        }
+        assert!(runtime.payload_window.get(4).is_none());
+        assert!(runtime.payload_window.get(5).is_none());
+    }
+
+    #[test]
     fn eviction_releases_runtime_text_entities() {
         let mut runtime = runtime_with_paragraph_blocks(3);
         narrow_active_window(&mut runtime, 2..3);

@@ -23,7 +23,7 @@ fn gutter_drag_pointer_viewport_y_for_view(view: &CditorV2View, window_y: f32) -
             .unwrap_or(0.0)
 }
 
-fn gutter_drag_pointer_document_y_for_view(view: &CditorV2View, window_y: f32) -> f32 {
+fn gutter_drag_pointer_document_y_for_view(view: &CditorV2View, window_y: f32) -> f64 {
     gutter_drag_pointer_document_y(
         window_y,
         view.infer_document_viewport_origin()
@@ -99,10 +99,8 @@ impl CditorV2View {
         let Some(mut drag) = self.gutter_block_drag else {
             return false;
         };
-        let pointer_document_y = f64::from(gutter_drag_pointer_document_y_for_view(
-            self,
-            drag.current_position.y,
-        ));
+        let pointer_document_y =
+            gutter_drag_pointer_document_y_for_view(self, drag.current_position.y);
         let target = drag
             .exceeded_threshold
             .then(|| self.drop_target_for_document_y(drag.block_id, pointer_document_y))
@@ -199,7 +197,12 @@ impl CditorV2View {
             return None;
         }
 
-        let guideline = gutter_drag_guideline_geometry(&self.projected_block_rects, drag.target?)?;
+        let window_start_global_y = self.projected_block_rects.first()?.document_top;
+        let guideline = gutter_drag_guideline_geometry(
+            &self.projected_block_rects,
+            drag.target?,
+            window_start_global_y,
+        )?;
 
         Some(BlockDragOverlaySnapshot {
             y_px: guideline.y_px,

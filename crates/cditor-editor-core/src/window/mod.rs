@@ -11,6 +11,6 @@ pub use window_commit::{
     WindowCommitError, WindowCommitEvent, WindowCommitTraceFrame, WindowLoadState,
 };
 pub use window_planner::{
-    KeepReason, ScrollDirection, WindowPlanDecision, WindowPlanRequest, WindowPlanner,
-    WindowPlannerDebugOverlay, WindowPlannerPolicy,
+    KeepReason, ScrollDirection, WindowMemoryPressure, WindowPlanDecision, WindowPlanRequest,
+    WindowPlanner, WindowPlannerDebugOverlay, WindowPlannerPolicy,
 };

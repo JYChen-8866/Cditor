@@ -62,6 +62,27 @@ fn left_aligned_toolbar_uses_anchor_left_and_clamps_to_viewport() {
 }
 
 #[test]
+fn gutter_toolbar_opens_left_and_aligns_with_the_gutter_top() {
+    let (x, y) = gutter_floating_toolbar_position(320.0, 140.0, 1_200.0, 800.0);
+
+    assert_eq!(x, 118.0);
+    assert_eq!(x + TOOLBAR_WIDTH_PX + TOOLBAR_ANCHOR_GAP_PX, 320.0);
+    assert_eq!(y, 140.0);
+}
+
+#[test]
+fn gutter_toolbar_stays_inside_the_viewport_when_left_or_bottom_space_is_tight() {
+    assert_eq!(
+        gutter_floating_toolbar_position(180.0, 700.0, 1_000.0, 800.0),
+        (10.0, 466.0),
+    );
+    assert_eq!(
+        gutter_floating_toolbar_position(320.0, 2.0, 1_200.0, 800.0),
+        (118.0, 10.0),
+    );
+}
+
+#[test]
 fn toolbar_state_reports_active_and_enabled_actions_separately() {
     let state = toolbar_state();
     assert!(state.action_active(InlineFormatAction::Bold));

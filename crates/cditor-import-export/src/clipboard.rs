@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +12,7 @@ pub const CDITOR_CLIPBOARD_VERSION: u16 = 2;
 pub const MAX_CLIPBOARD_METADATA_BYTES: usize = 8 * 1024 * 1024;
 const MAX_CLIPBOARD_BLOCKS: usize = 100_000;
 const MAX_CLIPBOARD_SPANS: usize = 1_000_000;
+const MAX_CLIPBOARD_CELLS: usize = 1_000_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CditorClipboardEnvelope {
@@ -139,8 +140,12 @@ impl ClipboardSelection {
         match self {
             Self::Inline { spans } => valid_spans(spans),
             Self::TextFragments { fragments } => {
+                let total_spans = fragments.iter().try_fold(0usize, |total, fragment| {
+                    total.checked_add(fragment.spans.len())
+                });
                 fragments.len() >= 2
                     && fragments.len() <= MAX_CLIPBOARD_BLOCKS
+                    && total_spans.is_some_and(|total| total <= MAX_CLIPBOARD_SPANS)
                     && fragments.first().is_some_and(|fragment| {
                         fragment.boundary == ClipboardFragmentBoundary::StartPartial
                     })
@@ -161,30 +166,48 @@ impl ClipboardSelection {
             Self::Blocks { blocks } => {
                 !blocks.is_empty()
                     && blocks.len() <= MAX_CLIPBOARD_BLOCKS
-                    && blocks.iter().all(valid_block)
+                    && valid_block_structure(blocks)
+                    && valid_blocks(blocks)
             }
-            Self::Table { table } => {
-                table.row_count() <= MAX_CLIPBOARD_BLOCKS
-                    && table.column_count() <= MAX_CLIPBOARD_BLOCKS
-                    && table
-                        .rows
-                        .iter()
-                        .all(|row| row.cells.iter().all(|cell| valid_spans(&cell.spans)))
-            }
+            Self::Table { table } => valid_table(table, &mut ValidationBudget::default()),
         }
     }
 }
 
 fn valid_fragment_structure(fragments: &[ClipboardBlockFragment]) -> bool {
-    let mut seen = HashSet::with_capacity(fragments.len());
+    let mut seen = HashMap::<BlockId, u16>::with_capacity(fragments.len());
     for fragment in fragments {
-        if !seen.insert(fragment.source_id)
-            || fragment
-                .parent_source_id
-                .is_some_and(|parent| !seen.contains(&parent))
-        {
+        if seen.contains_key(&fragment.source_id) {
             return false;
         }
+        if let Some(parent) = fragment.parent_source_id {
+            let Some(parent_depth) = seen.get(&parent).copied() else {
+                return false;
+            };
+            if parent_depth.checked_add(1) != Some(fragment.depth) {
+                return false;
+            }
+        }
+        seen.insert(fragment.source_id, fragment.depth);
+    }
+    true
+}
+
+fn valid_block_structure(blocks: &[ClipboardBlock]) -> bool {
+    let mut seen = HashMap::<BlockId, u16>::with_capacity(blocks.len());
+    for block in blocks {
+        if seen.contains_key(&block.source_id) {
+            return false;
+        }
+        if let Some(parent) = block.parent_source_id {
+            let Some(parent_depth) = seen.get(&parent).copied() else {
+                return false;
+            };
+            if parent_depth.checked_add(1) != Some(block.depth) {
+                return false;
+            }
+        }
+        seen.insert(block.source_id, block.depth);
     }
     true
 }
@@ -217,30 +240,76 @@ fn valid_spans(spans: &[InlineSpan]) -> bool {
         })
 }
 
-fn valid_block(block: &ClipboardBlock) -> bool {
+#[derive(Debug, Default)]
+struct ValidationBudget {
+    spans: usize,
+    cells: usize,
+}
+
+impl ValidationBudget {
+    fn add_spans(&mut self, count: usize) -> bool {
+        self.spans = self.spans.saturating_add(count);
+        self.spans <= MAX_CLIPBOARD_SPANS
+    }
+
+    fn add_cells(&mut self, count: usize) -> bool {
+        self.cells = self.cells.saturating_add(count);
+        self.cells <= MAX_CLIPBOARD_CELLS
+    }
+}
+
+fn valid_blocks(blocks: &[ClipboardBlock]) -> bool {
+    let mut budget = ValidationBudget::default();
+    blocks.iter().all(|block| valid_block(block, &mut budget))
+}
+
+fn valid_block(block: &ClipboardBlock, budget: &mut ValidationBudget) -> bool {
     if !kind_matches_payload(&block.kind, &block.payload) {
         return false;
     }
     match &block.payload {
-        BlockPayload::RichText { spans } => valid_spans(spans),
-        BlockPayload::Table(table) => table
-            .rows
-            .iter()
-            .all(|row| row.cells.iter().all(|cell| valid_spans(&cell.spans))),
+        BlockPayload::RichText { spans } => budget.add_spans(spans.len()) && valid_spans(spans),
+        BlockPayload::Table(table) => valid_table(table, budget),
         BlockPayload::Collection(collection) => {
-            valid_spans(&collection.title.spans)
+            budget.add_spans(collection.title.spans.len())
+                && valid_spans(&collection.title.spans)
                 && collection.properties.len() <= 1_024
                 && collection.views.len() <= 128
         }
-        BlockPayload::Image(image) => safe_resource(&image.source),
+        BlockPayload::Image(image) => {
+            budget.add_spans(image.caption.spans.len())
+                && valid_spans(&image.caption.spans)
+                && safe_resource(&image.source)
+        }
         BlockPayload::File(file) => safe_resource(&file.source),
         BlockPayload::Embed(embed) => safe_resource(&embed.url),
+        BlockPayload::Opaque { envelope, .. } => {
+            envelope.domain == cditor_core::schema::SchemaDomain::BlockPayload
+                && envelope.body_bytes().len() <= MAX_CLIPBOARD_METADATA_BYTES
+        }
         _ => true,
     }
 }
 
+fn valid_table(table: &TablePayload, budget: &mut ValidationBudget) -> bool {
+    if table.row_count() > MAX_CLIPBOARD_BLOCKS || table.column_count() > MAX_CLIPBOARD_BLOCKS {
+        return false;
+    }
+    table.rows.iter().all(|row| {
+        budget.add_cells(row.cells.len())
+            && row
+                .cells
+                .iter()
+                .all(|cell| budget.add_spans(cell.spans.len()) && valid_spans(&cell.spans))
+    })
+}
+
 fn kind_matches_payload(kind: &RichBlockKind, payload: &BlockPayload) -> bool {
     match kind {
+        RichBlockKind::Custom(_) => matches!(
+            payload,
+            BlockPayload::Opaque { .. } | BlockPayload::RichText { .. } | BlockPayload::Code { .. }
+        ),
         RichBlockKind::Table => matches!(payload, BlockPayload::Table(_)),
         RichBlockKind::Image => matches!(payload, BlockPayload::Image(_) | BlockPayload::Empty),
         RichBlockKind::File | RichBlockKind::Attachment => {
@@ -292,7 +361,22 @@ fn selection_checksum(selection: &ClipboardSelection, system_text: &str) -> u64 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cditor_core::fixtures::unknown::{
+        UNKNOWN_PLUGIN_BODY, UNKNOWN_PLUGIN_FALLBACK, UNKNOWN_PLUGIN_KIND,
+        assert_unknown_plugin_bytes, unknown_plugin_payload,
+    };
     use cditor_core::rich_text::{TableCellPayload, TableRowPayload, WhiteboardPayload};
+
+    fn decode_selection(
+        selection: ClipboardSelection,
+    ) -> Result<CditorClipboardEnvelope, ClipboardDecodeError> {
+        let system_text = selection.plain_text();
+        let envelope = CditorClipboardEnvelope::new(None, selection, &system_text);
+        CditorClipboardEnvelope::decode_metadata(
+            &serde_json::to_string(&envelope).unwrap(),
+            &system_text,
+        )
+    }
 
     #[test]
     fn envelope_roundtrips_and_binds_metadata_to_system_text() {
@@ -338,6 +422,146 @@ mod tests {
             CditorClipboardEnvelope::decode_metadata(&json, "bad"),
             Err(ClipboardDecodeError::UnsupportedVersion)
         );
+    }
+
+    #[test]
+    fn envelope_rejects_oversize_malformed_unknown_schema_and_bad_checksum() {
+        assert_eq!(
+            CditorClipboardEnvelope::decode_metadata(
+                &"x".repeat(MAX_CLIPBOARD_METADATA_BYTES + 1),
+                "",
+            ),
+            Err(ClipboardDecodeError::TooLarge)
+        );
+        assert_eq!(
+            CditorClipboardEnvelope::decode_metadata("{", ""),
+            Err(ClipboardDecodeError::Malformed)
+        );
+
+        let selection = ClipboardSelection::Inline {
+            spans: vec![InlineSpan::plain("safe")],
+        };
+        let mut envelope = CditorClipboardEnvelope::new(None, selection, "safe");
+        envelope.schema = "application/x-attacker".to_owned();
+        let json = serde_json::to_string(&envelope).unwrap();
+        assert_eq!(
+            CditorClipboardEnvelope::decode_metadata(&json, "safe"),
+            Err(ClipboardDecodeError::UnknownSchema)
+        );
+
+        envelope.schema = CDITOR_CLIPBOARD_SCHEMA.to_owned();
+        envelope.checksum ^= 1;
+        let json = serde_json::to_string(&envelope).unwrap();
+        assert_eq!(
+            CditorClipboardEnvelope::decode_metadata(&json, "safe"),
+            Err(ClipboardDecodeError::ChecksumMismatch)
+        );
+    }
+
+    #[test]
+    fn envelope_rejects_duplicate_forward_parent_and_inconsistent_depth() {
+        let paragraph = |source_id, parent_source_id, depth| ClipboardBlock {
+            source_id,
+            parent_source_id,
+            depth,
+            kind: RichBlockKind::Paragraph,
+            payload: BlockPayload::RichText {
+                spans: vec![InlineSpan::plain(source_id.to_string())],
+            },
+        };
+        let invalid_selections = [
+            ClipboardSelection::Blocks {
+                blocks: vec![paragraph(1, None, 0), paragraph(1, None, 0)],
+            },
+            ClipboardSelection::Blocks {
+                blocks: vec![paragraph(1, Some(2), 1), paragraph(2, None, 0)],
+            },
+            ClipboardSelection::Blocks {
+                blocks: vec![paragraph(1, None, 4), paragraph(2, Some(1), 7)],
+            },
+        ];
+
+        for selection in invalid_selections {
+            assert_eq!(
+                decode_selection(selection),
+                Err(ClipboardDecodeError::InvalidSelection)
+            );
+        }
+    }
+
+    #[test]
+    fn envelope_rejects_kind_payload_mismatch_wrong_domain_and_nested_unsafe_link() {
+        let mismatch = ClipboardSelection::Blocks {
+            blocks: vec![ClipboardBlock {
+                source_id: 1,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Table,
+                payload: BlockPayload::RichText {
+                    spans: vec![InlineSpan::plain("not a table")],
+                },
+            }],
+        };
+        assert_eq!(
+            decode_selection(mismatch),
+            Err(ClipboardDecodeError::InvalidSelection)
+        );
+
+        let mut opaque = unknown_plugin_payload(2);
+        let BlockPayload::Opaque { envelope, .. } = &mut opaque.payload else {
+            panic!("fixture must contain opaque payload")
+        };
+        envelope.domain = cditor_core::schema::SchemaDomain::Clipboard;
+        let wrong_domain = ClipboardSelection::Blocks {
+            blocks: vec![ClipboardBlock {
+                source_id: opaque.block_id,
+                parent_source_id: None,
+                depth: 0,
+                kind: opaque.kind,
+                payload: opaque.payload,
+            }],
+        };
+        assert_eq!(
+            decode_selection(wrong_domain),
+            Err(ClipboardDecodeError::InvalidSelection)
+        );
+
+        let unsafe_caption = ClipboardSelection::Blocks {
+            blocks: vec![ClipboardBlock {
+                source_id: 3,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Image,
+                payload: BlockPayload::Image(cditor_core::rich_text::ImagePayload {
+                    source: "https://example.invalid/image.png".to_owned(),
+                    alt: String::new(),
+                    caption: cditor_core::rich_text::RichTextContent {
+                        spans: vec![InlineSpan {
+                            text: "caption".to_owned(),
+                            marks: vec![InlineMark::Link {
+                                href: "javascript:alert(1)".to_owned(),
+                            }],
+                        }],
+                    },
+                    display_width_ratio_milli: None,
+                }),
+            }],
+        };
+        assert_eq!(
+            decode_selection(unsafe_caption),
+            Err(ClipboardDecodeError::InvalidSelection)
+        );
+    }
+
+    #[test]
+    fn aggregate_validation_budgets_are_bounded() {
+        let mut budget = ValidationBudget::default();
+        assert!(budget.add_spans(MAX_CLIPBOARD_SPANS));
+        assert!(!budget.add_spans(1));
+
+        let mut budget = ValidationBudget::default();
+        assert!(budget.add_cells(MAX_CLIPBOARD_CELLS));
+        assert!(!budget.add_cells(1));
     }
 
     #[test]
@@ -398,5 +622,49 @@ mod tests {
                 selection
             );
         }
+    }
+
+    #[test]
+    fn native_clipboard_preserves_unknown_plugin_envelope_bytes() {
+        let record = unknown_plugin_payload(41);
+        let selection = ClipboardSelection::Blocks {
+            blocks: vec![ClipboardBlock {
+                source_id: record.block_id,
+                parent_source_id: None,
+                depth: 0,
+                kind: record.kind.clone(),
+                payload: record.payload.clone(),
+            }],
+        };
+        let system_text = selection.plain_text();
+        assert_eq!(system_text, UNKNOWN_PLUGIN_FALLBACK);
+        let envelope = CditorClipboardEnvelope::new(Some(7), selection, &system_text);
+
+        let first_json = serde_json::to_string(&envelope).unwrap();
+        let decoded = CditorClipboardEnvelope::decode_metadata(&first_json, &system_text).unwrap();
+        let ClipboardSelection::Blocks { blocks } = decoded.selection else {
+            panic!("expected block clipboard")
+        };
+        let block = &blocks[0];
+        let record = cditor_core::rich_text::BlockPayloadRecord {
+            block_id: block.source_id,
+            content_version: 7,
+            kind: block.kind.clone(),
+            payload: block.payload.clone(),
+        };
+        assert_unknown_plugin_bytes(&record);
+        assert_eq!(
+            block.kind,
+            RichBlockKind::Custom(UNKNOWN_PLUGIN_KIND.to_owned())
+        );
+        let BlockPayload::Opaque {
+            envelope,
+            plain_text_fallback,
+        } = &block.payload
+        else {
+            panic!("expected opaque payload")
+        };
+        assert_eq!(envelope.body_bytes(), UNKNOWN_PLUGIN_BODY);
+        assert_eq!(plain_text_fallback, UNKNOWN_PLUGIN_FALLBACK);
     }
 }

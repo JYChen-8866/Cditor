@@ -2,6 +2,9 @@ use super::*;
 use cditor_core::edit::{ExternalUndoBlobRef, UndoExternalizationJob};
 
 const TYPING_MERGE_WINDOW: Duration = Duration::from_millis(1_000);
+const TEXT_UNDO_MAX_STEPS: usize = 1_000;
+const TEXT_UNDO_MAX_STEPS_PER_BLOCK: usize = 100;
+pub(crate) const TEXT_UNDO_MAX_ESTIMATED_BYTES: usize = 32 * 1024 * 1024;
 
 impl DocumentRuntime {
     /// Moves one large undo transaction out of the Runtime so an async
@@ -66,6 +69,7 @@ impl DocumentRuntime {
                 self.redo_stacks.entry(block_id).or_default().push(current);
                 self.restore_snapshot(block_id, previous)?;
                 self.redo_events.push(event);
+                self.trim_runtime_undo_history();
                 Ok(true)
             }
             RuntimeUndoEvent::ExternalTransaction => {
@@ -110,6 +114,7 @@ impl DocumentRuntime {
                 self.undo_stacks.entry(block_id).or_default().push(current);
                 self.restore_snapshot(block_id, next)?;
                 self.undo_events.push(event);
+                self.trim_runtime_undo_history();
                 Ok(true)
             }
             RuntimeUndoEvent::ExternalTransaction => {
@@ -196,17 +201,75 @@ impl DocumentRuntime {
         let stack = self.undo_stacks.entry(block_id).or_default();
         if stack.last() != Some(&snapshot) {
             stack.push(snapshot);
-            if stack.len() > 100 {
-                stack.remove(0);
-            }
             self.undo_events.push(RuntimeUndoEvent::Text(block_id));
-            if self.undo_events.len() > 1_000 {
-                self.undo_events.remove(0);
-            }
+            self.redo_stacks.clear();
             self.redo_events.clear();
+            self.external_undo_stack.clear_redo();
+            while self.undo_stacks.get(&block_id).map_or(0, Vec::len)
+                > TEXT_UNDO_MAX_STEPS_PER_BLOCK
+            {
+                remove_oldest_text_history(
+                    &mut self.undo_events,
+                    &mut self.undo_stacks,
+                    Some(block_id),
+                );
+            }
+            self.trim_runtime_undo_history();
         }
-        self.redo_stacks.remove(&block_id);
         Ok(())
+    }
+
+    pub(super) fn estimated_text_history_memory_bytes(&self) -> usize {
+        estimated_text_history_bytes(&self.undo_stacks)
+            .saturating_add(estimated_text_history_bytes(&self.redo_stacks))
+    }
+
+    pub(super) fn clear_runtime_redo_history(&mut self) {
+        self.redo_stacks.clear();
+        self.redo_events.clear();
+        self.external_undo_stack.clear_redo();
+    }
+
+    pub(super) fn trim_runtime_undo_history(&mut self) {
+        while self
+            .undo_events
+            .iter()
+            .filter(|event| matches!(event, RuntimeUndoEvent::Text(_)))
+            .count()
+            > TEXT_UNDO_MAX_STEPS
+        {
+            if !remove_oldest_text_history(&mut self.undo_events, &mut self.undo_stacks, None) {
+                break;
+            }
+        }
+
+        while self
+            .undo_events
+            .iter()
+            .filter(|event| matches!(event, RuntimeUndoEvent::ExternalTransaction))
+            .count()
+            > self.external_undo_stack.undo_len()
+        {
+            let Some(position) = self
+                .undo_events
+                .iter()
+                .position(|event| matches!(event, RuntimeUndoEvent::ExternalTransaction))
+            else {
+                break;
+            };
+            self.undo_events.remove(position);
+        }
+
+        while self.estimated_text_history_memory_bytes() > TEXT_UNDO_MAX_ESTIMATED_BYTES
+            && text_history_snapshot_count(&self.undo_stacks, &self.redo_stacks) > 1
+        {
+            if remove_oldest_text_history(&mut self.undo_events, &mut self.undo_stacks, None) {
+                continue;
+            }
+            if !remove_oldest_text_history(&mut self.redo_events, &mut self.redo_stacks, None) {
+                break;
+            }
+        }
     }
 
     pub(super) fn prepare_typing_undo(&mut self, surface_id: SurfaceId, offset: usize) {
@@ -426,4 +489,61 @@ impl DocumentRuntime {
             }
         }
     }
+}
+
+fn estimated_text_history_bytes(stacks: &HashMap<BlockId, Vec<TextSnapshot>>) -> usize {
+    stacks
+        .values()
+        .flatten()
+        .map(|snapshot| {
+            std::mem::size_of::<TextSnapshot>().saturating_add(
+                crate::content::payload_cache::estimated_owned_block_payload_bytes(
+                    &snapshot.kind,
+                    &snapshot.payload,
+                ),
+            )
+        })
+        .sum()
+}
+
+fn text_history_snapshot_count(
+    undo_stacks: &HashMap<BlockId, Vec<TextSnapshot>>,
+    redo_stacks: &HashMap<BlockId, Vec<TextSnapshot>>,
+) -> usize {
+    undo_stacks
+        .values()
+        .chain(redo_stacks.values())
+        .map(Vec::len)
+        .sum()
+}
+
+fn remove_oldest_text_history(
+    events: &mut Vec<RuntimeUndoEvent>,
+    stacks: &mut HashMap<BlockId, Vec<TextSnapshot>>,
+    required_block_id: Option<BlockId>,
+) -> bool {
+    let Some(position) = events.iter().position(|event| {
+        matches!(
+            event,
+            RuntimeUndoEvent::Text(block_id)
+                if required_block_id.is_none_or(|required| required == *block_id)
+        )
+    }) else {
+        return false;
+    };
+    let RuntimeUndoEvent::Text(block_id) = events.remove(position) else {
+        unreachable!("matched text undo event");
+    };
+    let remove_stack = if let Some(stack) = stacks.get_mut(&block_id) {
+        if !stack.is_empty() {
+            stack.remove(0);
+        }
+        stack.is_empty()
+    } else {
+        false
+    };
+    if remove_stack {
+        stacks.remove(&block_id);
+    }
+    true
 }

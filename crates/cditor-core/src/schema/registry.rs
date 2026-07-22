@@ -5,7 +5,7 @@
 //! 注册表查询。未知 kind 落到 unknown fallback descriptor：安全占位显示、
 //! 禁止编辑、payload 无损保留（P1-010）。
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::OnceLock};
 
 use crate::rich_text::{RichBlockKind, kind_tag_for_rich_block_kind};
 
@@ -14,6 +14,30 @@ use super::{CURRENT_BLOCK_PAYLOAD, SchemaVersion};
 /// payload 迁移函数：把旧版本 body 升级到当前版本。
 pub type PayloadMigrator =
     fn(serde_json::Value, SchemaVersion) -> Result<serde_json::Value, String>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SlashMenuMetadata {
+    pub order: u16,
+    pub icon: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub keywords: &'static [&'static str],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransformMenuMetadata {
+    pub order: u16,
+    pub icon: &'static str,
+    pub label: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BlockMenuMetadata {
+    pub slash: Option<SlashMenuMetadata>,
+    pub transform: Option<TransformMenuMetadata>,
+    /// Runtime may losslessly seed this kind from a source block's plain-text export.
+    pub create_from_text: bool,
+}
 
 /// Block 能力位（总设计 7.3 最小集）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -106,8 +130,11 @@ impl BlockCapabilities {
 pub struct BlockDescriptor {
     pub kind_tag: u16,
     pub name: &'static str,
+    /// Canonical value used when a menu creates this parameterized kind.
+    pub default_kind: RichBlockKind,
     pub payload_version: SchemaVersion,
     pub capabilities: BlockCapabilities,
+    pub menu: BlockMenuMetadata,
     pub migrator: Option<PayloadMigrator>,
 }
 
@@ -185,6 +212,38 @@ impl BlockRegistry {
         self.by_tag.contains_key(&tag)
     }
 
+    pub fn slash_descriptors(&self) -> Vec<&BlockDescriptor> {
+        let mut descriptors: Vec<_> = self
+            .by_tag
+            .values()
+            .filter(|descriptor| descriptor.menu.slash.is_some())
+            .collect();
+        descriptors.sort_by_key(|descriptor| {
+            descriptor
+                .menu
+                .slash
+                .expect("filtered slash descriptor")
+                .order
+        });
+        descriptors
+    }
+
+    pub fn transform_descriptors(&self) -> Vec<&BlockDescriptor> {
+        let mut descriptors: Vec<_> = self
+            .by_tag
+            .values()
+            .filter(|descriptor| descriptor.menu.transform.is_some())
+            .collect();
+        descriptors.sort_by_key(|descriptor| {
+            descriptor
+                .menu
+                .transform
+                .expect("filtered transform descriptor")
+                .order
+        });
+        descriptors
+    }
+
     /// 把旧版本 payload body 迁移到当前版本。
     pub fn migrate_payload(
         &self,
@@ -205,10 +264,17 @@ impl BlockRegistry {
     }
 }
 
+/// Shared immutable registry used by Core, Runtime, and GUI command queries.
+pub fn builtin_block_registry() -> &'static BlockRegistry {
+    static REGISTRY: OnceLock<BlockRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(BlockRegistry::builtin)
+}
+
 fn unknown_descriptor() -> BlockDescriptor {
     BlockDescriptor {
         kind_tag: u16::MAX,
         name: "unknown",
+        default_kind: RichBlockKind::Custom("unknown".to_owned()),
         payload_version: CURRENT_BLOCK_PAYLOAD,
         capabilities: BlockCapabilities {
             block_selection: true,
@@ -216,46 +282,210 @@ fn unknown_descriptor() -> BlockDescriptor {
             lossless_unknown: true,
             ..BlockCapabilities::empty()
         },
+        menu: BlockMenuMetadata::default(),
         migrator: None,
     }
+}
+
+fn menu_metadata_for_kind(kind: &RichBlockKind) -> BlockMenuMetadata {
+    use RichBlockKind as Kind;
+
+    let slash = match kind {
+        Kind::Paragraph => slash(
+            0,
+            "T",
+            "Text",
+            "Just start writing with plain text.",
+            &["paragraph", "text"],
+        ),
+        Kind::Heading { level: 1 } => slash(
+            1,
+            "H1",
+            "Heading 1",
+            "Big section heading.",
+            &["h1", "heading"],
+        ),
+        Kind::Heading { level: 2 } => slash(
+            2,
+            "H2",
+            "Heading 2",
+            "Medium section heading.",
+            &["h2", "heading"],
+        ),
+        Kind::Heading { level: 3 } => slash(
+            3,
+            "H3",
+            "Heading 3",
+            "Small section heading.",
+            &["h3", "heading"],
+        ),
+        Kind::Todo { .. } => slash(
+            4,
+            "[]",
+            "Todo",
+            "Track a task with a checkbox.",
+            &["task", "checkbox"],
+        ),
+        Kind::BulletedList => slash(
+            5,
+            "*",
+            "Bulleted list",
+            "Create a simple bulleted list.",
+            &["bullet", "ul", "list"],
+        ),
+        Kind::NumberedList => slash(
+            6,
+            "1.",
+            "Numbered list",
+            "Create a list with numbering.",
+            &["number", "ol", "list"],
+        ),
+        Kind::Toggle => slash(
+            7,
+            ">",
+            "Toggle",
+            "Hide content inside a toggle.",
+            &["details"],
+        ),
+        Kind::Quote => slash(8, "\"", "Quote", "Capture a quote.", &["blockquote"]),
+        Kind::Callout { .. } => slash(9, "!", "Callout", "Make writing stand out.", &["note"]),
+        Kind::Code { .. } => slash(
+            10,
+            "</>",
+            "Code",
+            "Capture a code snippet.",
+            &["code block"],
+        ),
+        Kind::Math => slash(11, "fx", "Math", "Write a block equation.", &["equation"]),
+        Kind::Mermaid => slash(
+            12,
+            "M",
+            "Mermaid",
+            "Create a Mermaid diagram.",
+            &["diagram"],
+        ),
+        Kind::Html => slash(13, "<>", "HTML", "Embed an HTML snippet.", &["html"]),
+        Kind::Table => slash(14, "#", "Table", "Add a simple table.", &["grid"]),
+        Kind::Whiteboard => slash(
+            15,
+            "WB",
+            "Whiteboard",
+            "Sketch and arrange ideas on a canvas.",
+            &["board", "canvas", "draw", "diagram", "白板"],
+        ),
+        Kind::Divider => slash(
+            16,
+            "---",
+            "Divider",
+            "Visually divide blocks.",
+            &["hr", "line"],
+        ),
+        Kind::Separator => slash(
+            17,
+            "|",
+            "Separator",
+            "Add a section separator.",
+            &["separator"],
+        ),
+        Kind::FootnoteDefinition => slash(
+            18,
+            "fn",
+            "Footnote",
+            "Add a footnote definition.",
+            &["footnote"],
+        ),
+        Kind::Comment => slash(19, "//", "Comment", "Add a comment block.", &["comment"]),
+        Kind::RawMarkdown => slash(
+            20,
+            "MD",
+            "Raw Markdown",
+            "Keep text as raw Markdown.",
+            &["markdown", "md"],
+        ),
+        _ => None,
+    };
+    let transform = match kind {
+        Kind::Paragraph => transform(0, "T", "正文"),
+        Kind::Heading { level: 1 } => transform(1, "H1", "标题 1"),
+        Kind::Heading { level: 2 } => transform(2, "H2", "标题 2"),
+        Kind::Heading { level: 3 } => transform(3, "H3", "标题 3"),
+        Kind::BulletedList => transform(4, "•", "项目符号列表"),
+        Kind::NumberedList => transform(5, "1.", "有序列表"),
+        Kind::Todo { .. } => transform(6, "☑", "待办事项"),
+        Kind::Toggle => transform(7, "▸", "折叠列表"),
+        Kind::Quote => transform(8, "❝", "引用"),
+        Kind::Callout { .. } => transform(9, "!", "标注"),
+        Kind::Code { .. } => transform(10, "</>", "代码块"),
+        Kind::Math => transform(11, "Σ", "公式区块"),
+        Kind::Mermaid => transform(12, "◇", "Mermaid 图表"),
+        _ => None,
+    };
+    BlockMenuMetadata {
+        slash,
+        transform,
+        create_from_text: slash.is_some() || transform.is_some(),
+    }
+}
+
+const fn slash(
+    order: u16,
+    icon: &'static str,
+    label: &'static str,
+    description: &'static str,
+    keywords: &'static [&'static str],
+) -> Option<SlashMenuMetadata> {
+    Some(SlashMenuMetadata {
+        order,
+        icon,
+        label,
+        description,
+        keywords,
+    })
+}
+
+const fn transform(
+    order: u16,
+    icon: &'static str,
+    label: &'static str,
+) -> Option<TransformMenuMetadata> {
+    Some(TransformMenuMetadata { order, icon, label })
 }
 
 fn builtin_descriptors() -> Vec<BlockDescriptor> {
     use RichBlockKind as Kind;
 
     let text = BlockCapabilities::text_block();
+    let text_container = BlockCapabilities {
+        container: true,
+        ..text
+    };
     let media = BlockCapabilities::atomic_media();
     let version = CURRENT_BLOCK_PAYLOAD;
     let describe =
         |kind: &Kind, name: &'static str, capabilities: BlockCapabilities| BlockDescriptor {
             kind_tag: kind_tag_for_rich_block_kind(kind),
             name,
+            default_kind: kind.clone(),
             payload_version: version,
             capabilities,
+            menu: menu_metadata_for_kind(kind),
             migrator: None,
         };
 
     let mut descriptors = vec![
         describe(&Kind::Paragraph, "paragraph", text),
-        describe(&Kind::Quote, "quote", text),
+        describe(&Kind::Quote, "quote", text_container),
         describe(
             &Kind::Callout {
                 variant: crate::rich_text::CalloutVariant::Note,
             },
             "callout",
-            text,
+            text_container,
         ),
-        describe(&Kind::Todo { checked: false }, "todo", text),
-        describe(&Kind::BulletedList, "bulleted_list", text),
-        describe(&Kind::NumberedList, "numbered_list", text),
-        describe(
-            &Kind::Toggle,
-            "toggle",
-            BlockCapabilities {
-                container: true,
-                ..text
-            },
-        ),
+        describe(&Kind::Todo { checked: false }, "todo", text_container),
+        describe(&Kind::BulletedList, "bulleted_list", text_container),
+        describe(&Kind::NumberedList, "numbered_list", text_container),
+        describe(&Kind::Toggle, "toggle", text_container),
         describe(
             &Kind::Code { language: None },
             "code",
@@ -278,8 +508,6 @@ fn builtin_descriptors() -> Vec<BlockDescriptor> {
             &Kind::Math,
             "math",
             BlockCapabilities {
-                text_surface: true,
-                soft_enter: true,
                 block_selection: true,
                 stable_box: true,
                 async_resource: true,
@@ -306,8 +534,11 @@ fn builtin_descriptors() -> Vec<BlockDescriptor> {
             &Kind::Html,
             "html",
             BlockCapabilities {
+                text_surface: true,
+                soft_enter: true,
                 block_selection: true,
                 stable_box: true,
+                collaborative_text: true,
                 export_html: true,
                 ..BlockCapabilities::empty()
             },
@@ -448,177 +679,4 @@ fn builtin_descriptors() -> Vec<BlockDescriptor> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::rich_text::CalloutVariant;
-
-    fn all_kinds() -> Vec<RichBlockKind> {
-        use RichBlockKind as Kind;
-        let mut kinds = vec![
-            Kind::Paragraph,
-            Kind::Quote,
-            Kind::Callout {
-                variant: CalloutVariant::Warning,
-            },
-            Kind::Todo { checked: true },
-            Kind::BulletedList,
-            Kind::NumberedList,
-            Kind::Toggle,
-            Kind::Code {
-                language: Some("rust".to_owned()),
-            },
-            Kind::Math,
-            Kind::Mermaid,
-            Kind::Html,
-            Kind::Table,
-            Kind::ColumnsGroup,
-            Kind::Column,
-            Kind::Image,
-            Kind::File,
-            Kind::Attachment,
-            Kind::Whiteboard,
-            Kind::MindMap,
-            Kind::Embed,
-            Kind::Divider,
-            Kind::Separator,
-            Kind::Database,
-            Kind::FootnoteDefinition,
-            Kind::Comment,
-            Kind::RawMarkdown,
-        ];
-        for level in 1..=6 {
-            kinds.push(Kind::Heading { level });
-        }
-        kinds
-    }
-
-    #[test]
-    fn every_builtin_kind_has_a_registered_descriptor() {
-        let registry = BlockRegistry::builtin();
-        for kind in all_kinds() {
-            let tag = kind_tag_for_rich_block_kind(&kind);
-            assert!(
-                registry.is_known(tag),
-                "kind {kind:?} (tag {tag}) unregistered"
-            );
-            let descriptor = registry.descriptor_for_kind(&kind);
-            assert_eq!(descriptor.kind_tag, tag);
-            assert!(
-                !descriptor.capabilities.lossless_unknown
-                    || matches!(kind, RichBlockKind::Custom(_))
-            );
-        }
-    }
-
-    #[test]
-    fn unknown_tag_falls_back_to_lossless_placeholder() {
-        let registry = BlockRegistry::builtin();
-        let descriptor = registry.descriptor_by_tag(31_337);
-        assert_eq!(descriptor.name, "unknown");
-        assert!(descriptor.capabilities.lossless_unknown);
-        assert!(
-            !descriptor.capabilities.text_surface,
-            "unknown block must not be editable"
-        );
-        assert!(descriptor.capabilities.stable_box);
-        assert!(!registry.is_known(31_337));
-    }
-
-    #[test]
-    fn capability_spot_checks_match_product_semantics() {
-        let registry = BlockRegistry::builtin();
-
-        let paragraph = registry.descriptor_for_kind(&RichBlockKind::Paragraph);
-        assert!(paragraph.capabilities.text_surface);
-        assert!(paragraph.capabilities.inline_marks);
-
-        let code = registry.descriptor_for_kind(&RichBlockKind::Code { language: None });
-        assert!(code.capabilities.text_surface);
-        assert!(!code.capabilities.inline_marks, "code has no rich marks");
-        assert!(code.capabilities.internal_virtualization, "P10-002 target");
-
-        let table = registry.descriptor_for_kind(&RichBlockKind::Table);
-        assert!(
-            !table.capabilities.text_surface,
-            "cells own text, not the table shell"
-        );
-        assert!(table.capabilities.inner_selection);
-
-        let image = registry.descriptor_for_kind(&RichBlockKind::Image);
-        assert!(image.capabilities.caption);
-        assert!(image.capabilities.stable_box);
-
-        let toggle = registry.descriptor_for_kind(&RichBlockKind::Toggle);
-        assert!(toggle.capabilities.container);
-    }
-
-    #[test]
-    fn duplicate_registration_is_rejected() {
-        let mut registry = BlockRegistry::builtin();
-        let error = registry
-            .register(BlockDescriptor {
-                kind_tag: 1,
-                name: "imposter-paragraph",
-                payload_version: CURRENT_BLOCK_PAYLOAD,
-                capabilities: BlockCapabilities::empty(),
-                migrator: None,
-            })
-            .unwrap_err();
-        assert_eq!(
-            error,
-            RegistryError::DuplicateTag {
-                tag: 1,
-                existing: "paragraph",
-            }
-        );
-    }
-
-    #[test]
-    fn migrate_payload_uses_descriptor_migrator() {
-        fn rename_field(
-            mut body: serde_json::Value,
-            _from: SchemaVersion,
-        ) -> Result<serde_json::Value, String> {
-            let object = body.as_object_mut().ok_or("expected object")?;
-            let value = object.remove("old_name").ok_or("missing old_name")?;
-            object.insert("new_name".to_owned(), value);
-            Ok(body)
-        }
-
-        let mut registry = BlockRegistry::builtin();
-        registry
-            .register(BlockDescriptor {
-                kind_tag: 40_000,
-                name: "migratable",
-                payload_version: SchemaVersion::new(2, 0),
-                capabilities: BlockCapabilities::empty(),
-                migrator: Some(rename_field),
-            })
-            .unwrap();
-
-        let migrated = registry
-            .migrate_payload(
-                40_000,
-                serde_json::json!({"old_name": 7}),
-                SchemaVersion::new(1, 0),
-            )
-            .unwrap();
-        assert_eq!(migrated, serde_json::json!({"new_name": 7}));
-
-        // 同版本直接透传。
-        let same = registry
-            .migrate_payload(
-                40_000,
-                serde_json::json!({"x": 1}),
-                SchemaVersion::new(2, 0),
-            )
-            .unwrap();
-        assert_eq!(same, serde_json::json!({"x": 1}));
-
-        // 无 migrator 的旧版本拒绝。
-        let error = registry
-            .migrate_payload(1, serde_json::json!({}), SchemaVersion::new(0, 1))
-            .unwrap_err();
-        assert!(matches!(error, RegistryError::NoMigrator { tag: 1, .. }));
-    }
-}
+mod tests;

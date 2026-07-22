@@ -1675,21 +1675,29 @@ Gate P0：
   - 证据：`crates/core/src/schema/registry.rs`（30 个内置 kind tag 全注册，16 位能力集，重复 tag 拒绝，migrator 调用/透传/缺失路径，5 项单测）。GUI/Runtime 的 `match kind` 能力表迁移到该注册表属于 Phase 5（P5-010）。
 - [x] P1-010 未知 Block 在 load/save/copy/move/native export 后字节不变。
   - 证据：envelope 测试用非常规空白/字段序/转义的 body 走 load -> clone(copy/move) -> serialize(save) -> reload 全程字节相同；unknown tag 落到 lossless fallback descriptor（禁编辑、稳定占位）。经 SQLite/PostgreSQL 存储层的端到端字节不变属于 Phase 7 集成验收。
-- [ ] P1-011 downgrade 只读模式和明确错误 UI。
-  - 当前进展：core 策略层完成（`ReadPolicy::ReadOnlyNewerMajor`、`DecodeOutcome::ReadOnlyNewerMajor`、`allows_write` 拒写）；App 的只读模式呈现与错误 UI 未实现。
+- [x] P1-011 downgrade 只读模式和明确错误 UI。
+  - 证据：Core `ReadPolicy::ReadOnlyNewerMajor`/`DecodeOutcome::ReadOnlyNewerMajor`
+    负责版本策略；`cditor-app::storage_host` 在真实 SQLite 冷启动中比较
+    `StorageDocumentMetadata.schema_version` 与 `CURRENT_DOCUMENT_FORMAT`，当前 major 可写、
+    较新 major 加载为 `DocumentSchemaAccess::ReadOnlyNewerMajor`、旧 major 明确返回 migration
+    error。App wiring 将较新版本访问模式传给 Editor；Editor 保存独立的 host readonly 意图与
+    compatibility lock，SDK 调用 `set_readonly(false)` 不能解除强制只读，所有 mutation/save
+    继续由统一 readonly policy 拒绝。顶部 32px 空白 inset 内显示包含 written/supported version
+    和升级指引的明确提示，不遮挡正文。SQLite 冷启动集成测试、GPUI component SDK 锁定测试、
+    notice 文案和 schema 三态测试覆盖上述链路。
 - [x] P1-012 property test：随机 tree/order 操作保持无环、ID、顺序不变量。
   - 证据：`crates/core/tests/identity_tree_property.rs`（5 个 seed × 600 步随机 insert/move/remove-subtree/reorder/rebalance，独立校验器逐步断言无环、ID 唯一、parent 存在、sibling OrderKey 严格全序、key 结构不变量；另覆盖 64 层深链 + 单间隙 128 次头插后 rebalance 收敛 ≤ 2 字节、移入自身子树拒绝且状态不变）。基于 Runtime `DocumentIndex` 的同类随机化属于 Phase 4 事务化后的扩展。
-- [ ] P1-013 migration dry-run、备份、校验和回滚测试。
-  - 当前进展：checksum 工具（`fixtures::document_semantic_checksum`）、`LegacyIdMap` 确定性导出与 `doc/templates/migration-checklist.md` 已就绪；真实存量数据的 dry-run/备份/回滚流程依赖 Phase 7 SQLite journal，届时执行。
+- [x] P1-013 migration dry-run、备份、校验和回滚测试。
+  - 证据：`cditor-storage-sqlite::SqliteMigrationManager` 在正式升级前执行 migration ledger/checksum、完整性、外键和三倍数据库 footprint 空间 preflight，以 `VACUUM INTO` 生成并 `fsync` 一致性备份，在隔离副本逐版本 dry-run，再比较权威内容、unknown raw JSON、asset refs 三类 SHA-256；正式阶段失败或在 migration 边界取消会关闭连接并原子恢复备份。`migration_orchestration.rs` 使用真实 v1 schema + unknown plugin fixture 覆盖 v1 -> v4、进度、边界取消、半进度自动恢复、显式 rollback 和原始字节不变；详细记录见 `doc/acceptance/2026-07-22-sqlite-migration-orchestration.md`。
 
 Gate P1：
 
 - [x] 多设备离线创建 ID 无冲突。
   - 证据：generator 测试覆盖同时钟不同熵源的双设备 512×512 无交集；62 位新鲜熵 + 设备本地单调计数不依赖时钟同步。
-- [ ] unknown kind/field/plugin fixture 100% round-trip。
-  - 当前进展：core envelope 层字节不变已验证；经 SQLite/PostgreSQL 存储与 clipboard 的端到端 fixture 属于 Phase 5/7。
-- [ ] legacy 数据迁移前后语义 checksum 一致。
-  - 依赖 Phase 7 local store 落地后执行（工具已备）。
+- [x] unknown kind/field/plugin fixture 100% round-trip。
+  - 证据：`cditor_core::fixtures::unknown` 定义跨层共用的未注册 plugin kind、新 minor envelope、未知嵌套字段、非常规空白/字段序/Unicode 转义 fixture。`BlockPayload::Opaque` 以 `RawValue` 保存 body，Runtime 仅显示安全 fallback 且整 Block copy/paste/undo/redo 字节不变；SQLite commit -> close -> reopen、native clipboard metadata encode/decode 均逐字节验证。PostgreSQL 对 opaque payload 使用 `BYTEA`（JSONB 明确为空且 codec 拒绝误用），真实 Docker PostgreSQL save/load 集成测试通过。Core、两种存储、clipboard 与 Runtime cold-start 均拒绝错误 envelope domain。详见 `doc/acceptance/2026-07-22-unknown-plugin-roundtrip.md`。
+- [x] legacy 数据迁移前后语义 checksum 一致。
+  - 证据：真实 SQLite v1 fixture 经 0002/0003/0004 dry-run 与正式迁移后，`semantic_sha256`、`unknown_raw_sha256`、`asset_refs_sha256` 均与迁移前一致；rollback 后 schema version 回到 1 且三个 raw fixture 字符串逐字节一致。
 
 ### Phase 2：cditor-text 与 Parley
 
@@ -1906,7 +1914,8 @@ Gate P4：
 - [ ] P5-010 Block capability registry 驱动 slash/transform/menu/query。
 - [ ] P5-011 native/HTML/Markdown/plain clipboard encode/decode。
   - 当前进展：native rich block、structured Markdown、plain text 与 table clipboard 的主要 decode/apply 路径已存在，其中 native/Markdown block paste 已统一 typed transaction；HTML、完整多格式优先级与 encode 对称性仍需系统验收。
-- [ ] P5-012 native clipboard unknown payload 无损和 untrusted validation。
+- [x] P5-012 native clipboard unknown payload 无损和 untrusted validation。
+  - 证据：native `CditorClipboardEnvelope` 对 schema/version、8 MiB 总大小、system plain-text 绑定、checksum、Block/fragment 数、全局 span/cell 预算、kind/payload 匹配、重复 ID、前向或缺失 parent、parent/depth 一致性、危险 link/resource、collection 规模和 opaque envelope domain 做 fail-closed 校验。未知 plugin kind 与 `RawValue` body 经 metadata encode/decode 逐字节不变；错误 domain、嵌套 caption `javascript:`、payload 冒充、畸形/超限 metadata、未知 schema/version 和 checksum 篡改均有回归测试。跨 Runtime copy/paste/undo/redo 及双存储证据见 `doc/acceptance/2026-07-22-unknown-plugin-roundtrip.md`。
 - [ ] P5-013 async paste anchor rebase、progress/cancel、单 transaction。
   - 当前进展：同步 rich/Markdown paste 已是单 transaction；异步资源加载的 anchor rebase、progress/cancel 和失败回滚尚未实现。
 - [ ] P5-014 CommonMark/GFM parser adapter 和 RawMarkdown fallback。
@@ -1920,24 +1929,39 @@ Gate P5：
 
 - [ ] 常用编辑操作清单全部自动化或人工验收。
 - [ ] selection 不依赖 UI entity/payload window。
-- [ ] 任意未知内容 copy/paste/save 不丢失。
+- [x] 任意未知内容 copy/paste/save 不丢失。
+  - 证据：未知 plugin kind、新 minor 和未知嵌套字段由同一 opaque fixture 覆盖；Runtime copy/paste/undo/redo、native clipboard、SQLite save/reopen 与 PostgreSQL BYTEA save/load 均验证原始 JSON body 字节不变。不可信 clipboard 只会整体拒绝，不会部分解释或重写 unknown payload。
 
 ### Phase 6：Virtualization 与 Scheduler
 
-- [ ] P6-001 固化 f64 global/f32 local 坐标边界。
-- [ ] P6-002 PageLayoutIndex + BlockHeightIndex 两级查询和更新。
-- [ ] P6-003 height range move/insert/delete，避免无谓全量重估。
-- [ ] P6-004 WindowPlanner 输入 velocity/direction/pins/memory pressure。
-- [ ] P6-005 分离 render/payload/layout prefetch ranges。
+- [x] P6-001 固化 f64 global/f32 local 坐标边界。
+  - 证据：Core/Runtime 将 `LayoutPx` 固化为 f64，VirtualScrollState、Block/Page Fenwick prefix、scroll target、anchor、hit-test document rect、测高与 scrollbar model/displayed total 全程保持 f64；App 只在完成 `global - window_start` 或 `document - scroll` 原点重定位后转为 GPUI f32。此次审计修复了表格 chrome、whole-block selection overlay 与 gutter drag guideline 先把千万级 document y 转 f32、再由父层抵消 scroll 的精度漏洞：DocumentSurface 的正文和 overlay 现在共享 RenderWindow-local origin，表格/选区/drag child geometry 均从 0 开始；drag pointer 的 document y 返回值也由 f32 改为 f64。20,000,000.25px 回归测试覆盖 surface、table/menu viewport、selection overlay、drag guideline 和 pointer mapping，确保小数与 32px/128px 局部差值不会被全局 f32 量化吞掉。
+- [x] P6-002 PageLayoutIndex + BlockHeightIndex 两级查询和更新。
+  - 证据：Core `BlockHeightIndex` 以 f64 Fenwick tree 提供 block prefix offset、global-y 命中与 O(log n) 单点测高更新，并保存 Exact/Predictive/Historical/Default confidence；`PageLayoutIndex` 按 block 数、目标高度、layout cost、text bytes、inline runs 和 complex block 数切页，以独立 page Fenwick tree 提供 page offset/global-y 命中、block -> page 二分查询和 O(log n) page height 更新。Runtime 冷启动从 visible document 构建两级索引，测高 flush 同帧依次更新 block/page index 和 virtual scroll extent；projection、jump、window planning 只查询索引，不 hydrate payload。随机 2,000 次 block height 更新、100k block 查询预算、page coverage property、cache restore 与 stale cache 降级测试均通过。
+- [x] P6-003 height range move/insert/delete，避免无谓全量重估。
+  - 证据：`BlockHeightIndex` 提供 batch `insert_range`、`delete_range`、`move_range` 和等长 `rebuild_range`，range mutation 同步移动 height 与 confidence，不重新测量未受影响 Block；单点测高继续只做 Fenwick O(log n) delta update。Runtime typed structure transaction 携带并复用每个 `BlockLayoutMeta`，结构版本推进时只重建轻量 visible/height/page 索引，不触发 payload hydrate 或 Parley measure。新增固定 seed 的 1,000 步随机 insert/delete/move property test，逐步与朴素序列比较所有 height/confidence/prefix/total；subtree move、10k paste、50k delete/undo 已有验收覆盖总高度与批处理边界。
+- [x] P6-004 WindowPlanner 输入 velocity/direction/pins/memory pressure。
+  - 证据：`WindowPlanRequest` 同时携带 scroll direction、signed viewport/s velocity、semantic pinned pages 与 Normal/Warning/Critical memory pressure。Planner 对 normal 快速滚动只扩展运动前方 1–5 页；warning 将基础 overscan 减半并限制速度扩展；critical 立即收缩到 target page，绕过 hysteresis/stable-frame/debounce，但永不丢弃 pin。Runtime 从相邻 plan 的 f64 global scroll delta/viewport/frame interval 计算速度，聚焦与选中 Block 映射为 page pins，并公开 memory-pressure 输入；debug overlay 记录最后速度和压力。9 项 planner 单测及 3,500 Block Runtime 集成测试覆盖方向、速度、异常速度、压力收缩、pin、hysteresis、debounce 与诊断状态。
+- [x] P6-005 分离 render/payload/layout prefetch ranges。
+  - 证据：`EditorViewProjection` 明确公开三种不同范围：最多 320 Block 的 `render_window.block_range` 决定 UI entity；`payload_prefetch_block_range` 在 Normal/Warning 压力下按速度方向扩大、Critical 时退化为 render range；`layout_prefetch_page_range` 由 WindowPlanner 的 page/hysteresis/pin 策略生成并强制覆盖 render pages。Demo hydration 和真实 storage payload loader 已改为请求 payload prefetch range，paint/code highlight/mermaid/whiteboard 仍只消费 render blocks，因此扩大预取不会扩大 UI 数量；layout range 作为后续 lane scheduler 的独立输入，不再与 payload/render 隐式共用。3,500 Block 集成测试覆盖正常压力三范围分离、coverage 不变量与 critical 收缩。
 - [ ] P6-006 realtime/interactive/visible/prefetch/background lanes。
+  - 当前进展：`LayoutScheduler` 已从 High/Normal/Idle 升级为 Realtime/Interactive/Visible/Prefetch/Background 五条独立 FIFO，task kind 显式映射，严格优先顺序、Prefetch/Background 联合背压、非 idle background defer、交互期 prefetch defer 和五类 queue diagnostics 均有自动化；worker pool 仍保留 interactive/background 两类执行池。尚缺 App/GPUI 实际 layout dispatch 全面改走该 scheduler，故保持未勾选。
 - [ ] P6-007 main-thread frame budget、deadline、cancel、dedupe。
-- [ ] P6-008 editing/composition/selection/drag/dirty pin policy。
-- [ ] P6-009 anchor correction 和 scrollbar drag freeze。
-- [ ] P6-010 skeleton stable box 与 payload error/retry projection。
-- [ ] P6-011 payload/text/media/table/undo/CRDT 分项内存预算。
-- [ ] P6-012 100k mixed scroll/jump/edit/drag benchmark。
-- [ ] P6-013 randomized measured-height/stale-result/anchor property test。
-- [ ] P6-014 long-frame diagnostics 与 fallback telemetry。
+  - 当前进展：Runtime 已有按 typing/composition/wheel/scrollbar 模式缩减的多维 `MainThreadBudget`、priority heap、同 kind+Block generation dedupe、stale background drop、输入帧保护和 async snapshot identity/version 校验，并有单元测试；`LayoutScheduler` 也消费相同预算模型。尚缺 App/GPUI 的真实 async completion、entity diff、measure apply 全部进入 arbiter，以及基于实际 frame deadline 的停止/续帧和任务 cancellation token 接线，因此保持未勾选。
+- [x] P6-008 editing/composition/selection/drag/dirty pin policy。
+  - 证据：Runtime payload cache trim 在逐出前合并 active payload window、`EditingSession::pinned_blocks()`（焦点与 IME composition）、whole-block/document selection 两端点、focused table cell、AI/loading、App `extra_pins` 与基于精确 content version 的 dirty set；只有既不受保护又已持久化的 LRU payload 可被逐出，同时释放对应 text/table/layout runtime entity。App persistence bridge 将文字拖选、gutter block drag、图片 resize、表格 resize/reorder/hscroll、slash/code/whiteboard/AI 等进行中会话统一转换为 extra pins。窗口原子切换另由 `ProtectedWindowPins` 保留 focus/composition/selection endpoint，避免跨页 swap 丢失交互实体。新增缓存压力组合测试在同次 trim 中验证 composition、选区端点、drag pin、dirty payload 与 active window 均存活，而未保护的选区中间块可逐出；精确保存版本与原子 swap 已有独立回归测试。
+- [x] P6-009 anchor correction 和 scrollbar drag freeze。
+  - 证据：Runtime 对同帧测高结果先按 content version 丢弃 stale result，再批量更新 block/page Fenwick 索引与 f64 total height；Normal priority 在批次前捕获 viewport top 的语义 Block+offset，只在锚点之前高度变化时恢复一次，wheel/remote/idle-deferred priority 则更新模型但不反向改写用户滚动。自绘 scrollbar drag 由 App mouse down/move/up 驱动 Runtime `ScrollbarDragSession`：开始时冻结 displayed total/thumb geometry，拖动映射持续使用冻结高度，期间的新测高只更新 model total 并累计 correction，禁止 anchor restore；结束时一次同步 displayed total。文本、表格、批量测高、wheel scroll、thumb end mapping 和 drag 期间 target placeholder 均有集成测试。
+- [x] P6-010 skeleton stable box 与 payload error/retry projection。
+  - 证据：冷跳转/目标窗口完全不驻留时，Runtime 以 `BlockHeightIndex` 的历史高度生成有固定 page/block range、语义 anchor 和稳定总高度的 `RenderWindow::Placeholder`；DocumentSurface 在同一绝对 box 内只绘制最多 12 个 viewport-local skeleton，加载替换不改变 before/after spacer。滚动边缘部分驻留时保留已加载 Block，仅对缺失 Block 绘制 kind-aware skeleton，避免整页闪烁。Payload loader 有 generation ownership、stale response 防覆盖、15s timeout、75ms coalescing、missing/error 状态和最多 3 次有界自动重试；projection 新增 typed failure（message/attempts/max/automatic-retry-pending），错误卡明确显示重试进度，达到上限后保留稳定 box 并提供可点击的人工重试，人工重试清理目标 range 的失败计数并开始新的有界周期。Runtime 测试覆盖 loading/missing、in-flight dedupe、三次上限、typed terminal projection、人工 reset/re-dispatch、10k Block bounded placeholder/replacement；Editor 测试覆盖 skeleton bound/viewport tracking 和自动/人工重试文案。
+- [x] P6-011 payload/text/media/table/undo/CRDT 分项内存预算（本轮明确排除协同/CRDT）。
+  - 证据：payload cache 按 entry+estimated bytes LRU 且保护 pin/dirty；Parley shaped layout 与 exact raster 分别有 entry+byte budget 和 memory-pressure trim；Runtime media cache 分开限制 decoded original 128MiB 与 thumbnail 32MiB；App `RenderImage` cache 为 256 entries/128MiB decoded RGBA LRU，按所有 frame 像素计费并保护 Loading。App 的 block text、table-cell 与 auxiliary/input platform layout 已从三个无界 HashMap 改为彼此独立的 1,024/64MiB、4,096/64MiB、256/16MiB 双阈值 cache，逐出最旧布局但保护最新布局和当前输入 surface；SDK memory estimate 纳入三类平台布局。旧文本 snapshot undo 新增 32MiB/1,000 steps/每 Block 100 steps 三重预算，按 kind/payload 实际 owned capacity 计费；裁剪同时移除对应 event，放弃 redo branch 会释放所有文本和 external redo，SDK memory estimate 也纳入文本 undo。large typed transaction 继续通过 snapshot externalization 异步 spill 到 SQLite undo blob。自动化测试覆盖 layout entry/byte eviction、input pin、40MiB 文本历史裁剪、event/stack 一致性、redo 全量释放和 external redo 清理。按用户范围，Phase 9 协同未接入，当前进程不存在 CRDT store、驻留量为 0；未来启用协同时必须在 Phase 9 单独定义 update/checkpoint/presence 预算，不复用编辑器 payload 预算。
+- [x] P6-012 100k mixed scroll/jump/edit/drag benchmark。
+  - 证据：新增 `acceptance::mixed`，在同一个真实 `DocumentRuntime` 循环中交错执行 virtual scroll、确定性远距离 jump、目标 payload window load/apply、focus+真实文本 edit、scrollbar begin/drag/end、bounded projection 和 cache trim，不使用旧 acceptance 的模拟延迟。full bench 对 100,000 个不等高 Block 独立运行 3 次、每次 512 mixed iterations：512 scroll、64 jump、64 edit、32 drag；最差 frame p95 0.107ms、max 0.185ms，peak projection 108、payload residency 512、Runtime payload+text-undo 195,019 bytes，全部低于 16ms/50ms、320 entities、512 payloads、48MiB gate。普通 test profile 另有 100k/24 iterations 自动回归。命令、范围、机器和完整结果见 `doc/acceptance/2026-07-22-100k-mixed-runtime-benchmark.md`；GPUI production lane/deadline telemetry 不在此项冒充完成，仍由 P6-006/P6-007/P6-014 跟踪。
+- [x] P6-013 randomized measured-height/stale-result/anchor property test。
+  - 证据：新增独立固定 seed property test，在 512 Block 文档、非整数 8,000.25px viewport anchor 上执行 2,000 次随机测高；每四次约一次在 result 入队后推进 content version，模拟真实异步 stale completion。每一步均与朴素 height vector 比较全部 Block height 和 total height，断言 stale result 不应用、fresh result 精确应用，并验证 height change 位于 anchor 上方/本块/下方时，flush 后 viewport top 的语义 BlockId+offset 始终不变。原有批量 correction、table height、wheel defer 与 scrollbar freeze 测试继续覆盖各 priority 分支。
+- [x] P6-014 long-frame diagnostics 与 fallback telemetry。
+  - 证据：新增生产 `diagnostics::frame_telemetry`，由 `CditorV2View::render` 每帧记录实际 App render elapsed、16.667ms deadline、overrun 和 interaction mode；保留最近 240 帧及最近 64 个 long frame，溢出计数明确且不会无界占内存。每个 long-frame snapshot 冻结 pending layout/payload/save queues、五 lane depth schema 与 scheduler wiring 状态、document/payload/page window、rendered/loaded/layout entity 数、payload+undo/platform-layout bytes、cache pressure 和 platform text geometry fallback rate，并分类 layout/payload/persistence/entity/cache/fallback/unattributed 原因。统一线程安全 sink 公开 typed snapshot 与 pretty JSON export，不再依赖零散 `eprintln!`。自动化覆盖 25ms 超帧的 queue/window/entity/cache/reason 完整性、JSON export 和双 bounded ring eviction。P6-006 尚未把生产 dispatch 接到五 lanes，所以当前 export 对五个 lane depth 明确输出 `null` 且 `scheduler_lanes_connected=false`，不会伪造 0；接线完成后沿用同一 schema 填数，不影响本项遥测闭环。
 - [ ] P6-015 10MiB code/超长 text surface 分段 snapshot、visual-line window、局部 reflow 与内部 scroll anchor；禁止整块同步 layout。
   - 当前进展：`crates/text/src/segmented.rs` 完成机制层——O(n) 硬行分段索引（不 shaping）、仅测量可见窗口、自适应行高估计、编辑只失效所在段、宽度变化保留分段只重测窗口、字节偏移内部锚点；14 项单测含"分段总高 == 整块布局高度"（无换行/软换行/编辑后）精确一致性。`crates/text/benches/segmented_layout.rs` 在 10MiB/549 段语料上：索引 p95 2.5ms、冷窗口 9.7ms、滚动步进 4.8ms、编辑重测 5.0ms、宽度 reflow 窗口 4.7ms，全部在帧/输入预算内（对比整块 build p95 2.543s）。App `RichTextElement`/cache identity/code 高亮的接线未完成。
 
@@ -1966,7 +1990,8 @@ Gate P6：
   - 当前进展：checkpoint 表 + `record_journal_checkpoint`/`journal_checkpoint_checksum`/`compact_journal`（compact 尊重未确认 outbox）已就绪；从 checkpoint + journal 全量重建 materialized 行属于后续。
 - [ ] P7-011 local FTS/backlink 增量 index。
 - [ ] P7-012 asset manifest/provisional upload state。
-- [ ] P7-013 migration preflight/backup/progress/resume/rollback。
+- [x] P7-013 migration preflight/backup/progress/resume/rollback。
+  - 证据：`crates/cditor-storage-sqlite/src/migration.rs` + `migration/validation.rs`；SQLx ledger 是持久 resume cursor，每个 migration 独立事务提交并在版本边界检查取消、报告进度，重启只运行 remaining versions；备份/dry-run/正式校验/自动与显式 rollback 的 4 项集成测试通过。未来新增单个超大 backfill migration 时仍须按第 18.4 节在该 migration 内增加分批 cursor，不能把一次长 SQL 当成已满足大表进度要求。
 - [ ] P7-014 fault injection：进程在每个 commit point 崩溃。
 - [ ] P7-015 SQLite corruption/recovery copy/只读打开测试。
 - [ ] P7-016 100k local open/save/compact benchmark。

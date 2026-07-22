@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use sqlx::PgPool;
+use std::sync::Arc;
 
 use cditor_core::ids::DocumentId;
-pub use cditor_storage_sqlite::{SqliteDurability, SqliteStorageOptions};
+use cditor_storage::StorageProvider;
 
 pub type WorkspaceId = u64;
 
@@ -16,19 +16,14 @@ pub struct CditorOptions {
     pub debug_overlay: bool,
     pub payload_window_size: usize,
     pub autosave_interval: Option<Duration>,
-    pub seed_large_demo_to_postgres: bool,
-    pub seed_large_demo_block_count: usize,
-    pub force_reseed_large_demo: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum CditorBackend {
     Demo,
     LargeDemo,
     Memory,
-    Sqlite { options: SqliteStorageOptions },
-    PostgresUrl { url: String },
-    PostgresPool { pool: PgPool },
+    Persistent { provider: Arc<dyn StorageProvider> },
     Cloud { endpoint: String },
 }
 
@@ -38,9 +33,9 @@ impl PartialEq for CditorBackend {
             (Self::Demo, Self::Demo)
             | (Self::LargeDemo, Self::LargeDemo)
             | (Self::Memory, Self::Memory) => true,
-            (Self::Sqlite { options: a }, Self::Sqlite { options: b }) => a == b,
-            (Self::PostgresUrl { url: a }, Self::PostgresUrl { url: b }) => a == b,
-            (Self::PostgresPool { .. }, Self::PostgresPool { .. }) => true,
+            (Self::Persistent { provider: a }, Self::Persistent { provider: b }) => {
+                Arc::ptr_eq(a, b)
+            }
             (Self::Cloud { endpoint: a }, Self::Cloud { endpoint: b }) => a == b,
             _ => false,
         }
@@ -48,6 +43,24 @@ impl PartialEq for CditorBackend {
 }
 
 impl Eq for CditorBackend {}
+
+impl std::fmt::Debug for CditorBackend {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Demo => formatter.write_str("Demo"),
+            Self::LargeDemo => formatter.write_str("LargeDemo"),
+            Self::Memory => formatter.write_str("Memory"),
+            Self::Persistent { provider } => formatter
+                .debug_struct("Persistent")
+                .field("provider", &provider.label())
+                .finish(),
+            Self::Cloud { endpoint } => formatter
+                .debug_struct("Cloud")
+                .field("endpoint", endpoint)
+                .finish(),
+        }
+    }
+}
 
 impl Default for CditorOptions {
     fn default() -> Self {
@@ -59,9 +72,6 @@ impl Default for CditorOptions {
             debug_overlay: false,
             payload_window_size: 128,
             autosave_interval: Some(Duration::from_millis(250)),
-            seed_large_demo_to_postgres: false,
-            seed_large_demo_block_count: cditor_core::demo_fixtures::LARGE_MIXED_DEMO_BLOCKS,
-            force_reseed_large_demo: false,
         }
     }
 }

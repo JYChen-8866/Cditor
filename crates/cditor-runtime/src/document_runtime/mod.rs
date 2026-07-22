@@ -57,6 +57,7 @@ pub use ai::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
     AiStreamApplyResult, RuntimeAiTarget,
 };
+pub use cditor_editor_core::window::WindowMemoryPressure;
 pub use cold_start::{
     DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,
 };

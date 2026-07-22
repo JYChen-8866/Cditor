@@ -152,9 +152,11 @@ pub enum DbTableCellMerge {
     },
 }
 
-impl From<&BlockPayload> for DbBlockPayload {
-    fn from(payload: &BlockPayload) -> Self {
-        match payload {
+impl TryFrom<&BlockPayload> for DbBlockPayload {
+    type Error = serde_json::Error;
+
+    fn try_from(payload: &BlockPayload) -> Result<Self, Self::Error> {
+        Ok(match payload {
             BlockPayload::RichText { spans } => Self::RichText {
                 spans: spans.iter().map(DbInlineSpan::from).collect(),
             },
@@ -203,8 +205,13 @@ impl From<&BlockPayload> for DbBlockPayload {
                 html: html.clone(),
                 sanitized: *sanitized,
             },
+            BlockPayload::Opaque { .. } => {
+                return Err(<serde_json::Error as serde::ser::Error>::custom(
+                    "opaque payload must use the PostgreSQL BYTEA lossless path",
+                ));
+            }
             BlockPayload::Empty => Self::Empty,
-        }
+        })
     }
 }
 
@@ -485,7 +492,7 @@ impl From<DbTableCellMerge> for TableCellMerge {
 }
 
 pub fn encode_block_payload(payload: &BlockPayload) -> serde_json::Result<serde_json::Value> {
-    serde_json::to_value(DbBlockPayload::from(payload))
+    serde_json::to_value(DbBlockPayload::try_from(payload)?)
 }
 
 pub fn decode_block_payload(value: serde_json::Value) -> serde_json::Result<BlockPayload> {

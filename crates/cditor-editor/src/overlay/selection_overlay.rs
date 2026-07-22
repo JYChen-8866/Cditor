@@ -19,7 +19,9 @@ pub fn selection_overlay_fragments(
     projection: &EditorViewProjection,
 ) -> Vec<SelectionOverlayFragment> {
     let mut fragments = Vec::new();
-    let mut block_y = projection.before_window_height;
+    // Overlay geometry is RenderWindow-local. The surface applies the single
+    // f64 global -> local origin translation before converting to GPUI f32.
+    let mut block_y = 0.0;
     for block in &projection.blocks {
         let height = block.layout.effective_height();
         let content_left = selection_content_left_px(block.chrome.list_info.depth);
@@ -78,12 +80,14 @@ mod tests {
     fn selection_overlay_uses_projection_fragments_not_entities() {
         let mut runtime = DocumentRuntime::demo();
         runtime.select_all_visible_blocks();
-        let projection = runtime.projection_for_window();
+        let mut projection = runtime.projection_for_window();
+        projection.before_window_height = 20_000_000.25;
 
         let fragments = selection_overlay_fragments(&projection);
 
         assert_eq!(fragments.len(), projection.blocks.len());
         assert!(fragments.iter().all(|fragment| fragment.full_block));
+        assert_eq!(fragments[0].y, 0.0);
     }
 
     #[test]

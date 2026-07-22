@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
@@ -14,12 +13,13 @@ use cditor_storage::{
 };
 
 use crate::codec::{decode_attrs, encode_attrs, encode_transaction};
-use crate::config::{SqliteDurability, SqliteStorageOptions};
+use crate::config::SqliteStorageOptions;
 use crate::error::sqlite_error;
 use crate::ids::{
     block_id_from_sqlite, block_id_to_sqlite, document_id_from_sqlite, document_id_to_sqlite,
 };
 use crate::layout::save_block_layouts;
+use crate::migration::{MIGRATOR, SqliteMigrationManager, connect_pool};
 use crate::page_layout::save_page_layout_snapshot;
 use crate::payload::insert_payload;
 use crate::snapshot::save_index_snapshot;
@@ -28,13 +28,12 @@ use crate::util::{
 };
 use crate::writer::SqliteWriterGate;
 
-static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
-
 #[derive(Debug, Clone)]
 pub struct SqliteDocumentStorage {
     pub(crate) pool: SqlitePool,
     options: SqliteStorageOptions,
     writer: SqliteWriterGate,
+    last_migration_report: Option<crate::migration::SqliteMigrationReport>,
 }
 
 impl SqliteDocumentStorage {
@@ -46,36 +45,8 @@ impl SqliteDocumentStorage {
         prepare_path(&options)?;
         let writer = SqliteWriterGate::for_path(&options.path, options.busy_timeout)?;
         let _writer_guard = writer.acquire().await?;
-        let synchronous = match options.durability {
-            SqliteDurability::Full => SqliteSynchronous::Full,
-            SqliteDurability::Balanced => SqliteSynchronous::Normal,
-        };
-        let connect = SqliteConnectOptions::new()
-            .filename(&options.path)
-            .create_if_missing(options.create_if_missing)
-            .foreign_keys(true)
-            .journal_mode(SqliteJournalMode::Wal)
-            .synchronous(synchronous)
-            .busy_timeout(options.busy_timeout);
-        let pool = SqlitePoolOptions::new()
-            .max_connections(options.max_connections)
-            .after_connect(|connection, _| {
-                Box::pin(async move {
-                    sqlx::query("PRAGMA foreign_keys = ON")
-                        .execute(&mut *connection)
-                        .await?;
-                    sqlx::query("PRAGMA temp_store = MEMORY")
-                        .execute(&mut *connection)
-                        .await?;
-                    sqlx::query("PRAGMA wal_autocheckpoint = 1000")
-                        .execute(&mut *connection)
-                        .await?;
-                    Ok(())
-                })
-            })
-            .connect_with(connect)
-            .await
-            .map_err(sqlite_error)?;
+        let last_migration_report = SqliteMigrationManager::migrate_if_needed(&options).await?;
+        let pool = connect_pool(&options, options.create_if_missing).await?;
         MIGRATOR
             .run(&pool)
             .await
@@ -87,6 +58,7 @@ impl SqliteDocumentStorage {
             pool,
             options,
             writer,
+            last_migration_report,
         })
     }
 
@@ -96,6 +68,11 @@ impl SqliteDocumentStorage {
 
     pub fn options(&self) -> &SqliteStorageOptions {
         &self.options
+    }
+
+    /// 本次 `open` 实际执行 migration 时生成的 dry-run/备份/校验报告。
+    pub fn last_migration_report(&self) -> Option<&crate::migration::SqliteMigrationReport> {
+        self.last_migration_report.as_ref()
     }
 
     async fn ensure_minimal_document(&self, request: &LoadDocumentRequest) -> StorageResult<()> {
@@ -633,7 +610,7 @@ fn validate_page_layout_batch(
     Ok(())
 }
 
-fn prepare_path(options: &SqliteStorageOptions) -> StorageResult<()> {
+pub(crate) fn prepare_path(options: &SqliteStorageOptions) -> StorageResult<()> {
     if options.path.as_os_str().is_empty() {
         return Err(StorageError::InvalidConfiguration(
             "SQLite database path cannot be empty".to_owned(),

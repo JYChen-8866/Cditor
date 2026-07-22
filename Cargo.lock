@@ -964,18 +964,10 @@ dependencies = [
  "cditor-ai",
  "cditor-core",
  "cditor-editor-core",
- "cditor-runtime",
  "cditor-storage",
- "cditor-storage-postgres",
- "cditor-storage-sqlite",
  "cditor-theme",
- "ding-board",
  "gpui",
- "serde",
- "serde_json",
- "sqlx",
  "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]
@@ -985,15 +977,13 @@ dependencies = [
  "cditor-api",
  "cditor-core",
  "cditor-editor",
- "cditor-editor-core",
  "cditor-runtime",
  "cditor-storage",
  "cditor-storage-postgres",
  "cditor-storage-sqlite",
  "gpui",
  "gpui_platform",
- "serde",
- "serde_json",
+ "sqlx",
  "tempfile",
  "tokio",
 ]
@@ -1110,6 +1100,7 @@ dependencies = [
  "cditor-core",
  "cditor-runtime",
  "cditor-storage",
+ "libc",
  "serde",
  "serde_json",
  "sha2",
@@ -1767,19 +1758,6 @@ name = "data-url"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
-
-[[package]]
-name = "dc-board"
-version = "0.1.0"
-dependencies = [
- "cditor-api",
- "cditor-core",
- "cditor-editor",
- "cditor-runtime",
- "gpui",
- "gpui_platform",
- "log",
-]
 
 [[package]]
 name = "deflate64"

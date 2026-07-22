@@ -3,8 +3,10 @@ use gpui::{AppContext, Context, EventEmitter, Task, Window};
 use crate::app::CditorV2View;
 use crate::persistence::{EditorSaveStatus, PersistenceBarrierKind};
 use cditor_api::CditorError;
+use cditor_api::CditorViewContract;
 use cditor_api::command::{
     BlockTransform, CditorCommand, CommandOutcome, CommandOutcomeStatus, CommandSource,
+    CommandState,
 };
 use cditor_api::diagnostics::CditorDiagnostics;
 use cditor_api::document::{
@@ -15,6 +17,117 @@ use cditor_api::event::CditorEvent;
 use cditor_core::edit::ChangeOrigin;
 
 impl EventEmitter<CditorEvent> for CditorV2View {}
+
+impl CditorViewContract for CditorV2View {
+    fn sdk_configure_ai(
+        &mut self,
+        provider: Option<std::sync::Arc<dyn cditor_ai::AiProvider>>,
+        enabled: bool,
+    ) {
+        CditorV2View::sdk_configure_ai(self, provider, enabled);
+    }
+
+    fn sdk_is_ready(&self) -> bool {
+        CditorV2View::sdk_is_ready(self)
+    }
+
+    fn sdk_is_readonly(&self) -> bool {
+        CditorV2View::sdk_is_readonly(self)
+    }
+
+    fn sdk_set_readonly(&mut self, readonly: bool, cx: &mut Context<Self>) {
+        CditorV2View::sdk_set_readonly(self, readonly, cx);
+    }
+
+    fn sdk_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        CditorV2View::sdk_focus(self, window, cx);
+    }
+
+    fn sdk_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        CditorV2View::sdk_blur(self, window, cx);
+    }
+
+    fn sdk_can_undo(&self) -> bool {
+        CditorV2View::sdk_can_undo(self)
+    }
+
+    fn sdk_can_redo(&self) -> bool {
+        CditorV2View::sdk_can_redo(self)
+    }
+
+    fn sdk_undo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
+        CditorV2View::sdk_undo(self, cx)
+    }
+
+    fn sdk_redo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
+        CditorV2View::sdk_redo(self, cx)
+    }
+
+    fn sdk_document_info(&self) -> Option<DocumentInfo> {
+        CditorV2View::sdk_document_info(self)
+    }
+
+    fn sdk_is_dirty(&self) -> bool {
+        CditorV2View::sdk_is_dirty(self)
+    }
+
+    fn sdk_save_status(&self) -> SaveStatus {
+        CditorV2View::sdk_save_status(self)
+    }
+
+    fn sdk_close_guard(&self) -> CloseGuard {
+        CditorV2View::sdk_close_guard(self)
+    }
+
+    fn sdk_save(&mut self, cx: &mut Context<Self>) -> Task<Result<SaveReport, CditorError>> {
+        CditorV2View::sdk_save(self, cx)
+    }
+
+    fn sdk_flush(&mut self, cx: &mut Context<Self>) -> Task<Result<SaveReport, CditorError>> {
+        CditorV2View::sdk_flush(self, cx)
+    }
+
+    fn sdk_diagnostics(&self) -> Result<CditorDiagnostics, CditorError> {
+        CditorV2View::sdk_diagnostics(self)
+    }
+
+    fn sdk_selection(&self) -> Option<DocumentSelection> {
+        CditorV2View::sdk_selection(self)
+    }
+
+    fn sdk_set_selection(
+        &mut self,
+        selection: DocumentSelection,
+        cx: &mut Context<Self>,
+    ) -> Result<(), CditorError> {
+        CditorV2View::sdk_set_selection(self, selection, cx)
+    }
+
+    fn sdk_selected_text(&self) -> Option<String> {
+        CditorV2View::sdk_selected_text(self)
+    }
+
+    fn sdk_scroll_to_block(
+        &mut self,
+        block_id: cditor_core::ids::BlockId,
+        alignment: ScrollAlignment,
+        cx: &mut Context<Self>,
+    ) -> Result<(), CditorError> {
+        CditorV2View::sdk_scroll_to_block(self, block_id, alignment, cx)
+    }
+
+    fn sdk_execute_command(
+        &mut self,
+        command: CditorCommand,
+        cx: &mut Context<Self>,
+    ) -> Result<CommandOutcome, CditorError> {
+        CditorV2View::sdk_execute_command(self, command, cx)
+    }
+
+    fn sdk_command_state(&self, command: &CditorCommand) -> CommandState {
+        CditorV2View::sdk_command_state(self, command)
+    }
+}
 
 impl CditorV2View {
     pub fn sdk_configure_ai(
@@ -37,21 +150,32 @@ impl CditorV2View {
     }
 
     pub fn sdk_set_readonly(&mut self, readonly: bool, cx: &mut Context<Self>) {
-        if self.readonly == readonly {
+        self.requested_readonly = readonly;
+        let effective_readonly = readonly || self.readonly_reason.is_some();
+        if self.readonly == effective_readonly {
             return;
         }
-        self.readonly = readonly;
-        self.save_status = if readonly {
+        self.readonly = effective_readonly;
+        self.save_status = if effective_readonly {
             EditorSaveStatus::Readonly
         } else if self.dirty {
             EditorSaveStatus::Dirty
         } else {
             EditorSaveStatus::Clean
         };
-        if !readonly && self.dirty {
+        if !effective_readonly && self.dirty {
             self.storage_persistence.schedule(cx);
         }
         cx.notify();
+    }
+
+    pub fn enforce_newer_schema_readonly(&mut self, written_major: u64, supported_major: u32) {
+        self.readonly_reason = Some(crate::app::EditorReadonlyReason::NewerDocumentSchema {
+            written_major,
+            supported_major,
+        });
+        self.readonly = true;
+        self.save_status = EditorSaveStatus::Readonly;
     }
 
     pub fn sdk_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -171,8 +295,15 @@ impl CditorV2View {
             pending_saves: self.storage_persistence.pending_operation_count(),
             dirty_blocks: runtime.dirty_payload_count(),
             estimated_document_height: runtime.estimated_document_height(),
-            memory_estimate_bytes: u64::try_from(runtime.estimated_payload_memory_bytes())
-                .unwrap_or(u64::MAX),
+            memory_estimate_bytes: u64::try_from(
+                runtime
+                    .estimated_payload_memory_bytes()
+                    .saturating_add(runtime.estimated_text_undo_memory_bytes())
+                    .saturating_add(self.text_layouts.estimated_bytes())
+                    .saturating_add(self.table_cell_layouts.estimated_bytes())
+                    .saturating_add(self.text_surface_layouts.estimated_bytes()),
+            )
+            .unwrap_or(u64::MAX),
         })
     }
 

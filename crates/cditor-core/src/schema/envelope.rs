@@ -78,6 +78,16 @@ pub struct VersionedEnvelope {
     pub body: Box<RawValue>,
 }
 
+impl PartialEq for VersionedEnvelope {
+    fn eq(&self, other: &Self) -> bool {
+        self.domain == other.domain
+            && self.version == other.version
+            && self.body.get() == other.body.get()
+    }
+}
+
+impl Eq for VersionedEnvelope {}
+
 impl VersionedEnvelope {
     /// 以域的当前版本编码 payload。
     pub fn encode<T: Serialize>(domain: SchemaDomain, payload: &T) -> Result<Self, EnvelopeError> {

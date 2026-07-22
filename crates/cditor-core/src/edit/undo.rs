@@ -243,6 +243,12 @@ impl UndoStack {
         }
     }
 
+    pub fn clear_redo(&mut self) {
+        while let Some(step) = self.redo.pop_front() {
+            self.collect_orphaned_blob(step);
+        }
+    }
+
     pub fn truncate_undo_to(&mut self, max_steps: usize) {
         while self.undo.len() > max_steps {
             if let Some(step) = self.undo.pop_front() {

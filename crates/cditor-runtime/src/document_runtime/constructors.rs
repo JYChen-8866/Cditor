@@ -263,6 +263,7 @@ impl DocumentRuntime {
             window_planner: WindowPlanner::new(1, 2, WindowPlannerPolicy::default()),
             last_planned_scroll_top: 0.0,
             window_plan_clock_ms: 0,
+            window_memory_pressure: WindowMemoryPressure::Normal,
             pending_measured_heights: HashMap::new(),
             layout_dirty: false,
             scrollbar_drag: None,

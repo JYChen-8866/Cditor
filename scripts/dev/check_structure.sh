@@ -16,6 +16,21 @@ if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])sqlx[[
   exit 1
 fi
 
+if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])cditor-runtime[[:space:]]*=|(^|[[:space:]])cditor-editor[[:space:]]*=|(^|[[:space:]])ding-board[[:space:]]*=|(^|[[:space:]])sqlx[[:space:]]*=' crates/cditor-api/Cargo.toml; then
+  echo 'error: API contracts must not depend on concrete storage, runtime, editor, whiteboard engine, or SQLx' >&2
+  exit 1
+fi
+
+api_backend_violations=$(
+  grep -R -n -E 'cditor_storage_(postgres|sqlite)|(^|[^[:alnum:]_])sqlx([^[:alnum:]_]|$)' \
+    --include='*.rs' crates/cditor-api/src || true
+)
+if [ -n "$api_backend_violations" ]; then
+  echo 'error: API source crossed the concrete storage boundary:' >&2
+  echo "$api_backend_violations" >&2
+  exit 1
+fi
+
 core_runtime_boundary_violations=$(
   grep -R -n -E 'cditor_storage_postgres|(^|[^[:alnum:]_])(sqlx|gpui)([^[:alnum:]_]|$)' \
     --include='*.rs' crates/cditor-core/src crates/cditor-runtime/src || true

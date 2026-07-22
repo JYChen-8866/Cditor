@@ -55,8 +55,9 @@ pub use projection::list::{
     BlockListProjectionEntry, ListProjectionCache, project_block_list_entry,
 };
 pub use projection::view::{
-    AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus, EditorViewProjection, TableCellPosition,
-    TableViewState, TableVisibleCell, ViewBlockSnapshot,
+    AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus, EditorViewProjection,
+    PayloadWindowFailureView, TableCellPosition, TableViewState, TableVisibleCell,
+    ViewBlockSnapshot,
 };
 pub use scheduling::async_version_control::{
     AsyncLayoutVersion, AsyncResultDecision, AsyncTaskKind as RuntimeAsyncTaskKind,

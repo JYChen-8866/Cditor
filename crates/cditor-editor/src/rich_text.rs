@@ -177,6 +177,18 @@ pub fn render_payload_text(payload: &BlockPayloadRecord, theme: GuiTheme) -> Any
                 "Unsafe HTML was blocked".to_owned()
             })
             .into_any_element(),
+        BlockPayload::Opaque {
+            plain_text_fallback,
+            ..
+        } => render_embedded_surface(
+            if plain_text_fallback.is_empty() {
+                "Unsupported plugin block".to_owned()
+            } else {
+                plain_text_fallback.clone()
+            },
+            fallback_inner_height_px(&payload.kind),
+            theme,
+        ),
         BlockPayload::Empty => render_empty_payload(&payload.kind, theme),
     }
 }

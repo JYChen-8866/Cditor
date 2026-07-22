@@ -1,7 +1,11 @@
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
+use gpui::{
+    AnyElement, App, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement,
+    Styled, Window, div, px, rgb,
+};
 
 use crate::skeleton::{SkeletonItem, SkeletonRows, SkeletonVariant};
 use crate::theme::GuiTheme;
+use cditor_runtime::PayloadWindowFailureView;
 
 const MAX_WINDOW_SKELETON_BLOCKS: usize = 12;
 const ESTIMATED_SKELETON_BLOCK_HEIGHT_PX: f64 = 56.0;
@@ -36,9 +40,11 @@ pub fn render_document_skeleton_window(
 pub fn render_document_window_error(
     height_px: f64,
     viewport_offset_px: f64,
-    message: &str,
+    failure: &PayloadWindowFailureView,
+    on_retry: PlaceholderRetryHandler,
     theme: GuiTheme,
 ) -> AnyElement {
+    let retry_label = retry_label(failure);
     div()
         .relative()
         .h(px(height_px.max(1.0) as f32))
@@ -72,11 +78,40 @@ pub fn render_document_window_error(
                             div()
                                 .text_sm()
                                 .text_color(rgb(theme.muted))
-                                .child(message.to_owned()),
+                                .child(failure.message.clone()),
+                        )
+                        .child(
+                            div()
+                                .id("cditor-payload-window-retry")
+                                .self_end()
+                                .px_3()
+                                .py_1()
+                                .rounded(px(6.0))
+                                .border_1()
+                                .border_color(rgb(theme.border))
+                                .cursor_pointer()
+                                .child(retry_label)
+                                .on_mouse_down(MouseButton::Left, on_retry),
                         ),
                 ),
         )
         .into_any_element()
+}
+
+pub type PlaceholderRetryHandler = Box<
+    dyn for<'event, 'window, 'app> Fn(&'event MouseDownEvent, &'window mut Window, &'app mut App)
+        + 'static,
+>;
+
+fn retry_label(failure: &PayloadWindowFailureView) -> String {
+    if failure.automatic_retry_pending {
+        format!(
+            "正在自动重试（{}/{}）",
+            failure.attempts, failure.max_attempts
+        )
+    } else {
+        "重试".to_owned()
+    }
 }
 
 fn render_window_skeleton_block(index: usize, theme: GuiTheme) -> AnyElement {
@@ -136,5 +171,20 @@ mod tests {
         assert_eq!(skeleton_viewport_offset(10_000.0, -20.0), 0.0);
         assert_eq!(skeleton_viewport_offset(10_000.0, 12_000.0), 9_999.0);
         assert_eq!(visible_skeleton_height(10_000.0), 720.0);
+    }
+
+    #[test]
+    fn failure_label_distinguishes_automatic_and_explicit_retry() {
+        let mut failure = PayloadWindowFailureView {
+            message: "timeout".to_owned(),
+            attempts: 2,
+            max_attempts: 3,
+            automatic_retry_pending: true,
+        };
+        assert_eq!(retry_label(&failure), "正在自动重试（2/3）");
+
+        failure.attempts = 3;
+        failure.automatic_retry_pending = false;
+        assert_eq!(retry_label(&failure), "重试");
     }
 }

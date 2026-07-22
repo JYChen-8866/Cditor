@@ -50,6 +50,7 @@ pub struct DocumentRuntime {
     pub(super) window_planner: WindowPlanner,
     pub(super) last_planned_scroll_top: f64,
     pub(super) window_plan_clock_ms: u64,
+    pub(super) window_memory_pressure: WindowMemoryPressure,
     pub(super) pending_measured_heights: HashMap<BlockId, PendingMeasuredHeight>,
     pub(super) layout_dirty: bool,
     pub(super) scrollbar_drag: Option<ScrollbarDragSession>,

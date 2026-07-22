@@ -60,6 +60,14 @@ impl DocumentRuntime {
         self.payload_window.total_estimated_bytes()
     }
 
+    pub fn estimated_text_undo_memory_bytes(&self) -> usize {
+        self.estimated_text_history_memory_bytes()
+    }
+
+    pub const fn text_undo_memory_budget_bytes(&self) -> usize {
+        super::undo_redo::TEXT_UNDO_MAX_ESTIMATED_BYTES
+    }
+
     pub fn document_selection_snapshot(&self) -> Option<DocumentSelection> {
         self.document_selection.or_else(|| {
             let editing = self.editing.as_ref()?;

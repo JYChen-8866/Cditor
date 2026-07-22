@@ -1,9 +1,8 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use sqlx::PgPool;
-
+use cditor_api::options::{CditorBackend, CditorOptions};
 use cditor_core::layout::{PAGE_POLICY_VERSION, PagePolicy};
+use cditor_core::schema::CURRENT_DOCUMENT_FORMAT;
 use cditor_runtime::DocumentRuntime;
 use cditor_runtime::document_runtime::{
     DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,
@@ -11,33 +10,18 @@ use cditor_runtime::document_runtime::{
 use cditor_storage::layout_cache::LayoutCacheKey;
 use cditor_storage::{
     DOCUMENT_INDEX_VISIBLE_VERSION, DocumentStorage, LoadDocumentRequest, LoadedDocument,
-    StorageResult, StorageSession,
+    StorageBackendKind, StorageResult, StorageSession,
 };
-use cditor_storage_postgres::types::runtime_document_id_from_pg;
-use cditor_storage_postgres::{
-    LargeDemoSeedOptions, PgDocumentId, PostgresDocumentStorage, PostgresDocumentStore,
-    PostgresLayoutCacheStore, PostgresPayloadStore, PostgresPoolConfig, PostgresStorageResult,
-    create_pg_pool, ensure_large_mixed_demo_seeded, pg_document_id_from_runtime, run_migrations,
-};
-use cditor_storage_sqlite::SqliteDocumentStorage;
-
-use super::options::{CditorBackend, CditorOptions};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CditorColdStartPlan {
     Demo,
     LargeDemo,
     Memory,
-    Sqlite {
+    Persistent {
         document_id: cditor_core::ids::DocumentId,
-        path: PathBuf,
-    },
-    PostgresUrl {
-        document_id: PgDocumentId,
-        url: String,
-    },
-    PostgresPool {
-        document_id: PgDocumentId,
+        label: String,
+        timeout: std::time::Duration,
     },
     Cloud {
         endpoint: String,
@@ -53,30 +37,14 @@ impl CditorColdStartPlan {
             CditorBackend::Demo => Self::Demo,
             CditorBackend::LargeDemo => Self::LargeDemo,
             CditorBackend::Memory => Self::Memory,
-            CditorBackend::Sqlite { options: sqlite } => match options.document_id {
-                Some(document_id) => Self::Sqlite {
+            CditorBackend::Persistent { provider } => match options.document_id {
+                Some(document_id) => Self::Persistent {
                     document_id,
-                    path: sqlite.path.clone(),
+                    label: provider.label().to_owned(),
+                    timeout: provider.open_timeout(),
                 },
                 None => Self::Invalid {
-                    reason: "SQLite backend requires document_id".to_owned(),
-                },
-            },
-            CditorBackend::PostgresUrl { url } => match options.document_id {
-                Some(document_id) => Self::PostgresUrl {
-                    document_id: pg_document_id_from_runtime(document_id),
-                    url: url.clone(),
-                },
-                None => Self::Invalid {
-                    reason: "PostgreSQL backend requires document_id".to_owned(),
-                },
-            },
-            CditorBackend::PostgresPool { .. } => match options.document_id {
-                Some(document_id) => Self::PostgresPool {
-                    document_id: pg_document_id_from_runtime(document_id),
-                },
-                None => Self::Invalid {
-                    reason: "PostgreSQL pool backend requires document_id".to_owned(),
+                    reason: format!("{} backend requires document_id", provider.label()),
                 },
             },
             CditorBackend::Cloud { endpoint } => Self::Cloud {
@@ -87,52 +55,18 @@ impl CditorColdStartPlan {
 
     pub fn persistent_label(&self) -> Option<String> {
         match self {
-            Self::Sqlite { document_id, .. } => Some(format!("SQLite document {document_id}")),
-            Self::PostgresUrl { document_id, .. } | Self::PostgresPool { document_id } => {
-                Some(format!("PostgreSQL document {document_id}"))
-            }
+            Self::Persistent {
+                document_id, label, ..
+            } => Some(format!("{label} document {document_id}")),
             _ => None,
         }
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct CditorPostgresStores {
-    pub pool: PgPool,
-    pub document_store: PostgresDocumentStore,
-    pub payload_store: PostgresPayloadStore,
-    pub layout_store: PostgresLayoutCacheStore,
-}
-
-impl CditorPostgresStores {
-    pub fn from_pool(pool: PgPool) -> Self {
-        Self {
-            document_store: PostgresDocumentStore::new(pool.clone()),
-            payload_store: PostgresPayloadStore::new(pool.clone()),
-            layout_store: PostgresLayoutCacheStore::new(pool.clone()),
-            pool,
+    pub fn timeout(&self) -> std::time::Duration {
+        match self {
+            Self::Persistent { timeout, .. } => *timeout,
+            _ => std::time::Duration::from_secs(90),
         }
-    }
-
-    pub async fn from_url(url: impl Into<String>) -> PostgresStorageResult<Self> {
-        let pool = create_pg_pool(&PostgresPoolConfig::new(url)).await?;
-        run_migrations(&pool).await?;
-        Ok(Self::from_pool(pool))
-    }
-
-    pub async fn load_runtime(
-        &self,
-        document_id: PgDocumentId,
-        options: StorageRuntimeLoadOptions,
-    ) -> StorageResult<CditorRuntimeLoadResult> {
-        let document_id = runtime_document_id_from_pg(document_id).ok_or_else(|| {
-            cditor_storage::StorageError::CorruptData(format!(
-                "document id {document_id} is outside runtime namespace"
-            ))
-        })?;
-        let storage: Arc<dyn DocumentStorage> =
-            Arc::new(PostgresDocumentStorage::from_pool(self.pool.clone()));
-        load_runtime_from_storage(storage, document_id, 1, options).await
     }
 }
 
@@ -141,6 +75,16 @@ pub struct CditorRuntimeLoadResult {
     pub runtime: DocumentRuntime,
     pub report: DocumentRuntimeColdStartReport,
     pub storage_session: StorageSession,
+    pub schema_access: DocumentSchemaAccess,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentSchemaAccess {
+    ReadWrite,
+    ReadOnlyNewerMajor {
+        written_major: u64,
+        supported_major: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,8 +95,6 @@ pub struct StorageRuntimeLoadOptions {
     pub layout_key: LayoutCacheKey,
     pub page_policy_version: u64,
 }
-
-pub type PostgresRuntimeLoadOptions = StorageRuntimeLoadOptions;
 
 impl Default for StorageRuntimeLoadOptions {
     fn default() -> Self {
@@ -187,26 +129,7 @@ pub async fn load_runtime_from_options(
         | CditorBackend::LargeDemo
         | CditorBackend::Memory
         | CditorBackend::Cloud { .. } => return Ok(None),
-        CditorBackend::Sqlite { options } => {
-            Arc::new(SqliteDocumentStorage::open(options.clone()).await?)
-        }
-        CditorBackend::PostgresUrl { url } => {
-            let storage = PostgresDocumentStorage::from_url(url.clone()).await?;
-            seed_postgres_if_requested(storage.pool(), options).await?;
-            Arc::new(storage)
-        }
-        CditorBackend::PostgresPool { pool } => {
-            if options.seed_large_demo_to_postgres {
-                run_migrations(pool).await.map_err(|error| {
-                    cditor_storage::StorageError::Backend {
-                        backend: cditor_storage::StorageBackendKind::Postgres,
-                        message: error.to_string(),
-                    }
-                })?;
-            }
-            seed_postgres_if_requested(pool, options).await?;
-            Arc::new(PostgresDocumentStorage::from_pool(pool.clone()))
-        }
+        CditorBackend::Persistent { provider } => provider.open().await?,
     };
     load_runtime_from_storage(
         storage,
@@ -224,6 +147,7 @@ async fn load_runtime_from_storage(
     workspace_id: u64,
     options: StorageRuntimeLoadOptions,
 ) -> StorageResult<CditorRuntimeLoadResult> {
+    let backend_kind = storage.backend_kind();
     let loaded = storage
         .load_document(LoadDocumentRequest {
             document_id,
@@ -234,6 +158,7 @@ async fn load_runtime_from_storage(
             page_policy_version: options.page_policy_version,
         })
         .await?;
+    let schema_access = document_schema_access(loaded.metadata.schema_version, backend_kind)?;
     let viewport_height = options.viewport_height;
     let (runtime, report) = runtime_from_loaded(loaded, viewport_height, &options)?;
     Ok(CditorRuntimeLoadResult {
@@ -241,7 +166,28 @@ async fn load_runtime_from_storage(
             .with_layout_key(options.layout_key),
         runtime,
         report,
+        schema_access,
     })
+}
+
+fn document_schema_access(
+    stored_major: u64,
+    backend: StorageBackendKind,
+) -> StorageResult<DocumentSchemaAccess> {
+    let supported_major = CURRENT_DOCUMENT_FORMAT.major;
+    match stored_major.cmp(&u64::from(supported_major)) {
+        std::cmp::Ordering::Equal => Ok(DocumentSchemaAccess::ReadWrite),
+        std::cmp::Ordering::Greater => Ok(DocumentSchemaAccess::ReadOnlyNewerMajor {
+            written_major: stored_major,
+            supported_major,
+        }),
+        std::cmp::Ordering::Less => Err(cditor_storage::StorageError::Migration {
+            backend,
+            message: format!(
+                "document schema v{stored_major} must be migrated to v{supported_major} before opening"
+            ),
+        }),
+    }
 }
 
 fn runtime_from_loaded(
@@ -286,34 +232,6 @@ fn runtime_from_loaded(
     Ok((runtime, report))
 }
 
-async fn seed_postgres_if_requested(pool: &PgPool, options: &CditorOptions) -> StorageResult<()> {
-    if !options.seed_large_demo_to_postgres {
-        return Ok(());
-    }
-    let document_id = options.document_id.ok_or_else(|| {
-        cditor_storage::StorageError::InvalidConfiguration(
-            "PostgreSQL seed requires document_id".to_owned(),
-        )
-    })?;
-    let stores = CditorPostgresStores::from_pool(pool.clone());
-    ensure_large_mixed_demo_seeded(
-        &stores.document_store,
-        &stores.payload_store,
-        LargeDemoSeedOptions::new(
-            pg_document_id_from_runtime(document_id),
-            options.workspace_id.unwrap_or(1),
-            options.seed_large_demo_block_count,
-        )
-        .force_reseed(options.force_reseed_large_demo),
-    )
-    .await
-    .map_err(|error| cditor_storage::StorageError::Backend {
-        backend: cditor_storage::StorageBackendKind::Postgres,
-        message: error.to_string(),
-    })?;
-    Ok(())
-}
-
 const MIN_INTERACTIVE_COLD_START_PAYLOAD_BLOCKS: usize = 256;
 
 fn cold_start_options(options: &CditorOptions) -> StorageRuntimeLoadOptions {
@@ -329,12 +247,18 @@ fn cold_start_options(options: &CditorOptions) -> StorageRuntimeLoadOptions {
 mod tests {
     use super::*;
     use crate::Cditor;
+    use crate::CditorStorageExt;
     use cditor_core::document::BlockIndexRecord;
     use cditor_core::layout::{HeightConfidence, PageLayout, PageLayoutIndex};
     use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind};
     use cditor_storage::{StorageBackendKind, StorageDocumentMetadata, StoragePageLayoutSnapshot};
-    use cditor_storage_postgres::DocumentRow;
+    use cditor_storage_postgres::{
+        DocumentRow, PostgresDocumentStorage, PostgresDocumentStore, PostgresPayloadStore,
+        PostgresPoolConfig, create_pg_pool, pg_document_id_from_runtime, run_migrations,
+    };
+    use cditor_storage_sqlite::{SqliteDocumentStorage, SqliteStorageOptions};
     use sqlx::types::Uuid;
+    use tempfile::TempDir;
 
     #[test]
     fn cold_start_plan_requires_document_id_for_persistent_backends() {
@@ -345,27 +269,92 @@ mod tests {
             CditorColdStartPlan::from_options(&postgres),
             CditorColdStartPlan::Invalid { .. }
         ));
+    }
 
-        let sqlite = Cditor::new().with_sqlite_path("test.db").into_options();
+    #[test]
+    fn document_schema_access_separates_writable_newer_and_migration_modes() {
         assert_eq!(
-            CditorColdStartPlan::from_options(&sqlite),
-            CditorColdStartPlan::Invalid {
-                reason: "SQLite backend requires document_id".to_owned()
+            document_schema_access(
+                u64::from(CURRENT_DOCUMENT_FORMAT.major),
+                StorageBackendKind::Sqlite,
+            )
+            .unwrap(),
+            DocumentSchemaAccess::ReadWrite
+        );
+        assert_eq!(
+            document_schema_access(
+                u64::from(CURRENT_DOCUMENT_FORMAT.major) + 1,
+                StorageBackendKind::Sqlite,
+            )
+            .unwrap(),
+            DocumentSchemaAccess::ReadOnlyNewerMajor {
+                written_major: u64::from(CURRENT_DOCUMENT_FORMAT.major) + 1,
+                supported_major: CURRENT_DOCUMENT_FORMAT.major,
+            }
+        );
+        assert!(
+            document_schema_access(
+                u64::from(CURRENT_DOCUMENT_FORMAT.major) - 1,
+                StorageBackendKind::Sqlite,
+            )
+            .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_newer_document_schema_loads_runtime_in_readonly_mode() {
+        let temp = TempDir::new().unwrap();
+        let storage = SqliteDocumentStorage::open(SqliteStorageOptions::file(
+            temp.path().join("newer-schema.cditor.db"),
+        ))
+        .await
+        .unwrap();
+        let options = StorageRuntimeLoadOptions::default();
+        storage
+            .load_document(LoadDocumentRequest {
+                document_id: 42,
+                workspace_id: 1,
+                initial_payload_window_blocks: options.initial_payload_window_blocks,
+                visible_index_version: options.visible_index_version,
+                layout_key: options.layout_key,
+                page_policy_version: options.page_policy_version,
+            })
+            .await
+            .unwrap();
+        let newer_major = u64::from(CURRENT_DOCUMENT_FORMAT.major) + 1;
+        sqlx::query("UPDATE documents SET schema_version = ?")
+            .bind(i64::try_from(newer_major).unwrap())
+            .execute(storage.pool())
+            .await
+            .unwrap();
+
+        let loaded = load_runtime_from_storage(Arc::new(storage), 42, 1, options)
+            .await
+            .unwrap();
+
+        assert_eq!(loaded.runtime.document_id, 42);
+        assert_eq!(loaded.runtime.document_block_count(), 1);
+        assert_eq!(
+            loaded.schema_access,
+            DocumentSchemaAccess::ReadOnlyNewerMajor {
+                written_major: newer_major,
+                supported_major: CURRENT_DOCUMENT_FORMAT.major,
             }
         );
     }
 
     #[test]
-    fn cold_start_plan_maps_sqlite_path() {
+    fn cold_start_plan_maps_persistent_provider() {
         let options = Cditor::new()
             .with_document_id(42)
             .with_sqlite_path("workspace.cditor.db")
             .into_options();
         assert_eq!(
             CditorColdStartPlan::from_options(&options),
-            CditorColdStartPlan::Sqlite {
+            CditorColdStartPlan::Persistent {
                 document_id: 42,
-                path: PathBuf::from("workspace.cditor.db")
+                label: "SQLite".to_owned(),
+                timeout: std::time::Duration::from_secs(90),
             }
         );
     }
@@ -449,14 +438,15 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires docker compose postgres_test and CDITOR_TEST_DATABASE_URL"]
-    async fn postgres_pool_options_load_runtime_through_storage_adapter() {
+    async fn injected_storage_loads_runtime_through_backend_neutral_host() {
         let database_url = std::env::var("CDITOR_TEST_DATABASE_URL")
             .unwrap_or_else(|_| "postgres://cditor:cditor@localhost:5433/cditor_test".to_owned());
         let pool = create_pg_pool(&PostgresPoolConfig::for_tests(database_url))
             .await
             .unwrap();
         run_migrations(&pool).await.unwrap();
-        let stores = CditorPostgresStores::from_pool(pool.clone());
+        let document_store = PostgresDocumentStore::new(pool.clone());
+        let payload_store = PostgresPayloadStore::new(pool.clone());
         let runtime_document_id = 190_001;
         let document = DocumentRow {
             id: pg_document_id_from_runtime(runtime_document_id),
@@ -467,8 +457,7 @@ mod tests {
             layout_version: 0,
             schema_version: 1,
         };
-        stores
-            .document_store
+        document_store
             .save_document_metadata(&document)
             .await
             .unwrap();
@@ -479,13 +468,11 @@ mod tests {
             kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
             0,
         )];
-        stores
-            .document_store
+        document_store
             .save_block_index_records(document.id, &records, 1)
             .await
             .unwrap();
-        stores
-            .payload_store
+        payload_store
             .save_block_payloads(
                 document.id,
                 &[BlockPayloadRecord::rich_text(
@@ -500,7 +487,10 @@ mod tests {
         let options = Cditor::new()
             .with_document_id(runtime_document_id)
             .with_payload_window_size(1)
-            .with_postgres_pool(pool)
+            .with_storage(
+                Arc::new(PostgresDocumentStorage::from_pool(pool)),
+                "PostgreSQL",
+            )
             .into_options();
         let loaded = load_runtime_from_options(&options).await.unwrap().unwrap();
         assert_eq!(loaded.runtime.document_id, runtime_document_id);

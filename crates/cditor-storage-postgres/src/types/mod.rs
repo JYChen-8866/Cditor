@@ -146,6 +146,13 @@ mod tests {
     }
 
     #[test]
+    fn opaque_payload_cannot_accidentally_enter_the_jsonb_codec() {
+        let payload = cditor_core::fixtures::unknown::unknown_plugin_payload(7).payload;
+        let error = encode_block_payload(&payload).unwrap_err();
+        assert!(error.to_string().contains("BYTEA lossless path"));
+    }
+
+    #[test]
     fn table_payload_schema_round_trips_structure_geometry_merge_and_align() {
         let payload = BlockPayload::Table(TablePayload {
             rows: vec![

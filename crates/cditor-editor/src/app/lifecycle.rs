@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 use gpui::Context;
 
@@ -74,6 +74,8 @@ impl CditorV2View {
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
+            requested_readonly: readonly,
+            readonly_reason: None,
             dirty: false,
             sdk_focus_observers_registered: false,
             last_emitted_selection: None,
@@ -81,9 +83,9 @@ impl CditorV2View {
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
-            text_layouts: HashMap::new(),
-            table_cell_layouts: HashMap::new(),
-            text_surface_layouts: HashMap::new(),
+            text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
+            table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
+            text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
@@ -104,6 +106,7 @@ impl CditorV2View {
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            selection_toolbar_delay: Default::default(),
             block_transform_menu_open: false,
             color_menu_open: false,
             color_menu_hover_generation: 0,
@@ -156,6 +159,8 @@ impl CditorV2View {
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
+            requested_readonly: readonly,
+            readonly_reason: None,
             dirty: false,
             sdk_focus_observers_registered: false,
             last_emitted_selection: None,
@@ -163,9 +168,9 @@ impl CditorV2View {
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
-            text_layouts: HashMap::new(),
-            table_cell_layouts: HashMap::new(),
-            text_surface_layouts: HashMap::new(),
+            text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
+            table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
+            text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
@@ -186,6 +191,7 @@ impl CditorV2View {
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            selection_toolbar_delay: Default::default(),
             block_transform_menu_open: false,
             color_menu_open: false,
             color_menu_hover_generation: 0,
@@ -239,6 +245,8 @@ impl CditorV2View {
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
+            requested_readonly: readonly,
+            readonly_reason: None,
             dirty: false,
             sdk_focus_observers_registered: false,
             last_emitted_selection: None,
@@ -246,9 +254,9 @@ impl CditorV2View {
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
-            text_layouts: HashMap::new(),
-            table_cell_layouts: HashMap::new(),
-            text_surface_layouts: HashMap::new(),
+            text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
+            table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
+            text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
             table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
@@ -269,6 +277,7 @@ impl CditorV2View {
             hovered_block_id: None,
             action_block_id: None,
             gutter_toolbar_block_id: None,
+            selection_toolbar_delay: Default::default(),
             block_transform_menu_open: false,
             color_menu_open: false,
             color_menu_hover_generation: 0,
@@ -305,6 +314,8 @@ impl CditorV2View {
         storage_session: Option<StorageSession>,
     ) {
         self.state.apply_loaded_runtime(runtime);
+        self.readonly_reason = None;
+        self.readonly = self.requested_readonly;
         self.dirty = false;
         self.last_emitted_selection = None;
         self.text_layouts.clear();
@@ -329,6 +340,7 @@ impl CditorV2View {
         self.hovered_block_id = None;
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.selection_toolbar_delay = Default::default();
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
         self.gutter_block_drag = None;
@@ -349,6 +361,8 @@ impl CditorV2View {
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {
         self.state.apply_load_failed(message);
+        self.readonly_reason = None;
+        self.readonly = self.requested_readonly;
         self.dirty = false;
         self.last_emitted_selection = None;
         self.text_layouts.clear();
@@ -369,6 +383,7 @@ impl CditorV2View {
         self.hovered_block_id = None;
         self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
+        self.selection_toolbar_delay = Default::default();
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
         self.gutter_block_drag = None;

@@ -2,6 +2,7 @@ use crate::ids::BlockId;
 use crate::layout::{
     ColumnSpec, ColumnsLayoutError, ColumnsLayoutModel, DEFAULT_COLUMN_GAP_PX, StableBox,
 };
+use crate::schema::{SchemaDomain, VersionedEnvelope};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::{InlineSpan, RichBlockKind, TablePayload, plain_text_from_spans};
@@ -122,10 +123,21 @@ pub enum BlockPayload {
         html: String,
         sanitized: bool,
     },
+    /// 当前 build 不理解的 block/plugin payload。
+    ///
+    /// `envelope.body` 使用 `RawValue`，存储、clipboard、move 与 native export
+    /// 必须原样透传；Runtime 只能显示安全占位，不能解释或重写内容。
+    Opaque {
+        envelope: VersionedEnvelope,
+        plain_text_fallback: String,
+    },
     Empty,
 }
 
 impl BlockPayload {
+    pub const INVALID_OPAQUE_DOMAIN: &'static str =
+        "opaque block payload envelope must use BlockPayload domain";
+
     pub fn plain_text(&self) -> String {
         match self {
             Self::RichText { spans } => plain_text_from_spans(spans),
@@ -140,8 +152,36 @@ impl BlockPayload {
             Self::Whiteboard(_) => "whiteboard".to_owned(),
             Self::Embed(embed) => [embed.title.as_str(), embed.url.as_str()].join(" "),
             Self::Html { html, .. } => html.clone(),
+            Self::Opaque {
+                plain_text_fallback,
+                ..
+            } => plain_text_fallback.clone(),
             Self::Empty => String::new(),
         }
+    }
+
+    pub fn opaque(
+        envelope: VersionedEnvelope,
+        plain_text_fallback: impl Into<String>,
+    ) -> Result<Self, &'static str> {
+        let payload = Self::Opaque {
+            envelope,
+            plain_text_fallback: plain_text_fallback.into(),
+        };
+        payload.validate_opaque_envelope_domain()?;
+        Ok(payload)
+    }
+
+    /// Validates the invariant that serde cannot enforce while preserving an
+    /// unknown envelope's raw JSON bytes.
+    pub fn validate_opaque_envelope_domain(&self) -> Result<(), &'static str> {
+        if matches!(
+            self,
+            Self::Opaque { envelope, .. } if envelope.domain != SchemaDomain::BlockPayload
+        ) {
+            return Err(Self::INVALID_OPAQUE_DOMAIN);
+        }
+        Ok(())
     }
 }
 
@@ -378,5 +418,30 @@ mod tests {
         };
         assert_eq!(columns.gap_px(), DEFAULT_COLUMN_GAP_PX);
         assert_eq!(columns.layout_model(10).unwrap().columns().len(), 2);
+    }
+
+    #[test]
+    fn opaque_payload_rejects_a_non_block_domain() {
+        let envelope = VersionedEnvelope::encode(SchemaDomain::Clipboard, &"opaque").unwrap();
+        assert_eq!(
+            BlockPayload::opaque(envelope, "fallback").unwrap_err(),
+            BlockPayload::INVALID_OPAQUE_DOMAIN
+        );
+    }
+
+    #[test]
+    fn opaque_payload_validation_rejects_a_wrong_domain_after_deserialization() {
+        let envelope = VersionedEnvelope::encode(SchemaDomain::Clipboard, &"opaque").unwrap();
+        let invalid = BlockPayload::Opaque {
+            envelope,
+            plain_text_fallback: "fallback".to_owned(),
+        };
+        let encoded = serde_json::to_string(&invalid).unwrap();
+        let decoded: BlockPayload = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(
+            decoded.validate_opaque_envelope_domain().unwrap_err(),
+            BlockPayload::INVALID_OPAQUE_DOMAIN
+        );
     }
 }

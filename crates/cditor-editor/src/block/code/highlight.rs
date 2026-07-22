@@ -495,6 +495,34 @@ mod tests {
     }
 
     #[test]
+    fn default_rust_theme_produces_distinct_parley_foreground_runs() {
+        let source = "fn main() {\n    let answer = 42;\n}";
+        let spans = highlight_source(source, Language::Rust, DEFAULT_CODE_HIGHLIGHT_THEME)
+            .expect("default Rust highlighting succeeds");
+        let style_runs = cditor_text::parley_style_runs(
+            &spans,
+            &RichBlockKind::Code {
+                language: Some("rust".to_owned()),
+            },
+            cditor_text::TextTheme::default(),
+            code_theme_item(DEFAULT_CODE_HIGHLIGHT_THEME).foreground,
+            &cditor_text::ParleyTextStyleConfig::default(),
+            crate::platform::EDITOR_MONO_FONT_FAMILY,
+        );
+        let colors = style_runs
+            .iter()
+            .map(|run| run.style.brush.foreground)
+            .collect::<HashSet<_>>();
+
+        assert_eq!(plain_text_from_spans(&spans), source);
+        assert!(spans.iter().any(|span| !span.marks.is_empty()));
+        assert!(
+            colors.len() > 1,
+            "syntax colors must reach Parley style runs"
+        );
+    }
+
+    #[test]
     fn rebase_keeps_existing_colors_around_unicode_insertions() {
         let old_source = "const 名 = 1;";
         let old_spans = highlight_source(old_source, Language::JavaScript, "dracula")

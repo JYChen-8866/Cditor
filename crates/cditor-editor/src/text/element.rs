@@ -533,7 +533,7 @@ impl Element for RichTextGpuiElement {
             window.paint_quad(background);
         }
         if let Some(layout) = prepaint.layout.as_ref() {
-            let report = paint_parley_layout(layout, bounds.origin, window);
+            let report = paint_parley_layout(layout, bounds.origin, input_trace_enabled(), window);
             if input_trace_enabled()
                 && (report.glyph_errors != 0
                     || report.font_registration_errors != 0

@@ -35,20 +35,50 @@ impl DocumentRuntime {
     pub fn projection_for_window_planned(&mut self) -> EditorViewProjection {
         let total_start = Instant::now();
         self.refresh_ai_session_validity();
+        let mut layout_prefetch_page_range = self.current_page_window_planned();
         // The GUI always projects a viewport-sized block window. Page windows are
         // still maintained for layout and scroll geometry, but must not decide how
         // many block entities are created in a frame. This is the same bounded
         // path used by the synthetic 100k fixture and by resident/PG documents.
         let (page_range, block_range) = self.viewport_window_ranges();
-        self.ensure_demo_payload_window(&block_range);
+        layout_prefetch_page_range.start = layout_prefetch_page_range.start.min(page_range.start);
+        layout_prefetch_page_range.end = layout_prefetch_page_range.end.max(page_range.end);
+        let payload_prefetch_block_range = self.payload_prefetch_range(&block_range);
+        self.ensure_demo_payload_window(&payload_prefetch_block_range);
         self.hydrate_payload_runtime_state_for_range(block_range.clone());
-        let projection = self.projection_for_ranges(page_range, block_range);
+        let mut projection = self.projection_for_ranges(page_range, block_range);
+        projection.payload_prefetch_block_range = payload_prefetch_block_range;
+        projection.layout_prefetch_page_range = layout_prefetch_page_range;
         log_runtime_timing(
             "runtime.projection_for_window_planned",
             total_start,
             Some(projection.blocks.len()),
         );
         projection
+    }
+
+    fn payload_prefetch_range(&self, render_range: &Range<usize>) -> Range<usize> {
+        if render_range.is_empty() {
+            return render_range.clone();
+        }
+        let velocity = self
+            .window_planner
+            .debug_overlay()
+            .last_velocity_viewports_per_second;
+        let velocity_steps = ((velocity.abs() / 3.0).floor() as usize).min(4);
+        let (base, velocity_step) = match self.window_memory_pressure {
+            WindowMemoryPressure::Normal => (128usize, 64usize),
+            WindowMemoryPressure::Warning => (48usize, 32usize),
+            WindowMemoryPressure::Critical => (0usize, 0usize),
+        };
+        let directional = velocity_steps * velocity_step;
+        let before = base + usize::from(velocity < 0.0) * directional;
+        let after = base + usize::from(velocity > 0.0) * directional;
+        render_range.start.saturating_sub(before)
+            ..render_range
+                .end
+                .saturating_add(after)
+                .min(self.visible_index.total_visible_count())
     }
 
     pub fn projection(&self) -> EditorViewProjection {
@@ -188,7 +218,7 @@ impl DocumentRuntime {
             }))
             .expect("projection local heights are valid");
         let render_window = RenderWindow::loaded(
-            page_range,
+            page_range.clone(),
             block_range.clone(),
             &block_ids,
             local_height_index,
@@ -377,11 +407,14 @@ impl DocumentRuntime {
             document_id: self.document_id,
             scroll: self.scroll,
             render_window,
+            payload_prefetch_block_range: block_range.clone(),
+            layout_prefetch_page_range: page_range.clone(),
             blocks,
             ai_preview: self.ai_preview_for_block_range(&block_range),
             before_window_height,
             placeholder_window_height: None,
             placeholder_window_error: None,
+            placeholder_window_failure: None,
             after_window_height,
             down_placer_height,
             total_visible_blocks,
@@ -424,13 +457,28 @@ impl DocumentRuntime {
             .offset_of_block(block_range.start)
             .unwrap_or(0.0);
         let placeholder_height = self.height_for_block_range(&block_range);
-        let placeholder_window_error = block_range.clone().find_map(|visible_index| {
+        let placeholder_window_failure = block_range.clone().find_map(|visible_index| {
             let block_id = self.visible_index.id_at_visible_index(visible_index)?;
-            self.payload_window.failed.get(&block_id).cloned()
+            let message = self.payload_window.failed.get(&block_id)?.clone();
+            let attempts = self
+                .payload_window
+                .failure_attempts
+                .get(&block_id)
+                .copied()
+                .unwrap_or(0);
+            Some(crate::projection::view::PayloadWindowFailureView {
+                message,
+                attempts,
+                max_attempts: crate::content::payload_window::MAX_PAYLOAD_WINDOW_LOAD_ATTEMPTS,
+                automatic_retry_pending: self.payload_window.can_retry(block_id),
+            })
         });
+        let placeholder_window_error = placeholder_window_failure
+            .as_ref()
+            .map(|failure| failure.message.clone());
         let render_window = RenderWindow::placeholder(PlaceholderWindow {
             page_range: page_range.clone(),
-            block_range,
+            block_range: block_range.clone(),
             height: placeholder_height,
             target_anchor: self
                 .target_for_global_offset(self.scroll.global_scroll_top)
@@ -455,11 +503,14 @@ impl DocumentRuntime {
             document_id: self.document_id,
             scroll: self.scroll,
             render_window,
+            payload_prefetch_block_range: block_range.clone(),
+            layout_prefetch_page_range: page_range.clone(),
             blocks: Vec::new(),
             ai_preview: None,
             before_window_height,
             placeholder_window_height: Some(placeholder_height),
             placeholder_window_error,
+            placeholder_window_failure,
             after_window_height,
             down_placer_height,
             total_visible_blocks,

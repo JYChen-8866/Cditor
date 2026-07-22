@@ -3,7 +3,10 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div, point, px, rgb, size,
 };
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState, formatting_toolbar_state};
+use crate::app::cditor_v2_view::{
+    CditorV2View, CditorViewState, floating_toolbar_passes_selection_delay,
+    formatting_toolbar_state,
+};
 use crate::app::input::actions::BoundInputAction;
 use crate::app::interaction::geometry::{
     fallback_text_metrics_for_block, projected_block_rects_from_projection,
@@ -29,7 +32,7 @@ use crate::overlay::{
     render_ai_preview_overlay, render_ai_prompt, render_floating_toolbar, render_slash_menu,
     render_toast, render_whiteboard_editor,
 };
-use crate::persistence::{EditorLoadStateLabel, render_load_state};
+use crate::persistence::{EditorLoadStateLabel, render_load_state, render_readonly_notice};
 use crate::scroll::HeightCorrectionPriority;
 use crate::theme::GuiTheme;
 use cditor_runtime::AiRequestPresentation;
@@ -37,6 +40,7 @@ use cditor_runtime::InputTarget;
 
 impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let frame_started = std::time::Instant::now();
         let theme = GuiTheme::light();
         let focus = self.focus.clone();
         if self.ai_prompt.is_some() {
@@ -70,6 +74,7 @@ impl Render for CditorV2View {
                         .ready_runtime_ref()
                         .is_some_and(|runtime| runtime.has_document_text_selection()))
         });
+        let selection_toolbar_ready = self.sync_selection_toolbar_delay(cx);
         let mut formatting_toolbar = formatting_toolbar_state(
             self.ready_runtime_ref(),
             &self.text_layouts,
@@ -91,6 +96,14 @@ impl Render for CditorV2View {
                 .map(|runtime| runtime.scroll.global_scroll_top)
                 .unwrap_or(0.0),
         );
+        if formatting_toolbar.as_ref().is_some_and(|toolbar| {
+            !floating_toolbar_passes_selection_delay(
+                toolbar.has_text_selection,
+                selection_toolbar_ready,
+            )
+        }) {
+            formatting_toolbar = None;
+        }
         if let Some(toolbar) = formatting_toolbar.as_mut() {
             toolbar.ai_enabled &= self.ai_enabled;
         }
@@ -392,7 +405,7 @@ impl Render for CditorV2View {
                     || projection.blocks.iter().any(|block| block.placeholder);
                 if payload_storage_session.is_some() && has_missing_payloads {
                     pending_payload_window_range =
-                        Some(projection.render_window.block_range.clone());
+                        Some(projection.payload_prefetch_block_range.clone());
                 }
                 self.code_highlights.sync_visible_window(
                     &projection,
@@ -599,6 +612,9 @@ impl Render for CditorV2View {
                 &self.color_menu_scroll_handle,
             ));
         }
+        if let Some(reason) = self.readonly_reason.as_ref() {
+            root = root.child(render_readonly_notice(reason, theme));
+        }
         if let Some(preview_overlay) = render_image_preview_overlay(window, cx) {
             root = root.child(preview_overlay);
         }
@@ -624,6 +640,8 @@ impl Render for CditorV2View {
         if let Some(session) = self.whiteboard_editor.as_ref() {
             root = root.child(render_whiteboard_editor(session, theme, cx.entity()));
         }
+
+        self.record_frame_telemetry(frame_started.elapsed());
 
         root
     }

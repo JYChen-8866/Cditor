@@ -3,14 +3,14 @@ use std::{collections::HashMap, ops::Range};
 use gpui::{Bounds, Pixels, point, px};
 
 use crate::app::interaction::geometry::ProjectedBlockRect;
-use crate::block::chrome::block_content_left_px;
+use crate::block::chrome::{block_gutter_left_px, block_gutter_top_px};
 use crate::document::{DEFAULT_DOCUMENT_PAGE_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
 use crate::menu_metrics::EditorViewport;
 use crate::overlay::{
     ActiveColor, BlockTransformAction, BlockTransformAvailability, ColorMenuAction,
     FloatingToolbarState, InlineFormatAction, PaletteColor, block_transform_menu_opens_left,
     block_transform_menu_top_offset, color_menu_geometry, floating_toolbar_position,
-    left_aligned_floating_toolbar_position,
+    gutter_floating_toolbar_position,
 };
 use crate::text::{RichTextPlatformLayout, platform_range_bounds};
 use cditor_core::ids::BlockId;
@@ -50,13 +50,13 @@ pub(in crate::app) fn formatting_toolbar_state(
             .iter()
             .find(|rect| rect.block_id == block_id)?;
         let page_left = ((viewport.width - DEFAULT_DOCUMENT_PAGE_WIDTH_PX) / 2.0).max(0.0);
-        let top = (rect.document_top - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
-        let bottom = (rect.document_bottom - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
-        let block_left = page_left + block_content_left_px(rect.indent_px);
-        let (x, y) = left_aligned_floating_toolbar_position(
-            block_left,
-            top,
-            bottom,
+        let gutter_left = page_left + block_gutter_left_px(rect.indent_px);
+        let gutter_top = (rect.document_top - scroll_top) as f32
+            + DEFAULT_DOCUMENT_TOP_INSET_PX
+            + block_gutter_top_px();
+        let (x, y) = gutter_floating_toolbar_position(
+            gutter_left,
+            gutter_top,
             viewport.width,
             viewport.height,
         );
@@ -138,7 +138,7 @@ pub(in crate::app) fn formatting_toolbar_state(
                     None,
                 ));
         let block_transform_availability = BlockTransformAvailability::from_enabled(
-            BlockTransformAction::ALL.into_iter().filter(|action| {
+            BlockTransformAction::all().into_iter().filter(|action| {
                 block_transform == Some(*action)
                     || runtime.can_convert_block_kind(block_id, &action.kind())
             }),
@@ -671,7 +671,7 @@ mod tests {
             InlineMark::Code
         );
         assert_eq!(
-            BlockTransformAction::CodeBlock.kind(),
+            BlockTransformAction::CODE_BLOCK.kind(),
             RichBlockKind::Code { language: None }
         );
     }
@@ -680,3 +680,7 @@ mod tests {
 #[cfg(test)]
 #[path = "toolbar_capability_tests.rs"]
 mod capability_tests;
+
+#[cfg(test)]
+#[path = "toolbar_position_tests.rs"]
+mod position_tests;

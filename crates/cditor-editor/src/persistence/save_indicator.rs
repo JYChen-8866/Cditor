@@ -1,5 +1,6 @@
 use gpui::{AnyElement, FontWeight, IntoElement, ParentElement, Styled, div, px, rgb};
 
+use crate::app::EditorReadonlyReason;
 use crate::theme::GuiTheme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +86,25 @@ pub fn render_save_indicator(status: &EditorSaveStatus, theme: GuiTheme) -> AnyE
         .into_any_element()
 }
 
+pub fn render_readonly_notice(reason: &EditorReadonlyReason, theme: GuiTheme) -> AnyElement {
+    div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .right_0()
+        .h(px(32.0))
+        .px(px(12.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .overflow_hidden()
+        .bg(rgb(theme.action_background))
+        .text_size(px(12.0))
+        .text_color(rgb(theme.text))
+        .child(reason.message())
+        .into_any_element()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +125,17 @@ mod tests {
         assert!(EditorSaveStatus::Saving.is_blocking_close());
         assert!(EditorSaveStatus::Failed("x".to_owned()).is_blocking_close());
         assert!(!EditorSaveStatus::Readonly.is_blocking_close());
+    }
+
+    #[test]
+    fn newer_schema_readonly_notice_names_both_versions() {
+        let reason = EditorReadonlyReason::NewerDocumentSchema {
+            written_major: 3,
+            supported_major: 1,
+        };
+        assert_eq!(
+            reason.message(),
+            "只读：文档格式 v3 高于当前支持的 v1，请升级 Cditor 后编辑。"
+        );
     }
 }

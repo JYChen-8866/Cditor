@@ -53,6 +53,42 @@ fn planned_window_keeps_focused_page_pinned() {
 }
 
 #[test]
+fn planned_projection_separates_render_payload_and_layout_prefetch_ranges() {
+    let mut runtime = runtime_with_paragraph_blocks(3_500);
+    runtime
+        .scroll
+        .scroll_to_global_offset(
+            runtime.height_index.offset_of_block(2_000).unwrap(),
+            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
+        )
+        .unwrap();
+
+    let normal = runtime.projection_for_window_planned();
+    assert!(
+        normal
+            .payload_prefetch_block_range
+            .contains(&normal.render_window.block_range.start)
+    );
+    assert!(normal.payload_prefetch_block_range.end >= normal.render_window.block_range.end);
+    assert!(normal.payload_prefetch_block_range.len() > normal.render_window.block_range.len());
+    assert!(
+        normal.layout_prefetch_page_range.start <= normal.render_window.page_range.start
+            && normal.layout_prefetch_page_range.end >= normal.render_window.page_range.end
+    );
+
+    runtime.set_window_memory_pressure(WindowMemoryPressure::Critical);
+    let critical = runtime.projection_for_window_planned();
+    assert_eq!(
+        critical.payload_prefetch_block_range,
+        critical.render_window.block_range
+    );
+    assert!(
+        critical.layout_prefetch_page_range.start <= critical.render_window.page_range.start
+            && critical.layout_prefetch_page_range.end >= critical.render_window.page_range.end
+    );
+}
+
+#[test]
 fn document_runtime_projects_v2_blocks_without_ui_truth() {
     let runtime = DocumentRuntime::demo();
     let projection = runtime.projection();

@@ -90,6 +90,12 @@ impl DocumentRuntime {
         if loaded_payload_ids.len() != data.initial_payloads.len() {
             return Err("cold-start payload window contains duplicate block ids".to_owned());
         }
+        for payload in &data.initial_payloads {
+            payload
+                .payload
+                .validate_opaque_envelope_domain()
+                .map_err(|message| format!("cold-start block {}: {message}", payload.block_id))?;
+        }
         let unexpected_payload_ids = loaded_payload_ids
             .difference(&expected_payload_ids)
             .copied()
@@ -294,5 +300,32 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("unknown block id 2"));
+    }
+
+    #[test]
+    fn cold_start_rejects_an_opaque_payload_with_the_wrong_domain() {
+        let mut payload = cditor_core::fixtures::unknown::unknown_plugin_payload(1);
+        let BlockPayload::Opaque { envelope, .. } = &mut payload.payload else {
+            panic!("fixture must contain an opaque payload")
+        };
+        envelope.domain = cditor_core::schema::SchemaDomain::Clipboard;
+
+        let error = DocumentRuntime::from_cold_start_data(
+            DocumentRuntimeColdStartData {
+                document_id: 9,
+                document_title: "Broken".to_owned(),
+                structure_version: 1,
+                records: records(1),
+                block_attrs: Vec::new(),
+                initial_payloads: vec![payload],
+                initial_payload_window_end: 1,
+                index_source: DocumentRuntimeIndexSource::Blocks,
+                layout_cache_hits: 0,
+            },
+            720.0,
+        )
+        .unwrap_err();
+
+        assert!(error.contains(BlockPayload::INVALID_OPAQUE_DOMAIN));
     }
 }

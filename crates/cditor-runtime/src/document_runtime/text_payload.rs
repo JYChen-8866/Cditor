@@ -400,6 +400,9 @@ pub(super) fn split_payload_for_enter(
         BlockPayload::Collection(_) => {
             Err("Cannot split collection payload - Enter should insert paragraph after".to_owned())
         }
+        BlockPayload::Opaque { .. } => {
+            Err("Cannot split opaque payload - Enter should insert paragraph after".to_owned())
+        }
     }
 }
 

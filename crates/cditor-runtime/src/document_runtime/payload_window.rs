@@ -173,6 +173,20 @@ impl DocumentRuntime {
         PayloadWindowApplyDecision::Applied
     }
 
+    /// Clears terminal payload failures for the requested visible range so an
+    /// explicit user retry can start a fresh bounded retry cycle.
+    pub fn retry_failed_payload_window(&mut self, block_range: Range<usize>) -> usize {
+        let bounded_range = self.bounded_payload_window_range(block_range);
+        let mut reset_count = 0;
+        for block_id in self.payload_window_block_ids(&bounded_range) {
+            if self.payload_window.failed.remove(&block_id).is_some() {
+                reset_count += 1;
+            }
+            self.payload_window.failure_attempts.remove(&block_id);
+        }
+        reset_count
+    }
+
     fn bounded_payload_window_range(&self, block_range: Range<usize>) -> Range<usize> {
         block_range
             .start

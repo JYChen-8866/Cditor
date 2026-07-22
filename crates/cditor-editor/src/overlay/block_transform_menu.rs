@@ -8,7 +8,8 @@ use crate::app::CditorV2View;
 use crate::menu_metrics::SECONDARY_MENU_WIDTH_PX;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::{CalloutVariant, RichBlockKind};
+use cditor_core::rich_text::{RichBlockKind, kind_tag_for_rich_block_kind};
+use cditor_core::schema::{TransformMenuMetadata, builtin_block_registry};
 
 pub const BLOCK_TRANSFORM_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
 const BLOCK_TRANSFORM_MENU_HEIGHT_PX: f32 = 372.0;
@@ -21,25 +22,11 @@ const BLOCK_TRANSFORM_MENU_LEFT_OFFSET_PX: f32 = -(BLOCK_TRANSFORM_MENU_WIDTH_PX
     + PRIMARY_TOOLBAR_CONTENT_LEFT_PX
     + BLOCK_TRANSFORM_MENU_GAP_PX);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BlockTransformAction {
-    Text,
-    Heading1,
-    Heading2,
-    Heading3,
-    BulletedList,
-    NumberedList,
-    Todo,
-    Toggle,
-    Quote,
-    Callout,
-    CodeBlock,
-    MathBlock,
-    MermaidBlock,
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BlockTransformAction(u16);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct BlockTransformAvailability(u16);
+pub struct BlockTransformAvailability(u64);
 
 impl BlockTransformAvailability {
     pub fn from_enabled(actions: impl IntoIterator<Item = BlockTransformAction>) -> Self {
@@ -50,101 +37,55 @@ impl BlockTransformAvailability {
         availability
     }
 
-    pub const fn contains(self, action: BlockTransformAction) -> bool {
+    pub fn contains(self, action: BlockTransformAction) -> bool {
         self.0 & (1 << transform_action_index(action)) != 0
     }
 }
 
 impl BlockTransformAction {
-    pub const ALL: [Self; 13] = [
-        Self::Text,
-        Self::Heading1,
-        Self::Heading2,
-        Self::Heading3,
-        Self::BulletedList,
-        Self::NumberedList,
-        Self::Todo,
-        Self::Toggle,
-        Self::Quote,
-        Self::Callout,
-        Self::CodeBlock,
-        Self::MathBlock,
-        Self::MermaidBlock,
-    ];
+    pub const TEXT: Self = Self(1);
+    pub const HEADING_1: Self = Self(2);
+    pub const HEADING_2: Self = Self(26);
+    pub const HEADING_3: Self = Self(27);
+    pub const CODE_BLOCK: Self = Self(9);
+
+    pub fn all() -> Vec<Self> {
+        builtin_block_registry()
+            .transform_descriptors()
+            .into_iter()
+            .map(|descriptor| Self(descriptor.kind_tag))
+            .collect()
+    }
 
     pub fn from_kind(kind: &RichBlockKind) -> Option<Self> {
-        match kind {
-            RichBlockKind::Paragraph => Some(Self::Text),
-            RichBlockKind::Heading { level: 1 } => Some(Self::Heading1),
-            RichBlockKind::Heading { level: 2 } => Some(Self::Heading2),
-            RichBlockKind::Heading { .. } => Some(Self::Heading3),
-            RichBlockKind::BulletedList => Some(Self::BulletedList),
-            RichBlockKind::NumberedList => Some(Self::NumberedList),
-            RichBlockKind::Todo { .. } => Some(Self::Todo),
-            RichBlockKind::Toggle => Some(Self::Toggle),
-            RichBlockKind::Quote => Some(Self::Quote),
-            RichBlockKind::Callout { .. } => Some(Self::Callout),
-            RichBlockKind::Code { .. } => Some(Self::CodeBlock),
-            RichBlockKind::Math => Some(Self::MathBlock),
-            RichBlockKind::Mermaid => Some(Self::MermaidBlock),
-            _ => None,
-        }
+        builtin_block_registry()
+            .descriptor_for_kind(kind)
+            .menu
+            .transform
+            .map(|_| Self(kind_tag_for_rich_block_kind(kind)))
     }
 
     pub fn kind(self) -> RichBlockKind {
-        match self {
-            Self::Text => RichBlockKind::Paragraph,
-            Self::Heading1 => RichBlockKind::Heading { level: 1 },
-            Self::Heading2 => RichBlockKind::Heading { level: 2 },
-            Self::Heading3 => RichBlockKind::Heading { level: 3 },
-            Self::BulletedList => RichBlockKind::BulletedList,
-            Self::NumberedList => RichBlockKind::NumberedList,
-            Self::Todo => RichBlockKind::Todo { checked: false },
-            Self::Toggle => RichBlockKind::Toggle,
-            Self::Quote => RichBlockKind::Quote,
-            Self::Callout => RichBlockKind::Callout {
-                variant: CalloutVariant::Note,
-            },
-            Self::CodeBlock => RichBlockKind::Code { language: None },
-            Self::MathBlock => RichBlockKind::Math,
-            Self::MermaidBlock => RichBlockKind::Mermaid,
-        }
+        builtin_block_registry()
+            .descriptor_by_tag(self.0)
+            .default_kind
+            .clone()
     }
 
-    const fn icon(self) -> &'static str {
-        match self {
-            Self::Text => "T",
-            Self::Heading1 => "H1",
-            Self::Heading2 => "H2",
-            Self::Heading3 => "H3",
-            Self::BulletedList => "•",
-            Self::NumberedList => "1.",
-            Self::Todo => "☑",
-            Self::Toggle => "▸",
-            Self::Quote => "❝",
-            Self::Callout => "!",
-            Self::CodeBlock => "</>",
-            Self::MathBlock => "Σ",
-            Self::MermaidBlock => "◇",
-        }
+    fn metadata(self) -> TransformMenuMetadata {
+        builtin_block_registry()
+            .descriptor_by_tag(self.0)
+            .menu
+            .transform
+            .expect("transform action must reference registered metadata")
     }
 
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Text => "正文",
-            Self::Heading1 => "标题 1",
-            Self::Heading2 => "标题 2",
-            Self::Heading3 => "标题 3",
-            Self::BulletedList => "项目符号列表",
-            Self::NumberedList => "有序列表",
-            Self::Todo => "待办事项",
-            Self::Toggle => "折叠列表",
-            Self::Quote => "引用",
-            Self::Callout => "标注",
-            Self::CodeBlock => "代码块",
-            Self::MathBlock => "公式区块",
-            Self::MermaidBlock => "Mermaid 图表",
-        }
+    fn icon(self) -> &'static str {
+        self.metadata().icon
+    }
+
+    fn label(self) -> &'static str {
+        self.metadata().label
     }
 }
 
@@ -196,7 +137,7 @@ pub fn render_block_transform_menu(
         .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
             cx.stop_propagation();
         })
-        .children(BlockTransformAction::ALL.into_iter().map(|action| {
+        .children(BlockTransformAction::all().into_iter().map(|action| {
             let active = current == Some(action);
             let enabled = availability.contains(action);
             let row_view = view.clone();
@@ -229,7 +170,7 @@ pub fn render_block_transform_menu(
                 .child(
                     div()
                         .w(px(26.0))
-                        .text_size(px(if matches!(action, BlockTransformAction::CodeBlock) {
+                        .text_size(px(if action == BlockTransformAction::CODE_BLOCK {
                             10.0
                         } else {
                             12.0
@@ -246,22 +187,8 @@ pub fn render_block_transform_menu(
     menu.into_any_element()
 }
 
-const fn transform_action_index(action: BlockTransformAction) -> usize {
-    match action {
-        BlockTransformAction::Text => 0,
-        BlockTransformAction::Heading1 => 1,
-        BlockTransformAction::Heading2 => 2,
-        BlockTransformAction::Heading3 => 3,
-        BlockTransformAction::BulletedList => 4,
-        BlockTransformAction::NumberedList => 5,
-        BlockTransformAction::Todo => 6,
-        BlockTransformAction::Toggle => 7,
-        BlockTransformAction::Quote => 8,
-        BlockTransformAction::Callout => 9,
-        BlockTransformAction::CodeBlock => 10,
-        BlockTransformAction::MathBlock => 11,
-        BlockTransformAction::MermaidBlock => 12,
-    }
+fn transform_action_index(action: BlockTransformAction) -> usize {
+    usize::from(action.metadata().order)
 }
 
 #[cfg(test)]
@@ -270,7 +197,11 @@ mod tests {
 
     #[test]
     fn transform_actions_roundtrip_supported_block_kinds() {
-        for action in BlockTransformAction::ALL {
+        let actions = BlockTransformAction::all();
+        assert_eq!(actions.len(), 13);
+        assert_eq!(actions[0], BlockTransformAction::TEXT);
+        assert_eq!(actions[12].kind(), RichBlockKind::Mermaid);
+        for action in actions {
             assert_eq!(
                 BlockTransformAction::from_kind(&action.kind()),
                 Some(action)
@@ -281,13 +212,13 @@ mod tests {
     #[test]
     fn transform_availability_tracks_each_action_independently() {
         let availability = BlockTransformAvailability::from_enabled([
-            BlockTransformAction::Text,
-            BlockTransformAction::CodeBlock,
+            BlockTransformAction::TEXT,
+            BlockTransformAction::CODE_BLOCK,
         ]);
 
-        assert!(availability.contains(BlockTransformAction::Text));
-        assert!(availability.contains(BlockTransformAction::CodeBlock));
-        assert!(!availability.contains(BlockTransformAction::Heading1));
+        assert!(availability.contains(BlockTransformAction::TEXT));
+        assert!(availability.contains(BlockTransformAction::CODE_BLOCK));
+        assert!(!availability.contains(BlockTransformAction::HEADING_1));
         assert_eq!(
             BlockTransformAvailability::default(),
             BlockTransformAvailability(0)

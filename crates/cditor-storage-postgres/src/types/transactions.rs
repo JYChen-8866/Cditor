@@ -482,8 +482,10 @@ impl From<&TableEditOperation> for DbTableEditOperation {
             } => Self::MergeCells {
                 block_id: *block_id,
                 range: DbTableRange::from(*range),
-                before: DbBlockPayload::from(&BlockPayload::Table(before.clone())),
-                after: DbBlockPayload::from(&BlockPayload::Table(after.clone())),
+                before: DbBlockPayload::try_from(&BlockPayload::Table(before.clone()))
+                    .expect("table payload is a known database payload"),
+                after: DbBlockPayload::try_from(&BlockPayload::Table(after.clone()))
+                    .expect("table payload is a known database payload"),
             },
             TableEditOperation::SplitCell {
                 block_id,
@@ -495,8 +497,10 @@ impl From<&TableEditOperation> for DbTableEditOperation {
                 block_id: *block_id,
                 row: *row,
                 col: *col,
-                before: DbBlockPayload::from(&BlockPayload::Table(before.clone())),
-                after: DbBlockPayload::from(&BlockPayload::Table(after.clone())),
+                before: DbBlockPayload::try_from(&BlockPayload::Table(before.clone()))
+                    .expect("table payload is a known database payload"),
+                after: DbBlockPayload::try_from(&BlockPayload::Table(after.clone()))
+                    .expect("table payload is a known database payload"),
             },
             TableEditOperation::SetCellAlign {
                 block_id,

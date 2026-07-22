@@ -3,6 +3,7 @@ pub mod demo_seed;
 pub mod error;
 pub mod migrations;
 pub mod pool;
+mod provider;
 pub mod queue;
 pub mod runtime;
 pub mod stores;
@@ -16,6 +17,7 @@ pub use demo_seed::{LargeDemoSeedOptions, LargeDemoSeedReport, ensure_large_mixe
 pub use error::{PostgresStorageError, PostgresStorageResult};
 pub use migrations::{INITIAL_SCHEMA_MIGRATION, INITIAL_SCHEMA_VERSION, run_migrations};
 pub use pool::{PostgresPoolConfig, create_pg_pool, health_check};
+pub use provider::PostgresStorageProvider;
 pub use queue::persistence::{
     PersistenceQueueRow, PersistenceQueueState, PersistenceQueueTask, PersistenceTaskKind,
     PersistenceWorkerCommand, PostgresPersistenceQueue, WorkerProcessReport,

@@ -268,12 +268,16 @@ impl DocumentRuntime {
         } else {
             ScrollDirection::Still
         };
+        let scroll_delta = self.scroll.global_scroll_top - self.last_planned_scroll_top;
+        let velocity_viewports_per_second = scroll_delta / viewport_height / 0.016;
         self.last_planned_scroll_top = self.scroll.global_scroll_top;
         self.window_plan_clock_ms = self.window_plan_clock_ms.saturating_add(16);
         let decision = self.window_planner.plan_commit(WindowPlanRequest {
             target_page: target.page_index,
             page_count,
             scroll_direction: direction,
+            velocity_viewports_per_second,
+            memory_pressure: self.window_memory_pressure,
             position_in_page_viewports,
             pinned_pages: self.pinned_pages_for_window_plan(),
             now_ms: self.window_plan_clock_ms,
@@ -282,6 +286,10 @@ impl DocumentRuntime {
             WindowPlanDecision::Keep { page_range, .. }
             | WindowPlanDecision::Commit { page_range } => page_range,
         }
+    }
+
+    pub fn set_window_memory_pressure(&mut self, pressure: WindowMemoryPressure) {
+        self.window_memory_pressure = pressure;
     }
 
     fn pinned_pages_for_window_plan(&self) -> BTreeSet<usize> {
@@ -398,5 +406,40 @@ mod tests {
 
         assert!(!runtime.focus_or_create_down_placer_paragraph().unwrap());
         assert_eq!(runtime.visible_index.total_visible_count(), 2);
+    }
+
+    #[test]
+    fn runtime_window_plan_uses_scroll_velocity_and_memory_pressure() {
+        let payloads = (1..=3_500)
+            .map(|block_id| {
+                BlockPayloadRecord::rich_text(block_id, RichBlockKind::Paragraph, "line")
+            })
+            .collect::<Vec<_>>();
+        let mut runtime = DocumentRuntime::from_payloads(1, payloads, 240.0);
+        runtime
+            .scroll
+            .scroll_to_global_offset(
+                runtime.height_index.offset_of_block(2_000).unwrap(),
+                ScrollOrigin::UserWheel,
+            )
+            .unwrap();
+
+        let normal = runtime.current_page_window_planned();
+        assert!(normal.len() > 1);
+        assert!(
+            runtime
+                .window_planner
+                .debug_overlay()
+                .last_velocity_viewports_per_second
+                > 0.0
+        );
+
+        runtime.set_window_memory_pressure(WindowMemoryPressure::Critical);
+        let critical = runtime.current_page_window_planned();
+        assert_eq!(critical.len(), 1);
+        assert_eq!(
+            runtime.window_planner.debug_overlay().last_memory_pressure,
+            WindowMemoryPressure::Critical
+        );
     }
 }

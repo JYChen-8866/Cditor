@@ -17,7 +17,10 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub use envelope::{DecodeOutcome, EnvelopeError, VersionedEnvelope};
-pub use registry::{BlockCapabilities, BlockDescriptor, BlockRegistry, PayloadMigrator};
+pub use registry::{
+    BlockCapabilities, BlockDescriptor, BlockMenuMetadata, BlockRegistry, PayloadMigrator,
+    SlashMenuMetadata, TransformMenuMetadata, builtin_block_registry,
+};
 
 /// `major.minor` schema 版本。major 破坏性、minor 向后兼容新增。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

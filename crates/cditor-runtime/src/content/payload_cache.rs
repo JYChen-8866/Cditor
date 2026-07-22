@@ -51,6 +51,16 @@ pub(crate) fn estimated_payload_record_bytes(record: &BlockPayloadRecord) -> usi
         .saturating_add(estimated_runtime_mirror_bytes(&record.payload))
 }
 
+pub(crate) fn estimated_owned_block_payload_bytes(
+    kind: &RichBlockKind,
+    payload: &BlockPayload,
+) -> usize {
+    size_of::<RichBlockKind>()
+        .saturating_add(size_of::<BlockPayload>())
+        .saturating_add(estimated_kind_heap_bytes(kind))
+        .saturating_add(estimated_payload_heap_bytes(payload))
+}
+
 fn estimated_kind_heap_bytes(kind: &RichBlockKind) -> usize {
     match kind {
         RichBlockKind::Code {
@@ -105,6 +115,13 @@ fn estimated_payload_heap_bytes(payload: &BlockPayload) -> usize {
         BlockPayload::Whiteboard(whiteboard) => whiteboard.scene_json.capacity(),
         BlockPayload::Embed(embed) => embed.url.capacity().saturating_add(embed.title.capacity()),
         BlockPayload::Html { html, .. } => html.capacity(),
+        BlockPayload::Opaque {
+            envelope,
+            plain_text_fallback,
+        } => envelope
+            .body_bytes()
+            .len()
+            .saturating_add(plain_text_fallback.capacity()),
         BlockPayload::Empty => 0,
     }
 }

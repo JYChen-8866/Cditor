@@ -1,13 +1,12 @@
 use std::{fmt, sync::Arc, time::Duration};
 
-use gpui::AppContext;
+use gpui::App;
 
 use cditor_core::ids::DocumentId;
 
-use super::cold_start::CditorColdStartPlan;
 use super::component::CditorComponent;
 use super::error::CditorError;
-use super::options::{CditorBackend, CditorOptions, SqliteStorageOptions, WorkspaceId};
+use super::options::{CditorBackend, CditorOptions, WorkspaceId};
 
 #[derive(Clone)]
 pub struct Cditor {
@@ -81,26 +80,22 @@ impl Cditor {
         self
     }
 
-    pub fn with_postgres_url(mut self, url: impl Into<String>) -> Self {
-        self.options.backend = CditorBackend::PostgresUrl { url: url.into() };
+    pub fn with_storage_provider(
+        mut self,
+        provider: std::sync::Arc<dyn cditor_storage::StorageProvider>,
+    ) -> Self {
+        self.options.backend = CditorBackend::Persistent { provider };
         self
     }
 
-    pub fn with_postgres_pool(mut self, pool: sqlx::PgPool) -> Self {
-        self.options.backend = CditorBackend::PostgresPool { pool };
-        self
-    }
-
-    pub fn with_sqlite_path(mut self, path: impl Into<std::path::PathBuf>) -> Self {
-        self.options.backend = CditorBackend::Sqlite {
-            options: SqliteStorageOptions::file(path),
-        };
-        self
-    }
-
-    pub fn with_sqlite_options(mut self, options: SqliteStorageOptions) -> Self {
-        self.options.backend = CditorBackend::Sqlite { options };
-        self
+    pub fn with_storage(
+        self,
+        storage: std::sync::Arc<dyn cditor_storage::DocumentStorage>,
+        label: impl Into<String>,
+    ) -> Self {
+        self.with_storage_provider(std::sync::Arc::new(
+            cditor_storage::StaticStorageProvider::new(label, storage),
+        ))
     }
 
     pub fn with_cloud_endpoint(mut self, endpoint: impl Into<String>) -> Self {
@@ -152,31 +147,29 @@ impl Cditor {
         self
     }
 
-    pub fn with_postgres_large_demo_seed(mut self, block_count: usize, force: bool) -> Self {
-        self.options.seed_large_demo_to_postgres = true;
-        self.options.seed_large_demo_block_count = block_count.max(1);
-        self.options.force_reseed_large_demo = force;
-        self
-    }
-
     pub fn options(&self) -> &CditorOptions {
         &self.options
+    }
+
+    pub fn ai_provider(&self) -> Option<Arc<dyn cditor_ai::AiProvider>> {
+        self.ai_provider.clone()
+    }
+
+    pub const fn ai_enabled(&self) -> bool {
+        self.ai_enabled
     }
 
     pub fn into_options(self) -> CditorOptions {
         self.options
     }
 
-    /// Builds the preferred SDK component pair.
-    pub fn build<C: AppContext>(self, _cx: &mut C) -> Result<CditorComponent, CditorError> {
-        if let CditorColdStartPlan::Invalid { reason } =
-            CditorColdStartPlan::from_options(&self.options)
-        {
-            return Err(CditorError::InvalidInput(reason));
-        }
-        Err(CditorError::Unsupported(
-            "construct Cditor through the cditor-app composition API".to_owned(),
-        ))
+    /// Builds a typed component through the host application's composition factory.
+    pub fn build_with<F: crate::CditorViewFactory>(
+        self,
+        factory: &F,
+        cx: &mut App,
+    ) -> Result<CditorComponent<F::View>, CditorError> {
+        factory.build_component(self, cx)
     }
 }
 
@@ -199,49 +192,40 @@ mod tests {
 
     #[test]
     fn cditor_builder_sets_document_backend_and_debug_options() {
+        struct TestProvider;
+        #[async_trait::async_trait]
+        impl cditor_storage::StorageProvider for TestProvider {
+            fn label(&self) -> &str {
+                "test"
+            }
+
+            async fn open(
+                &self,
+            ) -> cditor_storage::StorageResult<Arc<dyn cditor_storage::DocumentStorage>>
+            {
+                Err(cditor_storage::StorageError::InvalidConfiguration(
+                    "not opened by builder test".to_owned(),
+                ))
+            }
+        }
+        let provider: Arc<dyn cditor_storage::StorageProvider> = Arc::new(TestProvider);
         let cditor = Cditor::new()
             .with_workspace_id(7)
             .with_document_id(42)
-            .with_postgres_url("postgres://localhost/cditor")
+            .with_storage_provider(provider.clone())
             .with_debug_overlay(true)
             .with_readonly(true)
             .with_payload_window_size(0);
 
         assert_eq!(cditor.options().workspace_id, Some(7));
         assert_eq!(cditor.options().document_id, Some(42));
-        assert_eq!(
-            cditor.options().backend,
-            CditorBackend::PostgresUrl {
-                url: "postgres://localhost/cditor".to_owned()
-            }
-        );
+        assert!(matches!(
+            &cditor.options().backend,
+            CditorBackend::Persistent { provider: configured } if Arc::ptr_eq(configured, &provider)
+        ));
         assert!(cditor.options().debug_overlay);
         assert!(cditor.options().readonly);
         assert_eq!(cditor.options().payload_window_size, 1);
-        assert!(!cditor.options().seed_large_demo_to_postgres);
-    }
-
-    #[test]
-    fn cditor_builder_enables_postgres_large_demo_seed() {
-        let cditor = Cditor::new().with_postgres_large_demo_seed(0, true);
-
-        assert!(cditor.options().seed_large_demo_to_postgres);
-        assert_eq!(cditor.options().seed_large_demo_block_count, 1);
-        assert!(cditor.options().force_reseed_large_demo);
-    }
-
-    #[test]
-    fn cditor_builder_sets_sqlite_backend_options() {
-        let cditor = Cditor::new()
-            .with_document_id(42)
-            .with_sqlite_path("workspace.cditor.db");
-
-        assert_eq!(
-            cditor.options().backend,
-            CditorBackend::Sqlite {
-                options: SqliteStorageOptions::file("workspace.cditor.db")
-            }
-        );
     }
 
     #[test]

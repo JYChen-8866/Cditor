@@ -1,11 +1,16 @@
 use cditor_core::document::BlockIndexRecord;
 use cditor_core::edit::{EditTransaction, EditTransactionKind};
+use cditor_core::fixtures::unknown::{
+    UNKNOWN_PLUGIN_BODY, UNKNOWN_PLUGIN_FALLBACK, assert_unknown_plugin_bytes,
+    unknown_plugin_payload,
+};
 use cditor_core::layout::{
     HeightConfidence, PAGE_POLICY_VERSION, PageLayout, PageLayoutIndex, PagePolicy,
 };
 use cditor_core::rich_text::{
-    BlockAttrs, BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind,
+    BlockAttrs, BlockPayload, BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind,
 };
+use cditor_core::schema::SchemaDomain;
 use cditor_storage::layout_cache::LayoutCacheKey;
 use cditor_storage::{
     DOCUMENT_INDEX_VISIBLE_VERSION, DocumentStorage, LoadDocumentRequest,
@@ -148,6 +153,90 @@ async fn sqlite_document_round_trips_across_reopen() {
     let loaded = reopened.load_document(request(42)).await.unwrap();
     assert_eq!(loaded.initial_payloads[0].plain_text(), "saved in sqlite");
     assert_eq!(loaded.initial_payloads[0].content_version, 2);
+}
+
+#[tokio::test]
+async fn sqlite_round_trips_unknown_plugin_payload_without_normalizing_raw_bytes() {
+    let temp = TempDir::new().unwrap();
+    let storage = open(&temp).await;
+    let loaded = storage.load_document(request(43)).await.unwrap();
+    let block_id = loaded.records[0].id;
+    let mut opaque = unknown_plugin_payload(block_id);
+    opaque.content_version = 2;
+
+    storage
+        .commit(StorageSaveBatch {
+            document_id: 43,
+            layout_key: None,
+            payloads: vec![opaque],
+            index_records: Vec::new(),
+            structure_version: loaded.metadata.structure_version,
+            transactions: Vec::new(),
+            block_attrs: Vec::new(),
+            page_layout_snapshot: None,
+        })
+        .await
+        .unwrap();
+    let stored_json: String =
+        sqlx::query_scalar("SELECT payload_json FROM block_payloads WHERE plain_text = ?")
+            .bind(UNKNOWN_PLUGIN_FALLBACK)
+            .fetch_one(storage.pool())
+            .await
+            .unwrap();
+    assert!(stored_json.contains(UNKNOWN_PLUGIN_BODY));
+    storage.flush().await.unwrap();
+    storage.pool().close().await;
+
+    let reopened = open(&temp).await;
+    let loaded = reopened.load_document(request(43)).await.unwrap();
+    assert_unknown_plugin_bytes(&loaded.initial_payloads[0]);
+    let rewritten = serde_json::to_string(&loaded.initial_payloads[0].payload).unwrap();
+    assert!(rewritten.contains(UNKNOWN_PLUGIN_BODY));
+}
+
+#[tokio::test]
+async fn sqlite_rejects_an_opaque_payload_with_the_wrong_domain_on_write_and_read() {
+    let temp = TempDir::new().unwrap();
+    let storage = open(&temp).await;
+    let loaded = storage.load_document(request(44)).await.unwrap();
+    let block_id = loaded.records[0].id;
+    let mut invalid = unknown_plugin_payload(block_id);
+    let BlockPayload::Opaque { envelope, .. } = &mut invalid.payload else {
+        panic!("fixture must contain an opaque payload")
+    };
+    envelope.domain = SchemaDomain::Clipboard;
+
+    let write_error = storage
+        .commit(StorageSaveBatch {
+            document_id: 44,
+            layout_key: None,
+            payloads: vec![invalid.clone()],
+            index_records: Vec::new(),
+            structure_version: loaded.metadata.structure_version,
+            transactions: Vec::new(),
+            block_attrs: Vec::new(),
+            page_layout_snapshot: None,
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        write_error
+            .to_string()
+            .contains(BlockPayload::INVALID_OPAQUE_DOMAIN)
+    );
+
+    let invalid_json = serde_json::to_string(&invalid.payload).unwrap();
+    sqlx::query("UPDATE block_payloads SET payload_json = ?")
+        .bind(invalid_json)
+        .execute(storage.pool())
+        .await
+        .unwrap();
+    let read_error = storage.load_document(request(44)).await.unwrap_err();
+    assert!(
+        read_error
+            .to_string()
+            .contains(BlockPayload::INVALID_OPAQUE_DOMAIN)
+    );
 }
 
 #[tokio::test]

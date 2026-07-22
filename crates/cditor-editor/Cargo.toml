@@ -12,9 +12,10 @@ runtime-shaders = ["gpui_platform/runtime_shaders"]
 
 [dev-dependencies]
 async-trait = "0.1"
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [dependencies]
-cditor-ai = { path = "../cditor-ai" }
+cditor-ai = { path = "../cditor-ai", features = ["openai"] }
 cditor-api = { path = "../cditor-api" }
 cditor-core = { path = "../cditor-core" }
 cditor-import-export = { path = "../cditor-import-export" }

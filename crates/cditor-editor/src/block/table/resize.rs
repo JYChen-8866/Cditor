@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
@@ -13,6 +15,67 @@ use super::style::{TABLE_RESIZE_HANDLE_LINE_THICKNESS_PX, TABLE_RESIZE_HANDLE_TH
 use super::toolbar::TableToolbarEditorOrigin;
 
 pub(crate) type TableResizePreview = (BlockId, TableAxis, usize, f32);
+
+pub(crate) fn table_view_with_resize_preview<'a>(
+    block_id: BlockId,
+    table_view: &'a TableViewState,
+    preview: Option<TableResizePreview>,
+) -> Cow<'a, TableViewState> {
+    let Some((preview_block_id, axis, index, size_px)) = preview else {
+        return Cow::Borrowed(table_view);
+    };
+    if preview_block_id != block_id {
+        return Cow::Borrowed(table_view);
+    }
+
+    let track_sizes = match axis {
+        TableAxis::Column => &table_view.column_widths_px,
+        TableAxis::Row => &table_view.row_heights_px,
+    };
+    if index >= track_sizes.len() {
+        return Cow::Borrowed(table_view);
+    }
+
+    let mut preview_view = table_view.clone();
+    match axis {
+        TableAxis::Column => preview_view.column_widths_px[index] = size_px.max(0.0),
+        TableAxis::Row => preview_view.row_heights_px[index] = size_px.max(0.0),
+    }
+    preview_view.width_px = preview_view.column_widths_px.iter().sum();
+    preview_view.height_px = preview_view.row_heights_px.iter().sum();
+
+    let x_offsets = prefix_offsets(&preview_view.column_widths_px);
+    let y_offsets = prefix_offsets(&preview_view.row_heights_px);
+    for cell in &mut preview_view.visible_cells {
+        let row = cell.position.row;
+        let col = cell.position.col;
+        cell.x_px = x_offsets.get(col).copied().unwrap_or(cell.x_px);
+        cell.y_px = y_offsets.get(row).copied().unwrap_or(cell.y_px);
+        cell.width_px = span_size(&preview_view.column_widths_px, col, cell.col_span);
+        cell.height_px = span_size(&preview_view.row_heights_px, row, cell.row_span);
+    }
+    Cow::Owned(preview_view)
+}
+
+fn prefix_offsets(track_sizes: &[f32]) -> Vec<f32> {
+    let mut offset = 0.0;
+    track_sizes
+        .iter()
+        .map(|size| {
+            let current = offset;
+            offset += size;
+            current
+        })
+        .collect()
+}
+
+fn span_size(track_sizes: &[f32], start: usize, span: usize) -> f32 {
+    track_sizes
+        .get(start..start.saturating_add(span))
+        .unwrap_or_default()
+        .iter()
+        .sum()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct TableResizeTrack {
@@ -276,6 +339,74 @@ mod tests {
             table_resize_indicator_edge_px(&table_view, TableAxis::Row, 1, 48.0).unwrap(),
             84.0
         );
+    }
+
+    #[test]
+    fn column_resize_preview_reflows_table_and_following_cells() {
+        let table_view = table_view_with_two_by_two_cells();
+
+        let preview =
+            table_view_with_resize_preview(7, &table_view, Some((7, TableAxis::Column, 0, 180.0)));
+
+        assert_eq!(preview.column_widths_px, vec![180.0, 120.0]);
+        assert_eq!(preview.width_px, 300.0);
+        assert_eq!(preview.visible_cells[0].width_px, 180.0);
+        assert_eq!(preview.visible_cells[1].x_px, 180.0);
+        assert_eq!(table_view.width_px, 240.0, "preview must stay UI-transient");
+    }
+
+    #[test]
+    fn row_resize_preview_reflows_table_and_following_cells() {
+        let table_view = table_view_with_two_by_two_cells();
+
+        let preview =
+            table_view_with_resize_preview(7, &table_view, Some((7, TableAxis::Row, 0, 52.0)));
+
+        assert_eq!(preview.row_heights_px, vec![52.0, 36.0]);
+        assert_eq!(preview.height_px, 88.0);
+        assert_eq!(preview.visible_cells[0].height_px, 52.0);
+        assert_eq!(preview.visible_cells[2].y_px, 52.0);
+    }
+
+    #[test]
+    fn resize_preview_recomputes_merged_cell_spans() {
+        let mut table_view = table_view_with_two_by_two_cells();
+        table_view.visible_cells = vec![TableVisibleCell {
+            position: TableCellPosition { row: 0, col: 0 },
+            row_span: 2,
+            col_span: 2,
+            x_px: 0.0,
+            y_px: 0.0,
+            width_px: 240.0,
+            height_px: 72.0,
+            header: false,
+            spans: Vec::new(),
+            align: cditor_core::rich_text::TableCellAlign::Left,
+            background_color: None,
+        }];
+
+        let column_preview =
+            table_view_with_resize_preview(7, &table_view, Some((7, TableAxis::Column, 1, 160.0)));
+        assert_eq!(column_preview.visible_cells[0].width_px, 280.0);
+
+        let row_preview =
+            table_view_with_resize_preview(7, &table_view, Some((7, TableAxis::Row, 1, 48.0)));
+        assert_eq!(row_preview.visible_cells[0].height_px, 84.0);
+    }
+
+    #[test]
+    fn unrelated_or_invalid_resize_preview_reuses_projection() {
+        let table_view = table_view_with_two_by_two_cells();
+
+        let unrelated =
+            table_view_with_resize_preview(7, &table_view, Some((8, TableAxis::Column, 0, 180.0)));
+        let invalid =
+            table_view_with_resize_preview(7, &table_view, Some((7, TableAxis::Column, 9, 180.0)));
+
+        assert!(matches!(unrelated, Cow::Borrowed(_)));
+        assert!(matches!(invalid, Cow::Borrowed(_)));
+        assert_eq!(unrelated.as_ref(), &table_view);
+        assert_eq!(invalid.as_ref(), &table_view);
     }
 
     #[test]

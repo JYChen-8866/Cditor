@@ -22,10 +22,10 @@ impl DocumentRuntime {
         let Some(block_id) = self.focused_block_id() else {
             return false;
         };
-        matches!(
-            cditor_core::block::BlockInputCapability::for_kind(&self.kind_for_block(block_id)),
-            cditor_core::block::BlockInputCapability::Text(_)
-        )
+        cditor_core::schema::builtin_block_registry()
+            .descriptor_for_kind(&self.kind_for_block(block_id))
+            .capabilities
+            .text_surface
     }
 
     /// A conversion is offered only when the source payload has a defined,
@@ -36,6 +36,13 @@ impl DocumentRuntime {
             return false;
         };
         if &record.kind == target {
+            return false;
+        }
+        if !cditor_core::schema::builtin_block_registry()
+            .descriptor_for_kind(target)
+            .menu
+            .create_from_text
+        {
             return false;
         }
         matches!(
@@ -55,7 +62,11 @@ impl DocumentRuntime {
     /// the complete contents of `block_id` from a block action menu.
     pub fn supports_block_rich_text_actions(&self, block_id: BlockId) -> bool {
         self.payload_window.get(block_id).is_some_and(|record| {
-            matches!(&record.payload, BlockPayload::RichText { .. })
+            cditor_core::schema::builtin_block_registry()
+                .descriptor_for_kind(&record.kind)
+                .capabilities
+                .inline_marks
+                && matches!(&record.payload, BlockPayload::RichText { .. })
                 && !record.plain_text().is_empty()
         })
     }

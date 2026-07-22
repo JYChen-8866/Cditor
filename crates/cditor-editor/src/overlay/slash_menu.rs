@@ -1,5 +1,6 @@
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::{CalloutVariant, RichBlockKind};
+use cditor_core::rich_text::RichBlockKind;
+use cditor_core::schema::builtin_block_registry;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled,
     deferred, div, px, rgb,
@@ -112,182 +113,31 @@ impl SlashMenuState {
 }
 
 pub fn slash_menu_items() -> Vec<SlashMenuItem> {
-    vec![
-        SlashMenuItem {
-            icon: "AI",
-            label: "Ask AI",
-            description: "Write, improve, translate, or transform text.",
-            keywords: &["ai", "write", "rewrite", "translate"],
-            kind: RichBlockKind::Paragraph,
-            command: Some(SlashMenuCommand::AskAi),
-        },
-        item(
-            "T",
-            "Text",
-            "Just start writing with plain text.",
-            &["paragraph", "text"],
-            RichBlockKind::Paragraph,
-        ),
-        item(
-            "H1",
-            "Heading 1",
-            "Big section heading.",
-            &["h1", "heading"],
-            RichBlockKind::Heading { level: 1 },
-        ),
-        item(
-            "H2",
-            "Heading 2",
-            "Medium section heading.",
-            &["h2", "heading"],
-            RichBlockKind::Heading { level: 2 },
-        ),
-        item(
-            "H3",
-            "Heading 3",
-            "Small section heading.",
-            &["h3", "heading"],
-            RichBlockKind::Heading { level: 3 },
-        ),
-        item(
-            "[]",
-            "Todo",
-            "Track a task with a checkbox.",
-            &["task", "checkbox"],
-            RichBlockKind::Todo { checked: false },
-        ),
-        item(
-            "*",
-            "Bulleted list",
-            "Create a simple bulleted list.",
-            &["bullet", "ul", "list"],
-            RichBlockKind::BulletedList,
-        ),
-        item(
-            "1.",
-            "Numbered list",
-            "Create a list with numbering.",
-            &["number", "ol", "list"],
-            RichBlockKind::NumberedList,
-        ),
-        item(
-            ">",
-            "Toggle",
-            "Hide content inside a toggle.",
-            &["details"],
-            RichBlockKind::Toggle,
-        ),
-        item(
-            "\"",
-            "Quote",
-            "Capture a quote.",
-            &["blockquote"],
-            RichBlockKind::Quote,
-        ),
-        item(
-            "!",
-            "Callout",
-            "Make writing stand out.",
-            &["note"],
-            RichBlockKind::Callout {
-                variant: CalloutVariant::Note,
-            },
-        ),
-        item(
-            "</>",
-            "Code",
-            "Capture a code snippet.",
-            &["code block"],
-            RichBlockKind::Code { language: None },
-        ),
-        item(
-            "fx",
-            "Math",
-            "Write a block equation.",
-            &["equation"],
-            RichBlockKind::Math,
-        ),
-        item(
-            "M",
-            "Mermaid",
-            "Create a Mermaid diagram.",
-            &["diagram"],
-            RichBlockKind::Mermaid,
-        ),
-        item(
-            "<>",
-            "HTML",
-            "Embed an HTML snippet.",
-            &["html"],
-            RichBlockKind::Html,
-        ),
-        item(
-            "#",
-            "Table",
-            "Add a simple table.",
-            &["grid"],
-            RichBlockKind::Table,
-        ),
-        item(
-            "WB",
-            "Whiteboard",
-            "Sketch and arrange ideas on a canvas.",
-            &["board", "canvas", "draw", "diagram", "白板"],
-            RichBlockKind::Whiteboard,
-        ),
-        item(
-            "---",
-            "Divider",
-            "Visually divide blocks.",
-            &["hr", "line"],
-            RichBlockKind::Divider,
-        ),
-        item(
-            "|",
-            "Separator",
-            "Add a section separator.",
-            &["separator"],
-            RichBlockKind::Separator,
-        ),
-        item(
-            "fn",
-            "Footnote",
-            "Add a footnote definition.",
-            &["footnote"],
-            RichBlockKind::FootnoteDefinition,
-        ),
-        item(
-            "//",
-            "Comment",
-            "Add a comment block.",
-            &["comment"],
-            RichBlockKind::Comment,
-        ),
-        item(
-            "MD",
-            "Raw Markdown",
-            "Keep text as raw Markdown.",
-            &["markdown", "md"],
-            RichBlockKind::RawMarkdown,
-        ),
-    ]
-}
-
-fn item(
-    icon: &'static str,
-    label: &'static str,
-    description: &'static str,
-    keywords: &'static [&'static str],
-    kind: RichBlockKind,
-) -> SlashMenuItem {
-    SlashMenuItem {
-        icon,
-        label,
-        description,
-        keywords,
-        kind,
-        command: None,
-    }
+    let mut items = vec![SlashMenuItem {
+        icon: "AI",
+        label: "Ask AI",
+        description: "Write, improve, translate, or transform text.",
+        keywords: &["ai", "write", "rewrite", "translate"],
+        kind: RichBlockKind::Paragraph,
+        command: Some(SlashMenuCommand::AskAi),
+    }];
+    items.extend(
+        builtin_block_registry()
+            .slash_descriptors()
+            .into_iter()
+            .map(|descriptor| {
+                let metadata = descriptor.menu.slash.expect("slash descriptor metadata");
+                SlashMenuItem {
+                    icon: metadata.icon,
+                    label: metadata.label,
+                    description: metadata.description,
+                    keywords: metadata.keywords,
+                    kind: descriptor.default_kind.clone(),
+                    command: None,
+                }
+            }),
+    );
+    items
 }
 
 fn slash_item_matches(item: &SlashMenuItem, query: &str) -> bool {
@@ -608,6 +458,10 @@ mod tests {
     #[test]
     fn slash_menu_contains_supported_block_kinds() {
         let items = slash_menu_items();
+        assert_eq!(items.len(), 22, "Ask AI plus 21 registry block entries");
+        assert_eq!(items[0].command, Some(SlashMenuCommand::AskAi));
+        assert_eq!(items[1].kind, RichBlockKind::Paragraph);
+        assert_eq!(items[21].kind, RichBlockKind::RawMarkdown);
         assert!(
             items
                 .iter()

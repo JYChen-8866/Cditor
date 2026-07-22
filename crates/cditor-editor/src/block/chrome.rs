@@ -10,12 +10,21 @@ pub const BLOCK_INDENT_STEP_PX: f32 = 24.0;
 pub const BLOCK_GUTTER_WIDTH_PX: f32 = 48.0;
 pub const BLOCK_GUTTER_HEIGHT_PX: f32 = 24.0;
 pub const BLOCK_SHELL_OUTER_PADDING_X_PX: f32 = 8.0;
+pub const BLOCK_SHELL_OUTER_PADDING_Y_PX: f32 = 4.0;
 pub const BLOCK_ROW_GAP_PX: f32 = 8.0;
 pub const BLOCK_SHELL_BORDER_WIDTH_PX: f32 = 1.0;
 pub const BLOCK_CONTENT_BORDER_WIDTH_PX: f32 = 1.0;
 
 pub const fn block_content_left_px(indent_px: f32) -> f32 {
     BLOCK_SHELL_OUTER_PADDING_X_PX + indent_px + BLOCK_GUTTER_WIDTH_PX + BLOCK_ROW_GAP_PX
+}
+
+pub const fn block_gutter_left_px(indent_px: f32) -> f32 {
+    BLOCK_SHELL_BORDER_WIDTH_PX + BLOCK_SHELL_OUTER_PADDING_X_PX + indent_px
+}
+
+pub const fn block_gutter_top_px() -> f32 {
+    BLOCK_SHELL_BORDER_WIDTH_PX + BLOCK_SHELL_OUTER_PADDING_Y_PX
 }
 pub const BLOCK_PREFIX_WIDTH_PX: f32 = 24.0;
 pub const CALLOUT_PREFIX_WIDTH_PX: f32 = 32.0;

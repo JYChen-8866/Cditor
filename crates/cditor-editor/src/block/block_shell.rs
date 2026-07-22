@@ -6,7 +6,7 @@ use gpui::{
 
 use crate::block::chrome::{
     BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX,
-    BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
+    BLOCK_SHELL_OUTER_PADDING_X_PX, BLOCK_SHELL_OUTER_PADDING_Y_PX, BlockChromeStyle,
 };
 use crate::block::gutter::{GutterAddHandler, GutterMouseDownHandler, render_block_gutter};
 use crate::block::prefix::{
@@ -86,7 +86,7 @@ pub fn block_shell(
         .bg(rgb(outer_background))
         .text_color(rgb(chrome.text_color))
         .px(px(BLOCK_SHELL_OUTER_PADDING_X_PX))
-        .py(px(4.0))
+        .py(px(BLOCK_SHELL_OUTER_PADDING_Y_PX))
         .on_mouse_down(MouseButton::Left, on_mouse_down)
         .when_some(on_mouse_move, |this, handler| this.on_mouse_move(handler))
         .child(

@@ -1,6 +1,5 @@
 pub mod builder;
 pub mod cditor;
-pub mod cold_start;
 pub mod command;
 pub mod component;
 pub mod diagnostics;
@@ -11,9 +10,11 @@ pub mod handle;
 pub mod import_export;
 pub mod options;
 pub mod providers;
+pub mod view_contract;
 
 pub use cditor::Cditor;
 pub use component::CditorComponent;
 pub use error::CditorError;
 pub use handle::CditorHandle;
 pub use options::CditorOptions;
+pub use view_contract::{CditorViewContract, CditorViewFactory};

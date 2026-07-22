@@ -8,12 +8,22 @@ pub enum ScrollDirection {
     Still,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WindowMemoryPressure {
+    #[default]
+    Normal,
+    Warning,
+    Critical,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WindowPlannerPolicy {
     pub enter_threshold_viewports: f64,
     pub exit_threshold_viewports: f64,
     pub min_stable_frames_before_trim: u32,
     pub min_ms_between_window_commits: u64,
+    pub velocity_page_threshold_viewports_per_second: f64,
+    pub max_velocity_prefetch_pages: usize,
 }
 
 impl Default for WindowPlannerPolicy {
@@ -23,6 +33,8 @@ impl Default for WindowPlannerPolicy {
             exit_threshold_viewports: 1.0,
             min_stable_frames_before_trim: 2,
             min_ms_between_window_commits: 16,
+            velocity_page_threshold_viewports_per_second: 3.0,
+            max_velocity_prefetch_pages: 4,
         }
     }
 }
@@ -35,6 +47,8 @@ pub struct WindowPlanner {
     current_range: Option<Range<usize>>,
     stable_frames: u32,
     last_commit_ms: Option<u64>,
+    last_velocity_viewports_per_second: f64,
+    last_memory_pressure: WindowMemoryPressure,
 }
 
 impl WindowPlanner {
@@ -46,6 +60,8 @@ impl WindowPlanner {
             current_range: None,
             stable_frames: 0,
             last_commit_ms: None,
+            last_velocity_viewports_per_second: 0.0,
+            last_memory_pressure: WindowMemoryPressure::Normal,
         }
     }
 
@@ -61,18 +77,70 @@ impl WindowPlanner {
         page_count: usize,
         direction: ScrollDirection,
     ) -> Range<usize> {
-        let extra_before = usize::from(direction == ScrollDirection::Up);
-        let extra_after = usize::from(direction == ScrollDirection::Down);
-        let start = target_page.saturating_sub(self.before_pages + extra_before);
-        let end = (target_page + self.after_pages + extra_after + 1).min(page_count);
+        self.plan_with_context(
+            target_page,
+            page_count,
+            direction,
+            0.0,
+            WindowMemoryPressure::Normal,
+        )
+    }
+
+    pub fn plan_with_context(
+        &self,
+        target_page: usize,
+        page_count: usize,
+        direction: ScrollDirection,
+        velocity_viewports_per_second: f64,
+        memory_pressure: WindowMemoryPressure,
+    ) -> Range<usize> {
+        let (before_pages, after_pages) = match memory_pressure {
+            WindowMemoryPressure::Normal => (self.before_pages, self.after_pages),
+            WindowMemoryPressure::Warning => {
+                (self.before_pages.div_ceil(2), self.after_pages.div_ceil(2))
+            }
+            WindowMemoryPressure::Critical => (0, 0),
+        };
+        let velocity = if velocity_viewports_per_second.is_finite() {
+            velocity_viewports_per_second.abs()
+        } else {
+            0.0
+        };
+        let threshold = self
+            .policy
+            .velocity_page_threshold_viewports_per_second
+            .max(f64::EPSILON);
+        let velocity_pages =
+            ((velocity / threshold).floor() as usize).min(self.policy.max_velocity_prefetch_pages);
+        let directional_pages = match memory_pressure {
+            WindowMemoryPressure::Normal => 1 + velocity_pages,
+            WindowMemoryPressure::Warning => 1 + velocity_pages.min(1),
+            WindowMemoryPressure::Critical => 0,
+        };
+        let extra_before = if direction == ScrollDirection::Up {
+            directional_pages
+        } else {
+            0
+        };
+        let extra_after = if direction == ScrollDirection::Down {
+            directional_pages
+        } else {
+            0
+        };
+        let start = target_page.saturating_sub(before_pages + extra_before);
+        let end = (target_page + after_pages + extra_after + 1).min(page_count);
         start..end
     }
 
     pub fn plan_commit(&mut self, request: WindowPlanRequest) -> WindowPlanDecision {
-        let mut desired = self.plan_with_direction(
+        self.last_velocity_viewports_per_second = request.velocity_viewports_per_second;
+        self.last_memory_pressure = request.memory_pressure;
+        let mut desired = self.plan_with_context(
             request.target_page,
             request.page_count,
             request.scroll_direction,
+            request.velocity_viewports_per_second,
+            request.memory_pressure,
         );
         desired = include_pinned_pages(desired, request.page_count, &request.pinned_pages);
 
@@ -86,12 +154,18 @@ impl WindowPlanner {
                 };
             }
 
-            if !target_has_crossed_hysteresis(
-                request.target_page,
-                current_range,
-                request.position_in_page_viewports,
-                self.policy.enter_threshold_viewports,
-            ) {
+            let pressure_trim = request.memory_pressure != WindowMemoryPressure::Normal
+                && desired.start >= current_range.start
+                && desired.end <= current_range.end
+                && desired != *current_range;
+            if !pressure_trim
+                && !target_has_crossed_hysteresis(
+                    request.target_page,
+                    current_range,
+                    request.position_in_page_viewports,
+                    self.policy.enter_threshold_viewports,
+                )
+            {
                 self.stable_frames = self.stable_frames.saturating_add(1);
                 return WindowPlanDecision::Keep {
                     page_range: current_range.clone(),
@@ -99,7 +173,9 @@ impl WindowPlanner {
                 };
             }
 
-            if self.stable_frames.saturating_add(1) < self.policy.min_stable_frames_before_trim {
+            if !pressure_trim
+                && self.stable_frames.saturating_add(1) < self.policy.min_stable_frames_before_trim
+            {
                 self.stable_frames = self.stable_frames.saturating_add(1);
                 return WindowPlanDecision::Keep {
                     page_range: current_range.clone(),
@@ -107,7 +183,8 @@ impl WindowPlanner {
                 };
             }
 
-            if let Some(last_commit_ms) = self.last_commit_ms
+            if !pressure_trim
+                && let Some(last_commit_ms) = self.last_commit_ms
                 && request.now_ms.saturating_sub(last_commit_ms)
                     < self.policy.min_ms_between_window_commits
             {
@@ -131,6 +208,8 @@ impl WindowPlanner {
             current_page_range: self.current_range.clone(),
             stable_frames: self.stable_frames,
             last_commit_ms: self.last_commit_ms,
+            last_velocity_viewports_per_second: self.last_velocity_viewports_per_second,
+            last_memory_pressure: self.last_memory_pressure,
         }
     }
 }
@@ -146,6 +225,8 @@ pub struct WindowPlanRequest {
     pub target_page: usize,
     pub page_count: usize,
     pub scroll_direction: ScrollDirection,
+    pub velocity_viewports_per_second: f64,
+    pub memory_pressure: WindowMemoryPressure,
     pub position_in_page_viewports: f64,
     pub pinned_pages: BTreeSet<usize>,
     pub now_ms: u64,
@@ -170,11 +251,13 @@ pub enum KeepReason {
     CommitDebounced,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WindowPlannerDebugOverlay {
     pub current_page_range: Option<Range<usize>>,
     pub stable_frames: u32,
     pub last_commit_ms: Option<u64>,
+    pub last_velocity_viewports_per_second: f64,
+    pub last_memory_pressure: WindowMemoryPressure,
 }
 
 fn include_pinned_pages(
@@ -246,6 +329,86 @@ mod tests {
     }
 
     #[test]
+    fn velocity_expands_only_the_leading_edge_and_pressure_trims_overscan() {
+        let planner = WindowPlanner::new(2, 2, WindowPlannerPolicy::default());
+
+        assert_eq!(
+            planner.plan_with_context(
+                10,
+                30,
+                ScrollDirection::Down,
+                9.0,
+                WindowMemoryPressure::Normal,
+            ),
+            8..17
+        );
+        assert_eq!(
+            planner.plan_with_context(
+                10,
+                30,
+                ScrollDirection::Up,
+                9.0,
+                WindowMemoryPressure::Warning,
+            ),
+            7..12
+        );
+        assert_eq!(
+            planner.plan_with_context(
+                10,
+                30,
+                ScrollDirection::Down,
+                f64::INFINITY,
+                WindowMemoryPressure::Critical,
+            ),
+            10..11
+        );
+    }
+
+    #[test]
+    fn critical_pressure_trims_immediately_but_never_drops_pinned_pages() {
+        let mut planner = WindowPlanner::new(
+            3,
+            3,
+            WindowPlannerPolicy {
+                min_stable_frames_before_trim: 10,
+                min_ms_between_window_commits: 10_000,
+                ..WindowPlannerPolicy::default()
+            },
+        );
+        let first = planner.plan_commit(WindowPlanRequest {
+            target_page: 10,
+            page_count: 30,
+            scroll_direction: ScrollDirection::Still,
+            velocity_viewports_per_second: 0.0,
+            memory_pressure: WindowMemoryPressure::Normal,
+            position_in_page_viewports: 0.5,
+            pinned_pages: BTreeSet::new(),
+            now_ms: 0,
+        });
+        assert!(matches!(
+            first,
+            WindowPlanDecision::Commit { page_range } if page_range == (7..14)
+        ));
+
+        let trimmed = planner.plan_commit(WindowPlanRequest {
+            target_page: 10,
+            page_count: 30,
+            scroll_direction: ScrollDirection::Still,
+            velocity_viewports_per_second: 0.0,
+            memory_pressure: WindowMemoryPressure::Critical,
+            position_in_page_viewports: 0.5,
+            pinned_pages: BTreeSet::from([9]),
+            now_ms: 1,
+        });
+        assert!(matches!(
+            trimmed,
+            WindowPlanDecision::Commit { page_range } if page_range == (9..11)
+        ));
+        let overlay = planner.debug_overlay();
+        assert_eq!(overlay.last_memory_pressure, WindowMemoryPressure::Critical);
+    }
+
+    #[test]
     fn boundary_hysteresis_prevents_repeated_ab_commits() {
         let mut planner = WindowPlanner::new(
             0,
@@ -255,6 +418,7 @@ mod tests {
                 exit_threshold_viewports: 1.0,
                 min_stable_frames_before_trim: 0,
                 min_ms_between_window_commits: 0,
+                ..WindowPlannerPolicy::default()
             },
         );
         let pinned_pages = BTreeSet::new();
@@ -264,6 +428,8 @@ mod tests {
                 target_page: 10,
                 page_count: 100,
                 scroll_direction: ScrollDirection::Still,
+                velocity_viewports_per_second: 0.0,
+                memory_pressure: WindowMemoryPressure::Normal,
                 position_in_page_viewports: 0.5,
                 pinned_pages: pinned_pages.clone(),
                 now_ms: 0,
@@ -275,6 +441,8 @@ mod tests {
             target_page: 11,
             page_count: 100,
             scroll_direction: ScrollDirection::Still,
+            velocity_viewports_per_second: 0.0,
+            memory_pressure: WindowMemoryPressure::Normal,
             position_in_page_viewports: 0.49,
             pinned_pages,
             now_ms: 16,
@@ -305,6 +473,8 @@ mod tests {
             target_page: 5,
             page_count: 20,
             scroll_direction: ScrollDirection::Still,
+            velocity_viewports_per_second: 0.0,
+            memory_pressure: WindowMemoryPressure::Normal,
             position_in_page_viewports: 0.5,
             pinned_pages: pinned_pages.clone(),
             now_ms: 0,
@@ -315,6 +485,8 @@ mod tests {
                 target_page: 7,
                 page_count: 20,
                 scroll_direction: ScrollDirection::Still,
+                velocity_viewports_per_second: 0.0,
+                memory_pressure: WindowMemoryPressure::Normal,
                 position_in_page_viewports: 0.5,
                 pinned_pages: pinned_pages.clone(),
                 now_ms: 16,
@@ -329,6 +501,8 @@ mod tests {
                 target_page: 7,
                 page_count: 20,
                 scroll_direction: ScrollDirection::Still,
+                velocity_viewports_per_second: 0.0,
+                memory_pressure: WindowMemoryPressure::Normal,
                 position_in_page_viewports: 0.5,
                 pinned_pages,
                 now_ms: 48,
@@ -353,6 +527,8 @@ mod tests {
             target_page: 1,
             page_count: 10,
             scroll_direction: ScrollDirection::Still,
+            velocity_viewports_per_second: 0.0,
+            memory_pressure: WindowMemoryPressure::Normal,
             position_in_page_viewports: 0.5,
             pinned_pages: pinned_pages.clone(),
             now_ms: 100,
@@ -363,6 +539,8 @@ mod tests {
                 target_page: 3,
                 page_count: 10,
                 scroll_direction: ScrollDirection::Still,
+                velocity_viewports_per_second: 0.0,
+                memory_pressure: WindowMemoryPressure::Normal,
                 position_in_page_viewports: 0.5,
                 pinned_pages,
                 now_ms: 120,
@@ -390,6 +568,8 @@ mod tests {
             target_page: 3,
             page_count: 10,
             scroll_direction: ScrollDirection::Still,
+            velocity_viewports_per_second: 0.0,
+            memory_pressure: WindowMemoryPressure::Normal,
             position_in_page_viewports: 0.5,
             pinned_pages: BTreeSet::new(),
             now_ms: 100,

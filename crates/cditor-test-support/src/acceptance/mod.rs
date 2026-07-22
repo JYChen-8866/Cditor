@@ -1,4 +1,5 @@
 pub mod editing;
+pub mod mixed;
 pub mod open;
 pub mod scroll;
 pub mod structure_edit;

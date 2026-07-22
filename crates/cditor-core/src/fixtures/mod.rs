@@ -8,6 +8,7 @@
 pub mod bidi;
 pub mod code;
 pub mod table;
+pub mod unknown;
 
 use crate::rich_text::RichTextDocument;
 

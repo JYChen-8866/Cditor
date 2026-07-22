@@ -50,7 +50,8 @@ impl PostgresPayloadStore {
 
         let rows = sqlx::query(
             r#"
-            SELECT p.block_id, p.payload_json, p.content_version, b.kind
+            SELECT p.block_id, p.payload_format, p.payload_json, p.payload_bytes,
+                   p.content_version, b.kind
             FROM block_payloads p
             INNER JOIN blocks b ON b.id = p.block_id
             WHERE p.block_id = ANY($1) AND b.deleted_at IS NULL
@@ -68,9 +69,7 @@ impl PostgresPayloadStore {
                     message: format!("block id {pg_block_id} is outside runtime namespace"),
                 }
             })?;
-            let payload_json: serde_json::Value = row
-                .try_get::<Option<serde_json::Value>, _>("payload_json")?
-                .unwrap_or_else(|| serde_json::json!({ "type": "empty" }));
+            let payload_format: String = row.try_get("payload_format")?;
             let content_version: i64 = row.try_get("content_version")?;
             let kind: String = row.try_get("kind")?;
             let content_version =
@@ -79,7 +78,34 @@ impl PostgresPayloadStore {
                         "block {pg_block_id} has negative content version {content_version}"
                     ),
                 })?;
-            let payload = decode_block_payload(payload_json)?;
+            let payload = if payload_format == "opaque_envelope_json_v1" {
+                let payload_bytes: Vec<u8> = row
+                    .try_get::<Option<Vec<u8>>, _>("payload_bytes")?
+                    .ok_or_else(|| PostgresStorageError::CorruptData {
+                        message: format!(
+                            "opaque block {pg_block_id} is missing its lossless payload bytes"
+                        ),
+                    })?;
+                let payload: BlockPayload = serde_json::from_slice(&payload_bytes)?;
+                if !matches!(payload, BlockPayload::Opaque { .. }) {
+                    return Err(PostgresStorageError::CorruptData {
+                        message: format!(
+                            "opaque block {pg_block_id} BYTEA does not contain an opaque payload"
+                        ),
+                    });
+                }
+                payload
+                    .validate_opaque_envelope_domain()
+                    .map_err(|message| PostgresStorageError::CorruptData {
+                        message: format!("opaque block {pg_block_id}: {message}"),
+                    })?;
+                payload
+            } else {
+                let payload_json: serde_json::Value = row
+                    .try_get::<Option<serde_json::Value>, _>("payload_json")?
+                    .unwrap_or_else(|| serde_json::json!({ "type": "empty" }));
+                decode_block_payload(payload_json)?
+            };
 
             by_block_id.insert(
                 block_id,
@@ -155,10 +181,31 @@ impl PostgresPayloadStore {
             return Ok(());
         }
         for record in records {
+            record
+                .payload
+                .validate_opaque_envelope_domain()
+                .map_err(|message| PostgresStorageError::CorruptData {
+                    message: format!("block {}: {message}", record.block_id),
+                })?;
             let block_id = pg_block_id_from_runtime(record.block_id);
-            let payload_json = encode_block_payload(&record.payload)?;
             let plain_text = record.plain_text();
-            let payload_format = payload_format_for_kind(&record.kind);
+            let (payload_format, payload_json, payload_bytes, encoded_len) = match &record.payload {
+                BlockPayload::Opaque { .. } => {
+                    let bytes = serde_json::to_vec(&record.payload)?;
+                    let encoded_len = bytes.len();
+                    ("opaque_envelope_json_v1", None, Some(bytes), encoded_len)
+                }
+                payload => {
+                    let json = encode_block_payload(payload)?;
+                    let encoded_len = json.to_string().len();
+                    (
+                        payload_format_for_kind(&record.kind),
+                        Some(json),
+                        None,
+                        encoded_len,
+                    )
+                }
+            };
             let content_version = i64::try_from(record.content_version).map_err(|_| {
                 PostgresStorageError::CorruptData {
                     message: format!(
@@ -167,14 +214,13 @@ impl PostgresPayloadStore {
                     ),
                 }
             })?;
-            let byte_len = i64::try_from(payload_json.to_string().len()).map_err(|_| {
-                PostgresStorageError::CorruptData {
+            let byte_len =
+                i64::try_from(encoded_len).map_err(|_| PostgresStorageError::CorruptData {
                     message: format!(
                         "block {} payload json length exceeds BIGINT",
                         record.block_id
                     ),
-                }
-            })?;
+                })?;
             let inline_run_count =
                 i32::try_from(inline_run_count(&record.payload)).map_err(|_| {
                     PostgresStorageError::CorruptData {
@@ -214,6 +260,7 @@ impl PostgresPayloadStore {
                     document_id,
                     payload_format,
                     payload_json,
+                    payload_bytes,
                     plain_text,
                     content_hash,
                     content_version,
@@ -221,11 +268,12 @@ impl PostgresPayloadStore {
                     inline_run_count,
                     updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, NULL, $6, $7, $8, now())
+                VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, $9, now())
                 ON CONFLICT (block_id) DO UPDATE SET
                     document_id = EXCLUDED.document_id,
                     payload_format = EXCLUDED.payload_format,
                     payload_json = EXCLUDED.payload_json,
+                    payload_bytes = EXCLUDED.payload_bytes,
                     plain_text = EXCLUDED.plain_text,
                     content_hash = EXCLUDED.content_hash,
                     content_version = EXCLUDED.content_version,
@@ -238,6 +286,7 @@ impl PostgresPayloadStore {
             .bind(document_id)
             .bind(payload_format)
             .bind(&payload_json)
+            .bind(&payload_bytes)
             .bind(&plain_text)
             .bind(content_version)
             .bind(byte_len)
@@ -330,6 +379,7 @@ fn inline_run_count(payload: &BlockPayload) -> usize {
         BlockPayload::Image(_) | BlockPayload::File(_) | BlockPayload::Whiteboard(_) => 0,
         BlockPayload::Collection(collection) => collection.title.spans.len(),
         BlockPayload::Embed(_) | BlockPayload::Html { .. } => 1,
+        BlockPayload::Opaque { .. } => 0,
         BlockPayload::Empty => 0,
     }
 }
@@ -344,6 +394,10 @@ mod tests {
         pg_document_id_from_runtime, run_migrations,
     };
     use cditor_core::document::BlockIndexRecord;
+    use cditor_core::fixtures::unknown::{
+        UNKNOWN_PLUGIN_BODY, UNKNOWN_PLUGIN_KIND, assert_unknown_plugin_bytes,
+        unknown_plugin_payload,
+    };
     use cditor_core::rich_text::{
         ImagePayload, InlineMark, InlineSpan, TableCellPayload, TableHeaderStyle, TablePayload,
         TableRowPayload, kind_tag_for_rich_block_kind,
@@ -528,6 +582,48 @@ mod tests {
         assert_eq!(loaded.records[1], records[0]);
         assert_eq!(loaded.records[2], records[2]);
         assert_eq!(loaded.records[3], records[1]);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires docker compose postgres_test and CDITOR_TEST_DATABASE_URL"]
+    async fn postgres_payload_store_uses_bytea_for_lossless_unknown_plugin_payload() {
+        let base = 603_000;
+        let kinds = [RichBlockKind::Custom(UNKNOWN_PLUGIN_KIND.to_owned())];
+        let (_document_store, payload_store, document) =
+            seed_document_with_blocks(40_004, base, &kinds).await;
+        let saved = unknown_plugin_payload(base);
+
+        payload_store
+            .save_block_payloads(document.id, std::slice::from_ref(&saved))
+            .await
+            .unwrap();
+
+        let row = sqlx::query(
+            "SELECT payload_format, payload_json, payload_bytes FROM block_payloads WHERE block_id = $1",
+        )
+        .bind(pg_block_id_from_runtime(base))
+        .fetch_one(payload_store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            row.get::<String, _>("payload_format"),
+            "opaque_envelope_json_v1"
+        );
+        assert!(
+            row.get::<Option<serde_json::Value>, _>("payload_json")
+                .is_none()
+        );
+        let bytes = row.get::<Vec<u8>, _>("payload_bytes");
+        assert!(
+            std::str::from_utf8(&bytes)
+                .unwrap()
+                .contains(UNKNOWN_PLUGIN_BODY)
+        );
+
+        let loaded = payload_store.load_block_payloads(&[base]).await.unwrap();
+        assert_eq!(loaded.records.len(), 1);
+        assert_unknown_plugin_bytes(&loaded.records[0]);
+        assert_eq!(loaded.records[0], saved);
     }
 
     #[tokio::test]

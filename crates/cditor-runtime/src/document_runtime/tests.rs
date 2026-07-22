@@ -138,6 +138,8 @@ mod conversion_clipboard_media;
 mod delete_navigation_height;
 #[path = "tests/focus_composition.rs"]
 mod focus_composition;
+#[path = "tests/height_anchor_property.rs"]
+mod height_anchor_property;
 #[path = "tests/inline_color.rs"]
 mod inline_color;
 #[path = "tests/inline_markdown_incremental.rs"]
@@ -182,6 +184,8 @@ mod transaction_apply;
 mod transaction_apply_domain;
 #[path = "tests/typing_undo.rs"]
 mod typing_undo;
+#[path = "tests/undo_memory.rs"]
+mod undo_memory;
 #[path = "tests/undo_property.rs"]
 mod undo_property;
 #[path = "tests/window_projection.rs"]

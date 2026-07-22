@@ -377,13 +377,11 @@ impl DocumentRuntime {
             // every redo stale after the inverse advances content versions.
             let mut undoable = transaction.clone();
             undoable.preconditions.clear();
+            self.clear_runtime_redo_history();
             self.external_undo_stack.record_transaction(undoable);
             self.external_undo_stack.truncate_undo_to(100);
             self.undo_events.push(RuntimeUndoEvent::ExternalTransaction);
-            if self.undo_events.len() > 1_000 {
-                self.undo_events.remove(0);
-            }
-            self.redo_events.clear();
+            self.trim_runtime_undo_history();
         }
         if !affected_blocks.is_empty() || structure_changed {
             self.layout_dirty = true;

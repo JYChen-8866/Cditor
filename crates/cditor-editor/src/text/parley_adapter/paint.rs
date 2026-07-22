@@ -100,6 +100,7 @@ pub(crate) fn parley_background_quads(
 pub(crate) fn paint_parley_layout(
     snapshot: &ParleyLayoutSnapshot,
     origin: Point<Pixels>,
+    diagnose_font_bridge: bool,
     window: &mut Window,
 ) -> ParleyPaintReport {
     let mut report = ParleyPaintReport::default();
@@ -116,9 +117,9 @@ pub(crate) fn paint_parley_layout(
         let can_try_gpui_exact = run.font.face_index() == 0
             && run.font.instance_key().normalized_coords().is_empty()
             && !run.font.instance_key().synthesis().any();
-        let exact_blob_registered = can_try_gpui_exact
+        let gpui_face_available = can_try_gpui_exact
             && match ensure_font_available(&run.font, window) {
-                Ok(exact_blob_registered) => exact_blob_registered,
+                Ok(()) => true,
                 Err(_) => {
                     report.font_registration_errors += 1;
                     false
@@ -128,33 +129,32 @@ pub(crate) fn paint_parley_layout(
             run.font.face_index(),
             run.font.instance_key().normalized_coords(),
             run.font.instance_key().synthesis().any(),
-            exact_blob_registered,
+            gpui_face_available,
         );
         if bridge_status == GpuiFontBridgeStatus::ExactCandidate {
             report.exact_candidate_runs += 1;
         } else {
             report.inexact_font_runs += 1;
         }
-        let (font_id, validation) = if bridge_status == GpuiFontBridgeStatus::ExactCandidate {
+        let font_id = if bridge_status == GpuiFontBridgeStatus::ExactCandidate {
             let font_id = resolve_gpui_font(&run.font, window);
-            (
-                Some(font_id),
-                validate_gpui_glyph_ids(snapshot, run, font_id, window, bridge_status),
-            )
+            if diagnose_font_bridge {
+                match validate_gpui_glyph_ids(snapshot, run, font_id, window, bridge_status) {
+                    Some(true) => report.glyph_validation_matches += 1,
+                    Some(false) => report.glyph_validation_mismatches += 1,
+                    None => report.glyph_validation_skipped += 1,
+                }
+            }
+            Some(font_id)
         } else {
-            (None, None)
+            None
         };
-        match validation {
-            Some(true) => report.glyph_validation_matches += 1,
-            Some(false) => report.glyph_validation_mismatches += 1,
-            None => report.glyph_validation_skipped += 1,
-        }
-        match glyph_paint_path(bridge_status, validation) {
+        match glyph_paint_path(bridge_status) {
             GlyphPaintPath::GpuiGlyphAtlas => {
                 paint_gpui_glyph_run(
                     run,
                     origin,
-                    font_id.expect("validated GPUI path must have a resolved font"),
+                    font_id.expect("GPUI-compatible run must have a resolved font"),
                     window,
                     &mut report,
                 );
@@ -171,11 +171,8 @@ pub(crate) fn paint_parley_layout(
     report
 }
 
-fn glyph_paint_path(
-    bridge_status: GpuiFontBridgeStatus,
-    glyph_validation: Option<bool>,
-) -> GlyphPaintPath {
-    if bridge_status == GpuiFontBridgeStatus::ExactCandidate && glyph_validation == Some(true) {
+fn glyph_paint_path(bridge_status: GpuiFontBridgeStatus) -> GlyphPaintPath {
+    if bridge_status == GpuiFontBridgeStatus::ExactCandidate {
         GlyphPaintPath::GpuiGlyphAtlas
     } else {
         GlyphPaintPath::ExactRasterImageAtlas
@@ -306,7 +303,7 @@ fn gpui_font_descriptor(font_info: &ParleyPaintFont) -> gpui::Font {
     descriptor
 }
 
-fn ensure_font_available(font_info: &ParleyPaintFont, window: &Window) -> gpui::Result<bool> {
+fn ensure_font_available(font_info: &ParleyPaintFont, window: &Window) -> gpui::Result<()> {
     // GPUI's public add_fonts API accepts a complete file but not a TTC face index.
     // Register face zero before resolving the descriptor. The text-system identity is
     // part of the cache key so a newly created window cannot inherit another window's
@@ -323,13 +320,10 @@ fn ensure_font_available(font_info: &ParleyPaintFont, window: &Window) -> gpui::
     let text_system_id = std::ptr::from_ref(window.text_system()) as usize;
     let blob_id = font_info.blob_id();
     let registered = REGISTERED_BLOBS.get_or_init(|| Mutex::new(HashSet::new()));
-    if registered
+    let blob_registered = registered
         .lock()
         .expect("registered font lock poisoned")
-        .contains(&(text_system_id, blob_id))
-    {
-        return Ok(true);
-    }
+        .contains(&(text_system_id, blob_id));
 
     static KNOWN_FAMILIES: OnceLock<Mutex<HashMap<usize, HashSet<String>>>> = OnceLock::new();
     let known_families = KNOWN_FAMILIES.get_or_init(|| Mutex::new(HashMap::new()));
@@ -347,8 +341,8 @@ fn ensure_font_available(font_info: &ParleyPaintFont, window: &Window) -> gpui::
         });
         families.contains(&font_info.family.to_lowercase())
     };
-    if family_is_known {
-        return Ok(false);
+    if !font_requires_registration(blob_registered, family_is_known) {
+        return Ok(());
     }
 
     window
@@ -364,14 +358,18 @@ fn ensure_font_available(font_info: &ParleyPaintFont, window: &Window) -> gpui::
         .entry(text_system_id)
         .or_default()
         .insert(font_info.family.to_lowercase());
-    Ok(true)
+    Ok(())
+}
+
+fn font_requires_registration(blob_registered: bool, family_is_known: bool) -> bool {
+    !blob_registered && !family_is_known
 }
 
 fn gpui_font_bridge_status(
     face_index: u32,
     normalized_coords: &[i16],
     synthesized: bool,
-    exact_blob_registered: bool,
+    gpui_face_available: bool,
 ) -> GpuiFontBridgeStatus {
     if face_index != 0 {
         GpuiFontBridgeStatus::CollectionFaceUnsupported
@@ -379,7 +377,7 @@ fn gpui_font_bridge_status(
         GpuiFontBridgeStatus::SynthesisUnsupported
     } else if !normalized_coords.is_empty() {
         GpuiFontBridgeStatus::VariableInstanceUnsupported
-    } else if !exact_blob_registered {
+    } else if !gpui_face_available {
         GpuiFontBridgeStatus::FamilyResolutionUnverified
     } else {
         GpuiFontBridgeStatus::ExactCandidate
@@ -486,6 +484,13 @@ mod tests {
     }
 
     #[test]
+    fn known_system_font_is_available_without_duplicate_registration() {
+        assert!(!font_requires_registration(false, true));
+        assert!(!font_requires_registration(true, false));
+        assert!(font_requires_registration(false, false));
+    }
+
+    #[test]
     fn glyph_validation_requires_exact_order_and_count() {
         assert!(glyph_ids_match([1, 2, 3], [1, 2, 3]));
         assert!(!glyph_ids_match([1, 2, 3], [1, 3, 2]));
@@ -493,17 +498,11 @@ mod tests {
     }
 
     #[test]
-    fn only_validated_exact_candidate_uses_gpui_glyph_atlas() {
+    fn every_gpui_compatible_run_uses_the_native_glyph_atlas() {
         assert_eq!(
-            glyph_paint_path(GpuiFontBridgeStatus::ExactCandidate, Some(true)),
+            glyph_paint_path(GpuiFontBridgeStatus::ExactCandidate),
             GlyphPaintPath::GpuiGlyphAtlas
         );
-        for validation in [Some(false), None] {
-            assert_eq!(
-                glyph_paint_path(GpuiFontBridgeStatus::ExactCandidate, validation),
-                GlyphPaintPath::ExactRasterImageAtlas
-            );
-        }
         for status in [
             GpuiFontBridgeStatus::CollectionFaceUnsupported,
             GpuiFontBridgeStatus::VariableInstanceUnsupported,
@@ -511,7 +510,7 @@ mod tests {
             GpuiFontBridgeStatus::FamilyResolutionUnverified,
         ] {
             assert_eq!(
-                glyph_paint_path(status, Some(true)),
+                glyph_paint_path(status),
                 GlyphPaintPath::ExactRasterImageAtlas
             );
         }

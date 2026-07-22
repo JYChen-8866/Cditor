@@ -8,9 +8,11 @@ use cditor_core::ids::BlockId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutTaskLane {
-    High,
-    Normal,
-    Idle,
+    Realtime,
+    Interactive,
+    Visible,
+    Prefetch,
+    Background,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,13 +31,13 @@ pub enum LayoutTaskKind {
 impl LayoutTaskKind {
     pub const fn default_lane(self) -> LayoutTaskLane {
         match self {
-            Self::EditingBlock | Self::CompositionBlock | Self::CurrentViewport => {
-                LayoutTaskLane::High
-            }
+            Self::EditingBlock | Self::CompositionBlock => LayoutTaskLane::Realtime,
+            Self::CurrentViewport => LayoutTaskLane::Interactive,
             Self::Overscan | Self::EntityCreate | Self::MeasureApply | Self::HeightCorrection => {
-                LayoutTaskLane::Normal
+                LayoutTaskLane::Visible
             }
-            Self::RemoteHeightRefinement | Self::PrefetchMeasure => LayoutTaskLane::Idle,
+            Self::PrefetchMeasure => LayoutTaskLane::Prefetch,
+            Self::RemoteHeightRefinement => LayoutTaskLane::Background,
         }
     }
 
@@ -130,6 +132,11 @@ pub struct LayoutSchedulerDebugOverlay {
     pub pending_high: usize,
     pub pending_normal: usize,
     pub pending_idle: usize,
+    pub pending_realtime: usize,
+    pub pending_interactive: usize,
+    pub pending_visible: usize,
+    pub pending_prefetch: usize,
+    pub pending_background: usize,
     pub ran_this_frame: usize,
     pub deferred_this_frame: usize,
     pub backpressure_dropped: usize,
@@ -137,9 +144,11 @@ pub struct LayoutSchedulerDebugOverlay {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutScheduler {
-    high_priority: VecDeque<LayoutTask>,
-    normal_priority: VecDeque<LayoutTask>,
-    idle_priority: VecDeque<LayoutTask>,
+    realtime: VecDeque<LayoutTask>,
+    interactive: VecDeque<LayoutTask>,
+    visible: VecDeque<LayoutTask>,
+    prefetch: VecDeque<LayoutTask>,
+    background: VecDeque<LayoutTask>,
     pub config: LayoutSchedulerConfig,
     pub interaction_mode: InteractionMode,
     backpressure_dropped: usize,
@@ -148,9 +157,11 @@ pub struct LayoutScheduler {
 impl LayoutScheduler {
     pub fn new(config: LayoutSchedulerConfig, interaction_mode: InteractionMode) -> Self {
         Self {
-            high_priority: VecDeque::new(),
-            normal_priority: VecDeque::new(),
-            idle_priority: VecDeque::new(),
+            realtime: VecDeque::new(),
+            interactive: VecDeque::new(),
+            visible: VecDeque::new(),
+            prefetch: VecDeque::new(),
+            background: VecDeque::new(),
             config,
             interaction_mode,
             backpressure_dropped: 0,
@@ -159,30 +170,32 @@ impl LayoutScheduler {
 
     pub fn schedule(&mut self, task: LayoutTask) -> ScheduleDecision {
         let lane = task.lane;
-        if lane == LayoutTaskLane::Idle
-            && self.idle_priority.len() >= self.config.max_background_queue
+        if matches!(lane, LayoutTaskLane::Prefetch | LayoutTaskLane::Background)
+            && self.prefetch.len() + self.background.len() >= self.config.max_background_queue
         {
             self.backpressure_dropped = self.backpressure_dropped.saturating_add(1);
             return ScheduleDecision::DroppedByBackpressure;
         }
         match lane {
-            LayoutTaskLane::High => self.high_priority.push_back(task),
-            LayoutTaskLane::Normal => self.normal_priority.push_back(task),
-            LayoutTaskLane::Idle => self.idle_priority.push_back(task),
+            LayoutTaskLane::Realtime => self.realtime.push_back(task),
+            LayoutTaskLane::Interactive => self.interactive.push_back(task),
+            LayoutTaskLane::Visible => self.visible.push_back(task),
+            LayoutTaskLane::Prefetch => self.prefetch.push_back(task),
+            LayoutTaskLane::Background => self.background.push_back(task),
         }
         ScheduleDecision::Enqueued(lane)
     }
 
     pub fn pending_high(&self) -> usize {
-        self.high_priority.len()
+        self.realtime.len() + self.interactive.len()
     }
 
     pub fn pending_normal(&self) -> usize {
-        self.normal_priority.len()
+        self.visible.len()
     }
 
     pub fn pending_idle(&self) -> usize {
-        self.idle_priority.len()
+        self.prefetch.len() + self.background.len()
     }
 
     pub fn run_frame(&mut self, budget: MainThreadBudget) -> LayoutFrameResult {
@@ -195,12 +208,15 @@ impl LayoutScheduler {
         let mut budget_exhausted = false;
 
         for lane in [
-            LayoutTaskLane::High,
-            LayoutTaskLane::Normal,
-            LayoutTaskLane::Idle,
+            LayoutTaskLane::Realtime,
+            LayoutTaskLane::Interactive,
+            LayoutTaskLane::Visible,
+            LayoutTaskLane::Prefetch,
+            LayoutTaskLane::Background,
         ] {
-            if lane == LayoutTaskLane::Idle && self.interaction_mode != InteractionMode::Idle {
-                deferred_this_frame += self.idle_priority.len();
+            if lane == LayoutTaskLane::Background && self.interaction_mode != InteractionMode::Idle
+            {
+                deferred_this_frame += self.background.len();
                 continue;
             }
 
@@ -237,6 +253,11 @@ impl LayoutScheduler {
             pending_high: self.pending_high(),
             pending_normal: self.pending_normal(),
             pending_idle: self.pending_idle(),
+            pending_realtime: self.realtime.len(),
+            pending_interactive: self.interactive.len(),
+            pending_visible: self.visible.len(),
+            pending_prefetch: self.prefetch.len(),
+            pending_background: self.background.len(),
             ran_this_frame: ran.len(),
             deferred_this_frame,
             backpressure_dropped: self.backpressure_dropped,
@@ -280,17 +301,21 @@ impl LayoutScheduler {
 
     fn pop_front(&mut self, lane: LayoutTaskLane) -> Option<LayoutTask> {
         match lane {
-            LayoutTaskLane::High => self.high_priority.pop_front(),
-            LayoutTaskLane::Normal => self.normal_priority.pop_front(),
-            LayoutTaskLane::Idle => self.idle_priority.pop_front(),
+            LayoutTaskLane::Realtime => self.realtime.pop_front(),
+            LayoutTaskLane::Interactive => self.interactive.pop_front(),
+            LayoutTaskLane::Visible => self.visible.pop_front(),
+            LayoutTaskLane::Prefetch => self.prefetch.pop_front(),
+            LayoutTaskLane::Background => self.background.pop_front(),
         }
     }
 
     fn push_front(&mut self, lane: LayoutTaskLane, task: LayoutTask) {
         match lane {
-            LayoutTaskLane::High => self.high_priority.push_front(task),
-            LayoutTaskLane::Normal => self.normal_priority.push_front(task),
-            LayoutTaskLane::Idle => self.idle_priority.push_front(task),
+            LayoutTaskLane::Realtime => self.realtime.push_front(task),
+            LayoutTaskLane::Interactive => self.interactive.push_front(task),
+            LayoutTaskLane::Visible => self.visible.push_front(task),
+            LayoutTaskLane::Prefetch => self.prefetch.push_front(task),
+            LayoutTaskLane::Background => self.background.push_front(task),
         }
     }
 }
@@ -337,7 +362,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scheduler_priority_keeps_editing_block_before_overscan_and_idle() {
+    fn scheduler_runs_all_five_lanes_in_strict_priority_order() {
         let mut scheduler = LayoutScheduler::default();
         scheduler.schedule(LayoutTask::new(
             1,
@@ -357,12 +382,24 @@ mod tests {
             Some(42),
             WorkCost::sync_ms(0.2),
         ));
+        scheduler.schedule(LayoutTask::new(
+            4,
+            LayoutTaskKind::CurrentViewport,
+            Some(42),
+            WorkCost::sync_ms(0.2),
+        ));
+        scheduler.schedule(LayoutTask::new(
+            5,
+            LayoutTaskKind::PrefetchMeasure,
+            Some(100),
+            WorkCost::async_measure(),
+        ));
 
         let result = scheduler.run_frame(MainThreadBudget::default());
 
         assert_eq!(
             result.ran.iter().map(|task| task.id).collect::<Vec<_>>(),
-            vec![3, 2, 1]
+            vec![3, 4, 2, 5, 1]
         );
     }
 
@@ -449,7 +486,7 @@ mod tests {
                 Some(1),
                 WorkCost::async_measure()
             )),
-            ScheduleDecision::Enqueued(LayoutTaskLane::Idle)
+            ScheduleDecision::Enqueued(LayoutTaskLane::Background)
         );
         assert_eq!(
             scheduler.schedule(LayoutTask::new(
@@ -458,7 +495,7 @@ mod tests {
                 Some(2),
                 WorkCost::async_measure()
             )),
-            ScheduleDecision::Enqueued(LayoutTaskLane::Idle)
+            ScheduleDecision::Enqueued(LayoutTaskLane::Prefetch)
         );
         assert_eq!(
             scheduler.schedule(LayoutTask::new(

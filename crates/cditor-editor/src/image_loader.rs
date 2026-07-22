@@ -21,9 +21,102 @@ enum ImageState {
     Failed,
 }
 
-fn image_cache() -> &'static Mutex<HashMap<String, ImageState>> {
-    static CACHE: OnceLock<Mutex<HashMap<String, ImageState>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+const IMAGE_CACHE_MAX_ENTRIES: usize = 256;
+const IMAGE_CACHE_MAX_DECODED_BYTES: usize = 128 * 1024 * 1024;
+
+struct CachedImage {
+    state: ImageState,
+    decoded_bytes: usize,
+    last_access: u64,
+}
+
+struct ImageCache {
+    entries: HashMap<String, CachedImage>,
+    access_clock: u64,
+    decoded_bytes: usize,
+    max_entries: usize,
+    max_decoded_bytes: usize,
+}
+
+enum ImageCacheLookup {
+    Existing(ImageState),
+    StartLoad,
+}
+
+impl ImageCache {
+    fn new(max_entries: usize, max_decoded_bytes: usize) -> Self {
+        Self {
+            entries: HashMap::new(),
+            access_clock: 0,
+            decoded_bytes: 0,
+            max_entries: max_entries.max(1),
+            max_decoded_bytes: max_decoded_bytes.max(1),
+        }
+    }
+
+    fn lookup_or_start(&mut self, src: &str) -> ImageCacheLookup {
+        self.access_clock = self.access_clock.saturating_add(1);
+        if let Some(entry) = self.entries.get_mut(src) {
+            entry.last_access = self.access_clock;
+            return ImageCacheLookup::Existing(entry.state.clone());
+        }
+        self.entries.insert(
+            src.to_owned(),
+            CachedImage {
+                state: ImageState::Loading,
+                decoded_bytes: 0,
+                last_access: self.access_clock,
+            },
+        );
+        ImageCacheLookup::StartLoad
+    }
+
+    fn finish(&mut self, src: String, state: ImageState) {
+        self.access_clock = self.access_clock.saturating_add(1);
+        let decoded_bytes = match &state {
+            ImageState::Ready(image) => decoded_image_bytes(image),
+            ImageState::Loading | ImageState::Failed => 0,
+        };
+        if let Some(previous) = self.entries.insert(
+            src,
+            CachedImage {
+                state,
+                decoded_bytes,
+                last_access: self.access_clock,
+            },
+        ) {
+            self.decoded_bytes = self.decoded_bytes.saturating_sub(previous.decoded_bytes);
+        }
+        self.decoded_bytes = self.decoded_bytes.saturating_add(decoded_bytes);
+        self.trim();
+    }
+
+    fn trim(&mut self) {
+        while self.entries.len() > self.max_entries || self.decoded_bytes > self.max_decoded_bytes {
+            let candidate = self
+                .entries
+                .iter()
+                .filter(|(_, entry)| !matches!(entry.state, ImageState::Loading))
+                .min_by_key(|(_, entry)| entry.last_access)
+                .map(|(src, _)| src.clone());
+            let Some(candidate) = candidate else {
+                break;
+            };
+            if let Some(evicted) = self.entries.remove(&candidate) {
+                self.decoded_bytes = self.decoded_bytes.saturating_sub(evicted.decoded_bytes);
+            }
+        }
+    }
+}
+
+fn image_cache() -> &'static Mutex<ImageCache> {
+    static CACHE: OnceLock<Mutex<ImageCache>> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        Mutex::new(ImageCache::new(
+            IMAGE_CACHE_MAX_ENTRIES,
+            IMAGE_CACHE_MAX_DECODED_BYTES,
+        ))
+    })
 }
 
 /// Resolve a decoded image for `src`, kicking off an off-UI-thread load on first use.
@@ -35,19 +128,15 @@ pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
         return None;
     }
 
-    if let Some(state) = image_cache()
+    let lookup = image_cache()
         .lock()
         .ok()
-        .and_then(|cache| cache.get(src).cloned())
-    {
+        .map(|mut cache| cache.lookup_or_start(src))?;
+    if let ImageCacheLookup::Existing(state) = lookup {
         return match state {
             ImageState::Ready(image) => Some(image),
             ImageState::Loading | ImageState::Failed => None,
         };
-    }
-
-    if let Ok(mut cache) = image_cache().lock() {
-        cache.insert(src.to_owned(), ImageState::Loading);
     }
 
     let src = src.to_owned();
@@ -65,7 +154,7 @@ pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
                 .await
                 .map_or(ImageState::Failed, ImageState::Ready);
             if let Ok(mut cache) = image_cache().lock() {
-                cache.insert(src, state);
+                cache.finish(src, state);
             }
             async_cx.update(App::refresh_windows);
         })
@@ -104,6 +193,15 @@ fn decode_render_image(bytes: &[u8]) -> Option<Arc<RenderImage>> {
         pixel.swap(0, 2);
     }
     Some(Arc::new(RenderImage::new([image::Frame::new(data)])))
+}
+
+fn decoded_image_bytes(image: &RenderImage) -> usize {
+    (0..image.frame_count()).fold(0usize, |bytes, frame_index| {
+        let frame = image.size(frame_index);
+        let width = usize::try_from(frame.width.0.max(0)).unwrap_or(usize::MAX);
+        let height = usize::try_from(frame.height.0.max(0)).unwrap_or(usize::MAX);
+        bytes.saturating_add(width.saturating_mul(height).saturating_mul(4))
+    })
 }
 
 pub struct RasterImageElement {
@@ -247,5 +345,59 @@ mod tests {
         let bottom = positioned_cover_bounds(bounds, image_size, 1.0);
 
         assert!(bottom.origin.y < top.origin.y);
+    }
+
+    fn test_image(width: u32, height: u32) -> Arc<RenderImage> {
+        Arc::new(RenderImage::new([image::Frame::new(
+            image::RgbaImage::new(width, height),
+        )]))
+    }
+
+    #[test]
+    fn decoded_image_cache_evicts_lru_by_bytes_and_entries() {
+        let mut cache = ImageCache::new(2, 64);
+        assert!(matches!(
+            cache.lookup_or_start("a"),
+            ImageCacheLookup::StartLoad
+        ));
+        cache.finish("a".to_owned(), ImageState::Ready(test_image(2, 2)));
+        assert!(matches!(
+            cache.lookup_or_start("b"),
+            ImageCacheLookup::StartLoad
+        ));
+        cache.finish("b".to_owned(), ImageState::Ready(test_image(2, 2)));
+        let _ = cache.lookup_or_start("a");
+        assert!(matches!(
+            cache.lookup_or_start("c"),
+            ImageCacheLookup::StartLoad
+        ));
+        cache.finish("c".to_owned(), ImageState::Ready(test_image(3, 3)));
+
+        assert!(cache.entries.contains_key("a"));
+        assert!(cache.entries.contains_key("c"));
+        assert!(!cache.entries.contains_key("b"));
+        assert!(cache.entries.len() <= 2);
+        assert!(cache.decoded_bytes <= 64);
+    }
+
+    #[test]
+    fn in_flight_decode_is_never_evicted_or_dispatched_twice() {
+        let mut cache = ImageCache::new(1, 1);
+        assert!(matches!(
+            cache.lookup_or_start("loading"),
+            ImageCacheLookup::StartLoad
+        ));
+        assert!(matches!(
+            cache.lookup_or_start("loading"),
+            ImageCacheLookup::Existing(ImageState::Loading)
+        ));
+        assert!(matches!(
+            cache.lookup_or_start("second"),
+            ImageCacheLookup::StartLoad
+        ));
+        cache.trim();
+
+        assert!(cache.entries.contains_key("loading"));
+        assert!(cache.entries.contains_key("second"));
     }
 }

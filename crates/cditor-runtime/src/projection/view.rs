@@ -14,15 +14,26 @@ pub struct EditorViewProjection {
     pub document_id: DocumentId,
     pub scroll: VirtualScrollState,
     pub render_window: RenderWindow,
+    pub payload_prefetch_block_range: std::ops::Range<usize>,
+    pub layout_prefetch_page_range: std::ops::Range<usize>,
     pub blocks: Vec<ViewBlockSnapshot>,
     pub ai_preview: Option<AiPreviewSnapshot>,
     pub before_window_height: f64,
     pub placeholder_window_height: Option<f64>,
     pub placeholder_window_error: Option<String>,
+    pub placeholder_window_failure: Option<PayloadWindowFailureView>,
     pub after_window_height: f64,
     pub down_placer_height: f64,
     pub total_visible_blocks: usize,
     pub debug: DebugOverlaySnapshot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PayloadWindowFailureView {
+    pub message: String,
+    pub attempts: u8,
+    pub max_attempts: u8,
+    pub automatic_retry_pending: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

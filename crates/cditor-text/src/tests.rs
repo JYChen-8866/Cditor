@@ -421,3 +421,71 @@ fn paint_plan_keeps_exact_font_blob_face_and_glyph_data_outside_gpui() {
             && run.font.instance_key().synthesis().any() == run.font.synthesized
     }));
 }
+
+#[test]
+fn empty_text_uses_base_font_metrics_for_visible_caret() {
+    let input = input(vec![InlineSpan::plain("")], 320.0);
+    let layout = build_parley_layout(&input, theme(), &options(320.0));
+    let caret = layout.caret_rect(ParleyTextPosition::downstream(0), 1.5);
+
+    assert!(layout.is_empty());
+    assert!(caret.width > 0.0);
+    assert!(caret.height > 0.0);
+    assert!(layout.height() >= caret.height);
+}
+
+#[test]
+fn soft_wrapped_lines_keep_one_base_font_size_through_the_last_line() {
+    let mut layout_options = options(96.0);
+    layout_options.base_style.font_size = 19.0;
+    let input = input(
+        vec![InlineSpan::plain(
+            "soft wrapping must preserve typography on every visual line",
+        )],
+        96.0,
+    );
+    let layout = build_parley_layout(&input, theme(), &layout_options);
+    let lines = layout.line_snapshots();
+    let run_sizes = layout
+        .paint_plan()
+        .runs
+        .iter()
+        .map(|run| run.font_size)
+        .collect::<Vec<_>>();
+
+    assert!(lines.len() >= 2);
+    assert!(!run_sizes.is_empty());
+    assert!(run_sizes.iter().all(|size| (*size - 19.0).abs() < 0.001));
+    assert_eq!(lines.last().unwrap().text_range.end, layout.text().len());
+}
+
+#[test]
+fn soft_wrap_reflow_preserves_the_single_line_font_instance_and_size() {
+    let text = "the same font instance must survive every visual line after wrapping";
+    let mut single_line_options = options(1_000.0);
+    single_line_options.base_style.font_size = 17.0;
+    let mut wrapped_options = single_line_options.clone();
+    wrapped_options.width = Some(92.0);
+    let single_line = build_parley_layout(
+        &input(vec![InlineSpan::plain(text)], 1_000.0),
+        theme(),
+        &single_line_options,
+    );
+    let wrapped = build_parley_layout(
+        &input(vec![InlineSpan::plain(text)], 92.0),
+        theme(),
+        &wrapped_options,
+    );
+    let expected = single_line
+        .paint_plan()
+        .runs
+        .first()
+        .map(|run| (run.font.instance_key().clone(), run.font_size))
+        .expect("single-line fixture must shape at least one run");
+
+    assert_eq!(single_line.line_snapshots().len(), 1);
+    assert!(wrapped.line_snapshots().len() > 1);
+    assert!(wrapped.paint_plan().runs.iter().all(|run| {
+        run.font.instance_key() == &expected.0 && (run.font_size - expected.1).abs() < 0.001
+    }));
+}

@@ -1025,7 +1025,7 @@ pub struct EditorViewProjection { /* 视口投影 */ }
 ```rust
 pub struct Cditor { /* builder */ }
 pub struct CditorOptions { /* backend, readonly, debug_overlay, autosave */ }
-pub enum CditorBackend { Demo, LargeDemo, Memory, PostgresUrl, PostgresPool, Sqlite, Cloud }
+pub enum CditorBackend { Demo, LargeDemo, Memory, Persistent { provider }, Cloud }
 pub enum CditorCommand { /* 所有 SDK 命令 */ }
 pub enum CditorEvent { Ready, LoadFailed, Change, ... }
 pub struct CditorHandle { /* WeakEntity 控制句柄 */ }
@@ -1035,6 +1035,7 @@ pub struct CditorHandle { /* WeakEntity 控制句柄 */ }
 
 ```rust
 pub trait DocumentStorage { /* load, save, ... */ }
+pub trait StorageProvider { /* label, open_timeout, async open */ }
 pub struct StorageSession { /* 存储会话 */ }
 pub struct LoadedDocument { pub runtime: DocumentRuntime, pub storage_session: StorageSession }
 ```
@@ -1054,9 +1055,6 @@ pub struct CditorOptions {
     pub readonly: bool,
     pub payload_window_size: usize,
     pub autosave_interval: Option<Duration>,
-    pub seed_large_demo_to_postgres: bool,
-    pub seed_large_demo_block_count: usize,
-    pub force_reseed_large_demo: bool,
 }
 ```
 
@@ -1253,7 +1251,7 @@ pub struct MainThreadBudget {
 
 ### 阶段 5：打破跨层依赖（trait 抽象）
 
-> 目标：cditor-api 不能依赖 cditor-editor，cditor-api 不能引用 GuiTheme
+> 目标：cditor-api 不能依赖 cditor-editor/runtime/具体存储实现/SQLx，cditor-api 不能引用 GuiTheme
 
 - [x] **5.1** 把 `GuiTheme` 从旧 `app/src/gui/theme.rs` 迁到 `cditor-theme/src/theme.rs`
   - 保持 30+ 颜色字段不变
@@ -1262,13 +1260,17 @@ pub struct MainThreadBudget {
 - [x] **5.3** 配置 `cditor-theme/Cargo.toml` 依赖：cditor-theme-types + serde + serde_json
 - [x] **5.4** `cargo check -p cditor-theme` 通过
 - [x] **5.5** 更新旧代码中所有 `crate::gui::GuiTheme` 引用 → `cditor_theme::GuiTheme`
-- [ ] **5.6** 裁决并实现跨 crate 的 typed GPUI component/handle 构造协议（不采用无法保持 `Entity<CditorV2View>` 类型的伪擦除）
+- [x] **5.6** 以 `CditorViewContract` + 泛型 `CditorComponent<V>` / `CditorHandle<V>` 实现跨 crate typed GPUI 构造协议
   ```rust
   pub trait CditorViewFactory: Send + Sync {
       fn build_component(&self, options: CditorOptions, cx: &mut AppContext) -> CditorComponent;
   }
   ```
-- [ ] **5.7** 让 `Cditor::build()` 调用 app composition API，返回可用的 typed component/handle，禁止 panic 或永久 `Unsupported`
+- [x] **5.7** `Cditor::build_with()` 通过 host factory 返回 typed component/handle，不再使用 panic、永久 `Unsupported` 或 `Entity<()>`
+
+最终边界补强：`cditor-storage::StorageProvider` 是唯一持久化构造契约；SQLite/PostgreSQL 各自在实现 crate 打开连接、执行 migration 并声明超时，`cditor-app` 仅负责异步 cold start 与 runtime hydrate。未使用且泄漏 `ding_board::Scene` 的 `WhiteboardProvider` 已移除，白板数据契约保持在 core。`check_structure.sh` 禁止 API 重新依赖具体数据库、SQLx、runtime、editor 或具体白板引擎。
+
+AI 同样按 contract/implementation 分层：`cditor-ai` 默认仅编译 provider/mock，OpenAI/Reqwest 实现由 `openai` feature 启用；`cditor-editor` 作为桌面实现显式启用该 feature，单独使用 `cditor-api` 不再引入网络/TLS 栈。
 
 ---
 
@@ -1277,10 +1279,10 @@ pub struct MainThreadBudget {
 > 目标：旧 `app/src/api/` → 新 `crates/cditor-api/`
 
 - [x] **6.1** 从旧 `app/src/api/` 搬入全部 14 个文件到 `cditor-api/src/`
-  - builder.rs, cditor.rs, cold_start.rs, command.rs, component.rs
+  - builder.rs, cditor.rs, command.rs, component.rs
   - diagnostics.rs, document.rs, error.rs, event.rs, handle.rs
   - import_export.rs, mod.rs, options.rs, providers.rs
-- [x] **6.2** 配置 `cditor-api/Cargo.toml` 依赖：cditor-core + cditor-runtime + cditor-storage + cditor-theme + gpui
+- [x] **6.2** 配置 `cditor-api/Cargo.toml` 依赖：cditor-core + cditor-storage + cditor-theme + gpui；不依赖 runtime、数据库实现或 SQLx
 - [x] **6.3** 更新所有 `crate::gui::*` 引用 → 对应新 crate 的路径
 - [x] **6.4** `cargo check -p cditor-api` 通过
 
@@ -1321,10 +1323,10 @@ pub struct MainThreadBudget {
 > 目标：旧 `app/src/main.rs` → 新 `crates/cditor-app/`
 
 - [x] **8.1** 从旧 `app/src/main.rs` 搬入到 `cditor-app/src/main.rs`
-- [ ] **8.2** 创建 `cditor-app/src/wiring.rs`——组装 storage_wiring, runtime_wiring, editor_wiring, theme_wiring, api_wiring
+- [x] **8.2** 创建 `cditor-app/src/wiring.rs`，集中 GPUI application、窗口、keymap、host view、runtime/editor entity 的组装
 - [x] **8.3** `cditor-app/Cargo.toml` 只声明 executable 实际使用的直接依赖，不强制依赖全部 crate
-- [ ] **8.4** 实现 app composition API，注入 `cditor-editor::CditorV2View` 的构建逻辑
-- [ ] **8.5** 恢复 `component_sdk.rs` 跨 crate typed component/handle 端到端测试
+- [x] **8.4** 实现 `AppCditorViewFactory` / `build_component`，注入 `CditorV2View`、AI 配置与异步持久化 cold start
+- [x] **8.5** 恢复 `component_sdk.rs` 的 7 项跨 crate typed component/handle 端到端测试
 - [x] **8.6** `cargo check -p cditor-app` 通过
 
 ---
@@ -1348,7 +1350,7 @@ pub struct MainThreadBudget {
 - [x] **10.1** `cargo test -p cditor-core` 通过
 - [x] **10.2** `cargo test -p cditor-editor-core` 通过
 - [x] **10.3** `cargo test -p cditor-storage` 通过
-- [ ] **10.4** `cargo test -p cditor-storage-postgres -- --ignored` 通过（需 PG 环境；本次未运行）
+- [x] **10.4** `cargo test -p cditor-storage-postgres -- --ignored` 通过（PostgreSQL 16 测试环境，55 项）
 - [x] **10.5** `cargo test -p cditor-storage-sqlite` 通过
 - [x] **10.6** `cargo test -p cditor-runtime` 通过
 - [x] **10.7** `cargo test -p cditor-import-export` 通过
@@ -1377,7 +1379,7 @@ pub struct MainThreadBudget {
 | 10. 测试验证 | 12 | 全量测试 |
 | **合计** | **85** | |
 
-当前状态：**79/85 完成**。剩余 6 项是 typed component/handle composition（5.6、5.7、8.2、8.4、8.5）和需要外部 PostgreSQL 的 ignored 集成测试（10.4）；它们不影响 crate 目录迁移和普通 workspace 构建，但不能被目录移动本身冒充完成。
+当前状态：**85/85 完成**。typed component/handle composition、跨 crate SDK 测试与 PostgreSQL ignored 集成测试均已完成。
 
 
 ## 附录：关键决策汇总
@@ -1394,4 +1396,5 @@ pub struct MainThreadBudget {
 | store-sqlite | **保留**（与 store-postgres 对称，本地模式必需） |
 | GuiTheme | **提升到 cditor-theme**（cditor-api 和 cditor-editor 都能引用） |
 | Cditor::build_view() 跨层依赖 | **ViewFactory trait**（cditor-api 定义 trait，cditor-app 注入实现） |
+| 持久化后端构造 | **StorageProvider trait**（storage 定义契约，SQLite/PostgreSQL 实现，app host 启动） |
 | fixtures + demo_fixtures | **cditor-core**，通过 `#[cfg(feature = "fixtures")]` 控制编译 |

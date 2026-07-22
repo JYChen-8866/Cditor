@@ -1,11 +1,28 @@
 use std::collections::HashSet;
+use std::ops::Range;
 
 use cditor_core::ids::BlockId;
 use cditor_runtime::PayloadCachePolicy;
+use gpui::Context;
 
 use super::cditor_v2_view::{CditorV2View, CditorViewState};
 
 impl CditorV2View {
+    pub(crate) fn retry_payload_window(
+        &mut self,
+        block_range: Range<usize>,
+        cx: &mut Context<Self>,
+    ) {
+        let CditorViewState::Ready(runtime) = &mut self.state else {
+            return;
+        };
+        if runtime.retry_failed_payload_window(block_range) == 0 {
+            return;
+        }
+        self.payload_window_load_scheduler.reset();
+        cx.notify();
+    }
+
     pub(in crate::app) fn trim_persistent_payload_cache(&mut self) {
         if !self.storage_persistence.is_enabled() {
             return;

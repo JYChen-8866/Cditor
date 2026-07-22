@@ -151,6 +151,8 @@ cditor_app::gui::input::bind_cditor_keys(cx);
 
 `CditorBuilder` 使用 builder 模式。`Cditor` 暂时保留为兼容名称。所有配置方法都会消费并返回 `Self`，适合链式调用。
 
+数据库便捷方法由 `cditor_app::CditorStorageExt` 提供；基础 `cditor-api` 只暴露 `with_storage_provider` / `with_storage`，不依赖 SQLx 或具体数据库实现。
+
 ### 5.1 后端选择
 
 | 方法 | 作用 | 是否持久化 |
@@ -163,6 +165,7 @@ cditor_app::gui::input::bind_cditor_keys(cx);
 | `.with_sqlite_options(options)` | 配置 SQLite durability、busy timeout 和连接数 | 是 |
 | `.with_postgres_url(url)` | 由 Cditor 建立 PostgreSQL 连接并执行 migrations | 是 |
 | `.with_postgres_pool(pool)` | 复用宿主提供的 `sqlx::PgPool` | 是 |
+| `.with_storage_provider(provider)` | 注入自定义异步存储 provider | 是 |
 | `.with_cloud_endpoint(endpoint)` | 配置 Cloud endpoint | 尚未实现完整加载 |
 
 `.with_cloud_endpoint` 目前只会让 View 进入后台加载提示状态，尚未连接远端文档协议，不应作为生产后端。
@@ -190,9 +193,6 @@ SQLite 和 PostgreSQL 后端都必须指定 `document_id`。推荐的 `.build(cx
 | `.without_autosave()` | 关闭自动保存 |
 | `.with_ai_provider(provider)` | 注入宿主管理的 AI Provider |
 | `.without_ai()` | 关闭 AI 入口和请求能力 |
-| `.with_postgres_large_demo_seed(count, force)` | 向 PostgreSQL 写入大文档测试数据 |
-
-大文档 seed 接口用于开发、性能测试和验收，不建议在普通产品启动流程中启用。
 
 ### 5.4 SQLite 配置
 
@@ -210,7 +210,8 @@ let component = CditorBuilder::new()
 默认配置使用 WAL、外键校验、5 秒 busy timeout 和 `synchronous=FULL`。需要调整时使用结构化配置：
 
 ```rust
-use cditor_app::{CditorBuilder, SqliteDurability, SqliteStorageOptions};
+use cditor_app::{CditorBuilder, CditorStorageExt};
+use cditor_app::storage_sqlite::{SqliteDurability, SqliteStorageOptions};
 use std::time::Duration;
 
 let sqlite = SqliteStorageOptions::file("./workspace.cditor.db")
@@ -260,6 +261,8 @@ let component = CditorBuilder::new()
     .build(cx)?;
 ```
 
+以上 PostgreSQL/SQLite builder 调用需要 `use cditor_app::CditorStorageExt;`。
+
 URL 模式的冷启动流程会：
 
 1. 创建 SQLx PostgreSQL 连接池。
@@ -273,7 +276,7 @@ URL 模式的冷启动流程会：
 ### 6.2 复用宿主连接池
 
 ```rust
-use cditor_app::CditorBuilder;
+use cditor_app::{CditorBuilder, CditorStorageExt};
 use sqlx::PgPool;
 
 fn create_editor(pool: PgPool, cx: &mut gpui::App) {
@@ -287,12 +290,19 @@ fn create_editor(pool: PgPool, cx: &mut gpui::App) {
 }
 ```
 
-`with_postgres_pool` 假定连接池已经可用，并且数据库 schema 已经初始化。与 URL 模式不同，该入口不会自动调用 migrations。宿主可以显式使用 Cditor 的存储接口初始化：
+`with_postgres_pool` 复用宿主连接池；`PostgresStorageProvider` 在打开时统一确保 migrations 已执行，因此 URL 和 pool 路径具有相同 schema 契约。需要 seed 大型演示文档时直接配置 provider：
 
 ```rust
-use cditor_app::storage_postgres::run_migrations;
+use std::sync::Arc;
+use cditor_app::backends::{LargeDemoSeedOptions, Postgres};
+use cditor_app::storage_postgres::pg_document_id_from_runtime;
 
-run_migrations(&pool).await?;
+let provider = Postgres::from_pool(pool).with_large_demo_seed(
+    LargeDemoSeedOptions::new(pg_document_id_from_runtime(42), 1, 100_000),
+);
+let editor = CditorBuilder::new()
+    .with_document_id(42)
+    .with_storage_provider(Arc::new(provider));
 ```
 
 数据库结构、远程连接和运维方式参见：

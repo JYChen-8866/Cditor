@@ -10,9 +10,9 @@ pub mod traits;
 pub mod version;
 
 pub use backend::{
-    DocumentStorage, LoadDocumentRequest, LoadedDocument, LoadedPayloadBatch, StorageBackendKind,
-    StorageCapabilities, StorageDocumentMetadata, StorageSaveBatch, StorageSaveOutcome,
-    StorageSession,
+    DocumentStorage, LoadDocumentRequest, LoadedDocument, LoadedPayloadBatch,
+    StaticStorageProvider, StorageBackendKind, StorageCapabilities, StorageDocumentMetadata,
+    StorageProvider, StorageSaveBatch, StorageSaveOutcome, StorageSession,
 };
 pub use error::{StorageError, StorageResult};
 pub use page_layout_snapshot::{StoragePageLayoutPage, StoragePageLayoutSnapshot};

@@ -176,6 +176,43 @@ pub trait DocumentStorage: Send + Sync {
     }
 }
 
+#[async_trait]
+pub trait StorageProvider: Send + Sync {
+    fn label(&self) -> &str;
+
+    fn open_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(90)
+    }
+
+    async fn open(&self) -> StorageResult<Arc<dyn DocumentStorage>>;
+}
+
+#[derive(Clone)]
+pub struct StaticStorageProvider {
+    label: String,
+    storage: Arc<dyn DocumentStorage>,
+}
+
+impl StaticStorageProvider {
+    pub fn new(label: impl Into<String>, storage: Arc<dyn DocumentStorage>) -> Self {
+        Self {
+            label: label.into(),
+            storage,
+        }
+    }
+}
+
+#[async_trait]
+impl StorageProvider for StaticStorageProvider {
+    fn label(&self) -> &str {
+        &self.label
+    }
+
+    async fn open(&self) -> StorageResult<Arc<dyn DocumentStorage>> {
+        Ok(self.storage.clone())
+    }
+}
+
 #[derive(Clone)]
 pub struct StorageSession {
     storage: Arc<dyn DocumentStorage>,

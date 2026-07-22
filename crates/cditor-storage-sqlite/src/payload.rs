@@ -4,7 +4,7 @@ use sqlx::{QueryBuilder, Row, Sqlite};
 use uuid::Uuid;
 
 use cditor_core::ids::DocumentId;
-use cditor_core::rich_text::{BlockPayloadRecord, kind_tag_for_rich_block_kind};
+use cditor_core::rich_text::{BlockPayload, BlockPayloadRecord, kind_tag_for_rich_block_kind};
 use cditor_storage::{LoadedPayloadBatch, StorageError, StorageResult};
 
 use crate::error::{serialization_error, sqlite_error};
@@ -50,6 +50,13 @@ impl SqliteDocumentStorage {
                 })?;
                 let kind_json: String = row.try_get("kind_json").map_err(sqlite_error)?;
                 let payload_json: String = row.try_get("payload_json").map_err(sqlite_error)?;
+                let payload: BlockPayload =
+                    serde_json::from_str(&payload_json).map_err(serialization_error)?;
+                payload
+                    .validate_opaque_envelope_domain()
+                    .map_err(|message| {
+                        StorageError::CorruptData(format!("block {block_id}: {message}"))
+                    })?;
                 by_id.insert(
                     block_id,
                     BlockPayloadRecord {
@@ -59,8 +66,7 @@ impl SqliteDocumentStorage {
                             "content_version",
                         )?,
                         kind: serde_json::from_str(&kind_json).map_err(serialization_error)?,
-                        payload: serde_json::from_str(&payload_json)
-                            .map_err(serialization_error)?,
+                        payload,
                     },
                 );
             }
@@ -86,6 +92,12 @@ pub(crate) async fn insert_payload(
     payload: &BlockPayloadRecord,
     now: i64,
 ) -> StorageResult<()> {
+    payload
+        .payload
+        .validate_opaque_envelope_domain()
+        .map_err(|message| {
+            StorageError::CorruptData(format!("block {}: {message}", payload.block_id))
+        })?;
     let block_id = block_id_to_sqlite(payload.block_id);
     let content_version = checked_i64(payload.content_version)?;
     let kind_json = serde_json::to_string(&payload.kind).map_err(serialization_error)?;

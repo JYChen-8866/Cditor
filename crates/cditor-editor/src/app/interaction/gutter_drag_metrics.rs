@@ -18,16 +18,20 @@ pub(in crate::app) struct GutterDragGuidelineGeometry {
 pub(in crate::app) fn gutter_drag_guideline_geometry(
     rects: &[super::geometry::ProjectedBlockRect],
     target: BlockDropTarget,
+    window_start_global_y: f64,
 ) -> Option<GutterDragGuidelineGeometry> {
     let (anchor, y_px) = if let Some(block_id) = target.insert_before_block_id {
         let anchor = rects.iter().find(|rect| rect.block_id == block_id)?;
-        (anchor, anchor.document_top as f32)
+        (anchor, (anchor.document_top - window_start_global_y) as f32)
     } else {
         let anchor = rects
             .iter()
             .filter(|rect| rect.visible_index < target.target_visible_index)
             .max_by_key(|rect| rect.visible_index)?;
-        (anchor, anchor.document_bottom as f32)
+        (
+            anchor,
+            (anchor.document_bottom - window_start_global_y) as f32,
+        )
     };
     let start_x_px = block_content_left_px(anchor.indent_px);
     let end_x_px = GUTTER_DRAG_GUIDELINE_CONTENT_END_PX;
@@ -42,8 +46,8 @@ pub(in crate::app) fn gutter_drag_pointer_document_y(
     window_y: f32,
     document_viewport_origin_y: f64,
     scroll_top: f64,
-) -> f32 {
-    (f64::from(window_y) - document_viewport_origin_y + scroll_top) as f32
+) -> f64 {
+    f64::from(window_y) - document_viewport_origin_y + scroll_top
 }
 
 pub(in crate::app) fn gutter_drag_auto_scroll_delta(pointer_y: f64, viewport_height: f64) -> f64 {
@@ -101,6 +105,7 @@ mod tests {
                     insert_before_block_id: Some(1),
                     target_visible_index: 0,
                 },
+                0.0,
             ),
             Some(GutterDragGuidelineGeometry {
                 y_px: 0.0,
@@ -115,6 +120,7 @@ mod tests {
                     insert_before_block_id: Some(2),
                     target_visible_index: 1,
                 },
+                0.0,
             ),
             Some(GutterDragGuidelineGeometry {
                 y_px: 40.0,
@@ -136,9 +142,10 @@ mod tests {
                     insert_before_block_id: Some(2),
                     target_visible_index: 1,
                 },
+                100.0,
             ),
             Some(GutterDragGuidelineGeometry {
-                y_px: 132.0,
+                y_px: 32.0,
                 start_x_px: block_content_left_px(0.0),
                 end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
             }),
@@ -150,9 +157,10 @@ mod tests {
                     insert_before_block_id: None,
                     target_visible_index: 2,
                 },
+                100.0,
             ),
             Some(GutterDragGuidelineGeometry {
-                y_px: 164.0,
+                y_px: 64.0,
                 start_x_px: block_content_left_px(0.0),
                 end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
             }),
@@ -173,9 +181,10 @@ mod tests {
                     insert_before_block_id: None,
                     target_visible_index: 2,
                 },
+                100.0,
             ),
             Some(GutterDragGuidelineGeometry {
-                y_px: 164.0,
+                y_px: 64.0,
                 start_x_px: block_content_left_px(0.0),
                 end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
             }),
@@ -193,6 +202,7 @@ mod tests {
                     insert_before_block_id: Some(99),
                     target_visible_index: 0,
                 },
+                100.0,
             ),
             None,
         );
@@ -203,6 +213,7 @@ mod tests {
                     insert_before_block_id: None,
                     target_visible_index: 0,
                 },
+                100.0,
             ),
             None,
         );
@@ -212,5 +223,27 @@ mod tests {
     fn gutter_drag_pointer_document_y_removes_window_origin() {
         assert_eq!(gutter_drag_pointer_document_y(235.0, 112.0, 0.0), 123.0);
         assert_eq!(gutter_drag_pointer_document_y(235.0, 112.0, 80.0), 203.0);
+        assert_eq!(
+            gutter_drag_pointer_document_y(235.0, 112.0, 20_000_000.25),
+            20_000_123.25
+        );
+    }
+
+    #[test]
+    fn guideline_rebases_far_document_coordinates_before_f32_conversion() {
+        let start = 20_000_000.25;
+        let rects = vec![rect(1, start, start + 32.0)];
+
+        let guideline = gutter_drag_guideline_geometry(
+            &rects,
+            BlockDropTarget {
+                insert_before_block_id: None,
+                target_visible_index: 1,
+            },
+            start,
+        )
+        .unwrap();
+
+        assert_eq!(guideline.y_px, 32.0);
     }
 }

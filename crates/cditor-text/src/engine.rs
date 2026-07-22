@@ -251,6 +251,12 @@ fn ensure_complete_style_coverage(
     base_style: &ParleyTextStyleConfig,
 ) {
     if text.is_empty() {
+        if style_runs.is_empty() {
+            style_runs.push(ParleyStyleRun {
+                range: 0..0,
+                style: base_style.clone(),
+            });
+        }
         return;
     }
     if style_runs.is_empty() {

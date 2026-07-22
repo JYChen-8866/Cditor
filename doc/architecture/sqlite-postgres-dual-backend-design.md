@@ -437,6 +437,13 @@ PRAGMA wal_autocheckpoint = 1000;
 | u64 version | checked `BIGINT` | checked signed `INTEGER` |
 | FTS | `tsvector + GIN` | FTS5 virtual table |
 
+JSON 映射只用于当前版本能够理解的 payload。未知插件的
+`BlockPayload::Opaque` 必须保留 `VersionedEnvelope::body` 的原始 JSON 字节：SQLite 的
+`payload_json TEXT` 可直接透传；PostgreSQL 必须写入 `payload_bytes BYTEA` 并令
+`payload_json` 为 NULL，禁止经过会归一化空白与字段顺序的 JSONB codec。两条读取路径都要
+校验 envelope domain，Runtime 仅渲染安全 fallback。跨后端验收见
+`doc/acceptance/2026-07-22-unknown-plugin-roundtrip.md`。
+
 不能把超出 `i64` 的 Rust version 直接 cast；两个后端都必须返回 `StorageError::VersionOutOfRange`。
 
 ### 8.3 ID 决策
@@ -494,7 +501,7 @@ pub struct SqliteOptions {
 }
 ```
 
-`CditorBackend` 可以逐步重命名为 `CditorStorageBackend`；保留 type alias 或兼容 variant，避免立即破坏已有宿主。
+最终实现采用 `CditorBackend::Persistent { provider: Arc<dyn StorageProvider> }`。API 不枚举具体数据库；SQLite/PostgreSQL provider 由实现 crate 提供，app 通过扩展 trait保留便捷调用。
 
 ### 9.2 Builder 接口
 
@@ -515,17 +522,17 @@ let postgres_editor = CditorBuilder::new()
 完整接口建议：
 
 ```rust
-with_storage_backend(CditorStorageBackend)
+with_storage_provider(Arc<dyn StorageProvider>)
+with_storage(Arc<dyn DocumentStorage>, label)
 with_sqlite_path(path)
 with_sqlite_options(options)
-with_postgres_url(url)          // 兼容保留
-with_postgres_pool(pool)        // 兼容保留
-with_custom_storage(storage)
+with_postgres_url(url)          // cditor-app 扩展 trait
+with_postgres_pool(pool)        // cditor-app 扩展 trait
 ```
 
 规则：
 
-- backend 是 enum 单值，builder 后一次配置替换前一次配置，不可能同时留下两个 active backend。
+- backend 是 enum 单值，持久化分支持有一个 provider；builder 后一次配置替换前一次配置，不可能同时留下两个 active backend。
 - SQLite/PostgreSQL 都要求显式 `document_id`，除非后续增加独立的 create/open document lifecycle。
 - URL、文件路径和数据库错误日志必须脱敏。
 - `build()` 在 migration/config 错误时返回 `CditorError::Storage` 或 `InvalidInput`。
@@ -720,6 +727,12 @@ save PostgreSQL
 - migration 失败保留原文件，错误中给出可执行的恢复建议。
 - 大 migration 提供进度/取消边界，不能在 GPUI 主线程阻塞。
 
+SQLite 已由 `cditor-storage-sqlite::SqliteMigrationManager` 落实该协议：启动先核对
+SQLx ledger/checksum、`integrity_check`、外键与可用空间；`VACUUM INTO` 备份后在隔离
+副本 dry-run；正式执行按 migration version 上报进度并只在事务边界取消；ledger
+同时作为重启 resume cursor。正式迁移或校验失败会关闭连接并从已验证备份原子恢复。
+单个超大 backfill 仍必须在对应 migration 中建立更细的持久 cursor。
+
 ### 13.2 备份
 
 - SQLite 使用 online backup API 或 `VACUUM INTO`。
@@ -856,6 +869,7 @@ SQLite contract tests 使用 tempfile 数据库，默认不 ignored；PostgreSQL
 - [x] 实现 transaction 和原子 `commit(batch)`。
 - [x] 同一 canonical path 的实例共享进程内 writer gate，并提供有界 busy timeout。
 - [x] 实现可等待 flush barrier 和 SQLite WAL checkpoint。
+- [x] 实现 migration preflight、一致性备份、隔离 dry-run、三类 checksum、逐版本进度/恢复和自动 rollback。
 - [ ] 补齐 writer queue depth、WAL bytes、last checkpoint diagnostics。
 - [ ] 运行完整 shared contract tests。
 

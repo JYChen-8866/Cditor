@@ -15,7 +15,7 @@ use cditor_runtime::{TableCellPosition, TableViewState};
 use super::cell::{is_active_cell, render_table_cell};
 use super::grid::render_table_grid;
 use super::reorder::TableReorderPreview;
-use super::resize::TableResizePreview;
+use super::resize::{TableResizePreview, table_view_with_resize_preview};
 use super::selection::{TableAxisSelection, TableCellRangeSelection};
 use super::style::{
     V1_TABLE_EMPTY_PADDING_PX, V1_TABLE_RADIUS_PX, table_border_color, table_surface_background,
@@ -33,12 +33,14 @@ pub(crate) fn render_table_block(
     marked_range: Option<Range<usize>>,
     table_selection: Option<TableAxisSelection>,
     table_range_selection: Option<TableCellRangeSelection>,
-    _table_resize_preview: Option<TableResizePreview>,
+    table_resize_preview: Option<TableResizePreview>,
     _table_reorder_preview: Option<TableReorderPreview>,
     table_scroll_handle: Option<ScrollHandle>,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
 ) -> AnyElement {
+    let table_view = table_view_with_resize_preview(block_id, table_view, table_resize_preview);
+    let table_view = table_view.as_ref();
     if table_view.visible_cells.is_empty() {
         trace_table(
             "render.empty",

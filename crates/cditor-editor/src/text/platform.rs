@@ -246,6 +246,49 @@ mod tests {
         assert_eq!(stats.fallback_rate(), 0.0);
     }
 
+    #[test]
+    fn platform_layout_cache_evicts_oldest_unpinned_surface() {
+        let mut cache = crate::app::platform_layout_cache::PlatformLayoutCache::new(2, usize::MAX);
+        let mut first = platform_layout("first", TextAlign::Start);
+        first.block_id = 1;
+        first.surface_id = TextLayoutSurfaceId::Block(1);
+        let mut second = platform_layout("second", TextAlign::Start);
+        second.block_id = 2;
+        second.surface_id = TextLayoutSurfaceId::Block(2);
+        let mut third = platform_layout("third", TextAlign::Start);
+        third.block_id = 3;
+        third.surface_id = TextLayoutSurfaceId::Block(3);
+
+        cache.insert(1, first, None);
+        cache.insert(2, second, None);
+        cache.insert(3, third, Some(TextLayoutSurfaceId::Block(1)));
+
+        assert!(cache.contains_key(&1));
+        assert!(!cache.contains_key(&2));
+        assert!(cache.contains_key(&3));
+    }
+
+    #[test]
+    fn platform_layout_cache_enforces_snapshot_byte_budget() {
+        let first = platform_layout(&"a".repeat(4_096), TextAlign::Start);
+        let first_bytes =
+            std::mem::size_of::<RichTextPlatformLayout>() + first.snapshot.estimated_bytes();
+        let mut second = platform_layout(&"b".repeat(4_096), TextAlign::Start);
+        second.block_id = 2;
+        second.surface_id = TextLayoutSurfaceId::Block(2);
+        let budget = first_bytes
+            .max(std::mem::size_of::<RichTextPlatformLayout>() + second.snapshot.estimated_bytes())
+            + 256;
+        let mut cache = crate::app::platform_layout_cache::PlatformLayoutCache::new(8, budget);
+
+        cache.insert(1, first, None);
+        cache.insert(2, second, None);
+
+        assert_eq!(cache.len(), 1);
+        assert!(cache.contains_key(&2));
+        assert!(cache.estimated_bytes() <= budget);
+    }
+
     fn platform_layout(text: &str, text_align: TextAlign) -> RichTextPlatformLayout {
         let input = RichTextLayoutInput {
             block_id: 1,

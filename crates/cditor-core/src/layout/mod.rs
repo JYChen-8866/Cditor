@@ -4,6 +4,8 @@ pub mod block_metrics;
 pub mod block_provider;
 pub mod columns;
 pub mod height_index;
+#[cfg(test)]
+mod height_index_property_tests;
 pub mod page_layout;
 
 pub use block_editor_model::{

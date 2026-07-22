@@ -21,6 +21,20 @@ fn owned_navigation_commits_or_rolls_back_without_cloning_steps() {
 }
 
 #[test]
+fn clearing_redo_releases_the_abandoned_branch() {
+    let mut undo = UndoStack::default();
+    undo.record_transaction(command_transaction(1));
+    let step = undo.take_undo_step().unwrap();
+    undo.commit_undo_step(step);
+    assert_eq!(undo.redo_len(), 1);
+
+    undo.clear_redo();
+
+    assert_eq!(undo.redo_len(), 0);
+    assert_eq!(undo.undo_len(), 0);
+}
+
+#[test]
 fn capacity_truncates_oldest_step_and_mutates_newest_metadata() {
     let mut undo = UndoStack::default();
     for id in 1..=3 {
