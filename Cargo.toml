@@ -2,21 +2,20 @@
 members = [
     "crates/cditor-ai",
     "crates/cditor-core",
-    "crates/cditor-theme-types",
+    "crates/cditor-editor-protocol",
     "crates/cditor-theme",
     "crates/cditor-storage",
     "crates/cditor-storage-postgres",
     "crates/cditor-storage-sqlite",
     "crates/cditor-runtime",
-    "crates/cditor-editor-core",
+    "crates/cditor-viewport",
     "crates/cditor-editor",
     "crates/cditor-import-export",
-    "crates/cditor-collaboration",
     "crates/cditor-api",
     "crates/cditor-app",
     "crates/cditor-test-support",
     "crates/cditor-text",
-    "crates/ding-board",
+    "components/cditor-whiteboard",
 ]
 default-members = ["crates/cditor-app"]
 resolver = "3"

@@ -57,7 +57,7 @@
 | 存储实现 | `store-postgres` / `store-sqlite` | 10K / 3.3K | 具体后端 | 中 |
 | AI | `ai` | 0.8K | provider / 配置 / 流式协议 | 稳 |
 | 应用外壳 | `app` | 38K | GPUI、平台输入、overlay、渲染、后端装配、API glue | **热点** |
-| 白板 | `ding-board` | 12K | 独立白板产品（本文不覆盖） | 独立 |
+| 白板 | `cditor-whiteboard` | 12K | 独立白板产品（本文不覆盖） | 独立 |
 
 分层方向正确，依赖无环。真正的结构张力集中在 `runtime` 与 `app` 的**边界**上——不是它们"太大"，而是它们**耦合太宽**。§5 用数据说明。
 

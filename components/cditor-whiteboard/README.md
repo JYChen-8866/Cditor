@@ -1,4 +1,4 @@
-# ding-board
+# cditor-whiteboard
 
 **An infinite, pannable/zoomable whiteboard canvas for [GPUI](https://www.gpui.rs/).**
 Shapes, lines, arrows, freehand ink, text, images, and "page cards" on a boundless
@@ -65,7 +65,7 @@ GPUI app on macOS, Linux, or Windows. It comes in two layers:
 
 ```rust
 use std::rc::Rc;
-use ding_board::{Scene, WhiteboardStyle, WhiteboardView};
+use cditor_whiteboard::{Scene, WhiteboardStyle, WhiteboardView};
 
 // Build the view over a scene (a fresh `Scene::default()` or `Scene::from_json`
 // of a stored board). Call inside `cx.new(..)`.
@@ -109,7 +109,7 @@ Use the dedicated constructor:
 
 ```rust
 use std::rc::Rc;
-use ding_board::{Scene, WhiteboardStyle, WhiteboardView};
+use cditor_whiteboard::{Scene, WhiteboardStyle, WhiteboardView};
 
 let board = cx.new(|cx| {
     WhiteboardView::new_read_only(
@@ -139,7 +139,7 @@ If you want a ready-made embed surface with an "edit / maximize" affordance, use
 
 ```rust
 use std::rc::Rc;
-use ding_board::{BoardEmbedView, Scene, WhiteboardStyle};
+use cditor_whiteboard::{BoardEmbedView, Scene, WhiteboardStyle};
 
 let embed = cx.new(|cx| {
     let mut v = BoardEmbedView::new(
@@ -159,7 +159,7 @@ let embed = cx.new(|cx| {
 
 Recommended responsibility split:
 
-- `ding-board` owns the embedded preview surface and the "编辑" button
+- `cditor-whiteboard` owns the embedded preview surface and the "编辑" button
 - your editor owns the actual maximize / modal / split-pane transition
 
 For local thumbnails inside a document block, use the snapshot + thumbnail view
@@ -167,7 +167,7 @@ pair:
 
 ```rust
 use std::rc::Rc;
-use ding_board::{BoardThumbnailView, Scene, WhiteboardStyle, WhiteboardView};
+use cditor_whiteboard::{BoardThumbnailView, Scene, WhiteboardStyle, WhiteboardView};
 
 let snapshot = board.read(cx).local_thumbnail_snapshot(320.0, 180.0);
 
@@ -421,7 +421,7 @@ Text is drawn from glyph outlines, so any TrueType/OpenType face works. The defa
 bundled (JetBrains Mono, OFL); swap one in directly with `set_font`:
 
 ```rust
-use ding_board::Font;
+use cditor_whiteboard::Font;
 if let Some(face) = Font::from_bytes(ttf_bytes, /* face index */ 0) {
     board.update(cx, |v, cx| v.set_font(face, cx));
 }

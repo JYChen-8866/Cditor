@@ -225,7 +225,7 @@ flowchart TB
 | 本地可靠状态 | SQLite transaction log | 否 | 本地磁盘 |
 | 团队共享权威 | Server/PostgreSQL | 否 | 服务端 |
 | 协作合并状态 | Yrs doc/state vector | 否 | update/checkpoint |
-| 白板交互中场景 | ding-board local scene | 独立编辑器修改 | commit snapshot |
+| 白板交互中场景 | cditor-whiteboard local scene | 独立编辑器修改 | commit snapshot |
 
 ### 4.2 Runtime 内部分域
 
@@ -292,7 +292,7 @@ crates/
 ├── collab               # Yrs adapter、awareness、relative positions
 ├── sdk                  # 稳定 API、plugin contracts
 ├── ai                   # provider、context、preview/apply policy
-├── ding-board           # 独立白板引擎
+├── cditor-whiteboard    # 独立白板引擎
 └── app                  # GPUI shell、native adapters、render/overlay
 
 server/
@@ -837,7 +837,7 @@ Image、video、embed、whiteboard、Mermaid、large table 等异步 Block 必�
 
 ### 14.5 Whiteboard
 
-`ding-board` 保持独立：
+`cditor-whiteboard` 保持独立：
 
 - DocumentRuntime 将 scene JSON/snapshot 当 opaque payload。
 - 文档中显示稳定只读 thumbnail；完整编辑器独立打开。

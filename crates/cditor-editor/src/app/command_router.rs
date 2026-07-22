@@ -6,8 +6,8 @@ use crate::input::GuiInputCommand;
 use cditor_api::CditorError;
 use cditor_api::command::{
     AiApplyCommandMode, CaretDirection, CditorCommand, CommandCatalog, CommandCheckState,
-    CommandOutcome, CommandOutcomeStatus, CommandQueryState, CommandSource, CommandState,
-    CommandUnavailableReason, TableAxis,
+    CommandOutcome, CommandQueryState, CommandSource, CommandState, CommandUnavailableReason,
+    TableAxis,
 };
 use cditor_core::edit::ChangeOrigin;
 
@@ -65,11 +65,7 @@ impl CditorV2View {
                 .map(|payload| payload.plain_text())
                 .ok_or(CditorError::BlockNotFound(block_id))?;
             cx.write_to_clipboard(ClipboardItem::new_string(text));
-            return Ok(CommandOutcome {
-                changed: false,
-                transaction_id: None,
-                status: CommandOutcomeStatus::Applied,
-            });
+            return Ok(CommandOutcome::applied_side_effect(false));
         }
 
         let table_before_revision = self.ready_runtime_ref().map(|runtime| runtime.revision());
@@ -93,15 +89,10 @@ impl CditorV2View {
                 }
                 cx.notify();
             }
-            return Ok(CommandOutcome {
+            return Ok(CommandOutcome::from_document_change(
                 changed,
                 transaction_id,
-                status: if changed {
-                    CommandOutcomeStatus::Applied
-                } else {
-                    CommandOutcomeStatus::NoOp
-                },
-            });
+            ));
         }
         let format_before_revision = self.ready_runtime_ref().map(|runtime| runtime.revision());
         let format_before_transaction_id = self
@@ -124,15 +115,10 @@ impl CditorV2View {
                 }
                 cx.notify();
             }
-            return Ok(CommandOutcome {
+            return Ok(CommandOutcome::from_document_change(
                 changed,
                 transaction_id,
-                status: if changed {
-                    CommandOutcomeStatus::Applied
-                } else {
-                    CommandOutcomeStatus::NoOp
-                },
-            });
+            ));
         }
         if let Some(result) = self.execute_block_document_command(&command) {
             let changed = result.map_err(CditorError::Internal)?;
@@ -140,15 +126,7 @@ impl CditorV2View {
                 self.mark_dirty_with_origin(change_origin_for_source(source), cx);
                 cx.notify();
             }
-            return Ok(CommandOutcome {
-                changed,
-                transaction_id: None,
-                status: if changed {
-                    CommandOutcomeStatus::Applied
-                } else {
-                    CommandOutcomeStatus::NoOp
-                },
-            });
+            return Ok(CommandOutcome::from_document_change(changed, None));
         }
         if let CditorCommand::ApplyAiPreview { mode } = command {
             let mode = match mode {
@@ -164,15 +142,7 @@ impl CditorV2View {
                 self.mark_dirty_with_origin(ChangeOrigin::Ai, cx);
                 cx.notify();
             }
-            return Ok(CommandOutcome {
-                changed,
-                transaction_id: None,
-                status: if changed {
-                    CommandOutcomeStatus::Applied
-                } else {
-                    CommandOutcomeStatus::NoOp
-                },
-            });
+            return Ok(CommandOutcome::from_document_change(changed, None));
         }
 
         if let Some(gui_command) = gui_handler_for_command(&command) {
@@ -188,14 +158,12 @@ impl CditorV2View {
             let changed = before_revision != after_revision;
             let selection_changed = before_selection != after_selection;
             let side_effect_only = matches!(command, CditorCommand::CopySelection);
-            return Ok(CommandOutcome {
-                changed,
-                transaction_id: None,
-                status: if changed || selection_changed || side_effect_only {
-                    CommandOutcomeStatus::Applied
-                } else {
-                    CommandOutcomeStatus::NoOp
-                },
+            return Ok(if changed {
+                CommandOutcome::from_document_change(true, None)
+            } else if selection_changed || side_effect_only {
+                CommandOutcome::applied_side_effect(selection_changed)
+            } else {
+                CommandOutcome::no_op()
             });
         }
 

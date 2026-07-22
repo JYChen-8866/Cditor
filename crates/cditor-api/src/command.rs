@@ -1,16 +1,13 @@
 use std::ops::Range;
 
-use cditor_core::{
-    edit::TransactionId,
-    rich_text::{InlineColorTarget, InlineMark, RichBlockKind},
-};
-use cditor_editor_core::command::builtin;
-pub use cditor_editor_core::command::{
+use cditor_core::rich_text::{InlineColorTarget, InlineMark, RichBlockKind};
+use cditor_editor_protocol::command::builtin;
+pub use cditor_editor_protocol::command::{
     AiApplyCommandMode, CURRENT_COMMAND_SCHEMA_VERSION, CaretDirection, CommandArgs,
     CommandCatalog, CommandCatalogRegistrationError, CommandCheckState, CommandDefinition,
     CommandError, CommandErrorCode, CommandId, CommandInvocation, CommandMutability,
-    CommandOutcomeStatus, CommandQueryState, CommandSource, CommandUnavailableReason,
-    CommandVisibility, TableAxis,
+    CommandOutcome, CommandOutcomeStatus, CommandQueryState, CommandSource,
+    CommandUnavailableReason, CommandVisibility, TableAxis,
 };
 
 use super::document::BlockInput;
@@ -330,13 +327,6 @@ impl CommandState {
             reason: query.reason,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct CommandOutcome {
-    pub changed: bool,
-    pub transaction_id: Option<TransactionId>,
-    pub status: CommandOutcomeStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -19,14 +19,14 @@ The exact resolved revisions and transitive dependencies are recorded in
 `Cargo.lock`. Binary and source distributions must retain the license material
 required by these components.
 
-## ding-board whiteboard
+## cditor-whiteboard whiteboard
 
-Cditor ships the standalone `ding-board` GPUI whiteboard as a bundled workspace
+Cditor ships the standalone `cditor-whiteboard` GPUI whiteboard as a bundled workspace
 component.
 
-- Component: `crates/ding-board`
+- Component: `components/cditor-whiteboard`
 - License: GPL-3.0-or-later
-- Component documentation: `crates/ding-board/README.md`
+- Component documentation: `components/cditor-whiteboard/README.md`
 
 The whiteboard bundle includes the following third-party visual assets.
 
@@ -35,19 +35,19 @@ The whiteboard bundle includes the following third-party visual assets.
 JetBrains Mono is the whiteboard's built-in default text face.
 
 - Project: <https://github.com/JetBrains/JetBrainsMono>
-- Bundled asset: `crates/ding-board/assets/JetBrainsMono-Regular.ttf`
+- Bundled asset: `components/cditor-whiteboard/assets/JetBrainsMono-Regular.ttf`
 - Copyright: Copyright 2020 The JetBrains Mono Project Authors
 - License: SIL Open Font License 1.1
-- License text: `crates/ding-board/assets/JetBrainsMono-OFL.txt`
+- License text: `components/cditor-whiteboard/assets/JetBrainsMono-OFL.txt`
 
 ### Lucide icons
 
 The whiteboard toolbar and shape controls include icons from Lucide.
 
 - Project: <https://github.com/lucide-icons/lucide>
-- Bundled assets: `crates/ding-board/assets/icons/*.svg`
+- Bundled assets: `components/cditor-whiteboard/assets/icons/*.svg`
 - License: ISC; portions originating from Feather retain their MIT attribution
-- License text: `crates/ding-board/assets/icons/LICENSE`
+- License text: `components/cditor-whiteboard/assets/icons/LICENSE`
 
 Source and binary distributions that contain the whiteboard must retain the
 corresponding font and icon license files listed above.

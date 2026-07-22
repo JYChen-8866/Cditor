@@ -1,97 +1,72 @@
-# Cditor 工程结构
+# Cditor 工程结构索引
 
-本文记录 workspace 的当前边界、目录职责和强制约束。目标分层以[成熟 Notion 类编辑器总体设计](cditor-mature-notion-editor-master-design.md)为准，大文档性能约束以[大文档富文本架构](../large-document-rich-text-architecture.md)为基础。
+本文只记录 workspace 当前结构和结构门禁，不再维护一套与执行方案重复的目标目录。
+长期目标、crate 责任、依赖拓扑和逐项迁移任务以
+[重构方案 0722](重构方案%200722.md)为唯一依据；产品能力以
+[成熟 Notion 类编辑器总体设计](cditor-mature-notion-editor-master-design.md)为准；10 万
+Block 的性能约束以[大文档富文本架构](../large-document-rich-text-architecture.md)为准。
 
-## Workspace 分层
+## 当前迁移态
 
 ```text
 crates/
-  core/            纯文档模型：Block、富文本、selection、transaction、layout metadata
-  text/            Parley 文本 shaping、Bidi、geometry、layout snapshot 与 paint plan
-  editor/          纯编辑器算法：窗口规划、虚拟滚动、anchor、hit test
-  runtime/         活文档真相：编辑编排、payload window、projection、调度
-  store/           存储契约、缓存策略、持久化状态机
-  store-postgres/  PostgreSQL 查询、迁移、恢复、索引与 payload 实现
-  store-sqlite/    SQLite 本地存储、迁移和恢复实现
-  ai/              AI provider、配置与流式响应协议
-  app/             GPUI、平台输入、overlay、存储装配与应用入口
-  ding-board/      独立白板产品 crate
+  cditor-core/                 纯文档模型和领域不变量
+  cditor-theme/                theme token、resolver、typography、metrics
+  cditor-text/                 Parley 私有实现和框架无关文本 API
+  cditor-viewport/             虚拟滚动、窗口、anchor、hit-test
+  cditor-runtime/              当前活文档真相；正在收窄公共边界
+  cditor-storage/              存储 port 和通用 DTO
+  cditor-storage-sqlite/       SQLite adapter
+  cditor-storage-postgres/     PostgreSQL adapter
+  cditor-import-export/        外部格式边界
+  cditor-ai/                   AI contract；OpenAI 实现待迁出
+  cditor-api/                  过渡期 SDK/API；待拆为 protocol、session、sdk
+  cditor-editor/               过渡期 GPUI adapter；待改名并瘦身
+  cditor-app/                  过渡期 desktop composition root
+  cditor-test-support/         fixture、acceptance 和 benchmark 支撑
+components/
+  cditor-whiteboard/           独立白板产品组件
 ```
 
-目录名与 Cargo 包名对应如下：
+当前不是目标态。尤其禁止把 `cditor-api`、`cditor-editor` 和 `cditor-app` 的现有职责
+当成长期边界。目标新增 `cditor-editor-protocol`、`cditor-session`、
+`cditor-ai-openai`，并最终迁移为 `cditor-sdk`、`cditor-editor-gpui` 和
+`apps/cditor-desktop`。
 
-| 目录 | Cargo 包 |
-| --- | --- |
-| `core` | `cditor-core` |
-| `text` | `cditor-text` |
-| `editor` | `cditor-editor` |
-| `runtime` | `cditor-runtime` |
-| `store` | `cditor-storage` |
-| `store-postgres` | `cditor-storage-postgres` |
-| `store-sqlite` | `cditor-storage-sqlite` |
-| `ai` | `cditor-ai` |
-| `app` | `cditor-app` |
-| `ding-board` | `ding-board` |
+## 当前依赖原则
 
-## 依赖方向
+- `cditor-core` 不依赖 GPUI、Parley、SQLx、网络、SDK 或本地化呈现。
+- `cditor-text` 是 Parley 的唯一直接消费者，不依赖 GPUI。
+- `cditor-viewport` 只保存框架无关算法；Command 协议必须迁入
+  `cditor-editor-protocol`。
+- `cditor-runtime` 不依赖 GPUI、具体 Storage adapter、SQLx 或 OpenAI。
+- `cditor-storage` 只定义 port/DTO/error，不依赖 Runtime、Editor 或具体 adapter。
+- GPUI View 不是文档真相；迁移完成后只消费 Session projection/event 并发出 Command。
+- Desktop 是最终 composition root，具体数据库、AI 和平台实现只在此装配。
+- `cditor-whiteboard` 独立演进；编辑器只通过版本化 payload/projection 适配它。
 
-```text
-core ────────> text ────────────────────────┐
-  │                                         │
-  ├────────> editor ──────> runtime ────────┤
-  │                         ▲               │
-  ├──────────> store        │               │
-  │              │          │               ▼
-  │              ├──> store-postgres ─────> app <──── ding-board
-  │              └──> store-sqlite ───────┤
-  │                                         ▲
-  └─────────────────────────────────────────┤
-ai ────────────────────────> runtime ───────┘
+## 目录和源码门禁
+
+- Cargo package 使用 `cditor-<domain>` 或 `cditor-<domain>-<adapter>`；目录叶子与
+  package 名相同。
+- 非白板 Rust 文件不超过 700 行；白板豁免只持续到 R8-006。
+- 同一功能的状态、行为、投影和测试放在同一模块树，不以超大 façade 文件聚合实现。
+- 历史计划进入 `doc/archive/`；当前文档不得把历史路径描述为现状。
+- 一次性脚本进入 `scripts/archive/`；持续入口按 `dev/`、`database/`、`packaging/` 分类。
+- 根目录只保留 workspace、许可证、配置入口和顶层说明。
+
+`scripts/dev/check_structure.sh` 强制执行命名、文件规模、Core/Runtime/Storage/Viewport、
+GPUI 和 Parley 边界。每个阶段至少执行：
+
+```sh
+cargo fmt --all -- --check
+cargo check --workspace --all-targets
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+git diff --check
+./scripts/dev/check_structure.sh
 ```
 
-箭头表示“被右侧依赖”。核心约束：
-
-- `core` 是最底层纯模型，不依赖 GPUI、SQLx、网络或具体存储。
-- `text` 是 Parley 的唯一直接消费者，不依赖 GPUI；App 只保留主题/Runtime 输入转换和 GPUI paint adapter。
-- `editor` 只做无 UI 框架的算法，不持有 GPUI Entity。
-- `runtime` 持有文档、selection、layout height 与 scroll 真相，只接受中立的冷启动数据和 payload window 结果；不得知道 PostgreSQL、SQLx 或 GPUI。
-- `store` 定义存储通用能力；`store-postgres` 与 `store-sqlite` 提供具体实现。
-- `app` 是组合根：执行 PostgreSQL I/O，把结果转换为 runtime 数据，并消费 projection 绘制界面。
-- `ding-board` 保持独立；Cditor 仅在 `app` 做嵌入适配。
-
-## 功能目录
-
-同一功能的状态、渲染、交互和测试应放在同一目录，不再以大量同级前缀文件组织。
-
-```text
-crates/app/src/gui/
-  block/
-    code/             代码块容器、高亮、语言与主题工具栏
-    mermaid/          Mermaid 缓存、渲染和主题
-    table/            表格绘制、选择、菜单、缩放和重排
-    whiteboard/       白板嵌入适配
-  app/cditor_v2_view/
-    formatting/       选区/块格式状态、颜色和修改动作
-  diagnostics/        显式环境变量开启的诊断日志
-
-crates/store-postgres/src/stores/document/
-  mod.rs              文档结构索引和公共 store 类型
-  metadata.rs         文档与 workspace 元数据
-  attrs.rs            Block 属性
-  snapshot.rs         DocumentIndex snapshot 编解码与查询
-  tests.rs            文档存储测试
-```
-
-## 源码规则
-
-- 非白板 Rust 文件不超过 700 行；超限必须按职责拆分，不能通过放宽阈值规避。
-- 测试放在模块内小型 `tests` 模块、同级 `*_tests.rs`，或功能目录的 `tests.rs`。
-- `runtime` 禁止依赖或引用 `cditor-storage-postgres`、SQLx、GPUI。
-- 除 `cditor-text` 外的 crate 禁止直接依赖或引用 Parley。
-- PostgreSQL 查询只进入 `store-postgres`，应用级异步装配只进入 `app`。
-- 一次性脚本进入 `scripts/archive/`；日常入口按 `dev/`、`database/`、`packaging/` 分类。
-- 历史计划进入 `doc/archive/`，当前文档不得把历史路径描述为现状。
-- 根目录只保留 workspace 清单、许可证、配置入口和顶层说明；构建输出与本地资产必须被忽略。
-- 白板产品实现位于 `crates/ding-board`，编辑器侧适配位于 `crates/app/src/gui/block/whiteboard`；编辑器目录重构不得顺手改写白板实现。
-
-`scripts/dev/check_structure.sh` 自动检查文件规模、系统垃圾文件、Core/Runtime/GPUI 边界和 Parley 唯一依赖边界；`scripts/dev/check_workspace.sh` 在此基础上执行 release 配置检查、格式化、全 workspace 编译和测试。
+涉及 Runtime、Viewport、Text 或 Session 热路径时，还必须运行对应 benchmark，并与
+`doc/acceptance/2026-07-22-refactor-architecture-baseline.md` 比较 p95/max、resident
+payload、layout cache 和 undo memory。

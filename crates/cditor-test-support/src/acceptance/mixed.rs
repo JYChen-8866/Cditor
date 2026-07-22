@@ -1,10 +1,10 @@
 use std::time::Instant;
 
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
-use cditor_editor_core::scroll::ScrollbarPolicy;
 use cditor_runtime::content::payload_window::PayloadWindowLoadResult;
 use cditor_runtime::document_runtime::{DocumentRuntimeColdStartData, DocumentRuntimeIndexSource};
 use cditor_runtime::{DocumentRuntime, PayloadCachePolicy};
+use cditor_viewport::scroll::ScrollbarPolicy;
 
 use super::open::AcceptanceFixture;
 

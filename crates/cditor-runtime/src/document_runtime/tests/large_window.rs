@@ -137,7 +137,7 @@ fn enter_on_empty_list_does_not_create_block_or_move_scroll_top() {
     let mut runtime = runtime_with_kind_depths_and_text(blocks);
     runtime
         .scroll
-        .scroll_to_global_offset(320.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(320.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     runtime.focus_block(21);
     let before_scroll_top = runtime.scroll.global_scroll_top;
@@ -202,7 +202,7 @@ fn large_mixed_demo_keeps_payloads_windowed() {
         .scroll
         .scroll_to_global_offset(
             1_000_000.0,
-            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
+            cditor_viewport::scroll::ScrollOrigin::UserWheel,
         )
         .unwrap();
     let projection = runtime.projection_for_window_planned();
@@ -220,7 +220,7 @@ fn planned_projection_uses_the_same_bounded_viewport_for_resident_100k_document(
         .scroll
         .scroll_to_global_offset(
             1_000_000.0,
-            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
+            cditor_viewport::scroll::ScrollOrigin::UserWheel,
         )
         .unwrap();
 

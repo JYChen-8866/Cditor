@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use ding_board::{Scene, WhiteboardView};
+use cditor_whiteboard::{Scene, WhiteboardView};
 use gpui::{AppContext, Context, Entity};
 
 use crate::app::CditorV2View;

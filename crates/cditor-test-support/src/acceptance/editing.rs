@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use cditor_editor_core::scroll::CaretAnchor;
 use cditor_runtime::{
     CompositionState, EditingSession, InputHotPathConfig, PieceTableTextModel,
     SingleCharInputHotPath,
 };
+use cditor_viewport::scroll::CaretAnchor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditingAcceptanceScenario {

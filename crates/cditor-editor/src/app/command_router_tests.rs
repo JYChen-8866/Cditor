@@ -5,13 +5,14 @@ use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineColorTarget, InlineMark, InlineSpan, RichBlockKind,
     TableRange,
 };
+use cditor_editor_protocol::command::CommandOutcomeStatus;
 use gpui::{AppContext, TestAppContext};
 
 /// P4-015：每个 command variant 一个代表性实例（参数只需类型合法）。
 fn representative_commands() -> Vec<CditorCommand> {
     use cditor_api::command::BlockTransform;
     use cditor_api::document::BlockInput;
-    use cditor_editor_core::command::AiApplyCommandMode;
+    use cditor_editor_protocol::command::AiApplyCommandMode;
     vec![
         CditorCommand::Undo,
         CditorCommand::Redo,
@@ -282,10 +283,10 @@ fn format_command_reports_transaction_and_advances_revision_once(cx: &mut TestAp
         let runtime = view.ready_runtime_ref().unwrap();
         assert_eq!(runtime.revision(), before + 1);
         assert_eq!(
-            outcome.transaction_id,
+            outcome.transaction_ids.first().copied(),
             runtime.last_committed_transaction_id()
         );
-        assert!(outcome.transaction_id.is_some());
+        assert!(!outcome.transaction_ids.is_empty());
         assert_eq!(runtime.pending_structure_transaction_count(), 1);
     });
 }
@@ -312,10 +313,10 @@ fn table_command_reports_transaction_and_advances_revision_once(cx: &mut TestApp
         let runtime = view.ready_runtime_ref().unwrap();
         assert_eq!(runtime.revision(), before + 1);
         assert_eq!(
-            outcome.transaction_id,
+            outcome.transaction_ids.first().copied(),
             runtime.last_committed_transaction_id()
         );
-        assert!(outcome.transaction_id.is_some());
+        assert!(!outcome.transaction_ids.is_empty());
         assert_eq!(runtime.pending_structure_transaction_count(), 1);
         let BlockPayload::Table(table) = runtime.block_payload_record(3).unwrap().payload else {
             panic!("table payload");

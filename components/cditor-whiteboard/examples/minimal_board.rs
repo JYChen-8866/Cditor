@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use ding_board::{Scene, WhiteboardStyle, WhiteboardView};
+use cditor_whiteboard::{Scene, WhiteboardStyle, WhiteboardView};
 use gpui::*;
 
 fn main() {

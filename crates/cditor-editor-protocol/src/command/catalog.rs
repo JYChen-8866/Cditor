@@ -1,3 +1,5 @@
+//! Registry metadata and validation for command producers.
+
 use std::collections::BTreeMap;
 
 use super::*;

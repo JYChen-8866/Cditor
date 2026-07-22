@@ -15,7 +15,7 @@ fn current_page_window_clamps_first_middle_and_last_pages() {
         .scroll
         .scroll_to_global_offset(
             middle_offset,
-            cditor_editor_core::scroll::ScrollOrigin::ProgrammaticVirtualScroll,
+            cditor_viewport::scroll::ScrollOrigin::ProgrammaticVirtualScroll,
         )
         .unwrap();
     let middle_window = runtime.current_page_window();
@@ -27,7 +27,7 @@ fn current_page_window_clamps_first_middle_and_last_pages() {
         .scroll
         .scroll_to_global_offset(
             runtime.scroll.model_total_height,
-            cditor_editor_core::scroll::ScrollOrigin::ProgrammaticVirtualScroll,
+            cditor_viewport::scroll::ScrollOrigin::ProgrammaticVirtualScroll,
         )
         .unwrap();
     let last_window = runtime.current_page_window();

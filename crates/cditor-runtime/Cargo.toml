@@ -7,7 +7,8 @@ license.workspace = true
 [dependencies]
 cditor-ai = { path = "../cditor-ai" }
 cditor-core = { path = "../cditor-core" }
-cditor-editor-core = { path = "../cditor-editor-core" }
+cditor-editor-protocol = { path = "../cditor-editor-protocol" }
+cditor-viewport = { path = "../cditor-viewport" }
 cditor-import-export = { path = "../cditor-import-export" }
 unicode-segmentation = "1.12"
 

@@ -57,7 +57,7 @@ pub use ai::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
     AiStreamApplyResult, RuntimeAiTarget,
 };
-pub use cditor_editor_core::window::WindowMemoryPressure;
+pub use cditor_viewport::window::WindowMemoryPressure;
 pub use cold_start::{
     DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,
 };
@@ -112,16 +112,6 @@ use cditor_core::rich_text::{
     TableCellAlign, TableCellMerge, TableRange, TableTrackSize, kind_tag_for_rich_block_kind,
     plain_text_from_spans, rich_block_kind_from_tag,
 };
-use cditor_editor_core::debug_overlay::DebugOverlaySnapshot;
-use cditor_editor_core::scroll::{
-    CaretAnchor, HeightCorrectionPriority, PendingHeightCorrection, ScrollOrigin, ScrollbarDragEnd,
-    ScrollbarDragSession, ScrollbarDragUpdate, ScrollbarPolicy, ScrollbarVisualState,
-    VirtualScrollState,
-};
-use cditor_editor_core::window::{
-    PlaceholderWindow, RenderWindow, ScrollDirection, WindowPlanDecision, WindowPlanRequest,
-    WindowPlanner, WindowPlannerPolicy,
-};
 use cditor_import_export::clipboard::{
     ClipboardBlock, ClipboardBlockFragment, ClipboardFragmentBoundary, ClipboardSelection,
 };
@@ -129,6 +119,16 @@ use cditor_import_export::markdown::{
     MarkdownImportOptions, ParsedMarkdownDocument, block_kind_shortcut_with_marker_len,
     code_fence_shortcut, import_markdown_block_incremental, looks_like_markdown_paste,
     markdown_inline_shortcut_spans, parse_callout_marker, parse_markdown_document,
+};
+use cditor_viewport::debug_overlay::DebugOverlaySnapshot;
+use cditor_viewport::scroll::{
+    CaretAnchor, HeightCorrectionPriority, PendingHeightCorrection, ScrollOrigin, ScrollbarDragEnd,
+    ScrollbarDragSession, ScrollbarDragUpdate, ScrollbarPolicy, ScrollbarVisualState,
+    VirtualScrollState,
+};
+use cditor_viewport::window::{
+    PlaceholderWindow, RenderWindow, ScrollDirection, WindowPlanDecision, WindowPlanRequest,
+    WindowPlanner, WindowPlannerPolicy,
 };
 
 fn input_trace_enabled() -> bool {

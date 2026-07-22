@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use cditor_core::edit::{DocumentSelection, TextAffinity};
 use cditor_core::ids::{BlockId, SurfaceId};
-use cditor_editor_core::scroll::{AnchorCandidate, AnchorKind, CaretAnchor};
+use cditor_viewport::scroll::{AnchorCandidate, AnchorKind, CaretAnchor};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EditingPriority {

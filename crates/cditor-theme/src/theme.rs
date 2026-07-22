@@ -1,3 +1,17 @@
+use serde::{Deserialize, Serialize};
+
+use crate::ColorToken;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemeId {
+    CditorLight,
+    CditorDark,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ThemeVersion(pub u64);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GuiTheme {
     pub surface: u32,
@@ -81,6 +95,116 @@ impl GuiTheme {
             danger: 0xeb5757,
             scrollbar: 0xc7c7c5,
             scrollbar_hover: 0x9b9a97,
+        }
+    }
+
+    pub const fn dark() -> Self {
+        Self {
+            surface: 0x202020,
+            page: 0x202020,
+            panel: 0x292929,
+            text: 0xe6e6e6,
+            muted: 0x9b9b9b,
+            border: 0x3a3a3a,
+            strong_border: 0x505050,
+            focused: 0x529cca,
+            hover_surface: 0x2f2f2f,
+            action_background: 0x243d4d,
+            action_hover_background: 0x343434,
+            action_accent: 0x529cca,
+            gutter_background: 0x202020,
+            gutter_foreground: 0x9b9b9b,
+            prefix_text: 0xe6e6e6,
+            quote_text: 0xe6e6e6,
+            quote_bar: 0x9b9b9b,
+            callout_background: 0x2f2f2f,
+            callout_border: 0x3a3a3a,
+            callout_icon_background: 0x3a3a3a,
+            checkbox_border: 0xc7c7c7,
+            checkbox_checked_background: 0x529cca,
+            checkbox_checked_text: 0xffffff,
+            code_background: 0x272727,
+            code_text: 0xe6e6e6,
+            inline_code_background: 0x373737,
+            inline_code_text: 0xff7369,
+            code_toolbar_background: 0x292929,
+            code_toolbar_border: 0x3a3a3a,
+            code_toolbar_text: 0xb3b3b3,
+            code_toolbar_icon: 0x9b9b9b,
+            code_toolbar_hover: 0x383838,
+            table_header_background: 0x292929,
+            table_active_border: 0x529cca,
+            skeleton: 0x343434,
+            danger: 0xff7369,
+            scrollbar: 0x555555,
+            scrollbar_hover: 0x737373,
+        }
+    }
+
+    pub const fn color(self, token: ColorToken) -> u32 {
+        match token {
+            ColorToken::Surface => self.surface,
+            ColorToken::Page => self.page,
+            ColorToken::Panel => self.panel,
+            ColorToken::Text => self.text,
+            ColorToken::Muted => self.muted,
+            ColorToken::Border => self.border,
+            ColorToken::StrongBorder => self.strong_border,
+            ColorToken::Focused => self.focused,
+            ColorToken::HoverSurface => self.hover_surface,
+            ColorToken::ActionBackground => self.action_background,
+            ColorToken::ActionHoverBackground => self.action_hover_background,
+            ColorToken::ActionAccent => self.action_accent,
+            ColorToken::GutterBackground => self.gutter_background,
+            ColorToken::GutterForeground => self.gutter_foreground,
+            ColorToken::PrefixText => self.prefix_text,
+            ColorToken::QuoteText => self.quote_text,
+            ColorToken::QuoteBar => self.quote_bar,
+            ColorToken::CalloutBackground => self.callout_background,
+            ColorToken::CalloutBorder => self.callout_border,
+            ColorToken::CalloutIconBackground => self.callout_icon_background,
+            ColorToken::CheckboxBorder => self.checkbox_border,
+            ColorToken::CheckboxCheckedBackground => self.checkbox_checked_background,
+            ColorToken::CheckboxCheckedText => self.checkbox_checked_text,
+            ColorToken::CodeBackground => self.code_background,
+            ColorToken::CodeText => self.code_text,
+            ColorToken::InlineCodeBackground => self.inline_code_background,
+            ColorToken::InlineCodeText => self.inline_code_text,
+            ColorToken::CodeToolbarBackground => self.code_toolbar_background,
+            ColorToken::CodeToolbarBorder => self.code_toolbar_border,
+            ColorToken::CodeToolbarText => self.code_toolbar_text,
+            ColorToken::CodeToolbarIcon => self.code_toolbar_icon,
+            ColorToken::CodeToolbarHover => self.code_toolbar_hover,
+            ColorToken::TableHeaderBackground => self.table_header_background,
+            ColorToken::TableActiveBorder => self.table_active_border,
+            ColorToken::Skeleton => self.skeleton,
+            ColorToken::Danger => self.danger,
+            ColorToken::Scrollbar => self.scrollbar,
+            ColorToken::ScrollbarHover => self.scrollbar_hover,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_semantic_token_resolves_in_both_palettes() {
+        let tokens = [
+            ColorToken::Surface,
+            ColorToken::Text,
+            ColorToken::Focused,
+            ColorToken::Danger,
+            ColorToken::CodeBackground,
+            ColorToken::TableActiveBorder,
+            ColorToken::ScrollbarHover,
+        ];
+        for token in tokens {
+            assert_ne!(
+                GuiTheme::light().color(token),
+                GuiTheme::dark().color(token)
+            );
         }
     }
 }

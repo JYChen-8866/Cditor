@@ -5,8 +5,7 @@ use crate::persistence::{EditorSaveStatus, PersistenceBarrierKind};
 use cditor_api::CditorError;
 use cditor_api::CditorViewContract;
 use cditor_api::command::{
-    BlockTransform, CditorCommand, CommandOutcome, CommandOutcomeStatus, CommandSource,
-    CommandState,
+    BlockTransform, CditorCommand, CommandOutcome, CommandSource, CommandState,
 };
 use cditor_api::diagnostics::CditorDiagnostics;
 use cditor_api::document::{
@@ -364,26 +363,14 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) -> Result<CommandOutcome, CditorError> {
         if matches!(&command, CditorCommand::Undo) {
-            return self.sdk_undo(cx).map(|changed| CommandOutcome {
-                changed,
-                transaction_id: None,
-                status: if changed {
-                    CommandOutcomeStatus::Applied
-                } else {
-                    CommandOutcomeStatus::NoOp
-                },
-            });
+            return self
+                .sdk_undo(cx)
+                .map(|changed| CommandOutcome::from_document_change(changed, None));
         }
         if matches!(&command, CditorCommand::Redo) {
-            return self.sdk_redo(cx).map(|changed| CommandOutcome {
-                changed,
-                transaction_id: None,
-                status: if changed {
-                    CommandOutcomeStatus::Applied
-                } else {
-                    CommandOutcomeStatus::NoOp
-                },
-            });
+            return self
+                .sdk_redo(cx)
+                .map(|changed| CommandOutcome::from_document_change(changed, None));
         }
         let is_select_all = matches!(&command, CditorCommand::SelectAll);
         let mutating = !is_select_all;
@@ -465,15 +452,7 @@ impl CditorV2View {
             cx.emit(CditorEvent::SelectionChanged { selection });
         }
         cx.notify();
-        Ok(CommandOutcome {
-            changed,
-            transaction_id: None,
-            status: if changed {
-                CommandOutcomeStatus::Applied
-            } else {
-                CommandOutcomeStatus::NoOp
-            },
-        })
+        Ok(CommandOutcome::from_document_change(changed, None))
     }
 
     pub(in crate::app) fn sdk_register_focus_observers(

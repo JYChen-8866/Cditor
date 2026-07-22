@@ -119,7 +119,7 @@ fn selection_command_and_virtual_scroll_share_runtime_truth(cx: &mut TestAppCont
     assert!(cx.read(|cx| handle.command_state(&CditorCommand::ToggleBold, cx).enabled));
 
     let outcome = cx.update(|cx| handle.execute(CditorCommand::ToggleBold, cx).unwrap());
-    assert!(outcome.changed);
+    assert!(outcome.changed());
     assert!(cx.read(|cx| handle.is_dirty(cx)));
     assert!(cx.read(|cx| handle.can_undo(cx)));
     cx.update(|cx| {
@@ -159,7 +159,7 @@ fn sqlite_autosaves_and_reopens_through_same_contract(cx: &mut TestAppContext) {
     cx.update(|cx| handle.set_selection(caret, cx).unwrap());
     let heading =
         CditorCommand::TransformBlock(BlockTransform::Kind(RichBlockKind::Heading { level: 2 }));
-    assert!(cx.update(|cx| handle.execute(heading.clone(), cx).unwrap().changed));
+    assert!(cx.update(|cx| handle.execute(heading.clone(), cx).unwrap().changed()));
 
     cx.executor()
         .advance_clock(std::time::Duration::from_secs(2));
@@ -207,7 +207,7 @@ fn flush_waits_for_sqlite_commit_and_checkpoint(cx: &mut TestAppContext) {
     cx.update(|cx| handle.set_selection(caret, cx).unwrap());
     let heading =
         CditorCommand::TransformBlock(BlockTransform::Kind(RichBlockKind::Heading { level: 3 }));
-    assert!(cx.update(|cx| handle.execute(heading.clone(), cx).unwrap().changed));
+    assert!(cx.update(|cx| handle.execute(heading.clone(), cx).unwrap().changed()));
 
     let task = cx.update(|cx| handle.flush(cx));
     let report = cx.foreground_executor().block_test(task).unwrap();

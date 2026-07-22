@@ -10,8 +10,8 @@ use cditor_core::edit::{
     PlatformUtf16Offset, TextOffsetMap, TextPosition,
 };
 use cditor_core::ids::BlockId;
-use cditor_editor_core::hit_test::{CaretGeometryCache, HitTestError, Rect};
-use cditor_editor_core::scroll::{AnchorCandidate, AnchorKind, CaretAnchor, ScrollAnchor};
+use cditor_viewport::hit_test::{CaretGeometryCache, HitTestError, Rect};
+use cditor_viewport::scroll::{AnchorCandidate, AnchorKind, CaretAnchor, ScrollAnchor};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompositionState {
@@ -243,7 +243,7 @@ mod tests {
     use super::*;
     use cditor_core::edit::BidiDirection;
     use cditor_core::edit::{TextAffinity, TextPosition};
-    use cditor_editor_core::hit_test::{VisualLineLayout, VisualRun};
+    use cditor_viewport::hit_test::{VisualLineLayout, VisualRun};
 
     #[test]
     fn chinese_ime_preview_converts_utf16_range_and_pins_block() {

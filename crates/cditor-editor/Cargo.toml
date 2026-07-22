@@ -18,13 +18,14 @@ tokio = { version = "1", features = ["macros", "rt"] }
 cditor-ai = { path = "../cditor-ai", features = ["openai"] }
 cditor-api = { path = "../cditor-api" }
 cditor-core = { path = "../cditor-core" }
+cditor-editor-protocol = { path = "../cditor-editor-protocol" }
 cditor-import-export = { path = "../cditor-import-export" }
 cditor-text = { path = "../cditor-text" }
-cditor-editor-core = { path = "../cditor-editor-core" }
+cditor-viewport = { path = "../cditor-viewport" }
 cditor-runtime = { path = "../cditor-runtime" }
 cditor-storage = { path = "../cditor-storage" }
 cditor-theme = { path = "../cditor-theme" }
-ding-board = { path = "../ding-board" }
+cditor-whiteboard = { path = "../../components/cditor-whiteboard" }
 tokio = { version = "1", features = ["time"] }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit", "test-support"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }

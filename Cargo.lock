@@ -963,7 +963,7 @@ dependencies = [
  "async-trait",
  "cditor-ai",
  "cditor-core",
- "cditor-editor-core",
+ "cditor-editor-protocol",
  "cditor-storage",
  "cditor-theme",
  "gpui",
@@ -989,15 +989,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cditor-collaboration"
-version = "0.2.6"
-dependencies = [
- "cditor-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "cditor-core"
 version = "0.2.6"
 dependencies = [
@@ -1016,13 +1007,14 @@ dependencies = [
  "cditor-ai",
  "cditor-api",
  "cditor-core",
- "cditor-editor-core",
+ "cditor-editor-protocol",
  "cditor-import-export",
  "cditor-runtime",
  "cditor-storage",
  "cditor-text",
  "cditor-theme",
- "ding-board",
+ "cditor-viewport",
+ "cditor-whiteboard",
  "gpui",
  "gpui_platform",
  "image",
@@ -1037,13 +1029,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "cditor-editor-core"
+name = "cditor-editor-protocol"
 version = "0.2.6"
 dependencies = [
  "cditor-core",
  "serde",
  "serde_json",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -1062,8 +1053,9 @@ version = "0.2.6"
 dependencies = [
  "cditor-ai",
  "cditor-core",
- "cditor-editor-core",
+ "cditor-editor-protocol",
  "cditor-import-export",
+ "cditor-viewport",
  "serde",
  "serde_json",
  "unicode-segmentation",
@@ -1115,8 +1107,8 @@ name = "cditor-test-support"
 version = "0.2.6"
 dependencies = [
  "cditor-core",
- "cditor-editor-core",
  "cditor-runtime",
+ "cditor-viewport",
  "serde",
  "serde_json",
 ]
@@ -1141,16 +1133,27 @@ dependencies = [
 name = "cditor-theme"
 version = "0.2.6"
 dependencies = [
- "cditor-theme-types",
  "serde",
- "serde_json",
 ]
 
 [[package]]
-name = "cditor-theme-types"
+name = "cditor-viewport"
 version = "0.2.6"
 dependencies = [
+ "cditor-core",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "cditor-whiteboard"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "gpui_platform",
+ "log",
  "serde",
+ "serde_json",
+ "ttf-parser",
 ]
 
 [[package]]
@@ -1881,18 +1884,6 @@ dependencies = [
  "const-oid",
  "crypto-common",
  "subtle",
-]
-
-[[package]]
-name = "ding-board"
-version = "0.1.0"
-dependencies = [
- "gpui",
- "gpui_platform",
- "log",
- "serde",
- "serde_json",
- "ttf-parser",
 ]
 
 [[package]]

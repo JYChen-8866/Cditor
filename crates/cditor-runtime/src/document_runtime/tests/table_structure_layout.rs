@@ -216,7 +216,7 @@ fn table_height_change_above_viewport_restores_viewport_anchor() {
     let mut runtime = DocumentRuntime::from_payloads(1, payloads, 720.0);
     runtime
         .scroll
-        .scroll_to_global_offset(1_200.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(1_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let before_scroll_top = runtime.scroll.global_scroll_top;
     let before_table_height = runtime.height_index.heights[0];

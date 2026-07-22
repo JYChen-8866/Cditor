@@ -998,7 +998,7 @@ impl CollaborationSession {
 ```
 crates/
 ├── cditor-core/                    # 不变
-├── cditor-editor-core/             # 不变
+├── cditor-viewport/             # 不变
 ├── cditor-collaboration/           # ★ 新增：CRDT 数据结构 + 转换层
 │   ├── Cargo.toml                  # 依赖：cditor-core, serde, bincode
 │   ├── src/

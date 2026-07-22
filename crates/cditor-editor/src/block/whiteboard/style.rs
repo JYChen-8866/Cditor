@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use ding_board::{WhiteboardStyle, WhiteboardStyleFn};
+use cditor_whiteboard::{WhiteboardStyle, WhiteboardStyleFn};
 use gpui::{Hsla, rgb};
 
 use crate::theme::GuiTheme;

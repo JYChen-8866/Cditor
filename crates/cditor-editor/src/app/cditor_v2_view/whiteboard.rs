@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use ding_board::{Scene, WhiteboardView};
+use cditor_whiteboard::{Scene, WhiteboardView};
 use gpui::{AppContext, Context};
 
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};

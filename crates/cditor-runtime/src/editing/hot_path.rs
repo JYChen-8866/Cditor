@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use crate::{EditingPriority, EditingSession};
 use cditor_core::edit::{DocumentSelection, EditTransaction, TextPosition};
 use cditor_core::ids::BlockId;
-use cditor_editor_core::scroll::{CaretAnchor, ScrollAnchor};
+use cditor_viewport::scroll::{CaretAnchor, ScrollAnchor};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InlineRun {
@@ -402,7 +402,7 @@ fn visual_line_hint(text: &str, offset: usize, context: usize) -> Range<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cditor_editor_core::scroll::CaretAnchor;
+    use cditor_viewport::scroll::CaretAnchor;
 
     #[test]
     fn keydown_updates_memory_model_before_transaction_and_async_tasks() {

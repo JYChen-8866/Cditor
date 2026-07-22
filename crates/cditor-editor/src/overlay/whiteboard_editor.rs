@@ -1,4 +1,4 @@
-use ding_board::WhiteboardView;
+use cditor_whiteboard::WhiteboardView;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
 };

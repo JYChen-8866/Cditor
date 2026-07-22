@@ -1,42 +1,40 @@
-# Cditor / ding-board integration architecture
+# Cditor / cditor-whiteboard integration architecture
 
 ## Goals
 
-- Keep `ding-board` reusable and independent from cditor document internals.
+- Keep `cditor-whiteboard` reusable and independent from cditor document internals.
 - Persist whiteboards through the existing `WhiteboardPayload.scene_json` contract.
-- Render document blocks through ding-board's local thumbnail API.
+- Render document blocks through cditor-whiteboard's local thumbnail API.
 - Create GPUI thumbnail entities only for the current virtual render window.
 - Keep whiteboard rendering and resources out of `core`, `engine`, and storage crates.
 
 ## Workspace ownership
 
 ```text
+components/
+  cditor-whiteboard/                    # reusable whiteboard product crate
+    src/                                # Scene, WhiteboardView, BoardThumbnailView
+    assets/                             # board-owned fonts and icons
+    examples/                           # standalone board host examples
 crates/
-  core/                         # WhiteboardPayload { scene_json }, block kind, layout rule
-  engine/                       # payload/window/undo/persistence orchestration; no GPUI dependency
-  store/                        # storage contracts
-  store-postgres/               # opaque scene_json persistence
-  ding-board/                   # reusable whiteboard product crate
-    src/                        # Scene, WhiteboardView, BoardThumbnailView
-    assets/                     # board-owned fonts and icons
-    examples/                   # standalone board host examples
-  app/
-    src/gui/block/whiteboard/   # cditor-specific host adapter
-      mod.rs
-      cache.rs                  # visible-window thumbnail entity lifecycle
-      render.rs                 # stable block frame + BoardThumbnailView
-      style.rs                  # GuiTheme -> WhiteboardStyle mapping
+  cditor-core/                          # WhiteboardPayload and layout rule
+  cditor-runtime/                       # payload/window/undo orchestration; no GPUI
+  cditor-storage-postgres/              # opaque scene_json persistence
+  cditor-editor/src/block/whiteboard/   # Cditor-specific GPUI adapter
+    cache.rs                            # visible-window thumbnail lifecycle
+    render.rs                           # stable frame + thumbnail view
+    style.rs                            # GuiTheme -> WhiteboardStyle mapping
 ```
 
-`ding-board` belongs at `crates/ding-board`. It must not live under
+`cditor-whiteboard` belongs at `components/cditor-whiteboard`. It must not live under
 `crates/app`, because the board has its own model, serialization, editing UI,
-thumbnail renderer, examples, and assets. The app depends on ding-board; the
+thumbnail renderer, examples, and assets. The app depends on cditor-whiteboard; the
 dependency must never point in the opposite direction.
 
 ## Dependency direction
 
 ```text
-cditor-core <- cditor-runtime <- cditor-app -> ding-board
+cditor-core <- cditor-runtime <- cditor-app -> cditor-whiteboard
       ^              ^               |
       |              |               +-> GPUI thumbnail entities
       +--------------+------------------> opaque scene_json only
@@ -47,7 +45,7 @@ Rules:
 1. `cditor-core` owns the block payload contract, not the board scene types.
 2. `cditor-runtime` treats scene JSON as opaque document data.
 3. `cditor-app` parses scene JSON and maps editor theme tokens.
-4. `ding-board` never imports cditor crates.
+4. `cditor-whiteboard` never imports cditor crates.
 5. PostgreSQL stores scene JSON; thumbnail state is reconstructible cache data.
 
 ## Document embed flow
@@ -110,13 +108,13 @@ the existing PostgreSQL dirty path. The board keeps its own fine-grained undo
 history, so scene persistence updates do not create one document undo snapshot per
 pointer movement.
 
-## ding-board internal follow-up
+## cditor-whiteboard internal follow-up
 
 The imported crate is correctly placed but its current `src/lib.rs` is too large.
 Its public API should remain stable while implementation moves toward:
 
 ```text
-ding-board/src/
+cditor-whiteboard/src/
   lib.rs
   model/
   camera/
@@ -130,12 +128,12 @@ ding-board/src/
 ```
 
 This internal split is independent of cditor integration and should be performed
-as a dedicated ding-board refactor with its existing behavior tests preserved.
+as a dedicated cditor-whiteboard refactor with its existing behavior tests preserved.
 
 ## Completed checklist
 
-- [x] Add `crates/ding-board` to the workspace.
-- [x] Add ding-board as an app-only dependency.
+- [x] Add `components/cditor-whiteboard` to the workspace.
+- [x] Add cditor-whiteboard as an app-only dependency.
 - [x] Add direct persisted-scene thumbnail snapshot API.
 - [x] Render whiteboard blocks with a wheel-transparent read-only `WhiteboardView`.
 - [x] Add read-only render specialization, viewport culling, and glyph layout caching.
@@ -144,4 +142,4 @@ as a dedicated ding-board refactor with its existing behavior tests preserved.
 - [x] Map cditor theme tokens to `WhiteboardStyle`.
 - [x] Preserve a stable whiteboard block height for empty scenes.
 - [x] Add full-screen whiteboard editing session and runtime scene persistence.
-- [ ] Split ding-board's oversized `src/lib.rs` into feature modules.
+- [ ] Split cditor-whiteboard's oversized `src/lib.rs` into feature modules.

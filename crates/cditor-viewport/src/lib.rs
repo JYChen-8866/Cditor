@@ -1,4 +1,3 @@
-pub mod command;
 pub mod debug_overlay;
 pub mod hit_test;
 pub mod scroll;

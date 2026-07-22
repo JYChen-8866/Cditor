@@ -24,7 +24,7 @@ fn planned_payload_window_without_records_does_not_render_per_block_placeholders
         .scroll
         .scroll_to_global_offset(
             400.0 * 32.0,
-            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
+            cditor_viewport::scroll::ScrollOrigin::UserWheel,
         )
         .unwrap();
 
@@ -359,10 +359,7 @@ fn planned_window_load_replaces_bounded_placeholder_without_full_hydration() {
     );
     runtime
         .scroll
-        .scroll_to_global_offset(
-            160_000.0,
-            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
-        )
+        .scroll_to_global_offset(160_000.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
 
     let placeholder = runtime.projection_for_window_planned();
@@ -414,10 +411,7 @@ fn rapid_remote_scroll_accepts_out_of_order_windows_without_blank_lockup() {
 
     runtime
         .scroll
-        .scroll_to_global_offset(
-            80_000.0,
-            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
-        )
+        .scroll_to_global_offset(80_000.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let first_projection = runtime.projection_for_window_planned();
     let first_range = first_projection.render_window.block_range.clone();
@@ -427,10 +421,7 @@ fn rapid_remote_scroll_accepts_out_of_order_windows_without_blank_lockup() {
 
     runtime
         .scroll
-        .scroll_to_global_offset(
-            240_000.0,
-            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
-        )
+        .scroll_to_global_offset(240_000.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let final_projection = runtime.projection_for_window_planned();
     let final_range = final_projection.render_window.block_range.clone();
@@ -474,10 +465,7 @@ fn rapid_remote_scroll_accepts_out_of_order_windows_without_blank_lockup() {
 
     runtime
         .scroll
-        .scroll_to_global_offset(
-            80_000.0,
-            cditor_editor_core::scroll::ScrollOrigin::UserWheel,
-        )
+        .scroll_to_global_offset(80_000.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let revisited = runtime.projection_for_window_planned();
     assert_eq!(revisited.render_window.block_range, first_range);
@@ -516,7 +504,7 @@ fn incremental_scroll_keeps_resident_blocks_and_only_placeholds_missing_edges() 
 
     runtime
         .scroll
-        .scroll_to_global_offset(1_280.0, cditor_editor_core::scroll::ScrollOrigin::UserWheel)
+        .scroll_to_global_offset(1_280.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let projection = runtime.projection_for_window_planned();
 

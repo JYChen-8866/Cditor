@@ -286,7 +286,7 @@ block selection layer 应从 `content origin x` 开始，覆盖 prefix + payload
 
 ### 5.1 当前最可能的差异链路
 
-`ding-board` standalone 和 Cditor overlay 使用同一个 `WhiteboardView`，但 host 回调完全不同。集成模式每次 board `flush` 都会：
+`cditor-whiteboard` standalone 和 Cditor overlay 使用同一个 `WhiteboardView`，但 host 回调完全不同。集成模式每次 board `flush` 都会：
 
 ```text
 Scene::to_json（全 scene 序列化）
@@ -298,7 +298,7 @@ Scene::to_json（全 scene 序列化）
   -> host cx.notify（重绘整个 Cditor view/projection/overlays）
 ```
 
-`crates/ding-board/src/lib.rs:3233-3240` 会在变更 flush 时做全量 `scene.to_json()`；`crates/app/src/gui/app/cditor_v2_view/whiteboard.rs:40-53` 又在每次回调更新 host runtime 并 mark dirty。standalone 没有 Cditor 的 projection、虚拟窗口、缩略图、保存状态和根 view 重绘成本。因此“单独流畅、集成卡”首先应怀疑 host invalidation 和全量 snapshot 频率，而不是先改 canvas 绘制。
+`components/cditor-whiteboard/src/lib.rs:3233-3240` 会在变更 flush 时做全量 `scene.to_json()`；`crates/app/src/gui/app/cditor_v2_view/whiteboard.rs:40-53` 又在每次回调更新 host runtime 并 mark dirty。standalone 没有 Cditor 的 projection、虚拟窗口、缩略图、保存状态和根 view 重绘成本。因此“单独流畅、集成卡”首先应怀疑 host invalidation 和全量 snapshot 频率，而不是先改 canvas 绘制。
 
 白板自身仍有第二层成本：render 时会扫描 elements、建立 visible id set、retain caches、再构造 layers；文件过大也让优化边界不清晰。但这部分在 standalone 同样存在，应通过对比 trace 决定优先级。
 
@@ -786,19 +786,19 @@ IME composition selection
 
 | 文件 | 当前行数 | 问题 |
 | --- | ---: | --- |
-| `crates/ding-board/src/lib.rs` | 10902 | model、camera、input、render、toolbar、menu、thumbnail、IME、tests 全部混合 |
-| `crates/ding-board/src/font.rs` | 922 | shaping、layout、wrap、caret/selection geometry 与 tests 混合 |
+| `components/cditor-whiteboard/src/lib.rs` | 10902 | model、camera、input、render、toolbar、menu、thumbnail、IME、tests 全部混合 |
+| `components/cditor-whiteboard/src/font.rs` | 922 | shaping、layout、wrap、caret/selection geometry 与 tests 混合 |
 
 `crates/core/src/rich_text/markdown/inline.rs` 为 677 行，虽然尚未超过阈值，但已经同时承担 atomics、delimiter pairing、unclosed 检查、span build 与 tests，本次修复后必然越界，应提前拆。
 
-- [ ] **ARCH-SIZE-01** 保持 `ding-board` public API 稳定，按 `model/camera/geometry/render/input/tools/thumbnail/embed/persistence` 分阶段拆分。
+- [ ] **ARCH-SIZE-01** 保持 `cditor-whiteboard` public API 稳定，按 `model/camera/geometry/render/input/tools/thumbnail/embed/persistence` 分阶段拆分。
 - [ ] **ARCH-SIZE-02** `font.rs` 拆为 `font_face`、`shaping`、`line_break`、`caret_geometry`、`decoration`。
 - [ ] **ARCH-SIZE-03** 每次只做行为不变迁移，保留/迁移原单测，增加 standalone screenshot smoke test。
 - [ ] **ARCH-SIZE-04** inline Markdown 按 8.3 的职责拆分。
 
 ### 9.2 ARCH-COMPLEX：复杂 block 抽象只存在于模型测试，在线路径未接入
 
-`core/layout/block_editor_model.rs` 已定义 `BlockEditorModel`、`TableEditorModel`、inner selection 和 wheel transfer，但生产代码没有使用 `TableEditorModel`。在线表格使用另一套 `DocumentRuntime::TableRuntime` + GUI `GuiTableInteractionMode`；白板又完全由 `ding-board` 自己管理。
+`core/layout/block_editor_model.rs` 已定义 `BlockEditorModel`、`TableEditorModel`、inner selection 和 wheel transfer，但生产代码没有使用 `TableEditorModel`。在线表格使用另一套 `DocumentRuntime::TableRuntime` + GUI `GuiTableInteractionMode`；白板又完全由 `cditor-whiteboard` 自己管理。
 
 这意味着“复杂 block 有统一内部编辑模型”目前是文档/测试层能力，不是运行时不变量。
 
@@ -879,7 +879,7 @@ Zed 最近更新的 Mermaid 功能确实已经拆成独立 crate：`crates/merma
 - 它是接近叶子的 Rust crate，不依赖 Node、浏览器或 WebView；主要依赖 `merman`、`quick-xml`、`serde_json`、`anyhow`，GPUI 仅用于 `Hsla/Rgba` 颜色类型。
 - Zed 的 [Cargo.toml](https://github.com/zed-industries/zed/blob/main/crates/mermaid_render/Cargo.toml) 继承 workspace 配置且整个 Zed workspace `publish = false`，因此它不是一个可以直接 `cargo add mermaid_render` 的 crates.io 包。
 - 直接 git 依赖整个 Zed 仓库也不合适：本项目 GPUI 固定在提交 `1d217ee39d381ac101b7cf49d3d22451ac1093fe`，而 Zed main 的 `mermaid_render` 依赖其当前 workspace GPUI，容易引入第二套 GPUI 类型与更大的依赖图。
-- `mermaid_render` 明确采用 `GPL-3.0-or-later`。本仓库根目录目前没有统一 LICENSE，虽然 `ding-board` 已声明 GPL，但仍需先明确整个 Cditor 的发布许可证。复制 Zed 源码必须保留许可证与 attribution；若产品需闭源或采用宽松许可证，就不应复制这部分 GPL 代码。
+- `mermaid_render` 明确采用 `GPL-3.0-or-later`。本仓库根目录目前没有统一 LICENSE，虽然 `cditor-whiteboard` 已声明 GPL，但仍需先明确整个 Cditor 的发布许可证。复制 Zed 源码必须保留许可证与 attribution；若产品需闭源或采用宽松许可证，就不应复制这部分 GPL 代码。
 
 当前项目已经具备 Mermaid block 的数据骨架：`RichBlockKind::Mermaid`、slash menu、持久化 kind 和稳定高度规则都存在，但 `crates/app/src/gui/block/block_view.rs` 仍把 Mermaid 与 RawMarkdown 一起按代码框显示。因此不需要改数据格式，缺的是 renderer、异步任务、缓存与 GUI image adapter。
 
@@ -1055,7 +1055,7 @@ app GPUI adapter
 - [ ] selection 单真相。
 - [ ] persistence 移出 GUI 具体实现。
 - [ ] layout metrics 单来源。
-- [ ] 拆分 ding-board 超大文件。
+- [ ] 拆分 cditor-whiteboard 超大文件。
 - [ ] 更新架构状态文档与 CI 门禁。
 
 ### Milestone F：Mermaid 原生预览（P2）

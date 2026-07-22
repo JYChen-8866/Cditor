@@ -605,7 +605,7 @@ pub async fn replace(
 
 ## 13. P2：白板接口
 
-白板内部状态继续由 `ding-board` 管理，Cditor SDK 只暴露文档级操作：
+白板内部状态继续由 `cditor-whiteboard` 管理，Cditor SDK 只暴露文档级操作：
 
 ```rust
 pub trait WhiteboardProvider: Send + Sync {
@@ -634,7 +634,7 @@ impl CditorHandle {
 }
 ```
 
-不要把 `ding-board` 内部 Entity、工具状态或撤销栈直接暴露给 Cditor 宿主。
+不要把 `cditor-whiteboard` 内部 Entity、工具状态或撤销栈直接暴露给 Cditor 宿主。
 
 ## 14. P2：扩展系统
 

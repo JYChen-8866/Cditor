@@ -1,8 +1,8 @@
 [package]
-name = "ding-board"
+name = "cditor-whiteboard"
 version = "0.1.0"
 edition = "2024"
-description = "An infinite, pannable/zoomable whiteboard canvas for Ding."
+description = "Cditor's reusable infinite, pannable and zoomable GPUI whiteboard."
 license = "GPL-3.0-or-later"
 
 [dependencies]

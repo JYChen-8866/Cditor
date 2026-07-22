@@ -187,7 +187,7 @@ pub struct GlobalScrollTarget {
     pub page_index: usize,
     pub page_top: f64,
     pub offset_in_page: f64,
-    pub precision: cditor_editor_core::scroll::ScrollPrecision,
+    pub precision: cditor_viewport::scroll::ScrollPrecision,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct TextSnapshot {

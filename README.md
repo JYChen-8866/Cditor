@@ -17,7 +17,7 @@ For embedding Cditor into another GPUI application, see the [Cditor Component AP
 - Table cell editing, multi-cell selections, copy/paste, merge/split, resizing, reordering, and horizontal scrolling
 - PostgreSQL-backed document storage, payload persistence, layout caching, full-text search, asset management, transaction workflows, recovery queues, and sync outboxes
 - Streaming preview and in-place replacement for inline AI
-- Native Mermaid rendering and integrated standalone ding-board whiteboard
+- Native Mermaid rendering and integrated standalone cditor-whiteboard whiteboard
 - Regression test suites covering large-document rendering, scroll stability, input latency, and viewport projection logic
 
 ## Architectural Principles
@@ -45,7 +45,7 @@ See the full design specification in [Architecture for 100,000-Block Large Docum
 ├── config/                      # Committed non-sensitive runtime configuration files
 ├── crates/
 │   ├── cditor-core/             # Domain model, transactions, selections, and layout indexes
-│   ├── cditor-editor-core/      # GPUI-free scroll, window, command, and hit-test algorithms
+│   ├── cditor-viewport/      # GPUI-free scroll, window, command, and hit-test algorithms
 │   ├── cditor-runtime/          # Live document state, editing, projection, and scheduling
 │   ├── cditor-storage/          # Storage contracts, caches, and persistence policies
 │   ├── cditor-storage-postgres/ # PostgreSQL adapter, migrations, and integration tests
@@ -55,12 +55,11 @@ See the full design specification in [Architecture for 100,000-Block Large Docum
 │   ├── cditor-api/              # Stable SDK types, commands, events, options, and handles
 │   ├── cditor-app/              # Desktop composition root and executable
 │   ├── cditor-import-export/    # Clipboard, Markdown, HTML, and import security
-│   ├── cditor-theme/            # Resolved editor themes
-│   ├── cditor-theme-types/      # Serializable theme tokens
+│   ├── cditor-theme/            # Tokens, palettes, typography, metrics, and resolver
 │   ├── cditor-ai/               # AI provider abstraction and implementations
-│   ├── cditor-test-support/     # Cross-crate acceptance fixtures and harnesses
-│   ├── cditor-collaboration/    # Reserved collaboration protocol boundary
-│   └── ding-board/              # Standalone embeddable whiteboard crate
+│   └── cditor-test-support/     # Cross-crate acceptance fixtures and harnesses
+├── components/
+│   └── cditor-whiteboard/       # Standalone embeddable whiteboard component
 ├── doc/
 │   ├── architecture/            # Current system and subsystem architecture documentation
 │   ├── plans/                   # Feature roadmaps and issue analysis documents
@@ -81,7 +80,7 @@ For a detailed breakdown, refer to [Cditor Project Structure](doc/architecture/p
 | Directory | Cargo Package | Core Responsibilities | Excluded Dependencies & Logic |
 | --- | --- | --- | --- |
 | `crates/cditor-core` | `cditor-core` | Base models: Blocks, DocumentIndex, RichText, Selections, Transactions, Layout | GPUI, SQLx, concrete database implementations |
-| `crates/cditor-editor-core` | `cditor-editor-core` | VirtualScroll, ScrollAnchor, WindowPlanner, HitTest, Trace Replay | GPUI views and storage logic |
+| `crates/cditor-viewport` | `cditor-viewport` | VirtualScroll, ScrollAnchor, WindowPlanner, HitTest, Trace Replay | GPUI views and storage logic |
 | `crates/cditor-runtime` | `cditor-runtime` | DocumentRuntime, editing sessions, projection, payload windows, task scheduling | Application windows and visual UI components |
 | `crates/cditor-storage` | `cditor-storage` | Storage contracts, layout cache, debouncing, optimistic persistence | Editor algorithms, concrete SQL implementations, GPUI |
 | `crates/cditor-storage-postgres` | `cditor-storage-postgres` | PostgreSQL pools, migrations, adapters, sync queues, type mapping | Editor interaction logic and UI state |
@@ -91,11 +90,11 @@ For a detailed breakdown, refer to [Cditor Project Structure](doc/architecture/p
 | `crates/cditor-api` | `cditor-api` | SDK options, commands, events, component and handle contracts | Concrete rendering implementation |
 | `crates/cditor-app` | `cditor-app` | Desktop executable and dependency assembly | Reusable domain logic |
 | `crates/cditor-ai` | `cditor-ai` | AI provider integrations, config parsing, streaming results, request cancellation | Document structure and UI rendering logic |
-| `crates/ding-board` | `ding-board` | Standalone whiteboard models, rendering, input handling, asset management | Direct dependencies on Cditor core |
+| `components/cditor-whiteboard` | `cditor-whiteboard` | Standalone whiteboard models, rendering, input handling, asset management | Direct dependencies on Cditor core |
 
 ### Dependency Graph
 ```text
-cditor-app ──> cditor-editor ──> cditor-runtime ──> cditor-editor-core ──> cditor-core
+cditor-app ──> cditor-editor ──> cditor-runtime ──> cditor-viewport ──> cditor-core
      │               ├──> cditor-text ────────────────────────────────> cditor-core
      │               └──> cditor-api
      ├──> cditor-storage-postgres ──> cditor-storage ────────────────> cditor-core
@@ -106,7 +105,7 @@ Arrows point from dependent crates to the crates they consume. For example:
 `cditor-runtime` consumes domain and algorithm crates but no GPUI or concrete storage adapter.
 `cditor-app` is the final assembly layer and depends only on crates used by the executable.
 
-`cditor-editor-core` is the reusable, framework-independent algorithm layer. `cditor-editor` is the GPUI adapter and view layer. `cditor-app` only assembles the executable.
+`cditor-viewport` is the reusable, framework-independent algorithm layer. `cditor-editor` is the GPUI adapter and view layer. `cditor-app` only assembles the executable.
 
 PostgreSQL cold-start and payload-window I/O live in `cditor-app`, the composition root. The app converts database rows into storage-neutral runtime inputs, so new storage backends do not propagate concrete database types into `cditor-runtime`.
 
@@ -392,7 +391,7 @@ Many ignored integration tests generate or load 100,000-Block datasets, resultin
 | New Block types & payload schemas | `crates/cditor-core/src/block`, `crates/cditor-core/src/rich_text` |
 | Document edits & selection logic | `crates/cditor-core/src/edit` |
 | Height estimation & layout indexing | `crates/cditor-core/src/layout` |
-| Virtual scrolling, anchors, window planning | `crates/cditor-editor-core/src/scroll`, `crates/cditor-editor-core/src/window` |
+| Virtual scrolling, anchors, window planning | `crates/cditor-viewport/src/scroll`, `crates/cditor-viewport/src/window` |
 | Live document state & projection logic | `crates/cditor-runtime/src/document_runtime`, `crates/cditor-runtime/src/projection` |
 | Task scheduling & performance budgeting | `crates/cditor-runtime/src/scheduling` |
 | Storage abstractions & caching logic | `crates/cditor-storage/src` |
