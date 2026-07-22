@@ -1,7 +1,10 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn toggle_inline_mark_on_selection(&mut self, mark: InlineMark) -> Result<bool, String> {
+    pub(crate) fn toggle_inline_mark_on_selection(
+        &mut self,
+        mark: InlineMark,
+    ) -> Result<bool, String> {
         if let Some(
             surface_id @ (cditor_core::ids::SurfaceId::ImageCaption { .. }
             | cditor_core::ids::SurfaceId::CollectionTitle { .. }),
@@ -65,7 +68,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn set_inline_color_on_selection(
+    pub(crate) fn set_inline_color_on_selection(
         &mut self,
         target: InlineColorTarget,
         color: Option<&str>,

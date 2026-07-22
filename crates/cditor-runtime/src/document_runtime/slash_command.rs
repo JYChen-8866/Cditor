@@ -28,7 +28,7 @@ impl DocumentRuntime {
         record.kind == *kind || self.can_convert_block_kind(block_id, kind)
     }
 
-    pub fn apply_slash_block_kind(
+    pub(crate) fn apply_slash_block_kind(
         &mut self,
         block_id: BlockId,
         trigger_range: Range<usize>,

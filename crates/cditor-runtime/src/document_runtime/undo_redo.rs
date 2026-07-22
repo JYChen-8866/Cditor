@@ -55,7 +55,7 @@ impl DocumentRuntime {
         self.external_undo_stack.next_redo_external_blob().cloned()
     }
 
-    pub fn undo_focused_block(&mut self) -> Result<bool, String> {
+    pub(crate) fn undo_focused_block(&mut self) -> Result<bool, String> {
         self.break_typing_coalescing();
         let Some(event) = self.undo_events.pop() else {
             return Ok(false);
@@ -100,7 +100,7 @@ impl DocumentRuntime {
         }
     }
 
-    pub fn redo_focused_block(&mut self) -> Result<bool, String> {
+    pub(crate) fn redo_focused_block(&mut self) -> Result<bool, String> {
         self.break_typing_coalescing();
         let Some(event) = self.redo_events.pop() else {
             return Ok(false);

@@ -7,7 +7,7 @@ impl DocumentRuntime {
         attrs
     }
 
-    pub fn set_block_color(
+    pub(crate) fn set_block_color(
         &mut self,
         block_id: BlockId,
         target: InlineColorTarget,

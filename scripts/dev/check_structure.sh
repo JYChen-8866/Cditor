@@ -133,6 +133,17 @@ if [ -n "$duplicate_caret_truth_violations" ]; then
   exit 1
 fi
 
+migrated_runtime_mutation_violations=$(
+  grep -R -n -E \
+    '\.(undo_focused_block|redo_focused_block|select_all_command|delete_selected_block_selection|apply_slash_block_kind|toggle_block_fold|apply_ai_preview|set_block_color|toggle_inline_mark_on_selection|set_inline_color_on_selection|insert_paragraph_after_block|delete_block_by_id|toggle_todo_checked|set_code_block_language|convert_focused_block_kind|set_table_header_rows|set_table_header_columns|insert_table_row|insert_table_column|delete_table_row|delete_table_column|duplicate_table_row|duplicate_table_column|clear_table_range|set_table_cell_background_color)\(' \
+    --include='*.rs' crates/cditor-editor/src || true
+)
+if [ -n "$migrated_runtime_mutation_violations" ]; then
+  echo 'error: Editor must route migrated document mutations through Runtime dispatch:' >&2
+  echo "$migrated_runtime_mutation_violations" >&2
+  exit 1
+fi
+
 printable_keydown_violations=$(
   grep -R -n -E 'InsertChar|InsertSpaceOrMarkdownShortcut' --include='*.rs' crates/cditor-editor/src || true
 )

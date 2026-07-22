@@ -72,12 +72,11 @@ impl CditorV2View {
             GuiInputCommand::UndoFocusedBlock | GuiInputCommand::RedoFocusedBlock
         ) {
             let redo = matches!(command, GuiInputCommand::RedoFocusedBlock);
-            let origin = if redo {
-                cditor_core::edit::ChangeOrigin::Redo
-            } else {
-                cditor_core::edit::ChangeOrigin::Undo
-            };
-            let _ = self.execute_history_action(origin, redo, cx);
+            let _ = self.execute_history_action(
+                cditor_editor_protocol::command::CommandSource::Keyboard,
+                redo,
+                cx,
+            );
             return;
         }
         if matches!(
@@ -100,15 +99,16 @@ impl CditorV2View {
                 | GuiInputCommand::CopySelection
         );
         let selected_table_axis = self.projected_table_axis_selection();
+        let mut deferred_command = None;
         {
             let CditorViewState::Ready(runtime) = &mut self.state else {
                 return;
             };
             match command {
                 GuiInputCommand::Ignore | GuiInputCommand::ToggleDebugOverlay => {}
-                GuiInputCommand::SelectAllFocusedText => {
-                    runtime.select_all_command();
-                }
+                GuiInputCommand::SelectAllFocusedText => unreachable!(
+                    "select-all returns through Runtime dispatch before the GUI handler"
+                ),
                 GuiInputCommand::CopySelection => {
                     if let Some((block_id, range)) =
                         selected_table_axis_range(runtime, selected_table_axis)
@@ -151,11 +151,13 @@ impl CditorV2View {
                             system_text,
                             &envelope,
                         ));
-                        if runtime.clear_table_range(block_id, range).unwrap_or(false) {
-                            self.mark_dirty(cx);
-                        }
+                        deferred_command = Some(
+                            cditor_editor_protocol::command::EditorCommand::TableClearRange {
+                                block_id,
+                                range,
+                            },
+                        );
                     } else if let Some(selection) = runtime.clipboard_selection_snapshot() {
-                        let selected_blocks = runtime.has_selected_blocks();
                         let (system_text, envelope) =
                             crate::input::clipboard::envelope_for_selection(
                                 Some(runtime.document_id),
@@ -165,26 +167,12 @@ impl CditorV2View {
                             system_text,
                             &envelope,
                         ));
-                        let changed = if selected_blocks {
-                            runtime.delete_selected_block_selection().unwrap_or(false)
-                        } else if runtime.has_cross_block_text_selection() {
-                            runtime.delete_document_selection().unwrap_or(false)
-                        } else {
-                            runtime
-                                .replace_text_in_focused_range(None, "")
-                                .unwrap_or(false)
-                        };
-                        if changed {
-                            self.mark_dirty(cx);
-                        }
+                        deferred_command =
+                            Some(cditor_editor_protocol::command::EditorCommand::DeleteSelection);
                     } else if let Some(text) = runtime.selected_focused_text() {
                         cx.write_to_clipboard(ClipboardItem::new_string(text));
-                        if runtime
-                            .replace_text_in_focused_range(None, "")
-                            .unwrap_or(false)
-                        {
-                            self.mark_dirty(cx);
-                        }
+                        deferred_command =
+                            Some(cditor_editor_protocol::command::EditorCommand::DeleteSelection);
                     }
                 }
                 GuiInputCommand::PasteClipboard => {
@@ -208,15 +196,8 @@ impl CditorV2View {
                         }
                     }
                 }
-                GuiInputCommand::UndoFocusedBlock => {
-                    if matches!(runtime.undo_focused_block(), Ok(true)) {
-                        self.mark_dirty_with_origin(cditor_core::edit::ChangeOrigin::Undo, cx);
-                    }
-                }
-                GuiInputCommand::RedoFocusedBlock => {
-                    if matches!(runtime.redo_focused_block(), Ok(true)) {
-                        self.mark_dirty_with_origin(cditor_core::edit::ChangeOrigin::Redo, cx);
-                    }
+                GuiInputCommand::UndoFocusedBlock | GuiInputCommand::RedoFocusedBlock => {
+                    unreachable!("history returns through Runtime dispatch before the GUI handler")
                 }
                 GuiInputCommand::InsertParagraphAfterFocused => {
                     if runtime.insert_paragraph_after_focused().is_ok() {
@@ -383,6 +364,13 @@ impl CditorV2View {
                     "format commands return through Runtime dispatch before handler mutation"
                 ),
             }
+        }
+        if let Some(command) = deferred_command {
+            let _ = self.dispatch_command(
+                command,
+                cditor_editor_protocol::command::CommandSource::Keyboard,
+                cx,
+            );
         }
         if should_scroll_focus && let CditorViewState::Ready(runtime) = &mut self.state {
             let _ = runtime.scroll_focused_block_into_view();

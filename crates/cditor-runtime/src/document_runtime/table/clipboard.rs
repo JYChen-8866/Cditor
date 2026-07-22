@@ -9,7 +9,7 @@ pub struct TableClipboardSnapshot {
 }
 
 impl DocumentRuntime {
-    pub fn clear_table_range(
+    pub(crate) fn clear_table_range(
         &mut self,
         block_id: BlockId,
         range: TableRange,

@@ -5,7 +5,10 @@ use super::structure_payload::payload_for_converted_kind;
 use super::*;
 
 impl DocumentRuntime {
-    pub fn convert_focused_block_kind(&mut self, kind: RichBlockKind) -> Result<bool, String> {
+    pub(crate) fn convert_focused_block_kind(
+        &mut self,
+        kind: RichBlockKind,
+    ) -> Result<bool, String> {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -28,7 +31,7 @@ impl DocumentRuntime {
         )
     }
 
-    pub fn set_code_block_language(
+    pub(crate) fn set_code_block_language(
         &mut self,
         block_id: BlockId,
         language: Option<String>,
@@ -58,7 +61,7 @@ impl DocumentRuntime {
         )
     }
 
-    pub fn toggle_todo_checked(&mut self, block_id: BlockId) -> Result<bool, String> {
+    pub(crate) fn toggle_todo_checked(&mut self, block_id: BlockId) -> Result<bool, String> {
         let Some(record) = self.payload_window.get(block_id).cloned() else {
             return Ok(false);
         };

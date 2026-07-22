@@ -262,7 +262,7 @@ impl DocumentRuntime {
         self.apply_ai_preview(mode)
     }
 
-    pub fn apply_ai_preview(&mut self, mode: AiApplyMode) -> Result<bool, String> {
+    pub(crate) fn apply_ai_preview(&mut self, mode: AiApplyMode) -> Result<bool, String> {
         let Some(session) = self.ai_session.as_ref() else {
             return Ok(false);
         };

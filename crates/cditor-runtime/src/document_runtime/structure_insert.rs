@@ -14,7 +14,10 @@ impl DocumentRuntime {
         self.insert_paragraph_after_block(block_id)
     }
 
-    pub fn insert_paragraph_after_block(&mut self, block_id: BlockId) -> Result<BlockId, String> {
+    pub(crate) fn insert_paragraph_after_block(
+        &mut self,
+        block_id: BlockId,
+    ) -> Result<BlockId, String> {
         let before_selection = self.document_selection_snapshot();
         let current_index = self
             .index

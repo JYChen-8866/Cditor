@@ -114,7 +114,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn set_table_cell_background_color(
+    pub(crate) fn set_table_cell_background_color(
         &mut self,
         block_id: BlockId,
         range: TableRange,
@@ -132,7 +132,7 @@ impl DocumentRuntime {
         )
     }
 
-    pub fn set_table_header_rows(
+    pub(crate) fn set_table_header_rows(
         &mut self,
         block_id: BlockId,
         count: usize,
@@ -149,7 +149,7 @@ impl DocumentRuntime {
         )
     }
 
-    pub fn set_table_header_columns(
+    pub(crate) fn set_table_header_columns(
         &mut self,
         block_id: BlockId,
         count: usize,
@@ -166,7 +166,11 @@ impl DocumentRuntime {
         )
     }
 
-    pub fn insert_table_row(&mut self, block_id: BlockId, index: usize) -> Result<bool, String> {
+    pub(crate) fn insert_table_row(
+        &mut self,
+        block_id: BlockId,
+        index: usize,
+    ) -> Result<bool, String> {
         let mut preview = self
             .table_runtime(block_id)
             .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
@@ -192,7 +196,11 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn delete_table_row(&mut self, block_id: BlockId, index: usize) -> Result<bool, String> {
+    pub(crate) fn delete_table_row(
+        &mut self,
+        block_id: BlockId,
+        index: usize,
+    ) -> Result<bool, String> {
         let runtime = self
             .table_runtime(block_id)
             .ok_or_else(|| format!("missing table runtime for block {block_id}"))?;
@@ -223,7 +231,11 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn duplicate_table_row(&mut self, block_id: BlockId, index: usize) -> Result<bool, String> {
+    pub(crate) fn duplicate_table_row(
+        &mut self,
+        block_id: BlockId,
+        index: usize,
+    ) -> Result<bool, String> {
         let mut preview = self
             .table_runtime(block_id)
             .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
@@ -250,7 +262,11 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn insert_table_column(&mut self, block_id: BlockId, index: usize) -> Result<bool, String> {
+    pub(crate) fn insert_table_column(
+        &mut self,
+        block_id: BlockId,
+        index: usize,
+    ) -> Result<bool, String> {
         let mut preview = self
             .table_runtime(block_id)
             .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
@@ -278,7 +294,11 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn delete_table_column(&mut self, block_id: BlockId, index: usize) -> Result<bool, String> {
+    pub(crate) fn delete_table_column(
+        &mut self,
+        block_id: BlockId,
+        index: usize,
+    ) -> Result<bool, String> {
         let runtime = self
             .table_runtime(block_id)
             .ok_or_else(|| format!("missing table runtime for block {block_id}"))?;
@@ -306,7 +326,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn duplicate_table_column(
+    pub(crate) fn duplicate_table_column(
         &mut self,
         block_id: BlockId,
         index: usize,

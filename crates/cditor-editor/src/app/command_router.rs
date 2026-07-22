@@ -3,12 +3,11 @@ use std::sync::OnceLock;
 
 use crate::app::cditor_v2_view::CditorV2View;
 use crate::input::GuiInputCommand;
-use cditor_api::{CditorError, command::CommandState};
+use cditor_api::{CditorError, command::CommandState, event::CditorEvent};
 use cditor_core::edit::ChangeOrigin;
 use cditor_editor_protocol::command::{
-    AiApplyCommandMode, CaretDirection, CditorCommand, CommandCatalog, CommandCheckState,
-    CommandEnvelope, CommandOutcome, CommandQueryState, CommandSource, CommandUnavailableReason,
-    TableAxis,
+    CaretDirection, CditorCommand, CommandCatalog, CommandCheckState, CommandEnvelope,
+    CommandOutcome, CommandQueryState, CommandSource, CommandUnavailableReason, TableAxis,
 };
 
 impl CditorV2View {
@@ -54,6 +53,13 @@ impl CditorV2View {
             return Err(error_for_disabled_command(&command, &state));
         }
 
+        if matches!(command, CditorCommand::Undo | CditorCommand::Redo) {
+            let redo = matches!(command, CditorCommand::Redo);
+            return self
+                .execute_history_action(source, redo, cx)
+                .map(|changed| CommandOutcome::from_document_change(changed, None));
+        }
+
         if let Some(runtime) = self.ready_runtime() {
             runtime.break_typing_coalescing();
         }
@@ -68,65 +74,30 @@ impl CditorV2View {
             return Ok(CommandOutcome::applied_side_effect(false));
         }
 
-        let table_before_revision = self.ready_runtime_ref().map(|runtime| runtime.revision());
-        let table_before_transaction_id = self
-            .ready_runtime_ref()
-            .and_then(|runtime| runtime.last_committed_transaction_id());
-        if let Some(result) = self.execute_table_document_command(&command) {
-            let changed = result.map_err(CditorError::Internal)?;
-            let after_revision = self.ready_runtime_ref().map(|runtime| runtime.revision());
-            let transaction_id = self
-                .ready_runtime_ref()
-                .and_then(|runtime| runtime.last_committed_transaction_id())
-                .filter(|transaction_id| Some(*transaction_id) != table_before_transaction_id);
-            if changed {
-                if let Some(revision) =
-                    after_revision.filter(|after| Some(*after) != table_before_revision)
-                {
-                    self.mark_dirty_at_revision(change_origin_for_source(source), revision, cx);
-                } else {
-                    self.mark_dirty_with_origin(change_origin_for_source(source), cx);
-                }
-                cx.notify();
-            }
-            return Ok(CommandOutcome::from_document_change(
-                changed,
-                transaction_id,
-            ));
-        }
         if runtime_dispatches(&command) {
+            let mutates_document = command_mutates_document(&command);
             let outcome = self
                 .ready_runtime()
                 .ok_or(CditorError::NotReady)?
                 .dispatch(CommandEnvelope::new(command.clone(), source))
                 .map_err(protocol_command_error)?;
-            if outcome.changed() {
+            if outcome.changed() && mutates_document {
                 let revision = self
                     .ready_runtime_ref()
                     .map(cditor_runtime::DocumentRuntime::revision)
                     .ok_or(CditorError::NotReady)?;
                 self.mark_dirty_at_revision(change_origin_for_source(source), revision, cx);
+            }
+            if outcome.selection_changed
+                && let Some(selection) = self.sdk_selection()
+            {
+                cx.emit(CditorEvent::SelectionChanged { selection });
+            }
+            if outcome.request_repaint {
                 cx.notify();
             }
             return Ok(outcome);
         }
-        if let CditorCommand::ApplyAiPreview { mode } = command {
-            let mode = match mode {
-                AiApplyCommandMode::Replace => cditor_runtime::AiApplyMode::Replace,
-                AiApplyCommandMode::InsertAfter => cditor_runtime::AiApplyMode::InsertAfter,
-            };
-            let changed = self
-                .ready_runtime()
-                .ok_or(CditorError::NotReady)?
-                .apply_ai_preview(mode)
-                .map_err(CditorError::Ai)?;
-            if changed {
-                self.mark_dirty_with_origin(ChangeOrigin::Ai, cx);
-                cx.notify();
-            }
-            return Ok(CommandOutcome::from_document_change(changed, None));
-        }
-
         if let Some(gui_command) = gui_handler_for_command(&command) {
             let before_revision = self.ready_runtime_ref().map(|runtime| runtime.revision());
             let before_selection = self
@@ -264,71 +235,14 @@ impl CditorV2View {
             CommandQueryState::disabled(CommandUnavailableReason::InvalidSelection)
         }
     }
-
-    fn execute_table_document_command(
-        &mut self,
-        command: &CditorCommand,
-    ) -> Option<Result<bool, String>> {
-        let runtime = self.ready_runtime()?;
-        Some(match command {
-            CditorCommand::TableToggleHeader { block_id, axis } => {
-                let Some(record) = runtime.block_payload_record(*block_id) else {
-                    return Some(Ok(false));
-                };
-                let cditor_core::rich_text::BlockPayload::Table(table) = &record.payload else {
-                    return Some(Ok(false));
-                };
-                let enabled = match axis {
-                    TableAxis::Row => table.header_rows > 0,
-                    TableAxis::Column => table.header_cols > 0,
-                };
-                let count = usize::from(!enabled);
-                match axis {
-                    TableAxis::Row => runtime.set_table_header_rows(*block_id, count),
-                    TableAxis::Column => runtime.set_table_header_columns(*block_id, count),
-                }
-            }
-            CditorCommand::TableInsertAxis {
-                block_id,
-                axis,
-                index,
-            } => match axis {
-                TableAxis::Row => runtime.insert_table_row(*block_id, *index),
-                TableAxis::Column => runtime.insert_table_column(*block_id, *index),
-            },
-            CditorCommand::TableDeleteAxis {
-                block_id,
-                axis,
-                index,
-            } => match axis {
-                TableAxis::Row => runtime.delete_table_row(*block_id, *index),
-                TableAxis::Column => runtime.delete_table_column(*block_id, *index),
-            },
-            CditorCommand::TableDuplicateAxis {
-                block_id,
-                axis,
-                index,
-            } => match axis {
-                TableAxis::Row => runtime.duplicate_table_row(*block_id, *index),
-                TableAxis::Column => runtime.duplicate_table_column(*block_id, *index),
-            },
-            CditorCommand::TableClearRange { block_id, range } => {
-                runtime.clear_table_range(*block_id, *range)
-            }
-            CditorCommand::TableSetRangeBackground {
-                block_id,
-                range,
-                color,
-            } => runtime.set_table_cell_background_color(*block_id, *range, color.clone()),
-            _ => return None,
-        })
-    }
 }
 
 fn runtime_dispatches(command: &CditorCommand) -> bool {
     matches!(
         command,
-        CditorCommand::ToggleBold
+        CditorCommand::SelectAll
+            | CditorCommand::DeleteSelection
+            | CditorCommand::ToggleBold
             | CditorCommand::ToggleItalic
             | CditorCommand::ToggleUnderline
             | CditorCommand::ToggleStrike
@@ -340,6 +254,17 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::ToggleTodo { .. }
             | CditorCommand::SetCodeLanguage { .. }
             | CditorCommand::TransformBlock(_)
+            | CditorCommand::DeleteSelectedBlocks
+            | CditorCommand::ApplySlashBlock { .. }
+            | CditorCommand::ApplyAiPreview { .. }
+            | CditorCommand::FoldHeading
+            | CditorCommand::UnfoldHeading
+            | CditorCommand::TableToggleHeader { .. }
+            | CditorCommand::TableInsertAxis { .. }
+            | CditorCommand::TableDeleteAxis { .. }
+            | CditorCommand::TableDuplicateAxis { .. }
+            | CditorCommand::TableClearRange { .. }
+            | CditorCommand::TableSetRangeBackground { .. }
     )
 }
 

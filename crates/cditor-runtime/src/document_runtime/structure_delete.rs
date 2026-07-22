@@ -151,7 +151,7 @@ impl DocumentRuntime {
     }
 
     /// Delete any block by ID, moving focus to an adjacent block.
-    pub fn delete_block_by_id(&mut self, block_id: BlockId) -> Result<bool, String> {
+    pub(crate) fn delete_block_by_id(&mut self, block_id: BlockId) -> Result<bool, String> {
         if self.visible_index.total_visible_count() <= 1 {
             self.reset_last_block_to_paragraph(block_id)?;
             return Ok(true);

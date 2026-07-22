@@ -370,7 +370,25 @@ mod tests {
     use cditor_core::rich_text::{
         EmbedPayload, FilePayload, ImagePayload, RichBlockKind, TablePayload, WhiteboardPayload,
     };
+    use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
     use gpui::{point, size};
+    fn dispatch(runtime: &mut DocumentRuntime, command: EditorCommand) -> bool {
+        runtime
+            .dispatch(CommandEnvelope::new(command, CommandSource::Sdk))
+            .unwrap()
+            .changed()
+    }
+
+    fn set_block_color(runtime: &mut DocumentRuntime, target: InlineColorTarget, color: &str) {
+        dispatch(
+            runtime,
+            EditorCommand::SetBlockColor {
+                block_id: 2,
+                target,
+                color: Some(color.to_owned()),
+            },
+        );
+    }
 
     #[test]
     fn cross_block_text_selection_keeps_unsupported_actions_visible_but_disabled() {
@@ -463,8 +481,8 @@ mod tests {
             720.0,
         );
         runtime.focus_block_at_offset(2, 2).unwrap();
-        assert!(runtime.select_all_command());
-        assert!(runtime.select_all_command());
+        assert!(dispatch(&mut runtime, EditorCommand::SelectAll));
+        assert!(dispatch(&mut runtime, EditorCommand::SelectAll));
 
         assert!(
             formatting_toolbar_state(
@@ -536,12 +554,8 @@ mod tests {
         runtime
             .set_inline_color_for_range(2, 0..4, InlineColorTarget::Text, Some("#337ea9"))
             .unwrap();
-        runtime
-            .set_block_color(2, InlineColorTarget::Text, Some("#d44c47"))
-            .unwrap();
-        runtime
-            .set_block_color(2, InlineColorTarget::Background, Some("#fdebec"))
-            .unwrap();
+        set_block_color(&mut runtime, InlineColorTarget::Text, "#d44c47");
+        set_block_color(&mut runtime, InlineColorTarget::Background, "#fdebec");
 
         assert_eq!(
             active_block_color(2, &runtime, InlineColorTarget::Text),

@@ -13,6 +13,7 @@ use crate::persistence::{
 use cditor_api::CditorError;
 use cditor_api::event::CditorEvent;
 use cditor_core::edit::ChangeOrigin;
+use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 
 impl CditorV2View {
     pub(crate) fn schedule_selection_materialization(
@@ -93,7 +94,7 @@ impl CditorV2View {
 
     pub(crate) fn execute_history_action(
         &mut self,
-        origin: ChangeOrigin,
+        source: CommandSource,
         redo: bool,
         cx: &mut Context<Self>,
     ) -> Result<bool, CditorError> {
@@ -101,15 +102,28 @@ impl CditorV2View {
             return Err(CditorError::Readonly);
         }
         let runtime = self.ready_runtime().ok_or(CditorError::NotReady)?;
-        let result = if redo {
-            runtime.redo_focused_block()
+        let command = if redo {
+            EditorCommand::Redo
         } else {
-            runtime.undo_focused_block()
+            EditorCommand::Undo
+        };
+        let result = runtime
+            .dispatch(CommandEnvelope::new(command, source))
+            .map(|outcome| outcome.changed())
+            .map_err(|error| error.message);
+        let origin = if redo {
+            ChangeOrigin::Redo
+        } else {
+            ChangeOrigin::Undo
         };
         match result {
             Ok(changed) => {
                 if changed {
-                    self.mark_dirty_with_origin(origin, cx);
+                    let revision = self
+                        .ready_runtime_ref()
+                        .map(cditor_runtime::DocumentRuntime::revision)
+                        .ok_or(CditorError::NotReady)?;
+                    self.mark_dirty_at_revision(origin, revision, cx);
                     cx.notify();
                 }
                 Ok(changed)
@@ -125,7 +139,7 @@ impl CditorV2View {
                 let Some(reference) = reference else {
                     return Err(CditorError::Internal(error));
                 };
-                self.schedule_history_hydration(reference, origin, redo, cx)?;
+                self.schedule_history_hydration(reference, source, redo, cx)?;
                 Ok(false)
             }
         }
@@ -134,7 +148,7 @@ impl CditorV2View {
     fn schedule_history_hydration(
         &mut self,
         reference: cditor_core::edit::ExternalUndoBlobRef,
-        origin: ChangeOrigin,
+        source: CommandSource,
         redo: bool,
         cx: &mut Context<Self>,
     ) -> Result<(), CditorError> {
@@ -171,10 +185,16 @@ impl CditorV2View {
                         Some(runtime) => {
                             if !runtime.hydrate_external_undo(reference.snapshot_id, transaction) {
                                 Err("undo reference changed while hydrating".to_owned())
-                            } else if redo {
-                                runtime.redo_focused_block()
                             } else {
-                                runtime.undo_focused_block()
+                                let command = if redo {
+                                    EditorCommand::Redo
+                                } else {
+                                    EditorCommand::Undo
+                                };
+                                runtime
+                                    .dispatch(CommandEnvelope::new(command, source))
+                                    .map(|outcome| outcome.changed())
+                                    .map_err(|error| error.message)
                             }
                         }
                         None => Err("editor runtime is no longer ready".to_owned()),
@@ -183,7 +203,17 @@ impl CditorV2View {
                 };
                 match replay {
                     Ok(true) => {
-                        view.mark_dirty_with_origin(origin, cx);
+                        let origin = if redo {
+                            ChangeOrigin::Redo
+                        } else {
+                            ChangeOrigin::Undo
+                        };
+                        if let Some(revision) = view
+                            .ready_runtime_ref()
+                            .map(cditor_runtime::DocumentRuntime::revision)
+                        {
+                            view.mark_dirty_at_revision(origin, revision, cx);
+                        }
                         cx.emit(CditorEvent::HistoryHydrationSucceeded {
                             snapshot_id: reference.snapshot_id,
                             redo,

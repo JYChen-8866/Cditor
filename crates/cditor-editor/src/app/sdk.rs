@@ -10,7 +10,6 @@ use cditor_api::document::{
 };
 use cditor_api::event::CditorEvent;
 use cditor_api::{CditorError, command::CommandState};
-use cditor_core::edit::ChangeOrigin;
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcome, CommandSource};
 
 impl EventEmitter<CditorEvent> for CditorV2View {}
@@ -202,11 +201,11 @@ impl CditorV2View {
     }
 
     pub fn sdk_undo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
-        self.execute_history_action(ChangeOrigin::Undo, false, cx)
+        self.execute_history_action(CommandSource::Sdk, false, cx)
     }
 
     pub fn sdk_redo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
-        self.execute_history_action(ChangeOrigin::Redo, true, cx)
+        self.execute_history_action(CommandSource::Sdk, true, cx)
     }
 
     pub fn sdk_document_info(&self) -> Option<DocumentInfo> {
@@ -357,82 +356,13 @@ impl CditorV2View {
     pub(in crate::app) fn execute_sdk_command_handler(
         &mut self,
         command: CditorCommand,
-        source: CommandSource,
-        cx: &mut Context<Self>,
+        _source: CommandSource,
+        _cx: &mut Context<Self>,
     ) -> Result<CommandOutcome, CditorError> {
-        if matches!(&command, CditorCommand::Undo) {
-            return self
-                .sdk_undo(cx)
-                .map(|changed| CommandOutcome::from_document_change(changed, None));
-        }
-        if matches!(&command, CditorCommand::Redo) {
-            return self
-                .sdk_redo(cx)
-                .map(|changed| CommandOutcome::from_document_change(changed, None));
-        }
-        let is_select_all = matches!(&command, CditorCommand::SelectAll);
-        let mutating = !is_select_all;
-        if mutating && self.readonly {
-            return Err(CditorError::Readonly);
-        }
-        let runtime = self.ready_runtime().ok_or(CditorError::NotReady)?;
-        let changed = match command {
-            CditorCommand::SelectAll => runtime.select_all_command(),
-            CditorCommand::DeleteSelection => runtime
-                .delete_active_selection()
-                .map_err(CditorError::Internal)?,
-            CditorCommand::ApplySlashBlock {
-                block_id,
-                trigger_range,
-                kind,
-            } => runtime
-                .apply_slash_block_kind(block_id, trigger_range, kind)
-                .map_err(CditorError::Internal)?,
-            CditorCommand::DeleteSelectedBlocks => runtime
-                .delete_selected_block_selection()
-                .map_err(CditorError::Internal)?,
-            CditorCommand::FoldHeading => {
-                let block_id = runtime
-                    .focused_block_id()
-                    .ok_or(CditorError::InvalidSelection)?;
-                if runtime.is_block_folded(block_id) {
-                    false
-                } else {
-                    runtime
-                        .toggle_block_fold(block_id)
-                        .map_err(CditorError::Internal)?
-                }
-            }
-            CditorCommand::UnfoldHeading => {
-                let block_id = runtime
-                    .focused_block_id()
-                    .ok_or(CditorError::InvalidSelection)?;
-                if !runtime.is_block_folded(block_id) {
-                    false
-                } else {
-                    runtime
-                        .toggle_block_fold(block_id)
-                        .map_err(CditorError::Internal)?
-                }
-            }
-            unsupported => {
-                return Err(CditorError::Unsupported(format!(
-                    "command {} is not connected to the SDK command router yet",
-                    unsupported.stable_id()
-                )));
-            }
-        };
-        if changed && mutating {
-            self.mark_dirty_with_origin(
-                super::command_router::change_origin_for_source(source),
-                cx,
-            );
-        }
-        if is_select_all && let Some(selection) = self.sdk_selection() {
-            cx.emit(CditorEvent::SelectionChanged { selection });
-        }
-        cx.notify();
-        Ok(CommandOutcome::from_document_change(changed, None))
+        Err(CditorError::Unsupported(format!(
+            "command {} is not connected to the SDK command router yet",
+            command.stable_id()
+        )))
     }
 
     pub(in crate::app) fn sdk_register_focus_observers(

@@ -215,11 +215,22 @@ mod tests {
         platform_input_geometry_allows, platform_input_target_allows,
     };
     use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
+    use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
     use cditor_runtime::DocumentRuntime;
     use gpui::{point, px, size};
 
     use crate::app::GuiPlatformInputTarget;
     use crate::text::test_platform_layout;
+
+    fn undo(runtime: &mut DocumentRuntime) -> bool {
+        runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::Undo,
+                CommandSource::Ime,
+            ))
+            .unwrap()
+            .changed()
+    }
 
     #[test]
     fn platform_space_commit_is_recognized_without_replacing_text() {
@@ -244,9 +255,9 @@ mod tests {
 
         assert!(apply_platform_text_replacement(&mut runtime, None, "中").unwrap());
         assert_eq!(runtime.focused_text(), Some("a中b"));
-        assert!(runtime.undo_focused_block().unwrap());
+        assert!(undo(&mut runtime));
         assert_eq!(runtime.focused_text(), Some("ab"));
-        assert!(!runtime.undo_focused_block().unwrap());
+        assert!(!undo(&mut runtime));
     }
 
     #[test]
@@ -265,9 +276,9 @@ mod tests {
         assert!(apply_platform_text_replacement(&mut runtime, None, "X").unwrap());
         assert_eq!(runtime.focused_text(), Some("aXd"));
         assert_eq!(runtime.caret_offset_for_block(1), Some(2));
-        assert!(runtime.undo_focused_block().unwrap());
+        assert!(undo(&mut runtime));
         assert_eq!(runtime.focused_text(), Some("abcd"));
-        assert!(!runtime.undo_focused_block().unwrap());
+        assert!(!undo(&mut runtime));
     }
 
     #[test]
@@ -287,7 +298,7 @@ mod tests {
         assert!(apply_platform_unmark(&mut runtime).unwrap());
         assert_eq!(runtime.focused_text(), Some("a中b"));
         assert!(runtime.active_composition().is_none());
-        assert!(runtime.undo_focused_block().unwrap());
+        assert!(undo(&mut runtime));
         assert_eq!(runtime.focused_text(), Some("ab"));
     }
 

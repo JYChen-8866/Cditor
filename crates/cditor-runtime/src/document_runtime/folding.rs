@@ -1,7 +1,7 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn toggle_block_fold(&mut self, block_id: BlockId) -> Result<bool, String> {
+    pub(crate) fn toggle_block_fold(&mut self, block_id: BlockId) -> Result<bool, String> {
         let kind = self.kind_for_block(block_id);
         let can_toggle = match kind {
             RichBlockKind::Heading { .. } => true,

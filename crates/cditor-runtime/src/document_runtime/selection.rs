@@ -249,7 +249,7 @@ impl DocumentRuntime {
     /// Implements the editor's progressive Select All command:
     /// the first invocation selects the focused block's text, and invoking it
     /// again while that exact range is still selected expands to the document.
-    pub fn select_all_command(&mut self) -> bool {
+    pub(crate) fn select_all_command(&mut self) -> bool {
         self.break_typing_coalescing();
         if let Some(selected) = self.select_focused_auxiliary_text_all() {
             return selected;
@@ -654,7 +654,7 @@ impl DocumentRuntime {
         !self.selected_block_ids.is_empty()
     }
 
-    pub fn delete_selected_block_selection(&mut self) -> Result<bool, String> {
+    pub(crate) fn delete_selected_block_selection(&mut self) -> Result<bool, String> {
         self.delete_selected_blocks()
     }
 
