@@ -7,7 +7,8 @@ use cditor_api::{CditorError, command::CommandState};
 use cditor_core::edit::ChangeOrigin;
 use cditor_editor_protocol::command::{
     AiApplyCommandMode, CaretDirection, CditorCommand, CommandCatalog, CommandCheckState,
-    CommandOutcome, CommandQueryState, CommandSource, CommandUnavailableReason, TableAxis,
+    CommandEnvelope, CommandOutcome, CommandQueryState, CommandSource, CommandUnavailableReason,
+    TableAxis,
 };
 
 impl CditorV2View {
@@ -93,39 +94,21 @@ impl CditorV2View {
                 transaction_id,
             ));
         }
-        let format_before_revision = self.ready_runtime_ref().map(|runtime| runtime.revision());
-        let format_before_transaction_id = self
-            .ready_runtime_ref()
-            .and_then(|runtime| runtime.last_committed_transaction_id());
-        if let Some(result) = self.execute_format_document_command(&command) {
-            let changed = result.map_err(CditorError::Internal)?;
-            let after_revision = self.ready_runtime_ref().map(|runtime| runtime.revision());
-            let transaction_id = self
-                .ready_runtime_ref()
-                .and_then(|runtime| runtime.last_committed_transaction_id())
-                .filter(|transaction_id| Some(*transaction_id) != format_before_transaction_id);
-            if changed {
-                if let Some(revision) =
-                    after_revision.filter(|after| Some(*after) != format_before_revision)
-                {
-                    self.mark_dirty_at_revision(change_origin_for_source(source), revision, cx);
-                } else {
-                    self.mark_dirty_with_origin(change_origin_for_source(source), cx);
-                }
+        if runtime_dispatches(&command) {
+            let outcome = self
+                .ready_runtime()
+                .ok_or(CditorError::NotReady)?
+                .dispatch(CommandEnvelope::new(command.clone(), source))
+                .map_err(protocol_command_error)?;
+            if outcome.changed() {
+                let revision = self
+                    .ready_runtime_ref()
+                    .map(cditor_runtime::DocumentRuntime::revision)
+                    .ok_or(CditorError::NotReady)?;
+                self.mark_dirty_at_revision(change_origin_for_source(source), revision, cx);
                 cx.notify();
             }
-            return Ok(CommandOutcome::from_document_change(
-                changed,
-                transaction_id,
-            ));
-        }
-        if let Some(result) = self.execute_block_document_command(&command) {
-            let changed = result.map_err(CditorError::Internal)?;
-            if changed {
-                self.mark_dirty_with_origin(change_origin_for_source(source), cx);
-                cx.notify();
-            }
-            return Ok(CommandOutcome::from_document_change(changed, None));
+            return Ok(outcome);
         }
         if let CditorCommand::ApplyAiPreview { mode } = command {
             let mode = match mode {
@@ -340,55 +323,36 @@ impl CditorV2View {
             _ => return None,
         })
     }
+}
 
-    fn execute_format_document_command(
-        &mut self,
-        command: &CditorCommand,
-    ) -> Option<Result<bool, String>> {
-        let runtime = self.ready_runtime()?;
-        Some(match command {
-            CditorCommand::ToggleBold => {
-                runtime.toggle_inline_mark_on_selection(cditor_core::rich_text::InlineMark::Bold)
-            }
-            CditorCommand::ToggleItalic => {
-                runtime.toggle_inline_mark_on_selection(cditor_core::rich_text::InlineMark::Italic)
-            }
-            CditorCommand::ToggleUnderline => runtime
-                .toggle_inline_mark_on_selection(cditor_core::rich_text::InlineMark::Underline),
-            CditorCommand::ToggleStrike => {
-                runtime.toggle_inline_mark_on_selection(cditor_core::rich_text::InlineMark::Strike)
-            }
-            CditorCommand::ToggleInlineCode => {
-                runtime.toggle_inline_mark_on_selection(cditor_core::rich_text::InlineMark::Code)
-            }
-            CditorCommand::SetInlineColor { target, color } => {
-                runtime.set_inline_color_on_selection(*target, color.as_deref())
-            }
-            CditorCommand::SetBlockColor {
-                block_id,
-                target,
-                color,
-            } => runtime.set_block_color(*block_id, *target, color.as_deref()),
-            _ => return None,
-        })
-    }
+fn runtime_dispatches(command: &CditorCommand) -> bool {
+    matches!(
+        command,
+        CditorCommand::ToggleBold
+            | CditorCommand::ToggleItalic
+            | CditorCommand::ToggleUnderline
+            | CditorCommand::ToggleStrike
+            | CditorCommand::ToggleInlineCode
+            | CditorCommand::SetInlineColor { .. }
+            | CditorCommand::SetBlockColor { .. }
+            | CditorCommand::InsertParagraphAfterBlock { .. }
+            | CditorCommand::DeleteBlock { .. }
+            | CditorCommand::ToggleTodo { .. }
+            | CditorCommand::SetCodeLanguage { .. }
+            | CditorCommand::TransformBlock(_)
+    )
+}
 
-    fn execute_block_document_command(
-        &mut self,
-        command: &CditorCommand,
-    ) -> Option<Result<bool, String>> {
-        let runtime = self.ready_runtime()?;
-        Some(match command {
-            CditorCommand::InsertParagraphAfterBlock { block_id } => runtime
-                .insert_paragraph_after_block(*block_id)
-                .map(|_| true),
-            CditorCommand::DeleteBlock { block_id } => runtime.delete_block_by_id(*block_id),
-            CditorCommand::ToggleTodo { block_id } => runtime.toggle_todo_checked(*block_id),
-            CditorCommand::SetCodeLanguage { block_id, language } => {
-                runtime.set_code_block_language(*block_id, language.clone())
-            }
-            _ => return None,
-        })
+fn protocol_command_error(error: cditor_editor_protocol::ProtocolError) -> CditorError {
+    use cditor_editor_protocol::ProtocolErrorCode;
+    match error.code {
+        ProtocolErrorCode::InvalidArguments | ProtocolErrorCode::UnsupportedVersion => {
+            CditorError::InvalidInput(error.message)
+        }
+        ProtocolErrorCode::Readonly => CditorError::Readonly,
+        ProtocolErrorCode::Cancelled => CditorError::Cancelled,
+        ProtocolErrorCode::Timeout => CditorError::Timeout,
+        _ => CditorError::Internal(error.message),
     }
 }
 

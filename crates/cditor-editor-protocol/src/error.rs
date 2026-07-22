@@ -17,6 +17,7 @@ pub enum ProtocolErrorCode {
     PermissionDenied,
     StalePrecondition,
     CompositionConflict,
+    ApplyFailed,
     Cancelled,
     Timeout,
     Busy,

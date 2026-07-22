@@ -11,9 +11,7 @@ use cditor_api::document::{
 use cditor_api::event::CditorEvent;
 use cditor_api::{CditorError, command::CommandState};
 use cditor_core::edit::ChangeOrigin;
-use cditor_editor_protocol::command::{
-    BlockTransform, CditorCommand, CommandOutcome, CommandSource,
-};
+use cditor_editor_protocol::command::{CditorCommand, CommandOutcome, CommandSource};
 
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
@@ -383,24 +381,6 @@ impl CditorV2View {
             CditorCommand::DeleteSelection => runtime
                 .delete_active_selection()
                 .map_err(CditorError::Internal)?,
-            CditorCommand::ToggleBold => {
-                toggle_mark(runtime, cditor_core::rich_text::InlineMark::Bold)?
-            }
-            CditorCommand::ToggleItalic => {
-                toggle_mark(runtime, cditor_core::rich_text::InlineMark::Italic)?
-            }
-            CditorCommand::ToggleUnderline => {
-                toggle_mark(runtime, cditor_core::rich_text::InlineMark::Underline)?
-            }
-            CditorCommand::ToggleStrike => {
-                toggle_mark(runtime, cditor_core::rich_text::InlineMark::Strike)?
-            }
-            CditorCommand::ToggleInlineCode => {
-                toggle_mark(runtime, cditor_core::rich_text::InlineMark::Code)?
-            }
-            CditorCommand::TransformBlock(BlockTransform::Kind(kind)) => runtime
-                .convert_focused_block_kind(kind)
-                .map_err(CditorError::Internal)?,
             CditorCommand::ApplySlashBlock {
                 block_id,
                 trigger_range,
@@ -532,15 +512,6 @@ fn runtime_position(
             Affinity::Downstream => cditor_core::edit::TextAffinity::Downstream,
         },
     })
-}
-
-fn toggle_mark(
-    runtime: &mut cditor_runtime::DocumentRuntime,
-    mark: cditor_core::rich_text::InlineMark,
-) -> Result<bool, CditorError> {
-    runtime
-        .toggle_inline_mark_on_selection(mark)
-        .map_err(CditorError::Internal)
 }
 
 #[cfg(test)]

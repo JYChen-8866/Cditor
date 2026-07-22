@@ -13,6 +13,41 @@ pub struct BlockInput {
     pub payload: BlockPayload,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CommandEnvelope {
+    pub command: EditorCommand,
+    pub source: CommandSource,
+    pub expected_revision: Option<u64>,
+    pub request_id: Option<u64>,
+}
+
+impl CommandEnvelope {
+    pub const fn new(command: EditorCommand, source: CommandSource) -> Self {
+        Self {
+            command,
+            source,
+            expected_revision: None,
+            request_id: None,
+        }
+    }
+
+    pub const fn expecting_revision(mut self, revision: u64) -> Self {
+        self.expected_revision = Some(revision);
+        self
+    }
+
+    pub const fn with_request_id(mut self, request_id: u64) -> Self {
+        self.request_id = Some(request_id);
+        self
+    }
+
+    pub fn invocation(&self) -> CommandInvocation {
+        let mut invocation = self.command.invocation(self.source);
+        invocation.request_id = self.request_id;
+        invocation
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlockTransform {
     Kind(RichBlockKind),
@@ -336,5 +371,14 @@ mod tests {
             CommandCatalog::builtin().validate_invocation(&invocation),
             Ok(())
         );
+    }
+
+    #[test]
+    fn envelope_keeps_optimistic_revision_and_request_identity() {
+        let envelope = CommandEnvelope::new(EditorCommand::Undo, CommandSource::Sdk)
+            .expecting_revision(9)
+            .with_request_id(12);
+        assert_eq!(envelope.expected_revision, Some(9));
+        assert_eq!(envelope.invocation().request_id, Some(12));
     }
 }

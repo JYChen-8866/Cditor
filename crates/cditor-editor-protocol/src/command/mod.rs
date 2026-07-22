@@ -18,7 +18,7 @@ pub use catalog::{
     CommandCatalog, CommandCatalogRegistrationError, CommandDefinition, CommandMutability,
 };
 pub use editor::EditorCommand as CditorCommand;
-pub use editor::{BlockInput, BlockTransform, EditorCommand};
+pub use editor::{BlockInput, BlockTransform, CommandEnvelope, EditorCommand};
 
 pub const CURRENT_COMMAND_SCHEMA_VERSION: u16 = 1;
 

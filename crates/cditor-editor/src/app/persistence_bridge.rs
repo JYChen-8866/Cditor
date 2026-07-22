@@ -81,7 +81,7 @@ impl CditorV2View {
                     Err(_) => false,
                 };
                 if should_replay {
-                    view.execute_gui_input_command_handler(command, cx);
+                    view.apply_input_command(command, cx);
                 }
                 view.trim_persistent_payload_cache();
                 cx.notify();

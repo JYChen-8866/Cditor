@@ -14,7 +14,6 @@ use crate::text::{
 };
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::{BlockId, SurfaceId};
-use cditor_core::rich_text::InlineMark;
 use cditor_import_export::clipboard::{CditorClipboardEnvelope, ClipboardSelection};
 use cditor_import_export::markdown::looks_like_markdown_paste;
 use cditor_runtime::DocumentRuntime;
@@ -50,6 +49,22 @@ impl CditorV2View {
             return;
         }
         if self.readonly && !matches!(command, GuiInputCommand::CopySelection) {
+            return;
+        }
+        if matches!(
+            command,
+            GuiInputCommand::ToggleBold
+                | GuiInputCommand::ToggleItalic
+                | GuiInputCommand::ToggleUnderline
+                | GuiInputCommand::ToggleInlineCode
+        ) {
+            if let Some(editor_command) = command.cditor_command() {
+                let _ = self.dispatch_command(
+                    editor_command,
+                    cditor_editor_protocol::command::CommandSource::Keyboard,
+                    cx,
+                );
+            }
             return;
         }
         if matches!(
@@ -361,38 +376,12 @@ impl CditorV2View {
                         let _ = runtime.move_focused_caret_to_line_boundary(true, extend_selection);
                     }
                 }
-                GuiInputCommand::ToggleBold => {
-                    if matches!(
-                        runtime.toggle_inline_mark_on_selection(InlineMark::Bold),
-                        Ok(true)
-                    ) {
-                        self.mark_dirty(cx);
-                    }
-                }
-                GuiInputCommand::ToggleItalic => {
-                    if matches!(
-                        runtime.toggle_inline_mark_on_selection(InlineMark::Italic),
-                        Ok(true)
-                    ) {
-                        self.mark_dirty(cx);
-                    }
-                }
-                GuiInputCommand::ToggleUnderline => {
-                    if matches!(
-                        runtime.toggle_inline_mark_on_selection(InlineMark::Underline),
-                        Ok(true)
-                    ) {
-                        self.mark_dirty(cx);
-                    }
-                }
-                GuiInputCommand::ToggleInlineCode => {
-                    if matches!(
-                        runtime.toggle_inline_mark_on_selection(InlineMark::Code),
-                        Ok(true)
-                    ) {
-                        self.mark_dirty(cx);
-                    }
-                }
+                GuiInputCommand::ToggleBold
+                | GuiInputCommand::ToggleItalic
+                | GuiInputCommand::ToggleUnderline
+                | GuiInputCommand::ToggleInlineCode => unreachable!(
+                    "format commands return through Runtime dispatch before handler mutation"
+                ),
             }
         }
         if should_scroll_focus && let CditorViewState::Ready(runtime) = &mut self.state {
