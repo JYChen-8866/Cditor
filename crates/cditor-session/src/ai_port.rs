@@ -1,7 +1,41 @@
+use cditor_core::ids::BlockId;
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
-use cditor_runtime::{AiSessionOutcome, AiSessionRequest, DocumentRuntime};
+use cditor_runtime::{
+    AiApplyMode, AiSessionOutcome, AiSessionRequest, DocumentRuntime, RuntimeAiTarget,
+};
 
 use crate::EditorSessionHandle;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AiContextSnapshot {
+    pub session_active: bool,
+    pub focused_empty_text_block: Option<(BlockId, usize)>,
+    pub prompt_block_id: Option<BlockId>,
+    pub apply_mode: Option<AiApplyMode>,
+}
+
+pub fn project_ai_context(runtime: &DocumentRuntime) -> AiContextSnapshot {
+    let session = runtime.ai_session_snapshot();
+    let target = session.as_ref().map(|session| &session.target);
+    AiContextSnapshot {
+        session_active: session.is_some(),
+        focused_empty_text_block: runtime.focused_empty_text_block_for_ai(),
+        prompt_block_id: target
+            .map(target_block_id)
+            .or_else(|| runtime.focused_block_id()),
+        apply_mode: target.map(|target| match target {
+            RuntimeAiTarget::InlineCaret(_) => AiApplyMode::InsertAfter,
+            RuntimeAiTarget::TextSelection(_) => AiApplyMode::Replace,
+        }),
+    }
+}
+
+fn target_block_id(target: &RuntimeAiTarget) -> BlockId {
+    match target {
+        RuntimeAiTarget::InlineCaret(position) => position.block_id,
+        RuntimeAiTarget::TextSelection(selection) => selection.focus.block_id,
+    }
+}
 
 pub fn project_ai_session_request(
     runtime: &mut DocumentRuntime,
@@ -29,6 +63,17 @@ pub fn project_ai_session_request(
 }
 
 impl EditorSessionHandle {
+    pub fn ai_context(&self) -> Result<AiContextSnapshot, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_ai_context(&session.runtime))
+    }
+
     pub fn apply_ai_session_request(
         &self,
         request: AiSessionRequest,
@@ -169,5 +214,21 @@ mod tests {
                 .unwrap(),
             AiSessionOutcome::PreviewRejected(true)
         ));
+    }
+
+    #[test]
+    fn ai_context_projects_prompt_target_and_apply_mode_without_runtime_borrows() {
+        let handle = EditorSession::new(focused_runtime(), false).into_handle();
+        let before = handle.ai_context().unwrap();
+        assert!(!before.session_active);
+        assert_eq!(before.focused_empty_text_block, Some((1, 0)));
+        assert_eq!(before.prompt_block_id, Some(1));
+        assert_eq!(before.apply_mode, None);
+
+        begin(&handle);
+        let active = handle.ai_context().unwrap();
+        assert!(active.session_active);
+        assert_eq!(active.prompt_block_id, Some(1));
+        assert_eq!(active.apply_mode, Some(AiApplyMode::InsertAfter));
     }
 }

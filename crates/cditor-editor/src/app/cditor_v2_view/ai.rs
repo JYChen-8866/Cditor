@@ -6,9 +6,8 @@ use cditor_ai::{
 };
 use cditor_runtime::{
     AiApplyMode, AiRequestPresentation, AiSessionOutcome, AiSessionRequest, AiStreamApplyResult,
-    RuntimeAiTarget,
 };
-use cditor_session::project_ai_session_request;
+use cditor_session::{project_ai_context, project_ai_session_request};
 use gpui::{AppContext, Context, px};
 
 use crate::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
@@ -33,13 +32,13 @@ impl CditorV2View {
             || self.code_language_edit.is_some()
             || self
                 .ready_runtime_ref()
-                .is_some_and(|runtime| runtime.ai_session_snapshot().is_some())
+                .is_some_and(|runtime| project_ai_context(runtime).session_active)
         {
             return false;
         }
         let Some((block_id, caret)) = self
             .ready_runtime_ref()
-            .and_then(|runtime| runtime.focused_empty_text_block_for_ai())
+            .and_then(|runtime| project_ai_context(runtime).focused_empty_text_block)
         else {
             return false;
         };
@@ -76,15 +75,10 @@ impl CditorV2View {
         if !self.ai_enabled || self.readonly {
             return false;
         }
-        let Some(block_id) = self.ready_runtime_ref().and_then(|runtime| {
-            runtime
-                .ai_session_snapshot()
-                .map(|session| match session.target {
-                    RuntimeAiTarget::InlineCaret(position) => position.block_id,
-                    RuntimeAiTarget::TextSelection(selection) => selection.focus.block_id,
-                })
-                .or_else(|| runtime.focused_block_id())
-        }) else {
+        let Some(block_id) = self
+            .ready_runtime_ref()
+            .and_then(|runtime| project_ai_context(runtime).prompt_block_id)
+        else {
             return false;
         };
         if !self.commit_document_composition_before_external_focus(cx) {
@@ -254,11 +248,7 @@ impl CditorV2View {
     pub(crate) fn accept_ai_preview_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
         let mode = self
             .ready_runtime_ref()
-            .and_then(|runtime| runtime.ai_session_snapshot())
-            .map(|session| match session.target {
-                RuntimeAiTarget::InlineCaret(_) => AiApplyMode::InsertAfter,
-                RuntimeAiTarget::TextSelection(_) => AiApplyMode::Replace,
-            });
+            .and_then(|runtime| project_ai_context(runtime).apply_mode);
         let Some(mode) = mode else {
             return false;
         };

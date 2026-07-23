@@ -13,7 +13,7 @@ mod session;
 mod toolbar_snapshot;
 mod ui_snapshot;
 
-pub use ai_port::project_ai_session_request;
+pub use ai_port::{AiContextSnapshot, project_ai_context, project_ai_session_request};
 pub use diagnostics_snapshot::{SessionDiagnosticsSnapshot, project_diagnostics_snapshot};
 pub use history_port::{
     HistoryActionSnapshot, HistoryDirection, project_history_action,
