@@ -8,7 +8,10 @@ use std::{
 use cditor_core::ids::{BlockId, DocumentId};
 use cditor_editor_protocol::{
     ProtocolError, ProtocolErrorCode,
-    command::{CommandCatalog, CommandEnvelope, CommandMutability, CommandOutcome},
+    command::{
+        CommandCatalog, CommandEnvelope, CommandMutability, CommandOutcome, CommandQueryState,
+        CommandSource, CommandUnavailableReason, EditorCommand,
+    },
     projection::ProjectionRequest,
     query::{CommandQuery, DocumentSummary, QueryResult},
 };
@@ -150,8 +153,27 @@ pub fn project_block_plain_text(runtime: &DocumentRuntime, block_id: BlockId) ->
         .map(|payload| payload.plain_text())
 }
 
+pub fn project_command_query(
+    runtime: &DocumentRuntime,
+    command: &EditorCommand,
+    readonly: bool,
+) -> CommandQueryState {
+    if readonly && editor_command_mutability(command) == Some(CommandMutability::Document) {
+        CommandQueryState::disabled(CommandUnavailableReason::Readonly)
+    } else {
+        runtime.query_editor_command(command)
+    }
+}
+
 fn command_mutability(envelope: &CommandEnvelope) -> Option<CommandMutability> {
     let invocation = envelope.invocation();
+    CommandCatalog::builtin()
+        .definition(&invocation.id)
+        .map(|definition| definition.mutability)
+}
+
+fn editor_command_mutability(command: &EditorCommand) -> Option<CommandMutability> {
+    let invocation = command.invocation(CommandSource::Sdk);
     CommandCatalog::builtin()
         .definition(&invocation.id)
         .map(|definition| definition.mutability)
@@ -193,6 +215,18 @@ impl EditorSessionHandle {
     pub fn block_plain_text(&self, block_id: BlockId) -> Result<Option<String>, ProtocolError> {
         let session = self.inner.try_borrow().map_err(|_| busy_error())?;
         Ok(project_block_plain_text(&session.runtime, block_id))
+    }
+
+    pub fn query_editor_command(
+        &self,
+        command: &EditorCommand,
+    ) -> Result<CommandQueryState, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| busy_error())?;
+        Ok(project_command_query(
+            &session.runtime,
+            command,
+            session.readonly,
+        ))
     }
 
     pub fn query(&self, query: CommandQuery) -> Result<QueryResult, ProtocolError> {

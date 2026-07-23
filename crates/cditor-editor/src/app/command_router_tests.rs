@@ -5,7 +5,7 @@ use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineColorTarget, InlineMark, InlineSpan, RichBlockKind,
     TableRange,
 };
-use cditor_editor_protocol::command::CommandOutcomeStatus;
+use cditor_editor_protocol::command::{CommandCheckState, CommandOutcomeStatus, TableAxis};
 use gpui::{AppContext, TestAppContext};
 
 fn realtime_replace(runtime: &mut cditor_runtime::DocumentRuntime, text: &str) {
@@ -565,17 +565,23 @@ fn inline_mark_query_reports_checked_mixed_and_unchecked() {
     crate::test_support::focus_block_at_offset(&mut runtime, 1, 0);
     crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 1, 4);
     assert_eq!(
-        inline_mark_check_state(&runtime, &InlineMark::Bold),
+        runtime
+            .query_editor_command(&CditorCommand::ToggleBold)
+            .check,
         CommandCheckState::Checked
     );
 
     crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 1, 10);
     assert_eq!(
-        inline_mark_check_state(&runtime, &InlineMark::Bold),
+        runtime
+            .query_editor_command(&CditorCommand::ToggleBold)
+            .check,
         CommandCheckState::Mixed
     );
     assert_eq!(
-        inline_mark_check_state(&runtime, &InlineMark::Italic),
+        runtime
+            .query_editor_command(&CditorCommand::ToggleItalic)
+            .check,
         CommandCheckState::Unchecked
     );
 }

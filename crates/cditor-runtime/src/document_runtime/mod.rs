@@ -11,6 +11,7 @@ mod columns;
 mod command;
 mod command_errors;
 mod command_query;
+mod command_query_typed;
 mod command_selection;
 mod composition;
 mod constructors;
