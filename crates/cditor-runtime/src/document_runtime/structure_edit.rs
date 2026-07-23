@@ -391,7 +391,7 @@ impl DocumentRuntime {
         Ok(())
     }
 
-    pub fn delete_document_selection(&mut self) -> Result<bool, String> {
+    pub(crate) fn delete_document_selection(&mut self) -> Result<bool, String> {
         let before_selection = self.document_selection_snapshot();
         let before_selected_blocks = self.selected_block_ids_snapshot();
         let Some(selection) = self.document_selection else {

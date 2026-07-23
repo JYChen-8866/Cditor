@@ -1,10 +1,14 @@
 use cditor_core::edit::{InnerSelectionAnchor, SelectionEndpoint, UnifiedDocumentSelection};
+#[cfg(test)]
 use cditor_core::ids::BlockId;
 
-use super::{DocumentRuntime, state::FocusedInnerSelection};
+use super::DocumentRuntime;
+#[cfg(test)]
+use super::state::FocusedInnerSelection;
 
 impl DocumentRuntime {
-    pub fn set_focused_inner_selection(
+    #[cfg(test)]
+    pub(crate) fn set_focused_inner_selection(
         &mut self,
         block_id: BlockId,
         anchor: InnerSelectionAnchor,
@@ -58,10 +62,6 @@ impl DocumentRuntime {
             focus,
         });
         Ok(changed)
-    }
-
-    pub fn clear_focused_inner_selection(&mut self) -> bool {
-        self.focused_inner_selection.take().is_some()
     }
 
     pub fn unified_document_selection_snapshot(&self) -> Option<UnifiedDocumentSelection> {

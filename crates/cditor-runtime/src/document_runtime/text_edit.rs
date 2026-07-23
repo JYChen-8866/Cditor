@@ -2,7 +2,7 @@ use super::markdown_transaction::payload_replace_operation;
 use super::*;
 
 impl DocumentRuntime {
-    pub fn replace_focused_range_with_rich_text_spans(
+    pub(crate) fn replace_focused_range_with_rich_text_spans(
         &mut self,
         inserted_spans: &[InlineSpan],
     ) -> Result<bool, String> {
@@ -74,7 +74,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn insert_char(&mut self, ch: char) -> Result<(), String> {
+    pub(crate) fn insert_char(&mut self, ch: char) -> Result<(), String> {
         if self.focused_table_cell.is_some() {
             self.replace_text_from_platform(None, &ch.to_string())?;
             return Ok(());
@@ -232,7 +232,8 @@ impl DocumentRuntime {
         Ok(())
     }
 
-    pub fn insert_space_or_markdown_shortcut(&mut self) -> Result<(), String> {
+    #[cfg(test)]
+    pub(crate) fn insert_space_or_markdown_shortcut(&mut self) -> Result<(), String> {
         self.replace_text_from_platform(None, " ")?;
         Ok(())
     }

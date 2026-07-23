@@ -4,7 +4,7 @@ use super::markdown_transaction::{
 use super::*;
 
 impl DocumentRuntime {
-    pub fn merge_focused_block_into_previous(&mut self) -> Result<bool, String> {
+    pub(crate) fn merge_focused_block_into_previous(&mut self) -> Result<bool, String> {
         let Some(current_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -101,11 +101,11 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn delete_focused_empty_block_backward(&mut self) -> Result<bool, String> {
+    pub(crate) fn delete_focused_empty_block_backward(&mut self) -> Result<bool, String> {
         self.delete_focused_empty_block(-1)
     }
 
-    pub fn delete_focused_empty_block_forward(&mut self) -> Result<bool, String> {
+    pub(crate) fn delete_focused_empty_block_forward(&mut self) -> Result<bool, String> {
         self.delete_focused_empty_block(1)
     }
 

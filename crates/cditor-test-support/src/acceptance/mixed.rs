@@ -1,9 +1,10 @@
 use std::time::Instant;
 
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
+use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 use cditor_runtime::content::payload_window::PayloadWindowLoadResult;
 use cditor_runtime::document_runtime::{DocumentRuntimeColdStartData, DocumentRuntimeIndexSource};
-use cditor_runtime::{DocumentRuntime, PayloadCachePolicy};
+use cditor_runtime::{DocumentRuntime, PayloadCachePolicy, RealtimeInput, RealtimeInputRequest};
 use cditor_viewport::scroll::ScrollbarPolicy;
 
 use super::open::AcceptanceFixture;
@@ -110,9 +111,26 @@ pub fn run_mixed_acceptance(
             jump_operations += 1;
 
             load_window_around(&mut runtime, fixture, target_index)?;
-            let text = payload_text(target_id);
-            runtime.focus_block_at_offset(target_id, text.len())?;
-            runtime.insert_char('x')?;
+            runtime
+                .dispatch(CommandEnvelope::new(
+                    EditorCommand::FocusBlock {
+                        block_id: target_id,
+                    },
+                    CommandSource::Automation,
+                ))
+                .map_err(|error| error.to_string())?;
+            let expected = runtime
+                .input_session_identity()
+                .ok_or_else(|| format!("focused block {target_id} has no input session"))?;
+            runtime
+                .apply_realtime_input(RealtimeInputRequest {
+                    expected,
+                    input: RealtimeInput::ReplaceText {
+                        range: None,
+                        text: "x",
+                    },
+                })
+                .map_err(|error| error.to_string())?;
             runtime.break_typing_coalescing();
             let version = runtime
                 .block_content_version(target_id)

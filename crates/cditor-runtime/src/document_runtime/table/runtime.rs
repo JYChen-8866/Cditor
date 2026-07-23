@@ -50,6 +50,7 @@ impl TableRuntime {
         Some(self.revision)
     }
 
+    #[cfg(test)]
     pub(in crate::document_runtime) fn merge_cells(
         &mut self,
         range: TableRange,
@@ -62,6 +63,7 @@ impl TableRuntime {
         Ok(changed)
     }
 
+    #[cfg(test)]
     pub(in crate::document_runtime) fn split_cell(
         &mut self,
         row: usize,

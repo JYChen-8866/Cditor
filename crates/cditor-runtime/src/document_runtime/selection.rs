@@ -210,7 +210,7 @@ impl DocumentRuntime {
         Ok(normalized_grapheme_offset(model.text(), offset))
     }
 
-    pub fn select_focused_text_all(&mut self) -> bool {
+    pub(crate) fn select_focused_text_all(&mut self) -> bool {
         self.break_typing_coalescing();
         if let Some(selected) = self.select_focused_auxiliary_text_all() {
             return selected;

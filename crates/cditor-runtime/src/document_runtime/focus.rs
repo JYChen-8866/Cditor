@@ -11,7 +11,7 @@ pub type TableCellSelectionState = (
 );
 
 impl DocumentRuntime {
-    pub fn focus_block(&mut self, block_id: BlockId) {
+    pub(crate) fn focus_block(&mut self, block_id: BlockId) {
         if let Err(error) = self.try_focus_block(block_id) {
             trace_input(
                 "focus_block.rejected",
@@ -20,7 +20,7 @@ impl DocumentRuntime {
         }
     }
 
-    pub fn try_focus_block(&mut self, block_id: BlockId) -> Result<(), String> {
+    pub(crate) fn try_focus_block(&mut self, block_id: BlockId) -> Result<(), String> {
         self.break_typing_coalescing();
         let previous_focus = self.focused_block_id();
         self.hydrate_payload_runtime_state(block_id);
@@ -279,7 +279,8 @@ impl DocumentRuntime {
         })
     }
 
-    pub fn blur_table_cell(&mut self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn blur_table_cell(&mut self) -> bool {
         match self.try_blur_table_cell() {
             Ok(blurred) => blurred,
             Err(error) => {
@@ -289,7 +290,7 @@ impl DocumentRuntime {
         }
     }
 
-    pub fn try_blur_table_cell(&mut self) -> Result<bool, String> {
+    pub(crate) fn try_blur_table_cell(&mut self) -> Result<bool, String> {
         self.break_typing_coalescing();
         let Some(focused) = self.focused_table_cell else {
             return Ok(false);

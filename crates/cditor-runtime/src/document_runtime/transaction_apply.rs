@@ -114,7 +114,7 @@ impl StagingState {
 }
 
 impl DocumentRuntime {
-    pub fn apply_transaction(
+    pub(crate) fn apply_transaction(
         &mut self,
         transaction: &EditTransaction,
         permissions: TransactionPermissionSet,

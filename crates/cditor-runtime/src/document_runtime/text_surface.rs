@@ -506,7 +506,7 @@ impl DocumentRuntime {
         TextSurfaceRegistry.validate_identity(&record, identity)
     }
 
-    pub fn replace_text_surface_range(
+    pub(crate) fn replace_text_surface_range(
         &mut self,
         surface_id: SurfaceId,
         range: Range<usize>,

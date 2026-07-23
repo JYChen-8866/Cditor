@@ -69,7 +69,7 @@ impl DocumentRuntime {
         self.paste_table_clipboard_at_focused_cell(&snapshot)
     }
 
-    pub fn paste_table_clipboard_at_focused_cell(
+    pub(crate) fn paste_table_clipboard_at_focused_cell(
         &mut self,
         snapshot: &TableClipboardSnapshot,
     ) -> Result<bool, String> {

@@ -92,7 +92,7 @@ impl DocumentRuntime {
         self.outdent_block(block_id)
     }
 
-    pub fn indent_block(&mut self, block_id: BlockId) -> Result<bool, String> {
+    pub(crate) fn indent_block(&mut self, block_id: BlockId) -> Result<bool, String> {
         let Some(index) = self.index.index_of(block_id) else {
             return Ok(false);
         };
@@ -118,7 +118,7 @@ impl DocumentRuntime {
         self.move_block_subtree_to_parent(block_id, Some(previous_sibling_id), child_count)
     }
 
-    pub fn outdent_block(&mut self, block_id: BlockId) -> Result<bool, String> {
+    pub(crate) fn outdent_block(&mut self, block_id: BlockId) -> Result<bool, String> {
         let Some(index) = self.index.index_of(block_id) else {
             return Ok(false);
         };
