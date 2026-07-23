@@ -55,7 +55,7 @@ impl DocumentRuntime {
             current_spans,
             spans,
         )?;
-        self.focused_text_selection = Some(FocusedTextSelection {
+        self.selection.focused_text_selection = Some(FocusedTextSelection {
             anchor: range.start,
             focus: range.end,
         });
@@ -99,13 +99,13 @@ impl DocumentRuntime {
         let Some(range) = self.focused_text_selection_range() else {
             return Ok(false);
         };
-        let original_selection = self.focused_text_selection;
+        let original_selection = self.selection.focused_text_selection;
         let selection_reversed = self.input_session_selection_reversed();
         let changed = self.set_inline_color_for_range(block_id, range.clone(), target, color)?;
         if !changed {
             return Ok(false);
         }
-        self.focused_text_selection = original_selection.or(Some(FocusedTextSelection {
+        self.selection.focused_text_selection = original_selection.or(Some(FocusedTextSelection {
             anchor: range.start,
             focus: range.end,
         }));
@@ -151,7 +151,7 @@ impl DocumentRuntime {
         if spans == current_spans {
             return Ok(false);
         }
-        let focused_selection = self.focused_text_selection;
+        let focused_selection = self.selection.focused_text_selection;
         let editing_selection = self
             .editing
             .as_ref()
@@ -162,7 +162,7 @@ impl DocumentRuntime {
             current_spans,
             spans,
         )?;
-        self.focused_text_selection = focused_selection;
+        self.selection.focused_text_selection = focused_selection;
         if let (Some(editing), Some((selected_range, selection_reversed))) = (
             self.editing
                 .as_mut()

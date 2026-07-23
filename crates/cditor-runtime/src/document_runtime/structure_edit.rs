@@ -117,7 +117,7 @@ impl DocumentRuntime {
             keyboard_policy.enter,
             cditor_core::block::EnterKeyBehavior::TableCellSoftBreak
         ) {
-            if self.focused_table_cell.is_some() {
+            if self.selection.focused_table_cell.is_some() {
                 self.insert_soft_line_break()?;
             }
             return Ok(());
@@ -400,7 +400,7 @@ impl DocumentRuntime {
     pub(crate) fn delete_document_selection(&mut self) -> Result<bool, String> {
         let before_selection = self.document_selection_snapshot();
         let before_selected_blocks = self.selected_block_ids_snapshot();
-        let Some(selection) = self.document_selection else {
+        let Some(selection) = self.selection.document_selection else {
             return Ok(false);
         };
         if selection.is_caret() {

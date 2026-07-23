@@ -307,7 +307,7 @@ impl DocumentRuntime {
         {
             pages.insert(page);
         }
-        for block_id in &self.selected_block_ids {
+        for block_id in &self.selection.selected_block_ids {
             if let Some(visible_index) = self.document.visible_index.visible_index_of(*block_id)
                 && let Some(page) = self.page_layout.page_for_block_index(visible_index)
             {

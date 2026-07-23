@@ -289,11 +289,11 @@ impl DocumentRuntime {
 
         let text = snapshot.plain_text();
         let offset = super::normalized_grapheme_offset(&text, offset.min(text.len()));
-        self.selected_block_ids.clear();
-        self.document_selection = None;
-        self.visual_caret_position = None;
-        self.focused_text_selection = None;
-        self.focused_table_cell = None;
+        self.selection.selected_block_ids.clear();
+        self.selection.document_selection = None;
+        self.selection.visual_caret_position = None;
+        self.selection.focused_text_selection = None;
+        self.selection.focused_table_cell = None;
 
         let block_id = snapshot.owner_block_id;
         let session_id = self.allocate_input_session_id();
@@ -409,9 +409,9 @@ impl DocumentRuntime {
         } else {
             editing.set_collapsed_selection(offset);
         }
-        self.document_selection = None;
-        self.focused_text_selection = None;
-        self.visual_caret_position = None;
+        self.selection.document_selection = None;
+        self.selection.focused_text_selection = None;
+        self.selection.visual_caret_position = None;
         Ok(previous != offset || extend_selection || affinity != TextAffinity::Downstream)
     }
 
@@ -589,10 +589,10 @@ impl DocumentRuntime {
 
         self.push_undo_snapshot(block_id)?;
         self.cancel_composition();
-        self.document_selection = None;
-        self.focused_text_selection = None;
-        self.focused_table_cell = None;
-        self.selected_block_ids.clear();
+        self.selection.document_selection = None;
+        self.selection.focused_text_selection = None;
+        self.selection.focused_table_cell = None;
+        self.selection.selected_block_ids.clear();
 
         let next_content_version = {
             let record = self

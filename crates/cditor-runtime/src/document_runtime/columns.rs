@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn columns_clipboard_remaps_group_column_ids_with_the_subtree() {
         let mut runtime = runtime_with_columns();
-        runtime.selected_block_ids.insert(1);
+        runtime.selection.selected_block_ids.insert(1);
         let clipboard = runtime.clipboard_selection_snapshot().unwrap();
         let ClipboardSelection::Blocks { blocks } = &clipboard else {
             panic!("expected block clipboard")

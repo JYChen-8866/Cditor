@@ -24,7 +24,7 @@ impl DocumentRuntime {
         match selection {
             ClipboardSelection::Inline { spans } => self.paste_inline_clipboard_spans(spans),
             ClipboardSelection::TextFragments { fragments } => {
-                if self.focused_table_cell.is_some() {
+                if self.selection.focused_table_cell.is_some() {
                     let mut spans = Vec::new();
                     for (index, fragment) in fragments.iter().enumerate() {
                         if index > 0 {
@@ -86,7 +86,7 @@ impl DocumentRuntime {
             }
             return Ok(changed);
         }
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return self.replace_focused_range_with_rich_text_spans(spans);
         };
         let inserted_len = spans.iter().map(|span| span.text.len()).sum::<usize>();
@@ -105,7 +105,7 @@ impl DocumentRuntime {
         let changed =
             self.apply_text_surface_paste_transaction(surface_id, snapshot.spans, next, caret)?;
         if changed {
-            self.focused_table_cell = Some(FocusedTableCell::collapsed(
+            self.selection.focused_table_cell = Some(FocusedTableCell::collapsed(
                 focused.block_id,
                 focused.row,
                 focused.col,
@@ -141,6 +141,7 @@ impl DocumentRuntime {
         fragments: &[ClipboardBlockFragment],
     ) -> Result<bool, String> {
         let cross_plan = self
+            .selection
             .document_selection
             .filter(|selection| selection.anchor.block_id != selection.focus.block_id)
             .map(|selection| self.plan_cross_block_replacement(selection))

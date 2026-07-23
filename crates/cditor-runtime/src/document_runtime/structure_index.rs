@@ -110,7 +110,7 @@ impl DocumentRuntime {
         self.document.payload_window.block_range =
             0..self.document.visible_index.total_visible_count();
         self.rebuild_height_indexes_from_layout_meta()?;
-        self.selected_block_ids.clear();
+        self.selection.selected_block_ids.clear();
         Ok(())
     }
 

@@ -271,8 +271,8 @@ impl DocumentRuntime {
         }
 
         self.cancel_composition();
-        self.document_selection = None;
-        self.focused_text_selection = None;
+        self.selection.document_selection = None;
+        self.selection.focused_text_selection = None;
         self.push_undo_snapshot(block_id)?;
         let replaced_range = range.clone();
         let replacement_start = range.start;

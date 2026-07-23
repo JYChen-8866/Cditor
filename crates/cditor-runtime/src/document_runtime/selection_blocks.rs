@@ -4,8 +4,8 @@ impl DocumentRuntime {
     #[cfg(test)]
     pub(crate) fn select_all_visible_blocks(&mut self) -> bool {
         self.break_typing_coalescing();
-        self.focused_table_cell = None;
-        self.selected_block_ids = self
+        self.selection.focused_table_cell = None;
+        self.selection.selected_block_ids = self
             .document
             .visible_index
             .visible_block_ids
@@ -16,7 +16,7 @@ impl DocumentRuntime {
     }
 
     pub fn has_selected_blocks(&self) -> bool {
-        !self.selected_block_ids.is_empty()
+        !self.selection.selected_block_ids.is_empty()
     }
 
     pub(crate) fn delete_selected_block_selection(&mut self) -> Result<bool, String> {
@@ -33,11 +33,11 @@ impl DocumentRuntime {
         };
         let start = anchor_index.min(focus_index);
         let end = anchor_index.max(focus_index);
-        self.focused_table_cell = None;
-        self.selected_block_ids.clear();
+        self.selection.focused_table_cell = None;
+        self.selection.selected_block_ids.clear();
         for index in start..=end {
             if let Some(block_id) = self.document.visible_index.id_at_visible_index(index) {
-                self.selected_block_ids.insert(block_id);
+                self.selection.selected_block_ids.insert(block_id);
             }
         }
         self.editing = None;

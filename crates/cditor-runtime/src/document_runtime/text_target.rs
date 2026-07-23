@@ -37,6 +37,7 @@ impl DocumentRuntime {
                         self.caret_offset_for_block(block_id).unwrap_or(text.len())
                     }
                     InputTarget::TableCell { block_id, row, col } => self
+                        .selection
                         .focused_table_cell
                         .filter(|cell| {
                             cell.block_id == block_id && cell.row == row && cell.col == col
@@ -64,7 +65,7 @@ impl DocumentRuntime {
     }
 
     pub(super) fn focused_text_target(&self) -> Option<InputTarget> {
-        if let Some(cell) = self.focused_table_cell {
+        if let Some(cell) = self.selection.focused_table_cell {
             return Some(InputTarget::TableCell {
                 block_id: cell.block_id,
                 row: cell.row,

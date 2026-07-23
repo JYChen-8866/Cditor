@@ -161,6 +161,7 @@ impl DocumentRuntime {
             payload: payload.payload,
             content_version: payload.content_version,
             focused_table_cell: self
+                .selection
                 .focused_table_cell
                 .filter(|focused| focused.block_id == block_id),
             input_target: self
@@ -388,7 +389,7 @@ impl DocumentRuntime {
             }
         }
         self.restore_snapshot_table_focus(block_id, focused_table_cell);
-        self.selected_block_ids.clear();
+        self.selection.selected_block_ids.clear();
         self.restore_undo_scroll_snapshot(scroll)?;
         Ok(())
     }
@@ -435,15 +436,15 @@ impl DocumentRuntime {
     }
 
     fn restore_selected_blocks_ux(&mut self, block_ids: &[BlockId]) {
-        self.selected_block_ids = block_ids
+        self.selection.selected_block_ids = block_ids
             .iter()
             .copied()
             .filter(|block_id| self.document.index.index_of(*block_id).is_some())
             .collect();
-        if !self.selected_block_ids.is_empty() {
-            self.document_selection = None;
-            self.focused_text_selection = None;
-            self.focused_table_cell = None;
+        if !self.selection.selected_block_ids.is_empty() {
+            self.selection.document_selection = None;
+            self.selection.focused_text_selection = None;
+            self.selection.focused_table_cell = None;
             self.editing = None;
         }
     }
@@ -455,15 +456,16 @@ impl DocumentRuntime {
     ) {
         let Some(mut focused) = focused.filter(|focused| focused.block_id == block_id) else {
             if self
+                .selection
                 .focused_table_cell
                 .is_some_and(|focused| focused.block_id == block_id)
             {
-                self.focused_table_cell = None;
+                self.selection.focused_table_cell = None;
             }
             return;
         };
         let Some(text) = self.table_cell_plain_text(block_id, focused.row, focused.col) else {
-            self.focused_table_cell = None;
+            self.selection.focused_table_cell = None;
             return;
         };
         focused.offset = normalized_grapheme_offset(&text, focused.offset);
@@ -481,7 +483,7 @@ impl DocumentRuntime {
             focused.marked_range_start = None;
             focused.marked_range_end = None;
         }
-        self.focused_table_cell = Some(focused);
+        self.selection.focused_table_cell = Some(focused);
         if let Some(editing) = self.editing.as_mut() {
             editing.set_input_target(InputTarget::TableCell {
                 block_id,

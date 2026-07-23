@@ -6,7 +6,7 @@ impl DocumentRuntime {
         &mut self,
         inserted_spans: &[InlineSpan],
     ) -> Result<bool, String> {
-        if self.focused_table_cell.is_some() || inserted_spans.is_empty() {
+        if self.selection.focused_table_cell.is_some() || inserted_spans.is_empty() {
             return Ok(false);
         }
         let Some(block_id) = self.focused_block_id() else {
@@ -52,8 +52,8 @@ impl DocumentRuntime {
         )? {
             return Ok(false);
         }
-        self.document_selection = None;
-        self.focused_text_selection = None;
+        self.selection.document_selection = None;
+        self.selection.focused_text_selection = None;
         if let Some(editing) = self.editing.as_mut() {
             editing.set_input_target(InputTarget::BlockText { block_id });
             editing.set_collapsed_selection(next_offset);
@@ -76,7 +76,7 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn insert_char(&mut self, ch: char) -> Result<(), String> {
-        if self.focused_table_cell.is_some() {
+        if self.selection.focused_table_cell.is_some() {
             self.replace_text_from_platform(None, &ch.to_string())?;
             return Ok(());
         }
@@ -88,7 +88,7 @@ impl DocumentRuntime {
         if self.editing.is_none() {
             self.focus_block(block_id);
         }
-        if self.focused_table_cell.is_none() && self.focused_block_is_table() {
+        if self.selection.focused_table_cell.is_none() && self.focused_block_is_table() {
             return Ok(());
         }
         let offset = {
@@ -142,7 +142,7 @@ impl DocumentRuntime {
         } else {
             None
         };
-        self.selected_block_ids.clear();
+        self.selection.selected_block_ids.clear();
         let coalesces_typing = !matches!(ch, '\r' | '\n');
         if coalesces_typing {
             self.prepare_typing_undo(surface_id, offset);
@@ -255,7 +255,7 @@ impl DocumentRuntime {
             _ => {}
         }
         self.insert_char('\n')?;
-        if self.focused_table_cell.is_some() {
+        if self.selection.focused_table_cell.is_some() {
             return Ok(());
         }
         let _ = self.refresh_focused_text_block_height()?;
@@ -363,7 +363,7 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn delete_backward(&mut self) -> Result<bool, String> {
-        if self.focused_table_cell.is_some() {
+        if self.selection.focused_table_cell.is_some() {
             return self.delete_backward_in_focused_table_cell();
         }
         if let Some(changed) = self.delete_in_auxiliary_text_surface(true)? {
@@ -426,7 +426,7 @@ impl DocumentRuntime {
             .text()
             .to_owned();
         self.cancel_composition();
-        self.selected_block_ids.clear();
+        self.selection.selected_block_ids.clear();
         self.apply_local_block_payload_transaction(
             block_id,
             EditTransactionKind::BlockStructureChange,
@@ -440,7 +440,7 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn delete_forward(&mut self) -> Result<bool, String> {
-        if self.focused_table_cell.is_some() {
+        if self.selection.focused_table_cell.is_some() {
             return self.delete_forward_in_focused_table_cell();
         }
         if let Some(changed) = self.delete_in_auxiliary_text_surface(false)? {
@@ -490,14 +490,14 @@ impl DocumentRuntime {
     /// Delete all blocks in selected_block_ids
     /// This handles whole-block multi-selection deletion (e.g., via gutter drag)
     pub(super) fn delete_selected_blocks(&mut self) -> Result<bool, String> {
-        if self.selected_block_ids.is_empty() {
+        if self.selection.selected_block_ids.is_empty() {
             return Ok(false);
         }
 
         let before_selection = self.document_selection_snapshot();
         let before_selected_blocks = self.selected_block_ids_snapshot();
         let records = self.index_records();
-        let selected = &self.selected_block_ids;
+        let selected = &self.selection.selected_block_ids;
         let mut roots = selected
             .iter()
             .filter_map(|block_id| {
@@ -523,7 +523,7 @@ impl DocumentRuntime {
             .collect::<Vec<_>>();
         roots.sort_by_key(|(_, index)| *index);
         let Some((_, start)) = roots.first().copied() else {
-            self.selected_block_ids.clear();
+            self.selection.selected_block_ids.clear();
             return Ok(false);
         };
         let mut end = start;

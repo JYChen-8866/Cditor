@@ -294,14 +294,14 @@ impl DocumentRuntime {
             && self.document.index.index_of(editing.block_id).is_none()
         {
             self.editing = None;
-            self.focused_text_selection = None;
+            self.selection.focused_text_selection = None;
         }
-        if let Some(cell) = self.focused_table_cell
+        if let Some(cell) = self.selection.focused_table_cell
             && self.document.index.index_of(cell.block_id).is_none()
         {
-            self.focused_table_cell = None;
+            self.selection.focused_table_cell = None;
         }
-        if let Some(selection) = self.document_selection
+        if let Some(selection) = self.selection.document_selection
             && (self
                 .document
                 .index
@@ -313,7 +313,7 @@ impl DocumentRuntime {
                     .index_of(selection.focus.block_id)
                     .is_none())
         {
-            self.document_selection = None;
+            self.selection.document_selection = None;
         }
 
         let affected_blocks: Vec<BlockId> = {

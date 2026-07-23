@@ -57,7 +57,8 @@ impl DocumentRuntime {
                 .and_then(|block_id| self.caret_offset_for_block(block_id)),
         );
         let anchor = if extend_selection {
-            self.document_selection
+            self.selection
+                .document_selection
                 .map(|selection| selection.anchor)
                 .or_else(|| {
                     previous.map(|(block_id, offset)| TextPosition::downstream(block_id, offset))
@@ -67,11 +68,11 @@ impl DocumentRuntime {
         };
         self.focus_block_at_offset(target_id, target_offset)?;
         if let Some(anchor) = anchor {
-            self.document_selection = Some(DocumentSelection {
+            self.selection.document_selection = Some(DocumentSelection {
                 anchor,
                 focus: TextPosition::downstream(target_id, target_offset),
             });
-            self.focused_text_selection = None;
+            self.selection.focused_text_selection = None;
         }
         Ok(previous != Some((target_id, target_offset)) || extend_selection)
     }
@@ -88,6 +89,7 @@ impl DocumentRuntime {
             return Ok(false);
         };
         let caret = self
+            .selection
             .focused_table_cell
             .filter(|cell| cell.block_id == block_id)
             .map(|cell| cell.offset)
@@ -97,6 +99,7 @@ impl DocumentRuntime {
         let target = logical_line_boundary(&text, caret, to_end);
 
         if let Some(focused) = self
+            .selection
             .focused_table_cell
             .filter(|cell| cell.block_id == block_id)
         {
@@ -115,7 +118,7 @@ impl DocumentRuntime {
             } else {
                 (target..target, false)
             };
-            if let Some(cell) = self.focused_table_cell.as_mut() {
+            if let Some(cell) = self.selection.focused_table_cell.as_mut() {
                 *cell = cell
                     .with_selected_range(selection.clone(), reversed)
                     .with_marked_range(None);
@@ -194,32 +197,34 @@ impl DocumentRuntime {
         let offset = normalized_grapheme_offset(model.text(), offset);
         if extend_selection {
             let anchor = self
+                .selection
                 .focused_text_selection
                 .map(|selection| selection.anchor)
                 .unwrap_or(previous);
-            self.focused_text_selection = Some(FocusedTextSelection {
+            self.selection.focused_text_selection = Some(FocusedTextSelection {
                 anchor,
                 focus: offset,
             });
-            self.document_selection = Some(DocumentSelection {
+            self.selection.document_selection = Some(DocumentSelection {
                 anchor: TextPosition::downstream(block_id, anchor),
                 focus: TextPosition::downstream(block_id, offset),
             });
             if self
+                .selection
                 .focused_text_selection
                 .is_some_and(FocusedTextSelection::is_collapsed)
             {
-                self.focused_text_selection = None;
-                self.document_selection = None;
+                self.selection.focused_text_selection = None;
+                self.selection.document_selection = None;
             }
         } else {
-            self.focused_text_selection = None;
-            self.document_selection = None;
+            self.selection.focused_text_selection = None;
+            self.selection.document_selection = None;
         }
         if let Some(editing) = self.editing.as_mut() {
             editing.set_input_target(InputTarget::BlockText { block_id });
             if extend_selection {
-                if let Some(selection) = self.focused_text_selection {
+                if let Some(selection) = self.selection.focused_text_selection {
                     editing.set_selected_range(selection.range(), offset < selection.anchor);
                 } else {
                     editing.set_collapsed_selection(offset);
@@ -247,7 +252,7 @@ impl DocumentRuntime {
             .unwrap_or(position.offset);
         let position = TextPosition { offset, ..position };
         self.remember_visual_caret(position);
-        if extend_selection && let Some(selection) = self.document_selection.as_mut() {
+        if extend_selection && let Some(selection) = self.selection.document_selection.as_mut() {
             if let Some(previous) = previous_selection {
                 selection.anchor.affinity = previous.anchor.affinity;
             }
@@ -295,32 +300,34 @@ impl DocumentRuntime {
         }
         if extend_selection {
             let anchor = self
+                .selection
                 .focused_text_selection
                 .map(|selection| selection.anchor)
                 .unwrap_or(caret);
-            self.focused_text_selection = Some(FocusedTextSelection {
+            self.selection.focused_text_selection = Some(FocusedTextSelection {
                 anchor,
                 focus: next,
             });
-            self.document_selection = Some(DocumentSelection {
+            self.selection.document_selection = Some(DocumentSelection {
                 anchor: TextPosition::downstream(block_id, anchor),
                 focus: TextPosition::downstream(block_id, next),
             });
             if self
+                .selection
                 .focused_text_selection
                 .is_some_and(FocusedTextSelection::is_collapsed)
             {
-                self.focused_text_selection = None;
-                self.document_selection = None;
+                self.selection.focused_text_selection = None;
+                self.selection.document_selection = None;
             }
         } else {
-            self.focused_text_selection = None;
-            self.document_selection = None;
+            self.selection.focused_text_selection = None;
+            self.selection.document_selection = None;
         }
         if let Some(editing) = self.editing.as_mut() {
             editing.set_input_target(InputTarget::BlockText { block_id });
             if extend_selection {
-                if let Some(selection) = self.focused_text_selection {
+                if let Some(selection) = self.selection.focused_text_selection {
                     editing.set_selected_range(selection.range(), next < selection.anchor);
                 } else {
                     editing.set_collapsed_selection(next);
@@ -368,6 +375,7 @@ impl DocumentRuntime {
                 .unwrap_or(0)
         });
         let anchor = self
+            .selection
             .document_selection
             .map(|selection| selection.anchor)
             .unwrap_or_else(|| TextPosition::downstream(block_id, caret));
@@ -381,11 +389,11 @@ impl DocumentRuntime {
             0
         };
         self.focus_block_at_offset(target_id, target_offset)?;
-        self.document_selection = Some(DocumentSelection {
+        self.selection.document_selection = Some(DocumentSelection {
             anchor,
             focus: TextPosition::downstream(target_id, target_offset),
         });
-        self.focused_text_selection = None;
+        self.selection.focused_text_selection = None;
         Ok(true)
     }
 

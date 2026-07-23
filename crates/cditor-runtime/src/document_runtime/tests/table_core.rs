@@ -133,7 +133,7 @@ fn delete_backward_and_forward_update_focused_table_cell_payload() {
     assert!(runtime.delete_backward().unwrap());
     assert_eq!(runtime.focused_table_cell_offset(), Some((10, 0, 1, 1)));
     runtime.insert_char('x').unwrap();
-    runtime.focused_table_cell = Some(FocusedTableCell::collapsed(10, 0, 1, 1));
+    runtime.selection.focused_table_cell = Some(FocusedTableCell::collapsed(10, 0, 1, 1));
     assert!(runtime.delete_forward().unwrap());
 
     let payload = runtime.block_payload_record(10).unwrap();
@@ -427,8 +427,8 @@ fn table_selection_axis_and_cell_predicates_are_block_scoped() {
 fn unified_selection_preserves_table_cell_inner_anchor_and_direction() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
     runtime.focus_table_cell_at_offset(10, 1, 1, 1).unwrap();
-    let cell = runtime.focused_table_cell.unwrap();
-    runtime.focused_table_cell = Some(cell.with_selected_range(0..1, true));
+    let cell = runtime.selection.focused_table_cell.unwrap();
+    runtime.selection.focused_table_cell = Some(cell.with_selected_range(0..1, true));
 
     let selection = runtime.unified_document_selection_snapshot().unwrap();
     assert_eq!(

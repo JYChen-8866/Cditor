@@ -21,7 +21,7 @@ impl DocumentRuntime {
         &mut self,
         focus_offset: usize,
     ) -> Result<bool, String> {
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let selected_range = focused.selected_range();
@@ -41,7 +41,7 @@ impl DocumentRuntime {
         affinity: TextAffinity,
         extend_selection: bool,
     ) -> Result<bool, String> {
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let changed = if extend_selection {
@@ -50,7 +50,7 @@ impl DocumentRuntime {
             self.focus_table_cell_at_offset(focused.block_id, focused.row, focused.col, offset)?;
             focused.offset != offset || focused.affinity != affinity
         };
-        if let Some(cell) = self.focused_table_cell.as_mut() {
+        if let Some(cell) = self.selection.focused_table_cell.as_mut() {
             *cell = cell.with_affinity(affinity);
         }
         Ok(changed)
@@ -65,7 +65,7 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn move_focused_table_cell_tab(&mut self, backwards: bool) -> Result<bool, String> {
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let Some((row, col)) = self.adjacent_table_cell_position(
@@ -92,7 +92,7 @@ impl DocumentRuntime {
         forward: bool,
         extend_selection: bool,
     ) -> Result<bool, String> {
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let Some(text) = self.table_cell_plain_text(focused.block_id, focused.row, focused.col)
@@ -136,7 +136,7 @@ impl DocumentRuntime {
     }
 
     fn move_focused_table_cell_vertically(&mut self, delta_row: isize) -> Result<bool, String> {
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let Some(row) = focused.row.checked_add_signed(delta_row) else {

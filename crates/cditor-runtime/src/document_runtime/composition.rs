@@ -95,6 +95,7 @@ impl DocumentRuntime {
         }
         if self.block_is_table(block_id)
             && self
+                .selection
                 .focused_table_cell
                 .is_none_or(|cell| cell.block_id != block_id)
         {
@@ -128,8 +129,8 @@ impl DocumentRuntime {
                 base_text.len()
             ),
         );
-        self.document_selection = None;
-        self.focused_text_selection = None;
+        self.selection.document_selection = None;
+        self.selection.focused_text_selection = None;
         let previous_target = self
             .editing
             .as_ref()
@@ -137,6 +138,7 @@ impl DocumentRuntime {
             .expect("editing session exists");
         let editing = self.editing.as_mut().expect("editing session exists");
         if let Some(focused) = self
+            .selection
             .focused_table_cell
             .filter(|cell| cell.block_id == block_id)
         {
@@ -169,7 +171,7 @@ impl DocumentRuntime {
             editing.set_collapsed_selection(caret_offset);
             editing.set_marked_range(next_marked_range);
         }
-        if let Some(cell) = self.focused_table_cell.as_mut()
+        if let Some(cell) = self.selection.focused_table_cell.as_mut()
             && cell.block_id == block_id
         {
             let selection = editing.selected_range.clone();
@@ -191,7 +193,7 @@ impl DocumentRuntime {
             editing.clear_composition();
         }
         let Some((target, base_selection)) = restore else {
-            if let Some(cell) = self.focused_table_cell.as_mut() {
+            if let Some(cell) = self.selection.focused_table_cell.as_mut() {
                 *cell = cell.with_marked_range(None);
             }
             return;
@@ -308,6 +310,7 @@ impl DocumentRuntime {
             && let Some(preview_text) = self.composition_preview_text()
         {
             if let Some(focused) = self
+                .selection
                 .focused_table_cell
                 .filter(|cell| cell.block_id == block_id)
                 && let Some(table_payload) = self.table_cell_payload_with_text(
@@ -350,6 +353,7 @@ impl DocumentRuntime {
             return CompositionBaseSelection::default();
         };
         if let Some(cell) = self
+            .selection
             .focused_table_cell
             .filter(|cell| cell.block_id == block_id)
         {
@@ -363,11 +367,13 @@ impl DocumentRuntime {
             };
         }
         let affinity = self
+            .selection
             .document_selection
             .filter(|selection| selection.focus.block_id == block_id)
             .map(|selection| selection.focus.affinity)
             .or_else(|| {
-                self.visual_caret_position
+                self.selection
+                    .visual_caret_position
                     .filter(|caret| caret.position.block_id == block_id)
                     .map(|caret| caret.position.affinity)
             })
@@ -377,7 +383,7 @@ impl DocumentRuntime {
             selected_range_end: editing.selected_range.end,
             selection_reversed: editing.selection_reversed,
             affinity,
-            document_selection: self.document_selection,
+            document_selection: self.selection.document_selection,
         }
     }
 
@@ -400,8 +406,8 @@ impl DocumentRuntime {
                 editing.set_selected_range(selected.clone(), base.selection_reversed);
             }
         }
-        self.document_selection = base.document_selection;
-        self.focused_text_selection = base
+        self.selection.document_selection = base.document_selection;
+        self.selection.focused_text_selection = base
             .document_selection
             .filter(|selection| {
                 selection.anchor.block_id == block_id
@@ -435,7 +441,7 @@ impl DocumentRuntime {
             .as_ref()
             .map(|editing| editing.content_version)
             .unwrap_or_default();
-        self.visual_caret_position = Some(VisualCaretPosition {
+        self.selection.visual_caret_position = Some(VisualCaretPosition {
             position,
             content_version,
         });
@@ -449,7 +455,7 @@ impl DocumentRuntime {
         base: CompositionBaseSelection,
     ) {
         let selected = base.selected_range();
-        if let Some(cell) = self.focused_table_cell.as_mut()
+        if let Some(cell) = self.selection.focused_table_cell.as_mut()
             && cell.block_id == block_id
             && cell.row == row
             && cell.col == col
@@ -467,9 +473,9 @@ impl DocumentRuntime {
                 editing.set_selected_range(selected, base.selection_reversed);
             }
         }
-        self.document_selection = None;
-        self.focused_text_selection = None;
-        self.visual_caret_position = None;
+        self.selection.document_selection = None;
+        self.selection.focused_text_selection = None;
+        self.selection.visual_caret_position = None;
     }
 
     fn restore_auxiliary_composition_selection(
@@ -486,9 +492,9 @@ impl DocumentRuntime {
                 editing.set_selected_range(selected, base.selection_reversed);
             }
         }
-        self.document_selection = None;
-        self.focused_text_selection = None;
-        self.visual_caret_position = None;
+        self.selection.document_selection = None;
+        self.selection.focused_text_selection = None;
+        self.selection.visual_caret_position = None;
     }
 }
 

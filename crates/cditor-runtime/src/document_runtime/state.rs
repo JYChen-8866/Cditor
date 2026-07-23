@@ -1,5 +1,6 @@
 use super::ai::RuntimeAiSession;
 use super::document_state::DocumentState;
+use super::selection_state::SelectionState;
 use super::*;
 
 #[derive(Debug)]
@@ -11,14 +12,9 @@ pub struct DocumentRuntime {
     pub scroll: VirtualScrollState,
     pub editing: Option<EditingSession>,
     pub(super) table_horizontal_scroll_offsets: HashMap<BlockId, f32>,
-    pub(super) selected_block_ids: HashSet<BlockId>,
-    pub(super) document_selection: Option<DocumentSelection>,
-    pub(super) visual_caret_position: Option<VisualCaretPosition>,
+    pub(super) selection: SelectionState,
     pub(super) ai_session: Option<RuntimeAiSession>,
     pub(super) next_ai_request_id: u64,
-    pub(super) focused_text_selection: Option<FocusedTextSelection>,
-    pub(super) focused_table_cell: Option<FocusedTableCell>,
-    pub(super) focused_inner_selection: Option<FocusedInnerSelection>,
     pub(super) undo_stacks: HashMap<BlockId, Vec<TextSnapshot>>,
     pub(super) redo_stacks: HashMap<BlockId, Vec<TextSnapshot>>,
     pub(super) external_undo_stack: UndoStack,

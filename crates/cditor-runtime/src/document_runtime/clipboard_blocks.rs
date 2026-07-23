@@ -12,6 +12,7 @@ impl DocumentRuntime {
         }
         let before_selection = self.document_selection_snapshot();
         let anchor_id = self
+            .selection
             .selected_block_ids
             .iter()
             .filter_map(|block_id| {

@@ -97,9 +97,9 @@ impl DocumentRuntime {
     }
 
     pub fn focused_empty_text_block_for_ai(&self) -> Option<(BlockId, usize)> {
-        if self.document_selection.is_some()
+        if self.selection.document_selection.is_some()
             || self.has_selected_blocks()
-            || self.focused_table_cell.is_some()
+            || self.selection.focused_table_cell.is_some()
             || self.active_composition().is_some()
         {
             return None;
@@ -140,6 +140,7 @@ impl DocumentRuntime {
         self.cancel_ai_request();
 
         let target = if let Some(selection) = self
+            .selection
             .document_selection
             .filter(|selection| !selection.is_caret())
         {
@@ -148,7 +149,7 @@ impl DocumentRuntime {
             let block_id = self
                 .focused_block_id()
                 .ok_or_else(|| "Inline AI requires a focused text block".to_owned())?;
-            if self.focused_table_cell.is_some()
+            if self.selection.focused_table_cell.is_some()
                 || !self.document.text_models.contains_key(&block_id)
             {
                 return Err("Inline AI requires an editable text block".to_owned());
@@ -358,7 +359,7 @@ impl DocumentRuntime {
                         }
                     }
                     AiApplyMode::Replace => {
-                        self.document_selection = Some(selection);
+                        self.selection.document_selection = Some(selection);
                         if looks_like_markdown_paste(&session.preview)
                             && self.insert_ai_markdown_content(&session.preview)?
                         {
@@ -439,8 +440,8 @@ impl DocumentRuntime {
         }
         match &session.target {
             RuntimeAiTarget::InlineCaret(position) => {
-                let selection_is_clear =
-                    self.document_selection.is_none() && self.selected_block_ids.is_empty();
+                let selection_is_clear = self.selection.document_selection.is_none()
+                    && self.selection.selected_block_ids.is_empty();
                 if session.preview_kind == AiPreviewKind::AssistantPanel {
                     // The assistant prompt temporarily owns the GUI focus. Do not
                     // discard its stream just because the editor caret is no longer
@@ -454,8 +455,8 @@ impl DocumentRuntime {
                 }
             }
             RuntimeAiTarget::TextSelection(selection) => {
-                self.selected_block_ids.is_empty()
-                    && self.document_selection.as_ref() == Some(selection)
+                self.selection.selected_block_ids.is_empty()
+                    && self.selection.document_selection.as_ref() == Some(selection)
             }
         }
     }

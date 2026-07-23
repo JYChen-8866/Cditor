@@ -6,7 +6,7 @@ impl DocumentRuntime {
         edit: FocusedTextEdit,
         text: &str,
     ) -> Result<bool, String> {
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let InputTarget::TableCell { block_id, row, col } = edit.target else {
@@ -40,9 +40,9 @@ impl DocumentRuntime {
         next.replace_range(range.clone(), text);
         let next_offset = range.start + text.len();
         self.cancel_composition();
-        self.document_selection = None;
-        self.focused_text_selection = None;
-        self.selected_block_ids.clear();
+        self.selection.document_selection = None;
+        self.selection.focused_text_selection = None;
+        self.selection.selected_block_ids.clear();
 
         let next_table_payload = {
             let runtime = self
@@ -82,7 +82,7 @@ impl DocumentRuntime {
             });
             editing.set_collapsed_selection(next_offset);
         }
-        self.focused_table_cell = Some(
+        self.selection.focused_table_cell = Some(
             focused
                 .with_selected_range(next_offset..next_offset, false)
                 .with_marked_range(None),
@@ -101,7 +101,7 @@ impl DocumentRuntime {
     pub(in crate::document_runtime) fn delete_backward_in_focused_table_cell(
         &mut self,
     ) -> Result<bool, String> {
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let Some(text) = self.table_cell_plain_text(focused.block_id, focused.row, focused.col)
@@ -119,7 +119,7 @@ impl DocumentRuntime {
     pub(in crate::document_runtime) fn delete_forward_in_focused_table_cell(
         &mut self,
     ) -> Result<bool, String> {
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let Some(text) = self.table_cell_plain_text(focused.block_id, focused.row, focused.col)

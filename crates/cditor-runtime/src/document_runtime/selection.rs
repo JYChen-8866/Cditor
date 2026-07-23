@@ -30,7 +30,12 @@ impl FocusedTextSelection {
 
 impl DocumentRuntime {
     pub(super) fn selected_block_ids_snapshot(&self) -> Vec<BlockId> {
-        let mut block_ids = self.selected_block_ids.iter().copied().collect::<Vec<_>>();
+        let mut block_ids = self
+            .selection
+            .selected_block_ids
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
         block_ids.sort_unstable();
         block_ids
     }
@@ -88,7 +93,8 @@ impl DocumentRuntime {
     }
 
     pub fn focused_text_selection_range(&self) -> Option<Range<usize>> {
-        self.focused_text_selection
+        self.selection
+            .focused_text_selection
             .map(FocusedTextSelection::range)
             .filter(|range| !range.is_empty())
             .or_else(|| self.focused_document_selection_range())
@@ -96,7 +102,7 @@ impl DocumentRuntime {
 
     fn focused_document_selection_range(&self) -> Option<Range<usize>> {
         let block_id = self.focused_block_id()?;
-        let selection = self.document_selection?;
+        let selection = self.selection.document_selection?;
         if selection.anchor.block_id != block_id || selection.focus.block_id != block_id {
             return None;
         }
@@ -133,14 +139,14 @@ impl DocumentRuntime {
                 block_id: focus_block_id,
             });
         }
-        self.selected_block_ids.clear();
-        self.focused_table_cell = None;
-        self.document_selection = Some(DocumentSelection {
+        self.selection.selected_block_ids.clear();
+        self.selection.focused_table_cell = None;
+        self.selection.document_selection = Some(DocumentSelection {
             anchor: TextPosition::downstream(anchor_block_id, anchor_offset),
             focus: TextPosition::downstream(focus_block_id, focus_offset),
         });
         self.remember_visual_caret(TextPosition::downstream(focus_block_id, focus_offset));
-        self.focused_text_selection = if anchor_block_id == focus_block_id {
+        self.selection.focused_text_selection = if anchor_block_id == focus_block_id {
             Some(FocusedTextSelection {
                 anchor: anchor_offset,
                 focus: focus_offset,
@@ -162,11 +168,12 @@ impl DocumentRuntime {
             }
         }
         if self
+            .selection
             .document_selection
             .is_some_and(|selection| selection.is_caret())
         {
-            self.document_selection = None;
-            self.focused_text_selection = None;
+            self.selection.document_selection = None;
+            self.selection.focused_text_selection = None;
             if let Some(editing) = self.editing.as_mut() {
                 editing.set_collapsed_selection(focus_offset);
             }
@@ -177,8 +184,8 @@ impl DocumentRuntime {
                 "focus={:?} caret={:?} focused_text_selection={:?} document_selection={:?}",
                 self.focused_block_id(),
                 self.caret_offset_for_block(focus_block_id),
-                self.focused_text_selection,
-                self.document_selection
+                self.selection.focused_text_selection,
+                self.selection.document_selection
             ),
         );
         Ok(true)
@@ -194,7 +201,7 @@ impl DocumentRuntime {
             selection.focus.block_id,
             selection.focus.offset,
         )?;
-        if let Some(current) = self.document_selection.as_mut() {
+        if let Some(current) = self.selection.document_selection.as_mut() {
             current.anchor.affinity = selection.anchor.affinity;
             current.focus.affinity = selection.focus.affinity;
         }
@@ -223,23 +230,23 @@ impl DocumentRuntime {
             return false;
         };
         let len = model.len();
-        self.focused_table_cell = None;
-        self.selected_block_ids.clear();
+        self.selection.focused_table_cell = None;
+        self.selection.selected_block_ids.clear();
         if len == 0 {
-            self.document_selection = None;
-            self.focused_text_selection = None;
-            self.selected_block_ids.insert(block_id);
+            self.selection.document_selection = None;
+            self.selection.focused_text_selection = None;
+            self.selection.selected_block_ids.insert(block_id);
             if let Some(editing) = self.editing.as_mut() {
                 editing.set_input_target(InputTarget::BlockText { block_id });
                 editing.set_collapsed_selection(0);
             }
             return true;
         }
-        self.focused_text_selection = Some(FocusedTextSelection {
+        self.selection.focused_text_selection = Some(FocusedTextSelection {
             anchor: 0,
             focus: len,
         });
-        self.document_selection = Some(DocumentSelection {
+        self.selection.document_selection = Some(DocumentSelection {
             anchor: TextPosition::downstream(block_id, 0),
             focus: TextPosition::downstream(block_id, len),
         });
@@ -269,9 +276,9 @@ impl DocumentRuntime {
         else {
             return false;
         };
-        let focused_block_is_fully_selected = (self.selected_block_ids.len() == 1
-            && self.selected_block_ids.contains(&block_id))
-            || self.document_selection.is_some_and(|selection| {
+        let focused_block_is_fully_selected = (self.selection.selected_block_ids.len() == 1
+            && self.selection.selected_block_ids.contains(&block_id))
+            || self.selection.document_selection.is_some_and(|selection| {
                 selection.anchor.block_id == block_id
                     && selection.focus.block_id == block_id
                     && selection.anchor.offset.min(selection.focus.offset) == 0
@@ -310,10 +317,10 @@ impl DocumentRuntime {
             return false;
         };
 
-        self.selected_block_ids.clear();
-        self.focused_table_cell = None;
-        self.focused_text_selection = None;
-        self.document_selection = Some(DocumentSelection {
+        self.selection.selected_block_ids.clear();
+        self.selection.focused_table_cell = None;
+        self.selection.focused_text_selection = None;
+        self.selection.document_selection = Some(DocumentSelection {
             anchor: TextPosition::downstream(first_block_id, 0),
             focus: TextPosition::downstream(last_block_id, last_offset),
         });
@@ -337,10 +344,10 @@ impl DocumentRuntime {
             return None;
         };
         let len = self.text_surface_base_snapshot(surface_id)?.len();
-        self.selected_block_ids.clear();
-        self.focused_table_cell = None;
-        self.focused_text_selection = None;
-        self.document_selection = None;
+        self.selection.selected_block_ids.clear();
+        self.selection.focused_table_cell = None;
+        self.selection.focused_text_selection = None;
+        self.selection.document_selection = None;
         let editing = self.editing.as_mut()?;
         let target = editing.input_target;
         editing.set_input_target(target);
@@ -410,7 +417,7 @@ impl DocumentRuntime {
     }
 
     pub fn clipboard_selection_snapshot(&self) -> Option<ClipboardSelection> {
-        if !self.selected_block_ids.is_empty() {
+        if !self.selection.selected_block_ids.is_empty() {
             let block_ids = self.selected_block_subtree_ids();
             let included = block_ids.iter().copied().collect::<HashSet<_>>();
             let blocks = block_ids
@@ -433,6 +440,7 @@ impl DocumentRuntime {
 
         if self.has_cross_block_text_selection() {
             let normalized = self
+                .selection
                 .document_selection?
                 .normalize(&self.document.index)
                 .ok()?;
@@ -490,18 +498,20 @@ impl DocumentRuntime {
     }
 
     pub fn has_cross_block_text_selection(&self) -> bool {
-        self.document_selection.is_some_and(|selection| {
+        self.selection.document_selection.is_some_and(|selection| {
             !selection.is_caret() && selection.anchor.block_id != selection.focus.block_id
         })
     }
 
     pub fn has_document_text_selection(&self) -> bool {
-        self.document_selection
+        self.selection
+            .document_selection
             .is_some_and(|selection| !selection.is_caret())
     }
 
     pub fn has_entire_document_text_selection(&self) -> bool {
         let Some(selection) = self
+            .selection
             .document_selection
             .and_then(|selection| selection.normalize(&self.document.index).ok())
         else {
@@ -535,6 +545,7 @@ impl DocumentRuntime {
 
     pub fn document_text_selection_fragments(&self) -> Option<Vec<DocumentTextSelectionFragment>> {
         let selection = self
+            .selection
             .document_selection?
             .normalize(&self.document.index)
             .ok()?;
@@ -572,8 +583,9 @@ impl DocumentRuntime {
     }
 
     pub fn has_active_selection(&self) -> bool {
-        !self.selected_block_ids.is_empty()
+        !self.selection.selected_block_ids.is_empty()
             || self
+                .selection
                 .document_selection
                 .is_some_and(|selection| !selection.is_caret())
             || self.focused_text_selection_range().is_some()
@@ -583,9 +595,10 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn delete_active_selection(&mut self) -> Result<bool, String> {
-        let route = if !self.selected_block_ids.is_empty() {
+        let route = if !self.selection.selected_block_ids.is_empty() {
             "selected_blocks"
         } else if self
+            .selection
             .document_selection
             .is_some_and(|selection| !selection.is_caret())
         {
@@ -605,8 +618,8 @@ impl DocumentRuntime {
             format_args!(
                 "route={route} focus={:?} selected_blocks={} document_selection={:?} focused_selection={:?} session_selection={:?}",
                 self.focused_block_id(),
-                self.selected_block_ids.len(),
-                self.document_selection,
+                self.selection.selected_block_ids.len(),
+                self.selection.document_selection,
                 self.focused_text_selection_range(),
                 self.input_session_selected_range(),
             ),
@@ -632,7 +645,7 @@ impl DocumentRuntime {
     }
 
     pub fn selected_document_text(&self) -> Option<String> {
-        let selection = self.document_selection?;
+        let selection = self.selection.document_selection?;
         let normalized = selection.normalize(&self.document.index).ok()?;
         if normalized.start.block_id == normalized.end.block_id {
             let model = self.document.text_models.get(&normalized.start.block_id)?;

@@ -1,4 +1,5 @@
 use super::document_state::DocumentState;
+use super::selection_state::SelectionState;
 use super::*;
 
 impl DocumentRuntime {
@@ -246,14 +247,9 @@ impl DocumentRuntime {
             scroll,
             editing: None,
             table_horizontal_scroll_offsets: HashMap::new(),
-            selected_block_ids: HashSet::new(),
-            document_selection: None,
-            visual_caret_position: None,
+            selection: SelectionState::default(),
             ai_session: None,
             next_ai_request_id: 1,
-            focused_text_selection: None,
-            focused_table_cell: None,
-            focused_inner_selection: None,
             undo_stacks: HashMap::new(),
             redo_stacks: HashMap::new(),
             external_undo_stack: UndoStack::default(),

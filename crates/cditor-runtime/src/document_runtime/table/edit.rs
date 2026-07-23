@@ -365,6 +365,7 @@ impl DocumentRuntime {
         index: usize,
     ) -> Result<(), String> {
         let Some(focused) = self
+            .selection
             .focused_table_cell
             .filter(|focused| focused.block_id == block_id)
         else {
@@ -384,19 +385,20 @@ impl DocumentRuntime {
         index: usize,
     ) -> Result<(), String> {
         let Some(focused) = self
+            .selection
             .focused_table_cell
             .filter(|focused| focused.block_id == block_id)
         else {
             return Ok(());
         };
         let Some(table) = self.table_runtime(block_id).map(|runtime| runtime.table()) else {
-            self.focused_table_cell = None;
+            self.selection.focused_table_cell = None;
             return Ok(());
         };
         let row_count = table.row_count();
         let col_count = table.column_count();
         if row_count == 0 || col_count == 0 {
-            self.focused_table_cell = None;
+            self.selection.focused_table_cell = None;
             return Ok(());
         }
         let row = if focused.row > index {
@@ -414,6 +416,7 @@ impl DocumentRuntime {
         index: usize,
     ) -> Result<(), String> {
         let Some(focused) = self
+            .selection
             .focused_table_cell
             .filter(|focused| focused.block_id == block_id)
         else {
@@ -433,19 +436,20 @@ impl DocumentRuntime {
         index: usize,
     ) -> Result<(), String> {
         let Some(focused) = self
+            .selection
             .focused_table_cell
             .filter(|focused| focused.block_id == block_id)
         else {
             return Ok(());
         };
         let Some(table) = self.table_runtime(block_id).map(|runtime| runtime.table()) else {
-            self.focused_table_cell = None;
+            self.selection.focused_table_cell = None;
             return Ok(());
         };
         let row_count = table.row_count();
         let col_count = table.column_count();
         if row_count == 0 || col_count == 0 {
-            self.focused_table_cell = None;
+            self.selection.focused_table_cell = None;
             return Ok(());
         }
         let row = focused.row.min(row_count - 1);
@@ -465,11 +469,12 @@ impl DocumentRuntime {
         offset: usize,
     ) -> Result<(), String> {
         let Some(text) = self.table_cell_plain_text(block_id, row, col) else {
-            self.focused_table_cell = None;
+            self.selection.focused_table_cell = None;
             return Ok(());
         };
         let offset = normalized_grapheme_offset(&text, offset);
-        self.focused_table_cell = Some(FocusedTableCell::collapsed(block_id, row, col, offset));
+        self.selection.focused_table_cell =
+            Some(FocusedTableCell::collapsed(block_id, row, col, offset));
         Ok(())
     }
 

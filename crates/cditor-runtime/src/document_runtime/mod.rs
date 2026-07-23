@@ -38,6 +38,7 @@ mod scroll;
 mod selection;
 mod selection_blocks;
 mod selection_materialization;
+mod selection_state;
 mod selection_transaction;
 mod selection_unified;
 mod slash_command;
@@ -193,9 +194,9 @@ fn trace_block_color(event: &str, details: impl std::fmt::Display) {
 pub use selection::RichTextSelectionSnapshot;
 pub use state::{DocumentRuntime, GlobalScrollTarget};
 use state::{
-    EnterSplitMode, FocusedTableCell, PendingMeasuredHeight, RuntimeUndoEvent, TextSnapshot,
-    TypingMarkOverride, TypingUndoGroup, TypingUndoRequest, UndoScrollSnapshot,
-    VisualCaretPosition,
+    EnterSplitMode, FocusedInnerSelection, FocusedTableCell, PendingMeasuredHeight,
+    RuntimeUndoEvent, TextSnapshot, TypingMarkOverride, TypingUndoGroup, TypingUndoRequest,
+    UndoScrollSnapshot, VisualCaretPosition,
 };
 pub use table::TableClipboardSnapshot;
 

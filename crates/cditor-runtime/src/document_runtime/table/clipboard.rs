@@ -73,7 +73,7 @@ impl DocumentRuntime {
         &mut self,
         snapshot: &TableClipboardSnapshot,
     ) -> Result<bool, String> {
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let runtime = self
@@ -96,7 +96,7 @@ impl DocumentRuntime {
             kind,
             preview.payload(),
         )?;
-        self.focused_table_cell = Some(FocusedTableCell::collapsed(
+        self.selection.focused_table_cell = Some(FocusedTableCell::collapsed(
             focused.block_id,
             focused.row,
             focused.col,

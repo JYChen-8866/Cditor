@@ -29,7 +29,7 @@ impl DocumentRuntime {
         let selection = self.unified_document_selection_snapshot()?;
         let mut ids = Vec::new();
 
-        if !self.selected_block_ids.is_empty() {
+        if !self.selection.selected_block_ids.is_empty() {
             ids = self.selected_block_subtree_ids();
             if let (Some(first), Some(last)) = (ids.first(), ids.last()) {
                 let start = self.document.index.index_of(*first)?;
@@ -48,6 +48,7 @@ impl DocumentRuntime {
                 }
             }
         } else if let Some(normalized) = self
+            .selection
             .document_selection
             .and_then(|selection| selection.normalize(&self.document.index).ok())
         {
@@ -84,13 +85,14 @@ impl DocumentRuntime {
 
     pub(super) fn selected_block_subtree_ids(&self) -> Vec<BlockId> {
         let mut roots = self
+            .selection
             .selected_block_ids
             .iter()
             .filter_map(|block_id| self.document.index.index_of(*block_id))
             .filter(|index| {
                 let mut parent = self.document.index.parent_ids[*index];
                 while let Some(parent_id) = parent {
-                    if self.selected_block_ids.contains(&parent_id) {
+                    if self.selection.selected_block_ids.contains(&parent_id) {
                         return false;
                     }
                     parent = self
@@ -282,7 +284,7 @@ mod tests {
         );
         runtime.document.index.parent_ids[1] = Some(1);
         runtime.document.index.depths[1] = 1;
-        runtime.selected_block_ids.insert(1);
+        runtime.selection.selected_block_ids.insert(1);
         runtime.document.payload_window.payloads.remove(&2);
 
         let request = runtime.selection_materialization_request().unwrap();

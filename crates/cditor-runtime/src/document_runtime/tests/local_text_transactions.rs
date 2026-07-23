@@ -170,7 +170,7 @@ fn divergent_live_text_is_rejected_before_any_preapplied_mutation() {
 fn forbidden_hot_path_work_fails_before_undo_typing_or_document_mutation() {
     let mut runtime = paragraph_runtime("hello");
     runtime.focus_block_at_offset(1, 2).unwrap();
-    runtime.selected_block_ids.insert(1);
+    runtime.selection.selected_block_ids.insert(1);
     runtime.hot_path.forbidden_sync_work.sqlite_write = true;
     let before_payload = runtime.block_payload_record(1).unwrap();
     let before_model = runtime.document.text_models.get(&1).unwrap().clone();
@@ -179,7 +179,7 @@ fn forbidden_hot_path_work_fails_before_undo_typing_or_document_mutation() {
     let before_redo_stacks = runtime.redo_stacks.clone();
     let before_undo_events = runtime.undo_events.clone();
     let before_redo_events = runtime.redo_events.clone();
-    let before_selected_blocks = runtime.selected_block_ids.clone();
+    let before_selected_blocks = runtime.selection.selected_block_ids.clone();
     let before_transaction_id = runtime.next_transaction_id;
     let before_layout = runtime.document.index.layout_meta[0];
 
@@ -195,7 +195,7 @@ fn forbidden_hot_path_work_fails_before_undo_typing_or_document_mutation() {
     assert_eq!(runtime.redo_stacks, before_redo_stacks);
     assert_eq!(runtime.undo_events, before_undo_events);
     assert_eq!(runtime.redo_events, before_redo_events);
-    assert_eq!(runtime.selected_block_ids, before_selected_blocks);
+    assert_eq!(runtime.selection.selected_block_ids, before_selected_blocks);
     assert_eq!(runtime.next_transaction_id, before_transaction_id);
     assert_eq!(runtime.document.index.layout_meta[0], before_layout);
     assert_eq!(runtime.pending_structure_transaction_count(), 0);

@@ -40,26 +40,32 @@ impl DocumentRuntime {
         if let Some(editing) = self.editing.as_ref() {
             protected.extend(editing.pinned_blocks().iter().copied());
         }
-        if let Some(first) = self.selected_block_ids.iter().min_by_key(|block_id| {
-            self.document
-                .index
-                .index_of(**block_id)
-                .unwrap_or(usize::MAX)
-        }) {
+        if let Some(first) = self
+            .selection
+            .selected_block_ids
+            .iter()
+            .min_by_key(|block_id| {
+                self.document
+                    .index
+                    .index_of(**block_id)
+                    .unwrap_or(usize::MAX)
+            })
+        {
             protected.insert(*first);
         }
         if let Some(last) = self
+            .selection
             .selected_block_ids
             .iter()
             .max_by_key(|block_id| self.document.index.index_of(**block_id).unwrap_or(0))
         {
             protected.insert(*last);
         }
-        if let Some(selection) = self.document_selection {
+        if let Some(selection) = self.selection.document_selection {
             protected.insert(selection.anchor.block_id);
             protected.insert(selection.focus.block_id);
         }
-        if let Some(focused) = self.focused_table_cell {
+        if let Some(focused) = self.selection.focused_table_cell {
             protected.insert(focused.block_id);
         }
         protected.extend(self.ai_payload_pin_ids());
@@ -216,7 +222,7 @@ mod tests {
         runtime
             .begin_or_update_composition(1, 0..0, "composition")
             .unwrap();
-        runtime.selected_block_ids.extend([3, 4, 5, 6]);
+        runtime.selection.selected_block_ids.extend([3, 4, 5, 6]);
 
         let mut dirty = runtime.document.payload_window.get(8).unwrap().clone();
         dirty.content_version = dirty.content_version.saturating_add(1);

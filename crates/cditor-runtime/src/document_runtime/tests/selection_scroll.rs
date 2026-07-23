@@ -54,8 +54,8 @@ fn unified_selection_projects_text_and_whole_block_truth_without_ui_entities() {
     assert!(matches!(text.anchor, SelectionEndpoint::Text(_)));
     assert!(matches!(text.focus, SelectionEndpoint::Text(_)));
 
-    runtime.document_selection = None;
-    runtime.selected_block_ids.extend([3, 1]);
+    runtime.selection.document_selection = None;
+    runtime.selection.selected_block_ids.extend([3, 1]);
     let blocks = runtime.unified_document_selection_snapshot().unwrap();
     assert_eq!(blocks.anchor, SelectionEndpoint::Block { block_id: 1 });
     assert_eq!(blocks.focus, SelectionEndpoint::Block { block_id: 3 });
@@ -123,7 +123,7 @@ fn unified_selection_owns_code_and_canvas_inner_endpoints_and_clears_on_text_foc
     ));
 
     runtime.focus_block_at_offset(3, 2).unwrap();
-    assert!(runtime.focused_inner_selection.is_none());
+    assert!(runtime.selection.focused_inner_selection.is_none());
 }
 
 #[test]

@@ -14,8 +14,8 @@ fn test_delete_selected_blocks_with_backspace() {
     );
 
     // Simulate selecting blocks 1 and 2
-    runtime.selected_block_ids.insert(1);
-    runtime.selected_block_ids.insert(2);
+    runtime.selection.selected_block_ids.insert(1);
+    runtime.selection.selected_block_ids.insert(2);
 
     // Delete with Backspace
     let result = runtime.delete_backward();
@@ -40,7 +40,7 @@ fn test_delete_selected_blocks_with_backspace() {
 
     // Verify selection is cleared
     assert!(
-        runtime.selected_block_ids.is_empty(),
+        runtime.selection.selected_block_ids.is_empty(),
         "Selection should be cleared"
     );
 
@@ -59,12 +59,12 @@ fn test_delete_selected_blocks_with_backspace() {
 
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3]);
-    assert_eq!(runtime.selected_block_ids, HashSet::from([1, 2]));
+    assert_eq!(runtime.selection.selected_block_ids, HashSet::from([1, 2]));
     assert!(!runtime.undo_focused_block().unwrap());
 
     assert!(runtime.redo_focused_block().unwrap());
     assert_eq!(runtime.document.index.block_ids, vec![3]);
-    assert!(runtime.selected_block_ids.is_empty());
+    assert!(runtime.selection.selected_block_ids.is_empty());
     assert!(!runtime.redo_focused_block().unwrap());
 }
 
@@ -81,7 +81,7 @@ fn test_delete_selected_blocks_with_delete_key() {
     );
 
     // Simulate selecting block 2
-    runtime.selected_block_ids.insert(2);
+    runtime.selection.selected_block_ids.insert(2);
 
     // Delete with Delete key (forward delete)
     let result = runtime.delete_forward();
@@ -105,7 +105,7 @@ fn test_delete_selected_blocks_with_delete_key() {
     );
 
     // Verify selection is cleared
-    assert!(runtime.selected_block_ids.is_empty());
+    assert!(runtime.selection.selected_block_ids.is_empty());
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn test_delete_all_blocks_leaves_one_paragraph() {
     );
 
     // Select the only block
-    runtime.selected_block_ids.insert(1);
+    runtime.selection.selected_block_ids.insert(1);
 
     // Delete it
     let result = runtime.delete_backward();
@@ -154,7 +154,7 @@ fn test_delete_all_blocks_leaves_one_paragraph() {
         runtime.block_payload_record(1).unwrap().plain_text(),
         "Only block"
     );
-    assert_eq!(runtime.selected_block_ids, HashSet::from([1]));
+    assert_eq!(runtime.selection.selected_block_ids, HashSet::from([1]));
     assert!(runtime.redo_focused_block().unwrap());
     assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "");
 }
@@ -173,8 +173,8 @@ fn test_delete_selected_blocks_with_mixed_types() {
     );
 
     // Select blocks of different types
-    runtime.selected_block_ids.insert(2);
-    runtime.selected_block_ids.insert(3);
+    runtime.selection.selected_block_ids.insert(2);
+    runtime.selection.selected_block_ids.insert(3);
 
     let result = runtime.delete_backward();
     assert!(result.is_ok() && result.unwrap());
@@ -204,13 +204,13 @@ fn deleting_a_selected_parent_removes_and_restores_its_whole_subtree_once() {
         })
         .collect();
     let mut runtime = DocumentRuntime::from_index_records(1, records, payloads, 1, 720.0);
-    runtime.selected_block_ids.insert(1);
+    runtime.selection.selected_block_ids.insert(1);
 
     assert!(runtime.delete_backward().unwrap());
     assert_eq!(runtime.document.index.block_ids, vec![4]);
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3, 4]);
-    assert_eq!(runtime.selected_block_ids, HashSet::from([1]));
+    assert_eq!(runtime.selection.selected_block_ids, HashSet::from([1]));
     assert!(!runtime.undo_focused_block().unwrap());
 }
 
@@ -225,13 +225,13 @@ fn non_contiguous_whole_block_selection_is_rejected_atomically() {
         ],
         720.0,
     );
-    runtime.selected_block_ids.extend([1, 3]);
+    runtime.selection.selected_block_ids.extend([1, 3]);
     let before = runtime.document.index.block_ids.clone();
 
     let error = runtime.delete_backward().unwrap_err();
 
     assert!(error.contains("contiguous range"));
     assert_eq!(runtime.document.index.block_ids, before);
-    assert_eq!(runtime.selected_block_ids, HashSet::from([1, 3]));
+    assert_eq!(runtime.selection.selected_block_ids, HashSet::from([1, 3]));
     assert!(!runtime.can_undo());
 }

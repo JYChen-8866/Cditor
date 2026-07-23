@@ -45,6 +45,7 @@ impl DocumentRuntime {
             self.try_focus_block(block_id)?;
         }
         let changed = self
+            .selection
             .focused_inner_selection
             .as_ref()
             .is_none_or(|selection| {
@@ -53,11 +54,11 @@ impl DocumentRuntime {
                     || selection.focus != focus
             });
         self.break_typing_coalescing();
-        self.document_selection = None;
-        self.selected_block_ids.clear();
-        self.focused_text_selection = None;
-        self.focused_table_cell = None;
-        self.focused_inner_selection = Some(FocusedInnerSelection {
+        self.selection.document_selection = None;
+        self.selection.selected_block_ids.clear();
+        self.selection.focused_text_selection = None;
+        self.selection.focused_table_cell = None;
+        self.selection.focused_inner_selection = Some(FocusedInnerSelection {
             block_id,
             anchor,
             focus,
@@ -66,11 +67,12 @@ impl DocumentRuntime {
     }
 
     pub fn unified_document_selection_snapshot(&self) -> Option<UnifiedDocumentSelection> {
-        if let Some(selection) = self.document_selection {
+        if let Some(selection) = self.selection.document_selection {
             return Some(selection.unified());
         }
-        if !self.selected_block_ids.is_empty() {
+        if !self.selection.selected_block_ids.is_empty() {
             let mut positions = self
+                .selection
                 .selected_block_ids
                 .iter()
                 .filter_map(|block_id| {
@@ -90,7 +92,7 @@ impl DocumentRuntime {
                 },
             });
         }
-        if let Some(selection) = &self.focused_inner_selection {
+        if let Some(selection) = &self.selection.focused_inner_selection {
             return Some(UnifiedDocumentSelection {
                 anchor: SelectionEndpoint::Inner {
                     block_id: selection.block_id,
@@ -102,7 +104,7 @@ impl DocumentRuntime {
                 },
             });
         }
-        let cell = self.focused_table_cell?;
+        let cell = self.selection.focused_table_cell?;
         let anchor_offset = if cell.selection_reversed {
             cell.selected_range_end
         } else {

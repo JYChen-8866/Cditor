@@ -95,8 +95,8 @@ impl DocumentRuntime {
             Vec::new(),
         )?;
         self.focus_block_at_offset(previous_id, previous_text_len)?;
-        self.document_selection = after_selection;
-        self.focused_text_selection = Some(FocusedTextSelection {
+        self.selection.document_selection = after_selection;
+        self.selection.focused_text_selection = Some(FocusedTextSelection {
             anchor: previous_text_len,
             focus: previous_text_len + current_text_len,
         });

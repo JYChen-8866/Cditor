@@ -246,6 +246,7 @@ impl DocumentRuntime {
         )
         .expect("projection render window is valid");
         let selection_fragments = self
+            .selection
             .document_selection
             .and_then(|selection| selection.normalize(&self.document.index).ok())
             .and_then(|selection| {
@@ -384,7 +385,7 @@ impl DocumentRuntime {
                     attrs,
                     payload,
                     layout,
-                    selected: self.selected_block_ids.contains(block_id),
+                    selected: self.selection.selected_block_ids.contains(block_id),
                     selection_range,
                     selection_overlay: selection_overlay_blocks.contains(block_id),
                     focused: self.focused_block_id() == Some(*block_id),

@@ -60,7 +60,7 @@ fn table_cell_align_supports_undo_and_redo() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
     runtime.focus_block(10);
     runtime.focus_table_cell_at_offset(10, 1, 0, 1).unwrap();
-    if let Some(cell) = runtime.focused_table_cell.as_mut() {
+    if let Some(cell) = runtime.selection.focused_table_cell.as_mut() {
         *cell = cell.with_selected_range(0..1, true);
     }
 

@@ -131,6 +131,7 @@ impl DocumentRuntime {
                     block_id, range, ..
                 }) => {
                     if let Some(focused) = self
+                        .selection
                         .focused_table_cell
                         .filter(|focused| focused.block_id == *block_id)
                         && focused.row >= range.start_row
@@ -158,6 +159,7 @@ impl DocumentRuntime {
         to: usize,
     ) -> Result<(), String> {
         let Some(focused) = self
+            .selection
             .focused_table_cell
             .filter(|focused| focused.block_id == block_id)
         else {
@@ -174,6 +176,7 @@ impl DocumentRuntime {
         to: usize,
     ) -> Result<(), String> {
         let Some(focused) = self
+            .selection
             .focused_table_cell
             .filter(|focused| focused.block_id == block_id)
         else {

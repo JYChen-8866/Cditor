@@ -69,12 +69,12 @@ impl DocumentRuntime {
             ),
         );
 
-        self.selected_block_ids.clear();
-        self.document_selection = None;
-        self.visual_caret_position = None;
-        self.focused_text_selection = None;
-        self.focused_table_cell = None;
-        self.focused_inner_selection = None;
+        self.selection.selected_block_ids.clear();
+        self.selection.document_selection = None;
+        self.selection.visual_caret_position = None;
+        self.selection.focused_text_selection = None;
+        self.selection.focused_table_cell = None;
+        self.selection.focused_inner_selection = None;
 
         let session_id = self.allocate_input_session_id();
         let mut editing = EditingSession::start_with_session_id(
@@ -140,7 +140,8 @@ impl DocumentRuntime {
         let offset = self.caret_offset_for_block(block_id)?;
         let content_version = self.block_content_version(block_id)?;
         Some(
-            self.visual_caret_position
+            self.selection
+                .visual_caret_position
                 .filter(|state| {
                     state.position.block_id == block_id
                         && state.position.offset == offset
@@ -152,7 +153,7 @@ impl DocumentRuntime {
     }
 
     pub(super) fn remember_visual_caret(&mut self, position: TextPosition) {
-        self.visual_caret_position =
+        self.selection.visual_caret_position =
             self.block_content_version(position.block_id)
                 .map(|content_version| VisualCaretPosition {
                     position,
@@ -216,12 +217,13 @@ impl DocumentRuntime {
                 row_count, col_count, payload_content_version
             ),
         );
-        self.selected_block_ids.clear();
-        self.document_selection = None;
-        self.visual_caret_position = None;
-        self.focused_text_selection = None;
-        self.focused_table_cell = Some(FocusedTableCell::collapsed(block_id, row, col, text_len));
-        self.focused_inner_selection = None;
+        self.selection.selected_block_ids.clear();
+        self.selection.document_selection = None;
+        self.selection.visual_caret_position = None;
+        self.selection.focused_text_selection = None;
+        self.selection.focused_table_cell =
+            Some(FocusedTableCell::collapsed(block_id, row, col, text_len));
+        self.selection.focused_inner_selection = None;
         let session_id = self.allocate_input_session_id();
         let mut editing = EditingSession::start_with_session_id(
             block_id,
@@ -241,7 +243,7 @@ impl DocumentRuntime {
     }
 
     pub fn focused_table_cell_for_block(&self, block_id: BlockId) -> Option<TableCellPosition> {
-        let focused = self.focused_table_cell?;
+        let focused = self.selection.focused_table_cell?;
         (focused.block_id == block_id).then_some(TableCellPosition {
             row: focused.row,
             col: focused.col,
@@ -255,14 +257,15 @@ impl DocumentRuntime {
     }
 
     pub fn focused_table_cell_offset(&self) -> Option<(BlockId, usize, usize, usize)> {
-        self.focused_table_cell
+        self.selection
+            .focused_table_cell
             .map(|cell| (cell.block_id, cell.row, cell.col, cell.offset))
     }
 
     pub fn focused_table_cell_text_position(
         &self,
     ) -> Option<(BlockId, usize, usize, usize, TextAffinity)> {
-        self.focused_table_cell.map(|cell| {
+        self.selection.focused_table_cell.map(|cell| {
             (
                 cell.block_id,
                 cell.row,
@@ -274,7 +277,7 @@ impl DocumentRuntime {
     }
 
     pub fn focused_table_cell_selection_state(&self) -> Option<TableCellSelectionState> {
-        self.focused_table_cell.map(|cell| {
+        self.selection.focused_table_cell.map(|cell| {
             (
                 cell.block_id,
                 cell.row,
@@ -299,14 +302,14 @@ impl DocumentRuntime {
 
     pub(crate) fn try_blur_table_cell(&mut self) -> Result<bool, String> {
         self.break_typing_coalescing();
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let next_target = InputTarget::BlockChrome {
             block_id: focused.block_id,
         };
         self.prepare_input_focus_transition(next_target)?;
-        let Some(focused) = self.focused_table_cell.take() else {
+        let Some(focused) = self.selection.focused_table_cell.take() else {
             return Ok(false);
         };
         if let Some(editing) = self.editing.as_mut()
@@ -329,7 +332,7 @@ impl DocumentRuntime {
         if self.active_composition().is_some() {
             return Ok(());
         }
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(());
         };
         let row = focused.row;
@@ -338,7 +341,7 @@ impl DocumentRuntime {
             return Ok(());
         };
         let offset = normalized_grapheme_offset(&text, offset);
-        if let Some(cell) = self.focused_table_cell.as_mut()
+        if let Some(cell) = self.selection.focused_table_cell.as_mut()
             && cell.block_id == block_id
             && cell.row == row
             && cell.col == col
@@ -364,7 +367,7 @@ impl DocumentRuntime {
         focus_offset: usize,
     ) -> Result<bool, String> {
         self.break_typing_coalescing();
-        let Some(focused) = self.focused_table_cell else {
+        let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
         let text = self
@@ -383,7 +386,7 @@ impl DocumentRuntime {
             || focused.selection_reversed != selection_reversed
             || focused.offset != focus_offset;
 
-        if let Some(cell) = self.focused_table_cell.as_mut() {
+        if let Some(cell) = self.selection.focused_table_cell.as_mut() {
             *cell = cell
                 .with_selected_range(selected_range.clone(), selection_reversed)
                 .with_marked_range(None);
@@ -411,7 +414,7 @@ impl DocumentRuntime {
         focus_affinity: TextAffinity,
     ) -> Result<bool, String> {
         let changed = self.set_focused_table_cell_text_selection(anchor_offset, focus_offset)?;
-        if let Some(cell) = self.focused_table_cell.as_mut() {
+        if let Some(cell) = self.selection.focused_table_cell.as_mut() {
             *cell = cell.with_affinity(focus_affinity);
         }
         Ok(changed)
@@ -455,11 +458,11 @@ impl DocumentRuntime {
         let editing = self.editing.as_mut().expect("editing session exists");
         editing.set_input_target(InputTarget::BlockText { block_id });
         editing.set_collapsed_selection(offset);
-        self.document_selection = None;
+        self.selection.document_selection = None;
         self.remember_visual_caret(TextPosition::downstream(block_id, offset));
-        self.focused_text_selection = None;
-        self.focused_table_cell = None;
-        self.focused_inner_selection = None;
+        self.selection.focused_text_selection = None;
+        self.selection.focused_table_cell = None;
+        self.selection.focused_inner_selection = None;
         trace_input(
             "set_caret_offset",
             format_args!(

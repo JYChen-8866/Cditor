@@ -357,7 +357,7 @@ fn structure_undo_redo_restore_whole_block_selection() {
         720.0,
     );
     assert!(runtime.select_visible_block_range(2, 3));
-    let before = runtime.selected_block_ids.clone();
+    let before = runtime.selection.selected_block_ids.clone();
     assert!(
         runtime
             .paste_clipboard_selection(&ClipboardSelection::Blocks {
@@ -373,12 +373,12 @@ fn structure_undo_redo_restore_whole_block_selection() {
             })
             .unwrap()
     );
-    assert!(runtime.selected_block_ids.is_empty());
+    assert!(runtime.selection.selected_block_ids.is_empty());
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.selected_block_ids, before);
+    assert_eq!(runtime.selection.selected_block_ids, before);
     assert!(runtime.redo_focused_block().unwrap());
-    assert!(runtime.selected_block_ids.is_empty());
+    assert!(runtime.selection.selected_block_ids.is_empty());
 }
 
 #[test]

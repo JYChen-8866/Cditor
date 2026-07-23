@@ -225,11 +225,11 @@ impl DocumentRuntime {
         if let Some(block_id) = self.focused_block_id() {
             push_unique(&mut block_ids, block_id);
         }
-        if !self.selected_block_ids.is_empty() {
-            if let Some(first) = self.selected_block_ids.iter().min().copied() {
+        if !self.selection.selected_block_ids.is_empty() {
+            if let Some(first) = self.selection.selected_block_ids.iter().min().copied() {
                 push_unique(&mut block_ids, first);
             }
-            if let Some(last) = self.selected_block_ids.iter().max().copied() {
+            if let Some(last) = self.selection.selected_block_ids.iter().max().copied() {
                 push_unique(&mut block_ids, last);
             }
         }

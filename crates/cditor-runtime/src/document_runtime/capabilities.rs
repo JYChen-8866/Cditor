@@ -9,14 +9,14 @@ impl DocumentRuntime {
             .enter
         {
             cditor_core::block::EnterKeyBehavior::TableCellSoftBreak => {
-                self.focused_table_cell.is_some()
+                self.selection.focused_table_cell.is_some()
             }
             _ => true,
         }
     }
 
     pub fn can_insert_soft_line_break(&self) -> bool {
-        if self.focused_table_cell.is_some() {
+        if self.selection.focused_table_cell.is_some() {
             return true;
         }
         let Some(block_id) = self.focused_block_id() else {
@@ -78,10 +78,11 @@ impl DocumentRuntime {
     /// without mutating the document. Menus use this to disable commands that
     /// would otherwise open a prompt which can never be submitted.
     pub fn can_begin_ai_request(&self) -> bool {
-        if self.active_composition().is_some() || !self.selected_block_ids.is_empty() {
+        if self.active_composition().is_some() || !self.selection.selected_block_ids.is_empty() {
             return false;
         }
         if let Some(selection) = self
+            .selection
             .document_selection
             .as_ref()
             .filter(|selection| !selection.is_caret())
@@ -103,7 +104,7 @@ impl DocumentRuntime {
         let Some(block_id) = self.focused_block_id() else {
             return false;
         };
-        self.focused_table_cell.is_none()
+        self.selection.focused_table_cell.is_none()
             && self.document.text_models.contains_key(&block_id)
             && self.caret_offset_for_block(block_id).is_some()
     }

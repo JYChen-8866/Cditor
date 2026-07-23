@@ -30,6 +30,7 @@ impl DocumentRuntime {
         let before_selection = self.document_selection_snapshot();
         let before_selected_blocks = self.selected_block_ids_snapshot();
         let cross_plan = self
+            .selection
             .document_selection
             .filter(|selection| selection.anchor.block_id != selection.focus.block_id)
             .map(|selection| self.plan_cross_block_replacement(selection))
