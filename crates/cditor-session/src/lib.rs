@@ -5,6 +5,7 @@
 //! operations without returning runtime borrows.
 
 mod ai_port;
+mod cold_start;
 mod diagnostics_snapshot;
 mod document_snapshot;
 mod history_port;
@@ -16,6 +17,7 @@ mod toolbar_snapshot;
 mod ui_snapshot;
 
 pub use ai_port::{AiContextSnapshot, project_ai_context, project_ai_session_request};
+pub use cold_start::{SessionColdStartRequest, SessionColdStartResult, open_editor_session};
 pub use diagnostics_snapshot::{SessionDiagnosticsSnapshot, project_diagnostics_snapshot};
 pub use document_snapshot::{
     SessionDocumentSnapshot, TextBlockContextSnapshot, project_block_attrs,
