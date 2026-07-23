@@ -358,6 +358,7 @@ pub mod builtin {
     pub const TEXT_DELETE_FORWARD: &str = "text.delete_forward";
     pub const TEXT_MOVE_CARET: &str = "text.move_caret";
     pub const SELECTION_SET_DOCUMENT: &str = "selection.set_document";
+    pub const SELECTION_SET_BLOCK_RANGE: &str = "selection.set_block_range";
     pub const SELECTION_FOCUS_BLOCK: &str = "selection.focus_block";
     pub const SELECTION_FOCUS_TABLE_CELL: &str = "selection.focus_table_cell";
     pub const SELECTION_BLUR_TABLE_CELL: &str = "selection.blur_table_cell";

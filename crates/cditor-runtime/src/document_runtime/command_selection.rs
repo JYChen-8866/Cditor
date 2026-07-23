@@ -19,6 +19,13 @@ impl DocumentRuntime {
             EditorCommand::SetDocumentSelection { selection } => {
                 (self.set_document_selection(*selection)?, Vec::new())
             }
+            EditorCommand::SetBlockSelectionRange {
+                anchor_block_id,
+                focus_block_id,
+            } => (
+                self.select_visible_block_range(*anchor_block_id, *focus_block_id),
+                vec![*anchor_block_id, *focus_block_id],
+            ),
             EditorCommand::FocusBlock { block_id } => {
                 (self.focus_block_command(*block_id)?, vec![*block_id])
             }

@@ -143,6 +143,13 @@ impl CditorV2View {
                 runtime.block_kind(selection.anchor.block_id).is_some()
                     && runtime.block_kind(selection.focus.block_id).is_some()
             }
+            CditorCommand::SetBlockSelectionRange {
+                anchor_block_id,
+                focus_block_id,
+            } => {
+                runtime.block_kind(*anchor_block_id).is_some()
+                    && runtime.block_kind(*focus_block_id).is_some()
+            }
             CditorCommand::FocusBlock { block_id } => runtime.block_kind(*block_id).is_some(),
             CditorCommand::FocusTableCell {
                 block_id, row, col, ..
@@ -301,6 +308,7 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
         command,
         CditorCommand::SelectAll
             | CditorCommand::SetDocumentSelection { .. }
+            | CditorCommand::SetBlockSelectionRange { .. }
             | CditorCommand::FocusBlock { .. }
             | CditorCommand::FocusTableCell { .. }
             | CditorCommand::BlurTableCell
@@ -501,6 +509,7 @@ fn command_mutates_document(command: &CditorCommand) -> bool {
         command,
         CditorCommand::SelectAll
             | CditorCommand::SetDocumentSelection { .. }
+            | CditorCommand::SetBlockSelectionRange { .. }
             | CditorCommand::FocusBlock { .. }
             | CditorCommand::FocusTableCell { .. }
             | CditorCommand::BlurTableCell

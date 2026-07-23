@@ -149,6 +149,11 @@ pub enum EditorCommand {
         selection: cditor_core::edit::DocumentSelection,
     },
     #[doc(hidden)]
+    SetBlockSelectionRange {
+        anchor_block_id: cditor_core::ids::BlockId,
+        focus_block_id: cditor_core::ids::BlockId,
+    },
+    #[doc(hidden)]
     FocusBlock {
         block_id: cditor_core::ids::BlockId,
     },
@@ -294,6 +299,7 @@ impl EditorCommand {
             Self::DeleteBackward => builtin::TEXT_DELETE_BACKWARD,
             Self::DeleteForward => builtin::TEXT_DELETE_FORWARD,
             Self::SetDocumentSelection { .. } => builtin::SELECTION_SET_DOCUMENT,
+            Self::SetBlockSelectionRange { .. } => builtin::SELECTION_SET_BLOCK_RANGE,
             Self::FocusBlock { .. } => builtin::SELECTION_FOCUS_BLOCK,
             Self::FocusTableCell { .. } => builtin::SELECTION_FOCUS_TABLE_CELL,
             Self::BlurTableCell => builtin::SELECTION_BLUR_TABLE_CELL,
@@ -403,6 +409,13 @@ impl EditorCommand {
                 extend_selection: *extend_selection,
             },
             Self::SetDocumentSelection { selection } => CommandArgs::DocumentSelection(*selection),
+            Self::SetBlockSelectionRange {
+                anchor_block_id,
+                focus_block_id,
+            } => CommandArgs::BlockSelectionRange {
+                anchor_block_id: *anchor_block_id,
+                focus_block_id: *focus_block_id,
+            },
             Self::FocusTableCell {
                 block_id,
                 row,

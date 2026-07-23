@@ -86,6 +86,10 @@ pub enum CommandArgs {
         extend_selection: bool,
     },
     DocumentSelection(DocumentSelection),
+    BlockSelectionRange {
+        anchor_block_id: BlockId,
+        focus_block_id: BlockId,
+    },
     TableCellFocus {
         block_id: BlockId,
         row: usize,
@@ -207,6 +211,7 @@ impl CommandArgs {
             Self::ImageAsset { .. } => CommandArgumentKind::ImageAsset,
             Self::MoveCaret { .. } => CommandArgumentKind::MoveCaret,
             Self::DocumentSelection(_) => CommandArgumentKind::DocumentSelection,
+            Self::BlockSelectionRange { .. } => CommandArgumentKind::BlockSelectionRange,
             Self::TableCellFocus { .. } => CommandArgumentKind::TableCellFocus,
             Self::TableCellSelection { .. } => CommandArgumentKind::TableCellSelection,
             Self::TableCellNavigation { .. } => CommandArgumentKind::TableCellNavigation,
@@ -245,6 +250,7 @@ pub enum CommandArgumentKind {
     ImageAsset,
     MoveCaret,
     DocumentSelection,
+    BlockSelectionRange,
     TableCellFocus,
     TableCellSelection,
     TableCellNavigation,

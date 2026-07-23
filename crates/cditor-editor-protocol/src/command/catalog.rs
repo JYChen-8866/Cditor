@@ -130,6 +130,11 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(TEXT_DELETE_FORWARD, Args::None, Document),
         definition(TEXT_MOVE_CARET, Args::MoveCaret, ReadOnly),
         definition(SELECTION_SET_DOCUMENT, Args::DocumentSelection, ReadOnly),
+        definition(
+            SELECTION_SET_BLOCK_RANGE,
+            Args::BlockSelectionRange,
+            ReadOnly,
+        ),
         definition(SELECTION_FOCUS_BLOCK, Args::BlockTarget, ReadOnly),
         definition(SELECTION_FOCUS_TABLE_CELL, Args::TableCellFocus, ReadOnly),
         definition(SELECTION_BLUR_TABLE_CELL, Args::None, ReadOnly),

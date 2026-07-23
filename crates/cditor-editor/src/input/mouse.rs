@@ -2,6 +2,7 @@ use gpui::{App, Entity, MouseDownEvent, MouseMoveEvent, Window};
 
 use crate::app::CditorV2View;
 use cditor_core::ids::BlockId;
+use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 use cditor_runtime::DocumentRuntime;
 
 pub fn focus_block_from_mouse(
@@ -132,7 +133,7 @@ impl BlockDragSelectionController {
     pub fn begin(&mut self, block_id: BlockId, runtime: &mut DocumentRuntime) -> bool {
         self.anchor = Some(block_id);
         self.focus = Some(block_id);
-        runtime.select_visible_block_range(block_id, block_id)
+        dispatch_block_range_selection(runtime, block_id, block_id)
     }
 
     pub fn update(&mut self, block_id: BlockId, runtime: &mut DocumentRuntime) -> bool {
@@ -140,7 +141,7 @@ impl BlockDragSelectionController {
             return self.begin(block_id, runtime);
         };
         self.focus = Some(block_id);
-        runtime.select_visible_block_range(anchor, block_id)
+        dispatch_block_range_selection(runtime, anchor, block_id)
     }
 
     pub fn finish(&mut self) -> Option<(BlockId, BlockId)> {
@@ -153,6 +154,22 @@ impl BlockDragSelectionController {
     pub fn is_dragging(&self) -> bool {
         self.anchor.is_some()
     }
+}
+
+fn dispatch_block_range_selection(
+    runtime: &mut DocumentRuntime,
+    anchor_block_id: BlockId,
+    focus_block_id: BlockId,
+) -> bool {
+    runtime
+        .dispatch(CommandEnvelope::new(
+            EditorCommand::SetBlockSelectionRange {
+                anchor_block_id,
+                focus_block_id,
+            },
+            CommandSource::Toolbar,
+        ))
+        .is_ok_and(|outcome| outcome.selection_changed)
 }
 
 #[cfg(test)]

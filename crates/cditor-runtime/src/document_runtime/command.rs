@@ -30,7 +30,10 @@ impl DocumentRuntime {
             });
         let before_revision = self.revision();
         let before_transaction = self.last_committed_transaction_id();
-        let before_selection = self.document_selection_snapshot();
+        let before_selection = (
+            self.document_selection_snapshot(),
+            self.unified_document_selection_snapshot(),
+        );
         let focused_before = self.focused_block_id();
         let mut affected_blocks = Vec::new();
         let selection_result = self
@@ -46,6 +49,7 @@ impl DocumentRuntime {
                 EditorCommand::Redo => self.redo_focused_block().map_err(apply_error)?,
                 EditorCommand::SelectAll
                 | EditorCommand::SetDocumentSelection { .. }
+                | EditorCommand::SetBlockSelectionRange { .. }
                 | EditorCommand::FocusBlock { .. }
                 | EditorCommand::FocusTableCell { .. }
                 | EditorCommand::BlurTableCell
@@ -331,7 +335,11 @@ impl DocumentRuntime {
             self.note_content_changed();
         }
 
-        let selection_changed = before_selection != self.document_selection_snapshot();
+        let selection_changed = before_selection
+            != (
+                self.document_selection_snapshot(),
+                self.unified_document_selection_snapshot(),
+            );
         if affected_blocks.is_empty()
             && (changed || selection_changed)
             && let Some(block_id) = focused_before.or_else(|| self.focused_block_id())

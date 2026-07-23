@@ -661,7 +661,7 @@ impl DocumentRuntime {
         self.delete_selected_blocks()
     }
 
-    pub fn select_visible_block_range(&mut self, anchor: BlockId, focus: BlockId) -> bool {
+    pub(crate) fn select_visible_block_range(&mut self, anchor: BlockId, focus: BlockId) -> bool {
         self.break_typing_coalescing();
         let Some(anchor_index) = self.visible_index.visible_index_of(anchor) else {
             return false;

@@ -103,6 +103,29 @@ fn document_selection_command_preserves_direction_and_affinity() {
 }
 
 #[test]
+fn block_range_selection_command_uses_typed_arguments() {
+    let invocation = EditorCommand::SetBlockSelectionRange {
+        anchor_block_id: 7,
+        focus_block_id: 11,
+    }
+    .invocation(CommandSource::Toolbar);
+
+    assert_eq!(invocation.id.as_str(), builtin::SELECTION_SET_BLOCK_RANGE);
+    assert_eq!(
+        invocation.args,
+        CommandArgs::BlockSelectionRange {
+            anchor_block_id: 7,
+            focus_block_id: 11,
+        }
+    );
+    assert!(
+        CommandCatalog::builtin()
+            .validate_invocation(&invocation)
+            .is_ok()
+    );
+}
+
+#[test]
 fn block_focus_command_uses_a_read_only_typed_target() {
     let invocation = EditorCommand::FocusBlock { block_id: 9 }.invocation(CommandSource::Toolbar);
     assert_eq!(invocation.args, CommandArgs::BlockTarget { block_id: 9 });

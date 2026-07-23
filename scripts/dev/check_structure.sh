@@ -156,11 +156,11 @@ if [ -n "$legacy_platform_input_mutation_violations" ]; then
 fi
 
 direct_document_selection_violations=$(
-  grep -R -n -E '\.set_document_selection\(' \
+  grep -R -n -E '\.(set_document_selection|select_visible_block_range)\(' \
     --include='*.rs' crates/cditor-editor/src || true
 )
 if [ -n "$direct_document_selection_violations" ]; then
-  echo 'error: Editor must route semantic document selection through Runtime dispatch:' >&2
+  echo 'error: Editor must route semantic document and block selection through Runtime dispatch:' >&2
   echo "$direct_document_selection_violations" >&2
   exit 1
 fi

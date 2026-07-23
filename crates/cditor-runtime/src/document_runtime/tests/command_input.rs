@@ -36,6 +36,42 @@ fn text_input_commands_dispatch_with_revision_and_transaction_metadata() {
 }
 
 #[test]
+fn block_range_selection_dispatch_reports_selection_without_document_mutation() {
+    let mut runtime = DocumentRuntime::demo();
+    let projection = runtime.projection_for_window();
+    let anchor_block_id = projection.blocks[0].block_id;
+    let focus_block_id = projection.blocks[2].block_id;
+    let before_revision = runtime.revision();
+
+    let outcome = dispatch(
+        &mut runtime,
+        EditorCommand::SetBlockSelectionRange {
+            anchor_block_id,
+            focus_block_id,
+        },
+    );
+
+    assert!(outcome.selection_changed);
+    assert!(outcome.transaction_ids.is_empty());
+    assert_eq!(
+        outcome.affected_blocks,
+        vec![anchor_block_id, focus_block_id]
+    );
+    assert_eq!(runtime.revision(), before_revision);
+    assert_eq!(
+        runtime.unified_document_selection_snapshot(),
+        Some(cditor_core::edit::UnifiedDocumentSelection {
+            anchor: cditor_core::edit::SelectionEndpoint::Block {
+                block_id: anchor_block_id,
+            },
+            focus: cditor_core::edit::SelectionEndpoint::Block {
+                block_id: focus_block_id,
+            },
+        })
+    );
+}
+
+#[test]
 fn block_input_commands_dispatch_and_report_affected_blocks() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "ab")]);
