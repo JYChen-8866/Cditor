@@ -284,10 +284,8 @@ mod tests {
             }],
             720.0,
         );
-        runtime.focus_table_cell_at_offset(1, 0, 0, 4).unwrap();
-        runtime
-            .replace_text_in_focused_range(None, "\nmore")
-            .unwrap();
+        crate::test_support::focus_table_cell_at_offset(&mut runtime, 1, 0, 0, 4);
+        crate::test_support::replace_realtime_text(&mut runtime, None, "\nmore");
         let current_version = runtime.block_content_version(1).unwrap();
         let stale_cache = crate::text::test_platform_layout(
             1,

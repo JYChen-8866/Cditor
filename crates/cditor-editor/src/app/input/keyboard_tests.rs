@@ -59,7 +59,7 @@ fn paragraph_runtime(text: &str) -> DocumentRuntime {
         )],
         720.0,
     );
-    runtime.focus_block_at_offset(1, text.len()).unwrap();
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, text.len());
     runtime
 }
 
@@ -97,7 +97,7 @@ fn table_runtime(block_id: BlockId, rows: &[&[&str]]) -> DocumentRuntime {
 fn keyboard_navigation_consumes_parley_layout_cache() {
     let text = "abc אבג 123";
     let mut runtime = paragraph_runtime(text);
-    runtime.focus_block_at_offset(1, 0).unwrap();
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 0);
     let input = RichTextLayoutInput {
         block_id: 1,
         surface_id: crate::text::TextLayoutSurfaceId::Block(1),
@@ -186,7 +186,7 @@ fn paste_text_from_clipboard_uses_validated_rich_metadata() {
 fn repeated_vertical_navigation_preserves_original_x_across_a_short_line() {
     let text = "abcdefghij\nx\nabcdefghij";
     let mut runtime = paragraph_runtime(text);
-    runtime.focus_block_at_offset(1, 8).unwrap();
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 8);
     let mut layouts = HashMap::new();
     layouts.insert(
         1,
@@ -321,7 +321,7 @@ fn paste_text_from_clipboard_uses_validated_table_metadata() {
         table: snapshot.table.clone(),
     };
     let mut target = table_runtime(2, &[&["x"]]);
-    target.focus_table_cell_at_offset(2, 0, 0, 0).unwrap();
+    crate::test_support::focus_table_cell_at_offset(&mut target, 2, 0, 0, 0);
 
     assert!(dispatch_clipboard_data(
         &mut target,
@@ -342,7 +342,7 @@ fn paste_text_from_clipboard_uses_validated_table_metadata() {
 #[test]
 fn paste_text_from_clipboard_treats_external_tsv_as_table_range_when_cell_is_focused() {
     let mut target = table_runtime(2, &[&["x"]]);
-    target.focus_table_cell_at_offset(2, 0, 0, 0).unwrap();
+    crate::test_support::focus_table_cell_at_offset(&mut target, 2, 0, 0, 0);
 
     assert!(dispatch_clipboard_data(&mut target, "a\tb\nc\td", None));
 

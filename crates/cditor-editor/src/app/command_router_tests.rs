@@ -297,8 +297,8 @@ fn unfocused_document_query_and_execute_stay_consistent(cx: &mut TestAppContext)
 fn focused_document_query_and_execute_stay_consistent(cx: &mut TestAppContext) {
     let view = cx.new(|cx| {
         let mut runtime = rich_document_runtime();
-        runtime.focus_block_at_offset(1, 5).unwrap();
-        runtime.set_document_text_selection(1, 0, 1, 5).unwrap();
+        crate::test_support::focus_block_at_offset(&mut runtime, 1, 5);
+        crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 1, 5);
         CditorV2View::from_runtime_with_options(runtime, false, false, cx)
     });
     assert_query_execute_consistency(&view, cx, "focused");
@@ -309,8 +309,8 @@ fn automation_and_sdk_execute_the_same_command_path(cx: &mut TestAppContext) {
     fn view(cx: &mut TestAppContext) -> gpui::Entity<CditorV2View> {
         cx.new(|cx| {
             let mut runtime = rich_document_runtime();
-            runtime.focus_block_at_offset(1, 0).unwrap();
-            runtime.set_document_text_selection(1, 0, 1, 5).unwrap();
+            crate::test_support::focus_block_at_offset(&mut runtime, 1, 0);
+            crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 1, 5);
             CditorV2View::from_runtime_with_options(runtime, false, false, cx)
         })
     }
@@ -345,8 +345,8 @@ fn automation_and_sdk_execute_the_same_command_path(cx: &mut TestAppContext) {
 fn format_command_reports_transaction_and_advances_revision_once(cx: &mut TestAppContext) {
     let view = cx.new(|cx| {
         let mut runtime = rich_document_runtime();
-        runtime.focus_block_at_offset(1, 0).unwrap();
-        runtime.set_document_text_selection(1, 0, 1, 5).unwrap();
+        crate::test_support::focus_block_at_offset(&mut runtime, 1, 0);
+        crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 1, 5);
         CditorV2View::from_runtime_with_options(runtime, false, false, cx)
     });
 
@@ -404,9 +404,7 @@ fn table_command_reports_transaction_and_advances_revision_once(cx: &mut TestApp
 fn dispatched_command_breaks_runtime_typing_coalescing(cx: &mut TestAppContext) {
     let view = cx.new(|cx| {
         let mut runtime = rich_document_runtime();
-        runtime
-            .focus_block_at_offset(1, "hello world".len())
-            .unwrap();
+        crate::test_support::focus_block_at_offset(&mut runtime, 1, "hello world".len());
         realtime_replace(&mut runtime, "a");
         realtime_replace(&mut runtime, "b");
         CditorV2View::from_runtime_with_options(runtime, false, false, cx)
@@ -550,14 +548,14 @@ fn inline_mark_query_reports_checked_mixed_and_unchecked() {
         }],
         720.0,
     );
-    runtime.focus_block_at_offset(1, 0).unwrap();
-    runtime.set_document_text_selection(1, 0, 1, 4).unwrap();
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 0);
+    crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 1, 4);
     assert_eq!(
         inline_mark_check_state(&runtime, &InlineMark::Bold),
         CommandCheckState::Checked
     );
 
-    runtime.set_document_text_selection(1, 0, 1, 10).unwrap();
+    crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 1, 10);
     assert_eq!(
         inline_mark_check_state(&runtime, &InlineMark::Bold),
         CommandCheckState::Mixed

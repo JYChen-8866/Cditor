@@ -48,7 +48,7 @@ impl DocumentRuntime {
         result
     }
 
-    pub fn replace_text_in_focused_range(
+    pub(crate) fn replace_text_in_focused_range(
         &mut self,
         range: Option<Range<usize>>,
         text: &str,

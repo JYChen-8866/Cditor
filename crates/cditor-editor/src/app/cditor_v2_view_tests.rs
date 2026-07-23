@@ -82,7 +82,7 @@ fn platform_input_fallback_prefers_active_composition_base_range_over_caret() {
         )],
         720.0,
     );
-    runtime.focus_block_at_offset(1, 3).unwrap();
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 3);
     update_composition(&mut runtime, 3..3, "你", Some("你".len().."你".len()));
     assert_eq!(runtime.caret_offset_for_block(1), Some("abc你".len()));
 
@@ -114,7 +114,7 @@ fn platform_input_fallback_uses_table_cell_offset() {
         }],
         720.0,
     );
-    runtime.focus_table_cell_at_offset(1, 0, 0, 2).unwrap();
+    crate::test_support::focus_table_cell_at_offset(&mut runtime, 1, 0, 0, 2);
 
     let fallback = platform_input_fallback_range(&runtime, 1);
     let selection = platform_selected_text_range(&runtime).unwrap();
@@ -134,9 +134,9 @@ fn platform_input_fallback_prefers_session_selection_over_legacy_selection() {
         )],
         720.0,
     );
-    runtime.focus_block_at_offset(1, 2).unwrap();
-    runtime.set_document_text_selection(1, 4, 1, 5).unwrap();
-    runtime.focus_block_at_offset(1, 2).unwrap();
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 2);
+    crate::test_support::set_document_text_selection(&mut runtime, 1, 4, 1, 5);
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 2);
 
     let fallback = platform_input_fallback_range(&runtime, 1);
     let selection = platform_selected_text_range(&runtime).unwrap();
@@ -171,7 +171,7 @@ fn platform_input_target_guard_rejects_stale_registered_cell() {
         }],
         720.0,
     );
-    runtime.focus_table_cell_at_offset(1, 0, 1, 2).unwrap();
+    crate::test_support::focus_table_cell_at_offset(&mut runtime, 1, 0, 1, 2);
     let registered_identity = runtime.input_session_identity();
 
     assert!(platform_input_target_allows(
@@ -193,7 +193,7 @@ fn platform_input_target_guard_rejects_stale_registered_cell() {
         &runtime
     ));
 
-    runtime.focus_table_cell_at_offset(1, 0, 1, 2).unwrap();
+    crate::test_support::focus_table_cell_at_offset(&mut runtime, 1, 0, 1, 2);
     assert!(!platform_input_target_allows(
         Some(GuiPlatformInputTarget::TableCell {
             block_id: 1,
@@ -235,7 +235,7 @@ fn platform_input_registration_rejects_second_or_mismatched_target() {
         ],
         720.0,
     );
-    runtime.focus_block_at_offset(1, 2).unwrap();
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 2);
 
     assert!(platform_input_registration_allows(
         None,
@@ -346,12 +346,11 @@ fn platform_input_target_guard_accepts_only_the_focused_auxiliary_surface() {
         }],
         720.0,
     );
-    runtime
-        .focus_text_surface_at_offset(
-            cditor_core::ids::SurfaceId::ImageCaption { block_id: 10 },
-            2,
-        )
-        .unwrap();
+    crate::test_support::focus_text_surface_at_offset(
+        &mut runtime,
+        cditor_core::ids::SurfaceId::ImageCaption { block_id: 10 },
+        2,
+    );
     let identity = runtime.input_session_identity();
 
     assert!(platform_input_target_allows(
@@ -382,7 +381,7 @@ fn platform_selected_text_range_prefers_ime_selected_subrange() {
         )],
         720.0,
     );
-    runtime.focus_block_at_offset(1, 2).unwrap();
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 2);
     update_composition(&mut runtime, 2..2, "你好", Some("你".len().."你好".len()));
 
     let selection = platform_selected_text_range(&runtime).unwrap();
@@ -402,7 +401,7 @@ fn platform_selected_text_range_uses_marked_end_when_ime_has_no_subrange() {
         )],
         720.0,
     );
-    runtime.focus_block_at_offset(1, 2).unwrap();
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 2);
     update_composition(&mut runtime, 2..2, "你好", None);
 
     let selection = platform_selected_text_range(&runtime).unwrap();

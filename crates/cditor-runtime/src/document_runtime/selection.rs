@@ -108,7 +108,7 @@ impl DocumentRuntime {
         (!range.is_empty()).then_some(range)
     }
 
-    pub fn set_document_text_selection(
+    pub(crate) fn set_document_text_selection(
         &mut self,
         anchor_block_id: BlockId,
         anchor_offset: usize,
@@ -641,7 +641,8 @@ impl DocumentRuntime {
         Some(parts.join("\n"))
     }
 
-    pub fn select_all_visible_blocks(&mut self) -> bool {
+    #[cfg(test)]
+    pub(crate) fn select_all_visible_blocks(&mut self) -> bool {
         self.break_typing_coalescing();
         self.focused_table_cell = None;
         self.selected_block_ids = self

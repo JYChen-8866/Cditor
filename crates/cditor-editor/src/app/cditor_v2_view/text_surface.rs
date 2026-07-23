@@ -137,7 +137,7 @@ mod tests {
             720.0,
         );
         let surface_id = SurfaceId::ImageCaption { block_id: 10 };
-        runtime.focus_text_surface_at_offset(surface_id, 2).unwrap();
+        crate::test_support::focus_text_surface_at_offset(&mut runtime, surface_id, 2);
         let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
 
         view.update(cx, |view, _cx| {

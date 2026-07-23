@@ -56,7 +56,7 @@ mod tests {
             720.0,
         );
 
-        runtime.focus_block_at_offset(1, 1).unwrap();
+        crate::test_support::focus_block_at_offset(&mut runtime, 1, 1);
         assert!(platform_input_registration_allows(
             None,
             GuiPlatformInputTarget::BlockText { block_id: 1 },
@@ -72,7 +72,7 @@ mod tests {
             &runtime,
         ));
 
-        runtime.focus_table_cell_at_offset(2, 0, 0, 1).unwrap();
+        crate::test_support::focus_table_cell_at_offset(&mut runtime, 2, 0, 0, 1);
         assert!(platform_input_registration_allows(
             None,
             GuiPlatformInputTarget::TableCell {

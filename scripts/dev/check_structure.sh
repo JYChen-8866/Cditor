@@ -156,12 +156,23 @@ if [ -n "$legacy_platform_input_mutation_violations" ]; then
 fi
 
 direct_document_selection_violations=$(
-  grep -R -n -E '\.(set_document_selection|select_visible_block_range)\(' \
+  grep -R -n -E '\.(set_document_selection|select_visible_block_range|set_document_text_selection|select_all_visible_blocks)\(' \
     --include='*.rs' crates/cditor-editor/src || true
 )
 if [ -n "$direct_document_selection_violations" ]; then
   echo 'error: Editor must route semantic document and block selection through Runtime dispatch:' >&2
   echo "$direct_document_selection_violations" >&2
+  exit 1
+fi
+
+direct_runtime_selection_primitive_violations=$(
+  grep -R -n -E \
+    '\.(focus_block_at_offset|focus_table_cell_at_offset|set_focused_table_cell_text_selection|set_focused_table_cell_text_selection_position|focus_text_surface_at_offset|set_inline_color_for_range|replace_text_in_focused_range)\(' \
+    --include='*.rs' crates/cditor-editor/src --exclude='test_support.rs' || true
+)
+if [ -n "$direct_runtime_selection_primitive_violations" ]; then
+  echo 'error: Editor must use command or realtime ports instead of Runtime selection primitives:' >&2
+  echo "$direct_runtime_selection_primitive_violations" >&2
   exit 1
 fi
 

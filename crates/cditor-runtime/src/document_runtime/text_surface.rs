@@ -250,7 +250,7 @@ impl DocumentRuntime {
         }
     }
 
-    pub fn focus_text_surface_at_offset(
+    pub(crate) fn focus_text_surface_at_offset(
         &mut self,
         surface_id: SurfaceId,
         offset: usize,

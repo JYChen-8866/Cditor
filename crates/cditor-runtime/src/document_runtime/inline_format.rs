@@ -118,7 +118,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn set_inline_color_for_range(
+    pub(crate) fn set_inline_color_for_range(
         &mut self,
         block_id: BlockId,
         range: std::ops::Range<usize>,

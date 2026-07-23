@@ -269,7 +269,7 @@ mod tests {
             )],
             720.0,
         );
-        runtime.focus_block_at_offset(1, 1).unwrap();
+        crate::test_support::focus_block_at_offset(&mut runtime, 1, 1);
 
         let expected = runtime.input_session_identity().unwrap();
         assert!(
@@ -294,7 +294,7 @@ mod tests {
             )],
             720.0,
         );
-        runtime.set_document_text_selection(1, 1, 1, 3).unwrap();
+        crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 1, 3);
 
         let expected = runtime.input_session_identity().unwrap();
         assert!(
@@ -320,7 +320,7 @@ mod tests {
             )],
             720.0,
         );
-        runtime.focus_block_at_offset(1, 1).unwrap();
+        crate::test_support::focus_block_at_offset(&mut runtime, 1, 1);
         update_composition(&mut runtime, "中");
 
         let expected = runtime.input_session_identity().unwrap();
@@ -346,7 +346,7 @@ mod tests {
             )],
             720.0,
         );
-        runtime.focus_block_at_offset(1, 1).unwrap();
+        crate::test_support::focus_block_at_offset(&mut runtime, 1, 1);
         let registered_session = runtime.input_session_identity();
         let target = Some(GuiPlatformInputTarget::BlockText { block_id: 1 });
         let mut cache = test_platform_layout(
@@ -410,7 +410,7 @@ mod tests {
             ],
             720.0,
         );
-        runtime.set_document_text_selection(1, 1, 3, 1).unwrap();
+        crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 3, 1);
 
         let expected = runtime.input_session_identity().unwrap();
         assert!(
@@ -434,7 +434,7 @@ mod tests {
             )],
             720.0,
         );
-        runtime.set_document_text_selection(1, 1, 1, 3).unwrap();
+        crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 1, 3);
 
         let expected = runtime.input_session_identity().unwrap();
         assert!(

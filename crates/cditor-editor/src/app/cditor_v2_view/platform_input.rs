@@ -244,7 +244,7 @@ mod tests {
             )],
             720.0,
         );
-        runtime.focus_block_at_offset(1, 1).unwrap();
+        crate::test_support::focus_block_at_offset(&mut runtime, 1, 1);
         let expected = runtime.input_session_identity().unwrap();
         runtime
             .apply_realtime_input(cditor_runtime::RealtimeInputRequest {

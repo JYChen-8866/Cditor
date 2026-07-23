@@ -154,7 +154,7 @@ impl DocumentRuntime {
                 });
     }
 
-    pub fn focus_block_at_offset(
+    pub(crate) fn focus_block_at_offset(
         &mut self,
         block_id: BlockId,
         offset: usize,
@@ -162,7 +162,7 @@ impl DocumentRuntime {
         self.set_caret_offset(block_id, offset)
     }
 
-    pub fn focus_table_cell(
+    pub(crate) fn focus_table_cell(
         &mut self,
         block_id: BlockId,
         row: usize,
@@ -311,7 +311,7 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub fn focus_table_cell_at_offset(
+    pub(crate) fn focus_table_cell_at_offset(
         &mut self,
         block_id: BlockId,
         row: usize,
@@ -351,7 +351,7 @@ impl DocumentRuntime {
         Ok(())
     }
 
-    pub fn set_focused_table_cell_text_selection(
+    pub(crate) fn set_focused_table_cell_text_selection(
         &mut self,
         anchor_offset: usize,
         focus_offset: usize,
@@ -397,7 +397,7 @@ impl DocumentRuntime {
         Ok(changed)
     }
 
-    pub fn set_focused_table_cell_text_selection_position(
+    pub(crate) fn set_focused_table_cell_text_selection_position(
         &mut self,
         anchor_offset: usize,
         focus_offset: usize,
@@ -410,7 +410,11 @@ impl DocumentRuntime {
         Ok(changed)
     }
 
-    pub fn set_caret_offset(&mut self, block_id: BlockId, offset: usize) -> Result<(), String> {
+    pub(crate) fn set_caret_offset(
+        &mut self,
+        block_id: BlockId,
+        offset: usize,
+    ) -> Result<(), String> {
         let input_target = InputTarget::BlockText { block_id };
         if self
             .editing

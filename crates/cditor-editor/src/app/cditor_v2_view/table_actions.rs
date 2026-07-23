@@ -11,7 +11,8 @@ use crate::block::table::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
 };
 use cditor_editor_protocol::command::{
-    CditorCommand, CommandOutcomeStatus, CommandSource, TableAxis as CommandTableAxis,
+    CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
+    TableAxis as CommandTableAxis,
 };
 
 impl CditorV2View {
@@ -184,10 +185,17 @@ impl CditorV2View {
             let local_y = f32::from(position.y - cache.bounds.top());
             let selection = cache.snapshot.selection_at_point(local_x, local_y, kind);
             if let Some(runtime) = self.ready_runtime() {
-                let _ = runtime.set_focused_table_cell_text_selection(
-                    selection.anchor.offset,
-                    selection.focus.offset,
-                );
+                let _ = runtime.dispatch(CommandEnvelope::new(
+                    CditorCommand::SetTableCellSelection {
+                        block_id,
+                        row,
+                        col,
+                        anchor_offset: selection.anchor.offset,
+                        focus_offset: selection.focus.offset,
+                        focus_affinity: selection.focus.affinity,
+                    },
+                    CommandSource::Toolbar,
+                ));
             }
         }
         let anchor_position = self
@@ -233,18 +241,21 @@ impl CditorV2View {
         else {
             return;
         };
-        let changed = self
-            .ready_runtime()
-            .and_then(|runtime| {
-                runtime
-                    .set_focused_table_cell_text_selection_position(
+        let changed = self.ready_runtime().is_some_and(|runtime| {
+            runtime
+                .dispatch(CommandEnvelope::new(
+                    CditorCommand::SetTableCellSelection {
+                        block_id,
+                        row,
+                        col,
                         anchor_offset,
-                        focus_position.offset,
-                        focus_position.affinity,
-                    )
-                    .ok()
-            })
-            .unwrap_or(false);
+                        focus_offset: focus_position.offset,
+                        focus_affinity: focus_position.affinity,
+                    },
+                    CommandSource::Toolbar,
+                ))
+                .is_ok_and(|outcome| outcome.changed())
+        });
         if changed {
             cx.notify();
         }

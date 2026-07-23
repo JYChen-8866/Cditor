@@ -15,3 +15,6 @@ pub mod scroll;
 pub mod skeleton;
 pub mod text;
 pub mod theme;
+
+#[cfg(test)]
+pub(crate) mod test_support;

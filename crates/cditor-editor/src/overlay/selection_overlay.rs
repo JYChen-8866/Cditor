@@ -79,7 +79,10 @@ mod tests {
     #[test]
     fn selection_overlay_uses_projection_fragments_not_entities() {
         let mut runtime = DocumentRuntime::demo();
-        runtime.select_all_visible_blocks();
+        let projection = runtime.projection_for_window();
+        let first = projection.blocks.first().unwrap().block_id;
+        let last = projection.blocks.last().unwrap().block_id;
+        crate::test_support::select_block_range(&mut runtime, first, last);
         let mut projection = runtime.projection_for_window();
         projection.before_window_height = 20_000_000.25;
 
@@ -115,9 +118,7 @@ mod tests {
         document.root_blocks = vec![1];
         document.blocks = vec![first, middle, last];
         let mut runtime = DocumentRuntime::from_rich_text_document(document, 720.0);
-        runtime
-            .set_document_text_selection(1, 0, 3, "last".len())
-            .unwrap();
+        crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 3, "last".len());
         let projection = runtime.projection_for_window();
 
         let fragments = selection_overlay_fragments(&projection);
@@ -156,7 +157,7 @@ mod tests {
             ],
             720.0,
         );
-        runtime.set_document_text_selection(1, 2, 2, 2).unwrap();
+        crate::test_support::set_document_text_selection(&mut runtime, 1, 2, 2, 2);
 
         assert!(selection_overlay_fragments(&runtime.projection_for_window()).is_empty());
     }
@@ -172,7 +173,7 @@ mod tests {
             )],
             720.0,
         );
-        runtime.set_document_text_selection(1, 1, 1, 3).unwrap();
+        crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 1, 3);
 
         assert!(selection_overlay_fragments(&runtime.projection_for_window()).is_empty());
     }

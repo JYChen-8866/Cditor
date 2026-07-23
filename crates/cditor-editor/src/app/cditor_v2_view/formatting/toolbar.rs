@@ -408,7 +408,7 @@ mod tests {
             ],
             720.0,
         );
-        runtime.set_document_text_selection(1, 1, 2, 2).unwrap();
+        crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 2, 2);
         let mut layouts = HashMap::new();
         let viewport = EditorViewport {
             window_left: 240.0,
@@ -480,7 +480,7 @@ mod tests {
             ],
             720.0,
         );
-        runtime.focus_block_at_offset(2, 2).unwrap();
+        crate::test_support::focus_block_at_offset(&mut runtime, 2, 2);
         assert!(dispatch(&mut runtime, EditorCommand::SelectAll));
         assert!(dispatch(&mut runtime, EditorCommand::SelectAll));
 
@@ -551,12 +551,15 @@ mod tests {
             )],
             720.0,
         );
-        runtime
-            .set_inline_color_for_range(2, 0..4, InlineColorTarget::Text, Some("#337ea9"))
-            .unwrap();
+        crate::test_support::set_inline_color_for_range(
+            &mut runtime,
+            2,
+            0..4,
+            InlineColorTarget::Text,
+            Some("#337ea9"),
+        );
         set_block_color(&mut runtime, InlineColorTarget::Text, "#d44c47");
         set_block_color(&mut runtime, InlineColorTarget::Background, "#fdebec");
-
         assert_eq!(
             active_block_color(2, &runtime, InlineColorTarget::Text),
             ActiveColor::Palette(PaletteColor::Red)
@@ -566,7 +569,6 @@ mod tests {
             ActiveColor::Palette(PaletteColor::Red)
         );
     }
-
     #[test]
     fn toolbar_requires_a_rich_text_payload() {
         let rich_text = BlockPayload::RichText {
@@ -690,11 +692,9 @@ mod tests {
         );
     }
 }
-
 #[cfg(test)]
 #[path = "toolbar_capability_tests.rs"]
 mod capability_tests;
-
 #[cfg(test)]
 #[path = "toolbar_position_tests.rs"]
 mod position_tests;
