@@ -22,11 +22,12 @@ impl CditorV2View {
         position: Point<Pixels>,
     ) -> Option<(BlockId, ParleyTextPosition)> {
         let runtime = self.ready_runtime_ref()?;
+        let viewport = cditor_session::project_layout_viewport(runtime);
         let block_id = self
             .infer_document_viewport_origin()
             .and_then(|viewport_origin| {
                 let document_y =
-                    f32::from(position.y) as f64 - viewport_origin.y + runtime.global_scroll_top();
+                    f32::from(position.y) as f64 - viewport_origin.y + viewport.global_scroll_top;
                 projected_block_at_document_y(&self.projected_block_rects, document_y)
             })
             .or_else(|| {
@@ -90,7 +91,10 @@ impl CditorV2View {
         let Some(drag) = self.text_drag_selection else {
             return;
         };
-        let Some(runtime) = self.ready_runtime_ref() else {
+        let Some(viewport) = self
+            .ready_runtime_ref()
+            .map(cditor_session::project_layout_viewport)
+        else {
             return;
         };
         let pointer_y = self
@@ -99,7 +103,7 @@ impl CditorV2View {
             .unwrap_or(f64::NAN);
         let delta = crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
             pointer_y,
-            runtime.viewport_height(),
+            viewport.viewport_height,
         );
         if delta.abs() < f64::EPSILON {
             return;
@@ -136,9 +140,10 @@ impl CditorV2View {
         let Some(runtime) = self.ready_runtime() else {
             return false;
         };
+        let viewport = cditor_session::project_layout_viewport(runtime);
         let delta = crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
             pointer_y,
-            runtime.viewport_height(),
+            viewport.viewport_height,
         );
         if delta.abs() < f64::EPSILON
             || !cditor_session::project_scroll_by_delta(runtime, delta)

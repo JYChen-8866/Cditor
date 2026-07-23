@@ -30,7 +30,8 @@ fn gutter_drag_pointer_document_y_for_view(view: &CditorV2View, window_y: f32) -
             .map(|origin| origin.y)
             .unwrap_or(0.0),
         view.ready_runtime_ref()
-            .map(|runtime| runtime.global_scroll_top())
+            .map(cditor_session::project_layout_viewport)
+            .map(|snapshot| snapshot.global_scroll_top)
             .unwrap_or(0.0),
     )
 }
@@ -121,12 +122,15 @@ impl CditorV2View {
         if !drag.exceeded_threshold {
             return false;
         }
-        let Some(runtime) = self.ready_runtime_ref() else {
+        let Some(viewport) = self
+            .ready_runtime_ref()
+            .map(cditor_session::project_layout_viewport)
+        else {
             return false;
         };
         gutter_drag_auto_scroll_delta(
             gutter_drag_pointer_viewport_y_for_view(self, drag.current_position.y),
-            runtime.viewport_height(),
+            viewport.viewport_height,
         )
         .abs()
             >= f64::EPSILON
@@ -174,7 +178,8 @@ impl CditorV2View {
         let CditorViewState::Ready(runtime) = &mut self.state else {
             return false;
         };
-        let delta = gutter_drag_auto_scroll_delta(pointer_y, runtime.viewport_height());
+        let viewport = cditor_session::project_layout_viewport(runtime);
+        let delta = gutter_drag_auto_scroll_delta(pointer_y, viewport.viewport_height);
         if delta.abs() < f64::EPSILON {
             return false;
         }

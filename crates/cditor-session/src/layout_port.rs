@@ -16,6 +16,19 @@ pub struct LayoutScrollSnapshot {
     pub global_scroll_top: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LayoutViewportSnapshot {
+    pub global_scroll_top: f64,
+    pub viewport_height: f64,
+}
+
+pub fn project_layout_viewport(runtime: &DocumentRuntime) -> LayoutViewportSnapshot {
+    LayoutViewportSnapshot {
+        global_scroll_top: runtime.global_scroll_top(),
+        viewport_height: runtime.viewport_height(),
+    }
+}
+
 pub fn project_measured_block_height(
     runtime: &mut DocumentRuntime,
     block_id: BlockId,
@@ -117,6 +130,17 @@ fn layout_error(runtime: &DocumentRuntime, message: String) -> ProtocolError {
 }
 
 impl EditorSessionHandle {
+    pub fn layout_viewport(&self) -> Result<LayoutViewportSnapshot, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_layout_viewport(&session.runtime))
+    }
+
     pub fn queue_measured_block_height(
         &self,
         block_id: BlockId,
@@ -205,6 +229,16 @@ mod tests {
         assert!(outcome.global_scroll_top > 0.0);
         assert_eq!(accumulator.received_inputs, 1);
         assert_eq!(accumulator.committed_frames, 1);
+    }
+
+    #[test]
+    fn viewport_snapshot_owns_coordinate_conversion_inputs() {
+        let handle = EditorSession::new(DocumentRuntime::large_mixed_demo(), false).into_handle();
+        handle.scroll_by_delta(120.0).unwrap();
+
+        let snapshot = handle.layout_viewport().unwrap();
+        assert!(snapshot.global_scroll_top > 0.0);
+        assert!(snapshot.viewport_height > 0.0);
     }
 
     #[test]
