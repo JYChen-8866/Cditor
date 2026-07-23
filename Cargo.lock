@@ -1062,6 +1062,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cditor-session"
+version = "0.2.6"
+dependencies = [
+ "cditor-core",
+ "cditor-editor-protocol",
+ "cditor-runtime",
+]
+
+[[package]]
 name = "cditor-storage"
 version = "0.2.6"
 dependencies = [

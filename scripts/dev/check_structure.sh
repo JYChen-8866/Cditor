@@ -45,6 +45,17 @@ if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])sqlx[[
   exit 1
 fi
 
+if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])sqlx[[:space:]]*=|(^|[[:space:]])gpui[[:space:]]*=' crates/cditor-session/Cargo.toml; then
+  echo 'error: session must depend on ports, not GPUI or concrete storage adapters' >&2
+  exit 1
+fi
+
+if grep -R -n -E 'Arc[[:space:]]*<[[:space:]]*Mutex[[:space:]]*<[[:space:]]*DocumentRuntime' \
+  --include='*.rs' crates/cditor-session/src | grep -q .; then
+  echo 'error: session must keep one serial Runtime owner instead of Arc<Mutex<DocumentRuntime>>' >&2
+  exit 1
+fi
+
 if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])cditor-runtime[[:space:]]*=|(^|[[:space:]])cditor-editor[[:space:]]*=|(^|[[:space:]])cditor-whiteboard[[:space:]]*=|(^|[[:space:]])sqlx[[:space:]]*=' crates/cditor-api/Cargo.toml; then
   echo 'error: API contracts must not depend on concrete storage, runtime, editor, whiteboard engine, or SQLx' >&2
   exit 1
