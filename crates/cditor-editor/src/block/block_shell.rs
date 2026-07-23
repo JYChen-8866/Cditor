@@ -61,6 +61,7 @@ pub fn block_shell(
     on_fold_toggle: Option<FoldToggleHandler>,
 ) -> AnyElement {
     let chrome = BlockChromeStyle::from_snapshot(block, theme);
+    let horizontal = chrome.horizontal_geometry();
     let gutter_visible = should_show_gutter(hovered, action.action_root);
     let outer_background = outer_background_for_action(chrome.outer_background, theme, action);
     let content_background = content_background_for_action(
@@ -90,7 +91,7 @@ pub fn block_shell(
         .on_mouse_down(MouseButton::Left, on_mouse_down)
         .when_some(on_mouse_move, |this, handler| this.on_mouse_move(handler))
         .child(
-            div().pl(px(chrome.indent_px)).child(
+            div().pl(px(horizontal.indent_px)).child(
                 div()
                     .id(("v2-block-row", block.block_id))
                     .w_full()
@@ -133,11 +134,7 @@ pub fn block_shell(
                                     .border_color(rgb(content_border))
                                     // Keep the historical 4px quote geometry slot so caret/hit-test
                                     // origins stay stable, while drawing the visible Notion bar at 3px.
-                                    .border_l(px(if chrome.quote_bar.is_some() {
-                                        4.0
-                                    } else {
-                                        1.0
-                                    }))
+                                    .border_l(px(chrome.content_border_left_px()))
                                     .pl(px(chrome.content_padding_left_px))
                                     .pr(px(chrome.content_padding_right_px))
                                     .py(px(chrome.content_padding_y_px))

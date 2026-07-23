@@ -6,7 +6,7 @@ use gpui::{
 
 use crate::block::chrome::{BLOCK_PREFIX_WIDTH_PX, CALLOUT_PREFIX_WIDTH_PX};
 use crate::theme::GuiTheme;
-use cditor_core::block::{BlockPrefixSnapshot, bullet_marker_for_depth};
+use cditor_core::block::BlockPrefixSnapshot;
 use cditor_core::rich_text::CalloutVariant;
 
 pub type TodoToggleHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
@@ -18,6 +18,54 @@ const NOTION_CHECKBOX_RADIUS_PX: f32 = 2.0;
 const NOTION_FOLD_HOVER_SIZE_PX: f32 = 20.0;
 const NOTION_FOLD_ICON_SIZE_PX: f32 = 10.0;
 const NOTION_FOLD_HOVER_RADIUS_PX: f32 = 3.0;
+const NOTION_BULLET_OUTER_SIZE_PX: f32 = 6.0;
+const NOTION_BULLET_CANVAS_SIZE_PX: f32 = NOTION_BULLET_OUTER_SIZE_PX;
+const NOTION_BULLET_STROKE_WIDTH_PX: f32 = 1.25;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BulletMarkerShape {
+    SolidCircle,
+    HollowCircle,
+    SolidSquare,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct BulletMarkerStyle {
+    shape: BulletMarkerShape,
+    size_px: f32,
+    stroke_width_px: f32,
+}
+
+impl BulletMarkerStyle {
+    const fn path_size_px(self) -> f32 {
+        self.size_px - self.stroke_width_px
+    }
+
+    #[cfg(test)]
+    const fn painted_outer_size_px(self) -> f32 {
+        self.path_size_px() + self.stroke_width_px
+    }
+}
+
+const fn bullet_marker_style_for_depth(depth: usize) -> BulletMarkerStyle {
+    match depth % 3 {
+        0 => BulletMarkerStyle {
+            shape: BulletMarkerShape::SolidCircle,
+            size_px: NOTION_BULLET_OUTER_SIZE_PX,
+            stroke_width_px: 0.0,
+        },
+        1 => BulletMarkerStyle {
+            shape: BulletMarkerShape::HollowCircle,
+            size_px: NOTION_BULLET_OUTER_SIZE_PX,
+            stroke_width_px: NOTION_BULLET_STROKE_WIDTH_PX,
+        },
+        _ => BulletMarkerStyle {
+            shape: BulletMarkerShape::SolidSquare,
+            size_px: NOTION_BULLET_OUTER_SIZE_PX,
+            stroke_width_px: 0.0,
+        },
+    }
+}
 
 pub fn render_block_prefix(
     prefix: &BlockPrefixSnapshot,
@@ -33,26 +81,9 @@ pub fn render_block_prefix(
             .w(px(marker_lane_width_px))
             .flex_shrink_0()
             .into_any_element(),
-        BlockPrefixSnapshot::Bullet { depth } => div()
-            .w(px(BLOCK_PREFIX_WIDTH_PX))
-            .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
+        BlockPrefixSnapshot::Bullet { .. } | BlockPrefixSnapshot::Number { .. } => div()
+            .w(px(marker_lane_width_px))
             .flex_shrink_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .text_color(rgb(theme.text))
-            .child(bullet_marker_for_depth(*depth))
-            .into_any_element(),
-        BlockPrefixSnapshot::Number { ordinal } => div()
-            .w(px(BLOCK_PREFIX_WIDTH_PX))
-            .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
-            .flex_shrink_0()
-            .flex()
-            .items_center()
-            .justify_end()
-            .pr(px(4.0))
-            .text_color(rgb(theme.text))
-            .child(format!("{ordinal}."))
             .into_any_element(),
         // A todo checkbox is content, not gutter chrome. Keep the shared
         // marker lane empty and render the checkbox at the block surface start.
@@ -89,6 +120,66 @@ pub fn render_block_prefix(
     }
 }
 
+fn render_bullet_marker(depth: usize, theme: GuiTheme) -> AnyElement {
+    let style = bullet_marker_style_for_depth(depth);
+    canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| {
+            let center_x = bounds.origin.x + bounds.size.width / 2.0;
+            let center_y = bounds.origin.y + bounds.size.height / 2.0;
+            // GPUI centers strokes on the path. Inset the hollow-circle path so
+            // its painted outer diameter matches the filled marker bounds.
+            let path_size_px = style.path_size_px();
+            let half = px(path_size_px / 2.0);
+            let color = rgb(theme.text);
+            let path = match style.shape {
+                BulletMarkerShape::SolidCircle | BulletMarkerShape::HollowCircle => {
+                    let mut path = if style.shape == BulletMarkerShape::HollowCircle {
+                        PathBuilder::stroke(px(style.stroke_width_px))
+                    } else {
+                        PathBuilder::fill()
+                    };
+                    path.move_to(point(center_x + half, center_y));
+                    path.arc_to(
+                        point(half, half),
+                        px(0.0),
+                        false,
+                        true,
+                        point(center_x - half, center_y),
+                    );
+                    path.arc_to(
+                        point(half, half),
+                        px(0.0),
+                        false,
+                        true,
+                        point(center_x + half, center_y),
+                    );
+                    path.close();
+                    path.build()
+                }
+                BulletMarkerShape::SolidSquare => {
+                    let mut path = PathBuilder::fill();
+                    path.add_polygon(
+                        &[
+                            point(center_x - half, center_y - half),
+                            point(center_x + half, center_y - half),
+                            point(center_x + half, center_y + half),
+                            point(center_x - half, center_y + half),
+                        ],
+                        true,
+                    );
+                    path.build()
+                }
+            };
+            if let Ok(path) = path {
+                window.paint_path(path, color);
+            }
+        },
+    )
+    .size(px(NOTION_BULLET_CANVAS_SIZE_PX))
+    .into_any_element()
+}
+
 pub fn render_block_content_prefix(
     prefix: &BlockPrefixSnapshot,
     theme: GuiTheme,
@@ -96,6 +187,29 @@ pub fn render_block_content_prefix(
     on_todo_toggle: Option<TodoToggleHandler>,
 ) -> Option<AnyElement> {
     match prefix {
+        BlockPrefixSnapshot::Bullet { depth } => Some(
+            div()
+                .w(px(BLOCK_PREFIX_WIDTH_PX))
+                .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .justify_start()
+                .child(render_bullet_marker(*depth, theme))
+                .into_any_element(),
+        ),
+        BlockPrefixSnapshot::Number { ordinal } => Some(
+            div()
+                .w(px(BLOCK_PREFIX_WIDTH_PX))
+                .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .justify_start()
+                .text_color(rgb(theme.text))
+                .child(format!("{ordinal}."))
+                .into_any_element(),
+        ),
         BlockPrefixSnapshot::Todo { checked } => Some(
             div()
                 .w(px(BLOCK_PREFIX_WIDTH_PX))
@@ -263,6 +377,30 @@ mod tests {
         assert_eq!(NOTION_FOLD_HOVER_SIZE_PX, 20.0);
         assert_eq!(NOTION_FOLD_ICON_SIZE_PX, 10.0);
         assert_eq!(NOTION_FOLD_HOVER_RADIUS_PX, 3.0);
+        assert_eq!(NOTION_BULLET_CANVAS_SIZE_PX, 6.0);
+    }
+
+    #[test]
+    fn bullet_markers_cycle_notion_geometry_by_depth() {
+        let solid_circle = bullet_marker_style_for_depth(0);
+        let hollow_circle = bullet_marker_style_for_depth(1);
+        let solid_square = bullet_marker_style_for_depth(2);
+
+        assert_eq!(solid_circle.shape, BulletMarkerShape::SolidCircle);
+        assert_eq!(solid_circle.size_px, 6.0);
+        assert_eq!(hollow_circle.shape, BulletMarkerShape::HollowCircle);
+        assert_eq!(hollow_circle.size_px, 6.0);
+        assert_eq!(hollow_circle.stroke_width_px, 1.25);
+        assert_eq!(solid_square.shape, BulletMarkerShape::SolidSquare);
+        assert_eq!(solid_square.size_px, 6.0);
+        assert_eq!(solid_circle.size_px, hollow_circle.size_px);
+        assert_eq!(hollow_circle.size_px, solid_square.size_px);
+        assert_eq!(solid_circle.painted_outer_size_px(), 6.0);
+        assert_eq!(hollow_circle.painted_outer_size_px(), 6.0);
+        assert_eq!(solid_square.painted_outer_size_px(), 6.0);
+        assert_eq!(bullet_marker_style_for_depth(3), solid_circle);
+        assert_eq!(bullet_marker_style_for_depth(4), hollow_circle);
+        assert_eq!(bullet_marker_style_for_depth(5), solid_square);
     }
 
     #[test]

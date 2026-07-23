@@ -1,6 +1,6 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgba};
 
-use crate::block::chrome::{BLOCK_INDENT_STEP_PX, block_content_left_px};
+use crate::block::chrome::BlockHorizontalGeometry;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::EditorViewProjection;
@@ -40,7 +40,7 @@ pub fn selection_overlay_fragments(
 }
 
 fn selection_content_left_px(depth: usize) -> f32 {
-    block_content_left_px(depth as f32 * BLOCK_INDENT_STEP_PX)
+    BlockHorizontalGeometry::for_depth(depth).marker_lane_left_px
 }
 
 pub fn render_selection_overlay(
@@ -124,15 +124,15 @@ mod tests {
 
         assert_eq!(fragments.len(), 3);
         assert!(fragments.iter().all(|fragment| !fragment.full_block));
-        let root_content_left = block_content_left_px(0.0);
+        let root_content_left = BlockHorizontalGeometry::for_depth(0).marker_lane_left_px;
         assert_eq!(fragments[0].content_left_px, root_content_left);
         assert_eq!(
             fragments[1].content_left_px,
-            root_content_left + BLOCK_INDENT_STEP_PX
+            root_content_left + crate::block::chrome::BLOCK_INDENT_STEP_PX
         );
         assert_eq!(
             fragments[2].content_left_px,
-            root_content_left + BLOCK_INDENT_STEP_PX * 2.0
+            root_content_left + crate::block::chrome::BLOCK_INDENT_STEP_PX * 2.0
         );
         assert_eq!(fragments[0].y + fragments[0].height, fragments[1].y);
         assert_eq!(fragments[1].y + fragments[1].height, fragments[2].y);

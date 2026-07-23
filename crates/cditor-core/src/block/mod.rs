@@ -3,7 +3,7 @@ pub mod drag;
 pub mod input_capability;
 pub mod list_info;
 
-pub use chrome::{BlockChromeSnapshot, BlockPrefixSnapshot, bullet_marker_for_depth};
+pub use chrome::{BlockChromeSnapshot, BlockPrefixSnapshot};
 pub use drag::{
     BlockDropTarget, DragPoint, GUTTER_DRAG_THRESHOLD_PX, GutterBlockDragState,
     gutter_drag_exceeded_threshold,

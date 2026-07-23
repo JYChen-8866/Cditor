@@ -1,10 +1,10 @@
 use crate::app::CditorV2View;
-use crate::block::chrome::{
-    BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX,
-    BLOCK_SHELL_OUTER_PADDING_X_PX, BLOCK_SHELL_OUTER_PADDING_Y_PX, BlockChromeStyle,
-};
 #[cfg(test)]
-use crate::block::chrome::{BLOCK_GUTTER_WIDTH_PX, BLOCK_INDENT_STEP_PX, BLOCK_PREFIX_WIDTH_PX};
+use crate::block::chrome::BlockHorizontalGeometry;
+use crate::block::chrome::{
+    BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_SHELL_BORDER_WIDTH_PX, BLOCK_SHELL_OUTER_PADDING_Y_PX,
+    BlockChromeStyle,
+};
 use crate::input::SingleLineTextInputElement;
 use crate::menu_metrics::{MenuViewportBounds, SECONDARY_MENU_WIDTH_PX, secondary_menu_geometry};
 use crate::theme::GuiTheme;
@@ -56,16 +56,9 @@ pub(crate) fn table_content_editor_origin(
     theme: GuiTheme,
 ) -> TableToolbarEditorOrigin {
     let chrome = BlockChromeStyle::from_snapshot(block, theme);
+    let horizontal = chrome.horizontal_geometry();
     TableToolbarEditorOrigin {
-        x_px: BLOCK_SHELL_OUTER_PADDING_X_PX
-            + BLOCK_SHELL_BORDER_WIDTH_PX
-            + chrome.indent_px
-            + chrome.gutter_width_px
-            + BLOCK_ROW_GAP_PX
-            + chrome.marker_lane_width_px
-            + BLOCK_CONTENT_BORDER_WIDTH_PX
-            + chrome.content_padding_left_px
-            + chrome.content_prefix_width_px,
+        x_px: horizontal.text_left_px,
         y_px: block_top_px
             + BLOCK_SHELL_BORDER_WIDTH_PX
             + BLOCK_SHELL_OUTER_PADDING_Y_PX
@@ -555,13 +548,7 @@ mod tests {
     }
 
     fn depth_two_table_editor_x_px() -> f32 {
-        BLOCK_SHELL_OUTER_PADDING_X_PX
-            + BLOCK_SHELL_BORDER_WIDTH_PX
-            + 2.0 * BLOCK_INDENT_STEP_PX
-            + BLOCK_GUTTER_WIDTH_PX
-            + BLOCK_ROW_GAP_PX
-            + BLOCK_PREFIX_WIDTH_PX
-            + BLOCK_CONTENT_BORDER_WIDTH_PX
+        BlockHorizontalGeometry::for_depth(2).text_left_px
     }
 
     #[test]

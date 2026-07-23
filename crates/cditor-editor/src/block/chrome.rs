@@ -15,12 +15,71 @@ pub const BLOCK_ROW_GAP_PX: f32 = 8.0;
 pub const BLOCK_SHELL_BORDER_WIDTH_PX: f32 = 1.0;
 pub const BLOCK_CONTENT_BORDER_WIDTH_PX: f32 = 1.0;
 
+/// Horizontal anchors shared by rendering, hit-testing, overlays, and toolbars.
+/// Every value is relative to the outer edge of the block shell border.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BlockHorizontalGeometry {
+    pub indent_px: f32,
+    pub gutter_left_px: f32,
+    pub marker_lane_left_px: f32,
+    pub content_surface_left_px: f32,
+    pub content_prefix_left_px: f32,
+    pub text_left_px: f32,
+    pub content_right_inset_px: f32,
+}
+
+impl BlockHorizontalGeometry {
+    pub const fn for_indent(indent_px: f32) -> Self {
+        let gutter_left_px =
+            BLOCK_SHELL_BORDER_WIDTH_PX + BLOCK_SHELL_OUTER_PADDING_X_PX + indent_px;
+        let marker_lane_left_px = gutter_left_px + BLOCK_GUTTER_WIDTH_PX + BLOCK_ROW_GAP_PX;
+        let content_surface_left_px = marker_lane_left_px + BLOCK_PREFIX_WIDTH_PX;
+        Self {
+            indent_px,
+            gutter_left_px,
+            marker_lane_left_px,
+            content_surface_left_px,
+            content_prefix_left_px: content_surface_left_px + BLOCK_CONTENT_BORDER_WIDTH_PX,
+            text_left_px: content_surface_left_px + BLOCK_CONTENT_BORDER_WIDTH_PX,
+            content_right_inset_px: BLOCK_SHELL_BORDER_WIDTH_PX
+                + BLOCK_SHELL_OUTER_PADDING_X_PX
+                + BLOCK_CONTENT_BORDER_WIDTH_PX,
+        }
+    }
+
+    pub const fn for_depth(depth: usize) -> Self {
+        Self::for_indent(depth as f32 * BLOCK_INDENT_STEP_PX)
+    }
+
+    pub fn from_style(style: &BlockChromeStyle) -> Self {
+        let gutter_left_px =
+            BLOCK_SHELL_BORDER_WIDTH_PX + BLOCK_SHELL_OUTER_PADDING_X_PX + style.indent_px;
+        let marker_lane_left_px = gutter_left_px + style.gutter_width_px + BLOCK_ROW_GAP_PX;
+        let content_surface_left_px = marker_lane_left_px + style.marker_lane_width_px;
+        let content_prefix_left_px = content_surface_left_px
+            + style.content_border_left_px()
+            + style.content_padding_left_px;
+        Self {
+            indent_px: style.indent_px,
+            gutter_left_px,
+            marker_lane_left_px,
+            content_surface_left_px,
+            content_prefix_left_px,
+            text_left_px: content_prefix_left_px + style.content_prefix_width_px,
+            content_right_inset_px: BLOCK_SHELL_BORDER_WIDTH_PX
+                + BLOCK_SHELL_OUTER_PADDING_X_PX
+                + style.content_border_right_px()
+                + style.content_padding_right_px,
+        }
+    }
+}
+
 pub const fn block_content_left_px(indent_px: f32) -> f32 {
-    BLOCK_SHELL_OUTER_PADDING_X_PX + indent_px + BLOCK_GUTTER_WIDTH_PX + BLOCK_ROW_GAP_PX
+    BlockHorizontalGeometry::for_indent(indent_px).marker_lane_left_px
 }
 
 pub const fn block_gutter_left_px(indent_px: f32) -> f32 {
-    BLOCK_SHELL_BORDER_WIDTH_PX + BLOCK_SHELL_OUTER_PADDING_X_PX + indent_px
+    BlockHorizontalGeometry::for_indent(indent_px).gutter_left_px
 }
 
 pub const fn block_gutter_top_px() -> f32 {
@@ -83,6 +142,26 @@ impl BlockChromeStyle {
             quote_bar: kind_style.quote_bar,
         }
     }
+
+    pub fn horizontal_geometry(&self) -> BlockHorizontalGeometry {
+        BlockHorizontalGeometry::from_style(self)
+    }
+
+    pub const fn content_border_left_px(&self) -> f32 {
+        if self.quote_bar.is_some() {
+            4.0
+        } else {
+            BLOCK_CONTENT_BORDER_WIDTH_PX
+        }
+    }
+
+    pub const fn content_border_right_px(&self) -> f32 {
+        if self.quote_bar.is_some() {
+            0.0
+        } else {
+            BLOCK_CONTENT_BORDER_WIDTH_PX
+        }
+    }
 }
 
 fn parse_hex_color(value: &str) -> Option<u32> {
@@ -93,14 +172,16 @@ fn parse_hex_color(value: &str) -> Option<u32> {
 }
 
 /// Prefixes rendered inside the block surface rather than in the marker lane.
-/// Callout icons belong to the callout card. A todo checkbox starts exactly at
-/// the shared block surface origin and reserves one marker-width before text.
+/// List markers and callout icons begin at the same shared surface origin as
+/// plain body text, then reserve their own width before the block's text.
 pub fn block_content_prefix_width_px(block: &ViewBlockSnapshot) -> f32 {
     use cditor_core::block::BlockPrefixSnapshot;
 
     match block.chrome.prefix {
         BlockPrefixSnapshot::Callout { .. } => CALLOUT_PREFIX_WIDTH_PX,
-        BlockPrefixSnapshot::Todo { .. } => BLOCK_PREFIX_WIDTH_PX,
+        BlockPrefixSnapshot::Bullet { .. }
+        | BlockPrefixSnapshot::Number { .. }
+        | BlockPrefixSnapshot::Todo { .. } => BLOCK_PREFIX_WIDTH_PX,
         _ => 0.0,
     }
 }
@@ -268,7 +349,7 @@ mod tests {
         assert_eq!(style.indent_px, 48.0);
         assert_eq!(style.gutter_width_px, 48.0);
         assert_eq!(style.marker_lane_width_px, 24.0);
-        assert_eq!(style.content_prefix_width_px, 0.0);
+        assert_eq!(style.content_prefix_width_px, BLOCK_PREFIX_WIDTH_PX);
     }
 
     #[test]
@@ -323,6 +404,59 @@ mod tests {
     }
 
     #[test]
+    fn every_nested_block_kind_uses_the_same_depth_geometry() {
+        for kind in [
+            RichBlockKind::Paragraph,
+            RichBlockKind::BulletedList,
+            RichBlockKind::NumberedList,
+            RichBlockKind::Todo { checked: false },
+            RichBlockKind::Toggle,
+            RichBlockKind::Quote,
+            RichBlockKind::Code { language: None },
+            RichBlockKind::Table,
+        ] {
+            let mut text_left_by_depth = Vec::new();
+            let mut marker_left_by_depth = Vec::new();
+            for depth in 0..=2 {
+                let chrome = BlockChromeSnapshot::from_kind(
+                    &kind,
+                    BlockListInfo::with_depth(depth),
+                    false,
+                    false,
+                );
+                let style = BlockChromeStyle::from_snapshot(
+                    &block(kind.clone(), chrome),
+                    GuiTheme::light(),
+                );
+                let geometry = style.horizontal_geometry();
+                text_left_by_depth.push(geometry.text_left_px);
+                marker_left_by_depth.push(geometry.marker_lane_left_px);
+            }
+
+            assert_eq!(marker_left_by_depth[1] - marker_left_by_depth[0], 24.0);
+            assert_eq!(marker_left_by_depth[2] - marker_left_by_depth[1], 24.0);
+            assert_eq!(text_left_by_depth[1] - text_left_by_depth[0], 24.0);
+            assert_eq!(text_left_by_depth[2] - text_left_by_depth[1], 24.0);
+        }
+    }
+
+    #[test]
+    fn horizontal_geometry_anchors_include_shell_and_content_borders_once() {
+        let style = BlockChromeStyle::from_snapshot(
+            &block(RichBlockKind::Paragraph, BlockChromeSnapshot::plain()),
+            GuiTheme::light(),
+        );
+        let geometry = style.horizontal_geometry();
+
+        assert_eq!(geometry.gutter_left_px, 9.0);
+        assert_eq!(geometry.marker_lane_left_px, 65.0);
+        assert_eq!(geometry.content_surface_left_px, 89.0);
+        assert_eq!(geometry.content_prefix_left_px, 90.0);
+        assert_eq!(geometry.text_left_px, 90.0);
+        assert_eq!(geometry.content_right_inset_px, 10.0);
+    }
+
+    #[test]
     fn callout_icon_is_an_internal_surface_prefix() {
         let kind = RichBlockKind::Callout {
             variant: cditor_core::rich_text::CalloutVariant::Note,
@@ -352,6 +486,49 @@ mod tests {
 
         assert_eq!(style.marker_lane_width_px, BLOCK_PREFIX_WIDTH_PX);
         assert_eq!(style.content_prefix_width_px, BLOCK_PREFIX_WIDTH_PX);
+    }
+
+    #[test]
+    fn every_list_marker_starts_at_the_plain_text_surface_origin() {
+        let paragraph = block(RichBlockKind::Paragraph, BlockChromeSnapshot::plain());
+        let paragraph_geometry =
+            BlockChromeStyle::from_snapshot(&paragraph, GuiTheme::light()).horizontal_geometry();
+
+        for (kind, prefix) in [
+            (
+                RichBlockKind::BulletedList,
+                BlockPrefixSnapshot::Bullet { depth: 0 },
+            ),
+            (
+                RichBlockKind::NumberedList,
+                BlockPrefixSnapshot::Number { ordinal: 1 },
+            ),
+            (
+                RichBlockKind::Todo { checked: false },
+                BlockPrefixSnapshot::Todo { checked: false },
+            ),
+        ] {
+            let list = block(
+                kind,
+                BlockChromeSnapshot {
+                    list_info: BlockListInfo::root(),
+                    prefix,
+                    has_children: false,
+                    collapsed: false,
+                },
+            );
+            let list_geometry =
+                BlockChromeStyle::from_snapshot(&list, GuiTheme::light()).horizontal_geometry();
+
+            assert_eq!(
+                list_geometry.content_prefix_left_px,
+                paragraph_geometry.text_left_px
+            );
+            assert_eq!(
+                list_geometry.text_left_px,
+                paragraph_geometry.text_left_px + BLOCK_PREFIX_WIDTH_PX
+            );
+        }
     }
 
     #[test]

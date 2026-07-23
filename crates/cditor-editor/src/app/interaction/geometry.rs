@@ -1,4 +1,4 @@
-use crate::block::chrome::{BLOCK_GUTTER_WIDTH_PX, BlockChromeStyle};
+use crate::block::chrome::BlockChromeStyle;
 use crate::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
 use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::theme::GuiTheme;
@@ -142,14 +142,15 @@ pub(in crate::app) fn projected_block_rects_from_projection(
         .map(|block| {
             let height = block.layout.effective_height();
             let text_metrics = fallback_text_metrics_for_block(block, GuiTheme::light());
+            let horizontal =
+                BlockChromeStyle::from_snapshot(block, GuiTheme::light()).horizontal_geometry();
             let rect = ProjectedBlockRect {
                 block_id: block.block_id,
                 visible_index: block.visible_index,
                 depth: block.chrome.list_info.depth,
                 document_top: top,
                 document_bottom: top + height,
-                indent_px: block.chrome.list_info.depth as f32
-                    * crate::block::chrome::BLOCK_INDENT_STEP_PX,
+                indent_px: horizontal.indent_px,
                 text_origin_x_in_block_px: text_metrics.origin_x_in_block_px,
                 text_origin_y_in_block_px: text_metrics.origin_y_in_block_px,
                 text_width_px: text_metrics.width_px,
@@ -173,7 +174,7 @@ pub(in crate::app) fn fallback_text_metrics_for_block(
     theme: GuiTheme,
 ) -> FallbackTextMetrics {
     let chrome = BlockChromeStyle::from_snapshot(block, theme);
-    let border_left = if chrome.quote_bar.is_some() { 4.0 } else { 1.0 };
+    let horizontal = chrome.horizontal_geometry();
     let code_x = if matches!(
         block.kind,
         cditor_core::rich_text::RichBlockKind::Code { .. }
@@ -190,21 +191,11 @@ pub(in crate::app) fn fallback_text_metrics_for_block(
     } else {
         0.0
     };
-    let origin_x = 8.0
-        + f64::from(chrome.indent_px)
-        + f64::from(BLOCK_GUTTER_WIDTH_PX)
-        + 8.0
-        + border_left
-        + f64::from(chrome.content_padding_left_px)
-        + f64::from(chrome.marker_lane_width_px)
-        + f64::from(chrome.content_prefix_width_px)
-        + code_x;
+    let origin_x = f64::from(horizontal.text_left_px) + code_x;
     let origin_y = 4.0 + 1.0 + f64::from(chrome.content_padding_y_px) + code_y;
     let width = (f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX)
         - origin_x
-        - 8.0
-        - 1.0
-        - f64::from(chrome.content_padding_right_px)
+        - f64::from(horizontal.content_right_inset_px)
         - code_x)
         .max(1.0);
     FallbackTextMetrics {

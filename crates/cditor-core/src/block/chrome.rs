@@ -68,14 +68,6 @@ impl BlockPrefixSnapshot {
     }
 }
 
-pub fn bullet_marker_for_depth(depth: usize) -> &'static str {
-    match depth % 3 {
-        0 => "•",
-        1 => "◦",
-        _ => "▪",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,13 +120,5 @@ mod tests {
             ),
             BlockPrefixSnapshot::Heading { collapsed: false }
         );
-    }
-
-    #[test]
-    fn bullet_marker_cycles_by_depth() {
-        assert_eq!(bullet_marker_for_depth(0), "•");
-        assert_eq!(bullet_marker_for_depth(1), "◦");
-        assert_eq!(bullet_marker_for_depth(2), "▪");
-        assert_eq!(bullet_marker_for_depth(3), "•");
     }
 }
