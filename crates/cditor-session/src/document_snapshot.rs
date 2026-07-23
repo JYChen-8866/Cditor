@@ -1,4 +1,8 @@
-use cditor_core::{edit::DocumentSelection, ids::BlockId, rich_text::RichBlockKind};
+use cditor_core::{
+    edit::DocumentSelection,
+    ids::BlockId,
+    rich_text::{BlockAttrs, RichBlockKind},
+};
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
 use cditor_runtime::DocumentRuntime;
 
@@ -14,6 +18,7 @@ pub struct SessionDocumentSnapshot {
     pub can_undo: bool,
     pub can_redo: bool,
     pub focused_block_id: Option<BlockId>,
+    pub has_document_text_selection: bool,
     pub selection: Option<DocumentSelection>,
 }
 
@@ -39,12 +44,19 @@ pub fn project_document_snapshot(
         can_undo: !readonly && runtime.can_undo(),
         can_redo: !readonly && runtime.can_redo(),
         focused_block_id: runtime.focused_block_id(),
+        has_document_text_selection: runtime.has_document_text_selection(),
         selection: runtime.document_selection_snapshot(),
     }
 }
 
 pub fn project_selected_text(runtime: &DocumentRuntime) -> Option<String> {
     runtime.selected_focused_text()
+}
+
+pub fn project_block_attrs(runtime: &DocumentRuntime, block_id: BlockId) -> Option<BlockAttrs> {
+    runtime
+        .block_payload_record(block_id)
+        .map(|_| runtime.block_attrs(block_id))
 }
 
 pub fn project_text_block_context(
@@ -108,6 +120,17 @@ impl EditorSessionHandle {
         Ok(project_text_block_context(&session.runtime, block_id))
     }
 
+    pub fn block_attrs(&self, block_id: BlockId) -> Result<Option<BlockAttrs>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_block_attrs(&session.runtime, block_id))
+    }
+
     pub fn focused_text_block_context(
         &self,
     ) -> Result<Option<TextBlockContextSnapshot>, ProtocolError> {
@@ -147,6 +170,7 @@ mod tests {
         assert!(!snapshot.can_undo);
         assert!(!snapshot.can_redo);
         assert_eq!(snapshot.focused_block_id, Some(block_id));
+        assert!(!snapshot.has_document_text_selection);
         assert!(snapshot.selection.is_some());
     }
 
@@ -169,5 +193,7 @@ mod tests {
         assert_eq!(context.text, expected.plain_text());
         assert_eq!(context.content_version, expected.content_version);
         assert!(context.caret.is_some());
+        assert!(handle.block_attrs(block_id).unwrap().is_some());
+        assert!(handle.block_attrs(u64::MAX).unwrap().is_none());
     }
 }
