@@ -5,7 +5,7 @@ use cditor_runtime::DocumentRuntime;
 
 use crate::EditorSessionHandle;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionDiagnosticsSnapshot {
     pub revision: u64,
     pub editing_active: bool,
@@ -15,6 +15,8 @@ pub struct SessionDiagnosticsSnapshot {
     pub payload_window: Range<usize>,
     pub page_window: Range<usize>,
     pub loaded_payloads: usize,
+    pub dirty_payloads: usize,
+    pub estimated_document_height: f64,
     pub payload_and_undo_bytes: usize,
     pub payload_cache_over_budget: bool,
 }
@@ -44,6 +46,8 @@ pub fn project_diagnostics_snapshot(runtime: &DocumentRuntime) -> SessionDiagnos
         payload_window: runtime.payload_window_range(),
         page_window: runtime.current_page_window(),
         loaded_payloads,
+        dirty_payloads: runtime.dirty_payload_count(),
+        estimated_document_height: runtime.estimated_document_height(),
         payload_and_undo_bytes: estimated_payload_bytes
             .saturating_add(runtime.estimated_text_undo_memory_bytes()),
         payload_cache_over_budget: loaded_payloads

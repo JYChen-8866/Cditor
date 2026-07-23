@@ -187,17 +187,15 @@ impl CditorV2View {
     }
 
     pub fn sdk_can_undo(&self) -> bool {
-        !self.readonly
-            && self
-                .ready_runtime_ref()
-                .is_some_and(|runtime| runtime.can_undo())
+        self.ready_runtime_ref().is_some_and(|runtime| {
+            cditor_session::project_document_snapshot(runtime, self.readonly).can_undo
+        })
     }
 
     pub fn sdk_can_redo(&self) -> bool {
-        !self.readonly
-            && self
-                .ready_runtime_ref()
-                .is_some_and(|runtime| runtime.can_redo())
+        self.ready_runtime_ref().is_some_and(|runtime| {
+            cditor_session::project_document_snapshot(runtime, self.readonly).can_redo
+        })
     }
 
     pub fn sdk_undo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
@@ -211,13 +209,14 @@ impl CditorV2View {
     }
 
     pub fn sdk_document_info(&self) -> Option<DocumentInfo> {
-        let runtime = self.ready_runtime_ref()?;
+        let snapshot =
+            cditor_session::project_document_snapshot(self.ready_runtime_ref()?, self.readonly);
         Some(DocumentInfo {
-            document_id: runtime.document_id(),
-            title: runtime.document_title().map(ToOwned::to_owned),
-            revision: runtime.revision(),
-            block_count: runtime.document_block_count(),
-            readonly: self.readonly,
+            document_id: snapshot.document_id,
+            title: snapshot.title,
+            revision: snapshot.revision,
+            block_count: snapshot.block_count,
+            readonly: snapshot.readonly,
         })
     }
 
@@ -263,7 +262,9 @@ impl CditorV2View {
         if self.readonly {
             return Task::ready(Err(CditorError::Readonly));
         }
-        let Some(revision) = self.ready_runtime_ref().map(|runtime| runtime.revision()) else {
+        let Some(revision) = self.ready_runtime_ref().map(|runtime| {
+            cditor_session::project_document_snapshot(runtime, self.readonly).revision
+        }) else {
             return Task::ready(Err(CditorError::NotReady));
         };
         if !self.storage_persistence.is_enabled() {
@@ -280,23 +281,25 @@ impl CditorV2View {
     }
 
     pub fn sdk_diagnostics(&self) -> Result<CditorDiagnostics, CditorError> {
-        let runtime = self.ready_runtime_ref().ok_or(CditorError::NotReady)?;
+        let diagnostics = self
+            .ready_runtime_ref()
+            .map(cditor_session::project_diagnostics_snapshot)
+            .ok_or(CditorError::NotReady)?;
         Ok(CditorDiagnostics {
             storage_backend: self
                 .storage_persistence
                 .session()
                 .map(|session| session.backend_kind()),
-            document_blocks: runtime.document_block_count(),
-            loaded_payloads: runtime.loaded_payload_count(),
+            document_blocks: diagnostics.document_blocks,
+            loaded_payloads: diagnostics.loaded_payloads,
             rendered_blocks: self.projected_block_rects.len(),
-            pending_layout_tasks: runtime.pending_layout_task_count(),
+            pending_layout_tasks: diagnostics.pending_layout_tasks,
             pending_saves: self.storage_persistence.pending_operation_count(),
-            dirty_blocks: runtime.dirty_payload_count(),
-            estimated_document_height: runtime.estimated_document_height(),
+            dirty_blocks: diagnostics.dirty_payloads,
+            estimated_document_height: diagnostics.estimated_document_height,
             memory_estimate_bytes: u64::try_from(
-                runtime
-                    .estimated_payload_memory_bytes()
-                    .saturating_add(runtime.estimated_text_undo_memory_bytes())
+                diagnostics
+                    .payload_and_undo_bytes
                     .saturating_add(self.text_layouts.estimated_bytes())
                     .saturating_add(self.table_cell_layouts.estimated_bytes())
                     .saturating_add(self.text_surface_layouts.estimated_bytes()),
@@ -306,7 +309,9 @@ impl CditorV2View {
     }
 
     pub fn sdk_selection(&self) -> Option<DocumentSelection> {
-        let selection = self.ready_runtime_ref()?.document_selection_snapshot()?;
+        let selection =
+            cditor_session::project_document_snapshot(self.ready_runtime_ref()?, self.readonly)
+                .selection?;
         Some(DocumentSelection {
             anchor: sdk_position(selection.anchor),
             head: sdk_position(selection.focus),
@@ -337,7 +342,7 @@ impl CditorV2View {
     }
 
     pub fn sdk_selected_text(&self) -> Option<String> {
-        self.ready_runtime_ref()?.selected_focused_text()
+        cditor_session::project_selected_text(self.ready_runtime_ref()?)
     }
 
     pub fn sdk_scroll_to_block(

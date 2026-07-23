@@ -6,6 +6,7 @@
 
 mod ai_port;
 mod diagnostics_snapshot;
+mod document_snapshot;
 mod history_port;
 mod layout_port;
 mod render_port;
@@ -15,6 +16,9 @@ mod ui_snapshot;
 
 pub use ai_port::{AiContextSnapshot, project_ai_context, project_ai_session_request};
 pub use diagnostics_snapshot::{SessionDiagnosticsSnapshot, project_diagnostics_snapshot};
+pub use document_snapshot::{
+    SessionDocumentSnapshot, project_document_snapshot, project_selected_text,
+};
 pub use history_port::{
     HistoryActionSnapshot, HistoryDirection, project_history_action,
     project_hydrated_history_action,
