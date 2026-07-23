@@ -17,43 +17,46 @@ impl CditorV2View {
             return false;
         }
         window.focus(&self.focus, cx);
-        let command = self.ready_runtime_ref().and_then(|runtime| {
-            matches!(
-                runtime.block_kind(block_id),
-                Some(cditor_core::rich_text::RichBlockKind::Heading { .. })
-            )
-            .then(|| {
-                if runtime.is_block_folded(block_id) {
-                    CditorCommand::UnfoldHeading
-                } else {
-                    CditorCommand::FoldHeading
-                }
-            })
-        });
+        let command = self
+            .ready_runtime_ref()
+            .and_then(|runtime| cditor_session::project_text_block_context(runtime, block_id))
+            .and_then(|context| {
+                matches!(
+                    context.kind,
+                    cditor_core::rich_text::RichBlockKind::Heading { .. }
+                )
+                .then(|| {
+                    if context.folded {
+                        CditorCommand::UnfoldHeading
+                    } else {
+                        CditorCommand::FoldHeading
+                    }
+                })
+            });
         let Some(command) = command else {
             return false;
         };
         if let Some(runtime) = self.ready_runtime() {
-            let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
-                cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
-                    selection: cditor_core::edit::DocumentSelection::caret(
-                        cditor_core::edit::TextPosition::downstream(block_id, 0),
-                    ),
-                },
-                cditor_editor_protocol::command::CommandSource::Toolbar,
-            ));
+            let _ = cditor_session::project_command_dispatch(
+                runtime,
+                cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
+                        selection: cditor_core::edit::DocumentSelection::caret(
+                            cditor_core::edit::TextPosition::downstream(block_id, 0),
+                        ),
+                    },
+                    cditor_editor_protocol::command::CommandSource::Toolbar,
+                ),
+            );
         }
         let result = self.dispatch_command(command, CommandSource::Toolbar, cx);
         match result {
             Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied => {
+                let cached_block_ids = self.text_layouts.keys().copied().collect::<Vec<_>>();
                 let visible_blocks = self
                     .ready_runtime_ref()
                     .map(|runtime| {
-                        runtime
-                            .visible_block_ids()
-                            .iter()
-                            .copied()
-                            .collect::<std::collections::HashSet<_>>()
+                        cditor_session::project_visible_block_subset(runtime, &cached_block_ids)
                     })
                     .unwrap_or_default();
                 self.text_layouts

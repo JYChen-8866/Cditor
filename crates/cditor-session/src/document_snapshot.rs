@@ -5,6 +5,7 @@ use cditor_core::{
 };
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
 use cditor_runtime::DocumentRuntime;
+use std::collections::HashSet;
 
 use crate::EditorSessionHandle;
 
@@ -27,6 +28,7 @@ pub struct SessionDocumentSnapshot {
 pub struct TextBlockContextSnapshot {
     pub block_id: BlockId,
     pub kind: RichBlockKind,
+    pub folded: bool,
     pub text: String,
     pub caret: Option<usize>,
     pub content_version: u64,
@@ -70,10 +72,23 @@ pub fn project_text_block_context(
     Some(TextBlockContextSnapshot {
         block_id,
         kind: payload.kind,
+        folded: runtime.is_block_folded(block_id),
         text,
         caret: runtime.caret_offset_for_block(block_id),
         content_version: payload.content_version,
     })
+}
+
+pub fn project_visible_block_subset(
+    runtime: &DocumentRuntime,
+    candidate_block_ids: &[BlockId],
+) -> HashSet<BlockId> {
+    let visible_block_ids = runtime.visible_block_ids();
+    candidate_block_ids
+        .iter()
+        .copied()
+        .filter(|block_id| visible_block_ids.contains(block_id))
+        .collect()
 }
 
 pub fn project_focused_text_block_context(
@@ -145,6 +160,23 @@ impl EditorSessionHandle {
         })?;
         Ok(project_focused_text_block_context(&session.runtime))
     }
+
+    pub fn visible_block_subset(
+        &self,
+        candidate_block_ids: &[BlockId],
+    ) -> Result<HashSet<BlockId>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_visible_block_subset(
+            &session.runtime,
+            candidate_block_ids,
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -193,10 +225,23 @@ mod tests {
         let context = handle.focused_text_block_context().unwrap().unwrap();
         assert_eq!(context.block_id, block_id);
         assert_eq!(context.kind, expected.kind);
+        assert!(!context.folded);
         assert_eq!(context.text, expected.plain_text());
         assert_eq!(context.content_version, expected.content_version);
         assert!(context.caret.is_some());
         assert!(handle.block_attrs(block_id).unwrap().is_some());
         assert!(handle.block_attrs(u64::MAX).unwrap().is_none());
+    }
+
+    #[test]
+    fn visible_subset_is_bounded_by_the_requested_cache_keys() {
+        let runtime = DocumentRuntime::demo();
+        let visible = runtime.visible_block_ids().to_vec();
+        let handle = EditorSession::new(runtime, false).into_handle();
+
+        let subset = handle
+            .visible_block_subset(&[visible[0], u64::MAX])
+            .unwrap();
+        assert_eq!(subset, HashSet::from([visible[0]]));
     }
 }
