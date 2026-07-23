@@ -4,6 +4,7 @@ use cditor_core::edit::DocumentSelection;
 use gpui::Context;
 
 use crate::app::cditor_v2_view::CditorV2View;
+use cditor_session::project_document_snapshot;
 
 pub(in crate::app) const SELECTION_TOOLBAR_DELAY: Duration = Duration::from_millis(500);
 
@@ -50,10 +51,11 @@ impl CditorV2View {
         let target = (self.gutter_toolbar_block_id.is_none())
             .then(|| {
                 self.ready_runtime_ref().and_then(|runtime| {
-                    (runtime.has_document_text_selection()
-                        && !runtime.has_entire_document_text_selection())
-                    .then(|| runtime.document_selection_snapshot())
-                    .flatten()
+                    let snapshot = project_document_snapshot(runtime, self.readonly);
+                    (snapshot.has_document_text_selection
+                        && !snapshot.has_entire_document_text_selection)
+                        .then_some(snapshot.selection)
+                        .flatten()
                 })
             })
             .flatten();

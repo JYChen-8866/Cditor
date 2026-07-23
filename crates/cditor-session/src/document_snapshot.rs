@@ -19,6 +19,7 @@ pub struct SessionDocumentSnapshot {
     pub can_redo: bool,
     pub focused_block_id: Option<BlockId>,
     pub has_document_text_selection: bool,
+    pub has_entire_document_text_selection: bool,
     pub selection: Option<DocumentSelection>,
 }
 
@@ -45,6 +46,7 @@ pub fn project_document_snapshot(
         can_redo: !readonly && runtime.can_redo(),
         focused_block_id: runtime.focused_block_id(),
         has_document_text_selection: runtime.has_document_text_selection(),
+        has_entire_document_text_selection: runtime.has_entire_document_text_selection(),
         selection: runtime.document_selection_snapshot(),
     }
 }
@@ -171,6 +173,7 @@ mod tests {
         assert!(!snapshot.can_redo);
         assert_eq!(snapshot.focused_block_id, Some(block_id));
         assert!(!snapshot.has_document_text_selection);
+        assert!(!snapshot.has_entire_document_text_selection);
         assert!(snapshot.selection.is_some());
     }
 
