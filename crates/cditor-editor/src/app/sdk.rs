@@ -213,7 +213,7 @@ impl CditorV2View {
     pub fn sdk_document_info(&self) -> Option<DocumentInfo> {
         let runtime = self.ready_runtime_ref()?;
         Some(DocumentInfo {
-            document_id: runtime.document_id,
+            document_id: runtime.document_id(),
             title: runtime.document_title().map(ToOwned::to_owned),
             revision: runtime.revision(),
             block_count: runtime.document_block_count(),

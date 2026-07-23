@@ -1,6 +1,10 @@
 use super::*;
 
 impl DocumentRuntime {
+    pub fn document_id(&self) -> DocumentId {
+        self.document_id
+    }
+
     pub fn document_title(&self) -> Option<&str> {
         self.document.document_title.as_deref()
     }

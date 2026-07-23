@@ -12,6 +12,13 @@ pub(super) struct EditingState {
     pub(super) typing_mark_override: Option<TypingMarkOverride>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct TypingMarkOverride {
+    pub(super) surface_id: SurfaceId,
+    pub(super) offset: usize,
+    pub(super) marks: Vec<InlineMark>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

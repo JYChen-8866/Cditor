@@ -98,7 +98,7 @@ impl CditorV2View {
                     {
                         let (system_text, envelope) =
                             crate::input::clipboard::envelope_for_selection(
-                                Some(runtime.document_id),
+                                Some(runtime.document_id()),
                                 ClipboardSelection::Table { table: table.table },
                             );
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
@@ -108,7 +108,7 @@ impl CditorV2View {
                     } else if let Some(selection) = runtime.clipboard_selection_snapshot() {
                         let (system_text, envelope) =
                             crate::input::clipboard::envelope_for_selection(
-                                Some(runtime.document_id),
+                                Some(runtime.document_id()),
                                 selection,
                             );
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
@@ -126,7 +126,7 @@ impl CditorV2View {
                     {
                         let (system_text, envelope) =
                             crate::input::clipboard::envelope_for_selection(
-                                Some(runtime.document_id),
+                                Some(runtime.document_id()),
                                 ClipboardSelection::Table { table: table.table },
                             );
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
@@ -142,7 +142,7 @@ impl CditorV2View {
                     } else if let Some(selection) = runtime.clipboard_selection_snapshot() {
                         let (system_text, envelope) =
                             crate::input::clipboard::envelope_for_selection(
-                                Some(runtime.document_id),
+                                Some(runtime.document_id()),
                                 selection,
                             );
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(

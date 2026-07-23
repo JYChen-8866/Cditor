@@ -4,7 +4,7 @@ use cditor_core::ids::BlockId;
 
 use super::DocumentRuntime;
 #[cfg(test)]
-use super::state::FocusedInnerSelection;
+use super::selection_state::FocusedInnerSelection;
 
 impl DocumentRuntime {
     #[cfg(test)]

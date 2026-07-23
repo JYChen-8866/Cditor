@@ -5,6 +5,13 @@
 
 use super::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum EnterSplitMode {
+    InheritV1Kind,
+    #[cfg_attr(not(test), allow(dead_code))]
+    ForceParagraph,
+}
+
 impl DocumentRuntime {
     pub(crate) fn insert_paragraph_after_focused(&mut self) -> Result<BlockId, String> {
         let block_id = self

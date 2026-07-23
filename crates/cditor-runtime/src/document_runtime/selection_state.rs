@@ -14,6 +14,86 @@ pub(super) struct SelectionState {
     pub(super) focused_inner_selection: Option<FocusedInnerSelection>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct VisualCaretPosition {
+    pub(super) position: TextPosition,
+    pub(super) content_version: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct FocusedTableCell {
+    pub(super) block_id: BlockId,
+    pub(super) row: usize,
+    pub(super) col: usize,
+    pub(super) offset: usize,
+    pub(super) affinity: TextAffinity,
+    pub(super) selected_range_start: usize,
+    pub(super) selected_range_end: usize,
+    pub(super) selection_reversed: bool,
+    pub(super) marked_range_start: Option<usize>,
+    pub(super) marked_range_end: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct FocusedInnerSelection {
+    pub(super) block_id: BlockId,
+    pub(super) anchor: InnerSelectionAnchor,
+    pub(super) focus: InnerSelectionAnchor,
+}
+
+impl FocusedTableCell {
+    pub(super) fn collapsed(block_id: BlockId, row: usize, col: usize, offset: usize) -> Self {
+        Self {
+            block_id,
+            row,
+            col,
+            offset,
+            affinity: TextAffinity::Downstream,
+            selected_range_start: offset,
+            selected_range_end: offset,
+            selection_reversed: false,
+            marked_range_start: None,
+            marked_range_end: None,
+        }
+    }
+
+    pub(super) fn selected_range(self) -> Range<usize> {
+        self.selected_range_start..self.selected_range_end
+    }
+
+    pub(super) fn marked_range(self) -> Option<Range<usize>> {
+        Some(self.marked_range_start?..self.marked_range_end?)
+    }
+
+    pub(super) fn with_selected_range(
+        mut self,
+        selected_range: Range<usize>,
+        selection_reversed: bool,
+    ) -> Self {
+        self.offset = if selection_reversed {
+            selected_range.start
+        } else {
+            selected_range.end
+        };
+        self.selected_range_start = selected_range.start;
+        self.selected_range_end = selected_range.end;
+        self.selection_reversed = selection_reversed;
+        self.affinity = TextAffinity::Downstream;
+        self
+    }
+
+    pub(super) fn with_affinity(mut self, affinity: TextAffinity) -> Self {
+        self.affinity = affinity;
+        self
+    }
+
+    pub(super) fn with_marked_range(mut self, marked_range: Option<Range<usize>>) -> Self {
+        self.marked_range_start = marked_range.as_ref().map(|range| range.start);
+        self.marked_range_end = marked_range.as_ref().map(|range| range.end);
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

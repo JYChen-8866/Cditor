@@ -297,7 +297,7 @@ impl StoragePersistenceState {
         Some(StorageSaveRequest {
             session,
             batch: StorageSaveBatch {
-                document_id: runtime.document_id,
+                document_id: runtime.document_id(),
                 layout_key,
                 payloads,
                 index_records,

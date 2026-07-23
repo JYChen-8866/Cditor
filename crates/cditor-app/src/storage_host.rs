@@ -162,7 +162,7 @@ async fn load_runtime_from_storage(
     let viewport_height = options.viewport_height;
     let (runtime, report) = runtime_from_loaded(loaded, viewport_height, &options)?;
     Ok(CditorRuntimeLoadResult {
-        storage_session: StorageSession::new(storage, runtime.document_id)
+        storage_session: StorageSession::new(storage, runtime.document_id())
             .with_layout_key(options.layout_key),
         runtime,
         report,
@@ -332,7 +332,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(loaded.runtime.document_id, 42);
+        assert_eq!(loaded.runtime.document_id(), 42);
         assert_eq!(loaded.runtime.document_block_count(), 1);
         assert_eq!(
             loaded.schema_access,
@@ -493,7 +493,7 @@ mod tests {
             )
             .into_options();
         let loaded = load_runtime_from_options(&options).await.unwrap().unwrap();
-        assert_eq!(loaded.runtime.document_id, runtime_document_id);
+        assert_eq!(loaded.runtime.document_id(), runtime_document_id);
         assert_eq!(loaded.report.payloads_loaded, 1);
         assert_eq!(
             loaded.storage_session.backend_kind(),

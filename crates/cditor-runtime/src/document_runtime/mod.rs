@@ -91,12 +91,15 @@ pub use text_surface::{
 pub use transaction_apply::{AppliedTransaction, TransactionApplyError};
 
 use self::{
+    editing_state::TypingMarkOverride,
     history_state::{
         HistoryState, RuntimeUndoEvent, TextSnapshot, TypingUndoGroup, TypingUndoRequest,
         UndoScrollSnapshot,
     },
     layout_state::{LayoutState, PendingMeasuredHeight},
     selection::FocusedTextSelection,
+    selection_state::{FocusedTableCell, VisualCaretPosition},
+    structure_insert::EnterSplitMode,
     table::TableRuntime,
     transaction_state::TransactionState,
 };
@@ -206,10 +209,6 @@ fn trace_block_color(event: &str, details: impl std::fmt::Display) {
 
 pub use selection::RichTextSelectionSnapshot;
 pub use state::{DocumentRuntime, GlobalScrollTarget};
-use state::{
-    EnterSplitMode, FocusedInnerSelection, FocusedTableCell, TypingMarkOverride,
-    VisualCaretPosition,
-};
 pub use table::TableClipboardSnapshot;
 
 use inline_color::set_color_mark_for_range;

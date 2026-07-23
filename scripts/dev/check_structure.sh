@@ -253,6 +253,22 @@ if [ -n "$direct_ai_session_mutation_violations" ]; then
   exit 1
 fi
 
+if grep -Eq '^[[:space:]]+pub[[:space:]]+document_id:' crates/cditor-runtime/src/document_runtime/state.rs; then
+  echo 'error: DocumentRuntime identity must remain private and be read through document_id()' >&2
+  exit 1
+fi
+
+direct_runtime_state_violations=$(
+  grep -R -n -E \
+    'runtime\.(document|layout|editing|selection|history|transactions|ai_session|next_ai_request_id)(\.|[[:space:]]|,|;)|runtime\.document_id([[:space:]]*[,;.)]|$)' \
+    --include='*.rs' crates/cditor-editor/src crates/cditor-app/src || true
+)
+if [ -n "$direct_runtime_state_violations" ]; then
+  echo 'error: Editor/App must use Runtime queries, projections, commands, or narrow realtime ports instead of child state fields:' >&2
+  echo "$direct_runtime_state_violations" >&2
+  exit 1
+fi
+
 printable_keydown_violations=$(
   grep -R -n -E 'InsertChar|InsertSpaceOrMarkdownShortcut' --include='*.rs' crates/cditor-editor/src || true
 )
