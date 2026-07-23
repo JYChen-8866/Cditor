@@ -69,7 +69,7 @@ fn cross_block_focus_commits_composition_before_switching_target() {
         Some(InputTarget::BlockText { block_id: 2 })
     );
     assert_ne!(runtime.input_session_identity(), Some(previous_identity));
-    assert_eq!(runtime.undo_stacks.get(&1).map(Vec::len), Some(1));
+    assert_eq!(runtime.history.undo_stacks.get(&1).map(Vec::len), Some(1));
 }
 
 #[test]
@@ -113,7 +113,13 @@ fn failed_cross_surface_commit_preserves_original_focus_and_composition() {
         runtime.document.payload_window.get(1).unwrap().plain_text(),
         "ab"
     );
-    assert!(runtime.undo_stacks.get(&1).is_none_or(Vec::is_empty));
+    assert!(
+        runtime
+            .history
+            .undo_stacks
+            .get(&1)
+            .is_none_or(Vec::is_empty)
+    );
     assert!(runtime.commit_composition_before_external_focus().is_err());
     assert!(
         runtime
@@ -190,6 +196,6 @@ fn external_focus_commit_uses_the_same_preflight_and_single_undo_boundary() {
         "a中b"
     );
     assert!(runtime.active_composition().is_none());
-    assert_eq!(runtime.undo_stacks.get(&1).map(Vec::len), Some(1));
+    assert_eq!(runtime.history.undo_stacks.get(&1).map(Vec::len), Some(1));
     assert!(!runtime.commit_composition_before_external_focus().unwrap());
 }

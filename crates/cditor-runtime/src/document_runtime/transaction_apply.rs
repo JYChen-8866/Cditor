@@ -397,9 +397,13 @@ impl DocumentRuntime {
             let mut undoable = transaction.clone();
             undoable.preconditions.clear();
             self.clear_runtime_redo_history();
-            self.external_undo_stack.record_transaction(undoable);
-            self.external_undo_stack.truncate_undo_to(100);
-            self.undo_events.push(RuntimeUndoEvent::ExternalTransaction);
+            self.history
+                .external_undo_stack
+                .record_transaction(undoable);
+            self.history.external_undo_stack.truncate_undo_to(100);
+            self.history
+                .undo_events
+                .push(RuntimeUndoEvent::ExternalTransaction);
             self.trim_runtime_undo_history();
         }
         if !affected_blocks.is_empty() || structure_changed {

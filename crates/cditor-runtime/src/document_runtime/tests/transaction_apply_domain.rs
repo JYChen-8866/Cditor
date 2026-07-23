@@ -152,9 +152,15 @@ fn inline_format_entrypoint_records_one_typed_transaction() {
             .toggle_inline_mark_on_selection(InlineMark::Bold)
             .unwrap()
     );
-    assert!(runtime.undo_stacks.get(&1).is_none_or(Vec::is_empty));
-    assert_eq!(runtime.external_undo_stack.len(), 1);
-    let transaction = runtime.external_undo_stack.last().unwrap();
+    assert!(
+        runtime
+            .history
+            .undo_stacks
+            .get(&1)
+            .is_none_or(Vec::is_empty)
+    );
+    assert_eq!(runtime.history.external_undo_stack.len(), 1);
+    let transaction = runtime.history.external_undo_stack.last().unwrap();
     let persistent = runtime.pending_structure_transactions.last().unwrap();
     assert!(std::sync::Arc::ptr_eq(&transaction.ops, &persistent.ops));
     assert!(std::sync::Arc::ptr_eq(

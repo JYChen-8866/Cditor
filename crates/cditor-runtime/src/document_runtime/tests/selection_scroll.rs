@@ -401,7 +401,7 @@ fn inline_mark_rejects_code_payload_without_mutation_or_undo() {
 
     assert!(error.contains("does not support inline marks"));
     assert_eq!(runtime.block_payload_record(1).unwrap(), before);
-    assert!(!runtime.undo_stacks.contains_key(&1));
+    assert!(!runtime.history.undo_stacks.contains_key(&1));
 }
 
 #[test]

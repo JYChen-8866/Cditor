@@ -273,8 +273,8 @@ mod tests {
             .set_inline_color_for_range(2, 0..text_len, InlineColorTarget::Text, Some("#337ea9"))
             .unwrap();
         runtime.drain_pending_structure_transactions();
-        runtime.external_undo_stack.clear();
-        runtime.undo_events.clear();
+        runtime.history.external_undo_stack.clear();
+        runtime.history.undo_events.clear();
         let revision_before = runtime.revision();
         let content_version_before = runtime.block_content_version(2).unwrap();
 
@@ -289,7 +289,7 @@ mod tests {
             runtime.block_content_version(2),
             Some(content_version_before + 1)
         );
-        assert_eq!(runtime.external_undo_stack.len(), 1);
+        assert_eq!(runtime.history.external_undo_stack.len(), 1);
         let transactions = runtime.drain_pending_structure_transactions();
         assert_eq!(transactions.len(), 1);
         assert_eq!(transactions[0].kind, EditTransactionKind::Format);

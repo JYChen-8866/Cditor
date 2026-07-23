@@ -1,6 +1,7 @@
 use super::ai::RuntimeAiSession;
 use super::document_state::DocumentState;
 use super::editing_state::EditingState;
+use super::history_state::HistoryState;
 use super::selection_state::SelectionState;
 use super::*;
 
@@ -16,13 +17,7 @@ pub struct DocumentRuntime {
     pub(super) selection: SelectionState,
     pub(super) ai_session: Option<RuntimeAiSession>,
     pub(super) next_ai_request_id: u64,
-    pub(super) undo_stacks: HashMap<BlockId, Vec<TextSnapshot>>,
-    pub(super) redo_stacks: HashMap<BlockId, Vec<TextSnapshot>>,
-    pub(super) external_undo_stack: UndoStack,
-    pub(super) typing_undo_group: Option<TypingUndoGroup>,
-    pub(super) pending_typing_undo: Option<TypingUndoRequest>,
-    pub(super) undo_events: Vec<RuntimeUndoEvent>,
-    pub(super) redo_events: Vec<RuntimeUndoEvent>,
+    pub(super) history: HistoryState,
     pub(super) pending_structure_transactions: Vec<EditTransaction>,
     pub(super) last_committed_transaction_id: Option<u64>,
     pub(super) next_transaction_id: u64,
@@ -46,20 +41,6 @@ pub(super) struct PendingMeasuredHeight {
 pub(super) struct VisualCaretPosition {
     pub(super) position: TextPosition,
     pub(super) content_version: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct TypingUndoGroup {
-    pub(super) surface_id: cditor_core::ids::SurfaceId,
-    pub(super) next_offset: usize,
-    pub(super) last_input_at: Instant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct TypingUndoRequest {
-    pub(super) surface_id: cditor_core::ids::SurfaceId,
-    pub(super) offset: usize,
-    pub(super) started_at: Instant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,12 +131,6 @@ impl FocusedTableCell {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum RuntimeUndoEvent {
-    Text(BlockId),
-    ExternalTransaction,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GlobalScrollTarget {
     pub global_scroll_top: f64,
@@ -167,21 +142,4 @@ pub struct GlobalScrollTarget {
     pub page_top: f64,
     pub offset_in_page: f64,
     pub precision: cditor_viewport::scroll::ScrollPrecision,
-}
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct TextSnapshot {
-    pub(super) kind: RichBlockKind,
-    pub(super) payload: BlockPayload,
-    pub(super) content_version: u64,
-    pub(super) focused_table_cell: Option<FocusedTableCell>,
-    pub(super) input_target: Option<InputTarget>,
-    pub(super) selected_range: Option<Range<usize>>,
-    pub(super) selection_reversed: bool,
-    pub(super) scroll: UndoScrollSnapshot,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct UndoScrollSnapshot {
-    pub(super) anchor: Option<cditor_core::edit::ScrollAnchor>,
-    pub(super) fallback_global_scroll_top: f64,
 }

@@ -194,6 +194,7 @@ fn typing_time_gap_starts_a_new_undo_step() {
     runtime.focus_block_at_offset(1, 0).unwrap();
     type_text(&mut runtime, "ab");
     runtime
+        .history
         .typing_undo_group
         .as_mut()
         .expect("active typing group")

@@ -139,7 +139,7 @@ fn composition_preview_does_not_commit_until_commit() {
     );
     runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
 
-    assert!(runtime.undo_events.is_empty());
+    assert!(runtime.history.undo_events.is_empty());
     assert_eq!(
         runtime.document.payload_window.get(1).unwrap().plain_text(),
         "ab"
@@ -175,7 +175,7 @@ fn composition_preview_does_not_commit_until_commit() {
     );
 
     assert!(runtime.commit_composition().unwrap());
-    assert_eq!(runtime.undo_events.len(), 1);
+    assert_eq!(runtime.history.undo_events.len(), 1);
     let projection = runtime.projection_for_window();
     let BlockPayloadView::Loaded(payload) = &projection.blocks[0].payload else {
         panic!("payload should be loaded");
@@ -211,7 +211,7 @@ fn composition_commit_undo_redo_restores_block_text() {
 
     runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
 
-    assert!(runtime.undo_events.is_empty());
+    assert!(runtime.history.undo_events.is_empty());
     assert!(runtime.commit_composition().unwrap());
     assert_eq!(
         runtime.document.payload_window.get(1).unwrap().plain_text(),
@@ -248,9 +248,9 @@ fn multistage_ime_commit_creates_one_undo_step() {
     runtime.begin_or_update_composition(1, 1..1, "ni").unwrap();
     runtime.begin_or_update_composition(1, 1..1, "你").unwrap();
 
-    assert!(runtime.undo_events.is_empty());
+    assert!(runtime.history.undo_events.is_empty());
     assert!(runtime.commit_composition().unwrap());
-    assert_eq!(runtime.undo_events.len(), 1);
+    assert_eq!(runtime.history.undo_events.len(), 1);
     assert_eq!(
         runtime.document.payload_window.get(1).unwrap().plain_text(),
         "a你b"
@@ -299,7 +299,7 @@ fn multistage_composition_cancel_restores_initial_selection_direction_and_affini
     assert!(runtime.input_session_selection_reversed());
     assert_eq!(runtime.input_session_marked_range(), None);
     assert!(runtime.active_composition().is_none());
-    assert!(runtime.undo_events.is_empty());
+    assert!(runtime.history.undo_events.is_empty());
     let projection = runtime.projection_for_window();
     assert_eq!(projection.blocks[0].caret_offset, Some(2));
     assert_eq!(
@@ -357,7 +357,7 @@ fn table_cell_composition_preview_and_commit_stay_inside_cell() {
 
     runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
 
-    assert!(runtime.undo_events.is_empty());
+    assert!(runtime.history.undo_events.is_empty());
     assert_eq!(runtime.focused_text_for_platform_input().unwrap().1, "a中b");
     assert_eq!(
         runtime.active_composition_marked_range(),
@@ -392,7 +392,7 @@ fn table_cell_composition_preview_and_commit_stay_inside_cell() {
     assert_eq!(editing.marked_range, Some(1.."a中".len()));
 
     assert!(runtime.commit_composition().unwrap());
-    assert_eq!(runtime.undo_events.len(), 1);
+    assert_eq!(runtime.history.undo_events.len(), 1);
     let BlockPayload::Table(table) = &runtime.document.payload_window.get(1).unwrap().payload
     else {
         panic!("payload should be table");
@@ -431,7 +431,7 @@ fn table_cell_composition_commit_undo_redo_restores_cell_text() {
 
     runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
 
-    assert!(runtime.undo_events.is_empty());
+    assert!(runtime.history.undo_events.is_empty());
     assert!(runtime.commit_composition().unwrap());
     let BlockPayload::Table(table) = &runtime.document.payload_window.get(1).unwrap().payload
     else {

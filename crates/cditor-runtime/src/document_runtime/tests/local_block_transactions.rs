@@ -115,7 +115,13 @@ fn block_kind_language_and_todo_commands_use_replayable_block_transactions() {
             ..
         })]
     ));
-    assert!(conversion.undo_stacks.get(&1).is_none_or(Vec::is_empty));
+    assert!(
+        conversion
+            .history
+            .undo_stacks
+            .get(&1)
+            .is_none_or(Vec::is_empty)
+    );
     assert!(conversion.undo_focused_block().unwrap());
     assert_eq!(conversion.block_kind(1), Some(RichBlockKind::Paragraph));
     assert!(conversion.redo_focused_block().unwrap());

@@ -16,7 +16,7 @@ impl DocumentRuntime {
     /// Moves one large undo transaction out of the Runtime so an async
     /// persistence worker can spill it without holding a Runtime borrow.
     pub fn begin_external_undo_spill(&mut self) -> Option<UndoExternalizationJob> {
-        self.external_undo_stack.begin_externalization()
+        self.history.external_undo_stack.begin_externalization()
     }
 
     pub fn complete_external_undo_spill(
@@ -24,12 +24,13 @@ impl DocumentRuntime {
         job: UndoExternalizationJob,
         reference: ExternalUndoBlobRef,
     ) -> Result<(), UndoExternalizationJob> {
-        self.external_undo_stack
+        self.history
+            .external_undo_stack
             .complete_externalization(job, reference)
     }
 
     pub fn abort_external_undo_spill(&mut self, job: UndoExternalizationJob) -> bool {
-        self.external_undo_stack.abort_externalization(job)
+        self.history.external_undo_stack.abort_externalization(job)
     }
 
     pub fn hydrate_external_undo(
@@ -37,54 +38,73 @@ impl DocumentRuntime {
         snapshot_id: u64,
         transaction: EditTransaction,
     ) -> bool {
-        self.external_undo_stack
+        self.history
+            .external_undo_stack
             .hydrate_externalized(snapshot_id, transaction)
     }
 
     pub fn drain_orphaned_external_undo_blobs(&mut self) -> Vec<ExternalUndoBlobRef> {
-        self.external_undo_stack.drain_orphaned_external_blobs()
+        self.history
+            .external_undo_stack
+            .drain_orphaned_external_blobs()
     }
 
     pub fn restore_orphaned_external_undo_blobs(
         &mut self,
         references: impl IntoIterator<Item = ExternalUndoBlobRef>,
     ) {
-        self.external_undo_stack
+        self.history
+            .external_undo_stack
             .restore_orphaned_external_blobs(references);
     }
 
     pub fn pending_undo_hydration(&self) -> Option<ExternalUndoBlobRef> {
-        self.external_undo_stack.next_undo_external_blob().cloned()
+        self.history
+            .external_undo_stack
+            .next_undo_external_blob()
+            .cloned()
     }
 
     pub fn pending_redo_hydration(&self) -> Option<ExternalUndoBlobRef> {
-        self.external_undo_stack.next_redo_external_blob().cloned()
+        self.history
+            .external_undo_stack
+            .next_redo_external_blob()
+            .cloned()
     }
 
     pub(crate) fn undo_focused_block(&mut self) -> Result<bool, String> {
         self.break_typing_coalescing();
-        let Some(event) = self.undo_events.pop() else {
+        let Some(event) = self.history.undo_events.pop() else {
             return Ok(false);
         };
         match event {
             RuntimeUndoEvent::Text(block_id) => {
-                let Some(previous) = self.undo_stacks.get_mut(&block_id).and_then(Vec::pop) else {
+                let Some(previous) = self
+                    .history
+                    .undo_stacks
+                    .get_mut(&block_id)
+                    .and_then(Vec::pop)
+                else {
                     return Ok(false);
                 };
                 let current = self.snapshot(block_id)?;
-                self.redo_stacks.entry(block_id).or_default().push(current);
+                self.history
+                    .redo_stacks
+                    .entry(block_id)
+                    .or_default()
+                    .push(current);
                 self.restore_snapshot(block_id, previous)?;
-                self.redo_events.push(event);
+                self.history.redo_events.push(event);
                 self.trim_runtime_undo_history();
                 Ok(true)
             }
             RuntimeUndoEvent::ExternalTransaction => {
-                let Some(mut step) = self.external_undo_stack.take_undo_step() else {
+                let Some(mut step) = self.history.external_undo_stack.take_undo_step() else {
                     return Ok(false);
                 };
                 let Some(transaction) = step.payload.transaction_mut() else {
-                    self.external_undo_stack.rollback_undo_step(step);
-                    self.undo_events.push(event);
+                    self.history.external_undo_stack.rollback_undo_step(step);
+                    self.history.undo_events.push(event);
                     return Err("external undo transaction requires hydration".to_owned());
                 };
                 std::mem::swap(&mut transaction.ops, &mut transaction.inverse_ops);
@@ -93,13 +113,13 @@ impl DocumentRuntime {
                     .map_err(|error| error.to_string());
                 std::mem::swap(&mut transaction.ops, &mut transaction.inverse_ops);
                 if let Err(error) = apply_result {
-                    self.external_undo_stack.rollback_undo_step(step);
-                    self.undo_events.push(event);
+                    self.history.external_undo_stack.rollback_undo_step(step);
+                    self.history.undo_events.push(event);
                     return Err(error);
                 }
                 let ux_result = self.restore_transaction_ux(transaction, false);
-                self.external_undo_stack.commit_undo_step(step);
-                self.redo_events.push(event);
+                self.history.external_undo_stack.commit_undo_step(step);
+                self.history.redo_events.push(event);
                 ux_result?;
                 Ok(true)
             }
@@ -108,41 +128,50 @@ impl DocumentRuntime {
 
     pub(crate) fn redo_focused_block(&mut self) -> Result<bool, String> {
         self.break_typing_coalescing();
-        let Some(event) = self.redo_events.pop() else {
+        let Some(event) = self.history.redo_events.pop() else {
             return Ok(false);
         };
         match event {
             RuntimeUndoEvent::Text(block_id) => {
-                let Some(next) = self.redo_stacks.get_mut(&block_id).and_then(Vec::pop) else {
+                let Some(next) = self
+                    .history
+                    .redo_stacks
+                    .get_mut(&block_id)
+                    .and_then(Vec::pop)
+                else {
                     return Ok(false);
                 };
                 let current = self.snapshot(block_id)?;
-                self.undo_stacks.entry(block_id).or_default().push(current);
+                self.history
+                    .undo_stacks
+                    .entry(block_id)
+                    .or_default()
+                    .push(current);
                 self.restore_snapshot(block_id, next)?;
-                self.undo_events.push(event);
+                self.history.undo_events.push(event);
                 self.trim_runtime_undo_history();
                 Ok(true)
             }
             RuntimeUndoEvent::ExternalTransaction => {
-                let Some(mut step) = self.external_undo_stack.take_redo_step() else {
+                let Some(mut step) = self.history.external_undo_stack.take_redo_step() else {
                     return Ok(false);
                 };
                 let Some(transaction) = step.payload.transaction_mut() else {
-                    self.external_undo_stack.rollback_redo_step(step);
-                    self.redo_events.push(event);
+                    self.history.external_undo_stack.rollback_redo_step(step);
+                    self.history.redo_events.push(event);
                     return Err("external redo transaction requires hydration".to_owned());
                 };
                 if let Err(error) = self
                     .apply_external_transaction(transaction, cditor_core::edit::ChangeOrigin::Redo)
                     .map_err(|error| error.to_string())
                 {
-                    self.external_undo_stack.rollback_redo_step(step);
-                    self.redo_events.push(event);
+                    self.history.external_undo_stack.rollback_redo_step(step);
+                    self.history.redo_events.push(event);
                     return Err(error);
                 }
                 let ux_result = self.restore_transaction_ux(transaction, true);
-                self.external_undo_stack.commit_redo_step(step);
-                self.undo_events.push(event);
+                self.history.external_undo_stack.commit_redo_step(step);
+                self.history.undo_events.push(event);
                 ux_result?;
                 Ok(true)
             }
@@ -187,8 +216,8 @@ impl DocumentRuntime {
     }
 
     pub(super) fn push_undo_snapshot(&mut self, block_id: BlockId) -> Result<(), String> {
-        if let Some(request) = self.pending_typing_undo {
-            if self.typing_undo_group.is_some_and(|group| {
+        if let Some(request) = self.history.pending_typing_undo {
+            if self.history.typing_undo_group.is_some_and(|group| {
                 group.surface_id == request.surface_id
                     && group.next_offset == request.offset
                     && request.started_at.duration_since(group.last_input_at) <= TYPING_MERGE_WINDOW
@@ -196,7 +225,7 @@ impl DocumentRuntime {
                 return Ok(());
             }
             self.push_undo_snapshot_uncoalesced(block_id)?;
-            self.typing_undo_group = Some(TypingUndoGroup {
+            self.history.typing_undo_group = Some(TypingUndoGroup {
                 surface_id: request.surface_id,
                 next_offset: request.offset,
                 last_input_at: request.started_at,
@@ -209,19 +238,21 @@ impl DocumentRuntime {
 
     fn push_undo_snapshot_uncoalesced(&mut self, block_id: BlockId) -> Result<(), String> {
         let snapshot = self.snapshot(block_id)?;
-        let stack = self.undo_stacks.entry(block_id).or_default();
+        let stack = self.history.undo_stacks.entry(block_id).or_default();
         if stack.last() != Some(&snapshot) {
             stack.push(snapshot);
-            self.undo_events.push(RuntimeUndoEvent::Text(block_id));
-            self.redo_stacks.clear();
-            self.redo_events.clear();
-            self.external_undo_stack.clear_redo();
-            while self.undo_stacks.get(&block_id).map_or(0, Vec::len)
+            self.history
+                .undo_events
+                .push(RuntimeUndoEvent::Text(block_id));
+            self.history.redo_stacks.clear();
+            self.history.redo_events.clear();
+            self.history.external_undo_stack.clear_redo();
+            while self.history.undo_stacks.get(&block_id).map_or(0, Vec::len)
                 > TEXT_UNDO_MAX_STEPS_PER_BLOCK
             {
                 remove_oldest_text_history(
-                    &mut self.undo_events,
-                    &mut self.undo_stacks,
+                    &mut self.history.undo_events,
+                    &mut self.history.undo_stacks,
                     Some(block_id),
                 );
             }
@@ -231,60 +262,75 @@ impl DocumentRuntime {
     }
 
     pub(super) fn estimated_text_history_memory_bytes(&self) -> usize {
-        estimated_text_history_bytes(&self.undo_stacks)
-            .saturating_add(estimated_text_history_bytes(&self.redo_stacks))
+        estimated_text_history_bytes(&self.history.undo_stacks)
+            .saturating_add(estimated_text_history_bytes(&self.history.redo_stacks))
     }
 
     pub(super) fn clear_runtime_redo_history(&mut self) {
-        self.redo_stacks.clear();
-        self.redo_events.clear();
-        self.external_undo_stack.clear_redo();
+        self.history.redo_stacks.clear();
+        self.history.redo_events.clear();
+        self.history.external_undo_stack.clear_redo();
     }
 
     pub(super) fn trim_runtime_undo_history(&mut self) {
         while self
+            .history
             .undo_events
             .iter()
             .filter(|event| matches!(event, RuntimeUndoEvent::Text(_)))
             .count()
             > TEXT_UNDO_MAX_STEPS
         {
-            if !remove_oldest_text_history(&mut self.undo_events, &mut self.undo_stacks, None) {
+            if !remove_oldest_text_history(
+                &mut self.history.undo_events,
+                &mut self.history.undo_stacks,
+                None,
+            ) {
                 break;
             }
         }
 
         while self
+            .history
             .undo_events
             .iter()
             .filter(|event| matches!(event, RuntimeUndoEvent::ExternalTransaction))
             .count()
-            > self.external_undo_stack.undo_len()
+            > self.history.external_undo_stack.undo_len()
         {
             let Some(position) = self
+                .history
                 .undo_events
                 .iter()
                 .position(|event| matches!(event, RuntimeUndoEvent::ExternalTransaction))
             else {
                 break;
             };
-            self.undo_events.remove(position);
+            self.history.undo_events.remove(position);
         }
 
         while self.estimated_text_history_memory_bytes() > TEXT_UNDO_MAX_ESTIMATED_BYTES
-            && text_history_snapshot_count(&self.undo_stacks, &self.redo_stacks) > 1
+            && text_history_snapshot_count(&self.history.undo_stacks, &self.history.redo_stacks) > 1
         {
-            if remove_oldest_text_history(&mut self.undo_events, &mut self.undo_stacks, None) {
+            if remove_oldest_text_history(
+                &mut self.history.undo_events,
+                &mut self.history.undo_stacks,
+                None,
+            ) {
                 continue;
             }
-            if !remove_oldest_text_history(&mut self.redo_events, &mut self.redo_stacks, None) {
+            if !remove_oldest_text_history(
+                &mut self.history.redo_events,
+                &mut self.history.redo_stacks,
+                None,
+            ) {
                 break;
             }
         }
     }
 
     pub(super) fn prepare_typing_undo(&mut self, surface_id: SurfaceId, offset: usize) {
-        self.pending_typing_undo = Some(TypingUndoRequest {
+        self.history.pending_typing_undo = Some(TypingUndoRequest {
             surface_id,
             offset,
             started_at: Instant::now(),
@@ -297,12 +343,12 @@ impl DocumentRuntime {
         next_offset: Option<usize>,
         changed: bool,
     ) {
-        let request = self.pending_typing_undo.take();
+        let request = self.history.pending_typing_undo.take();
         if !changed {
-            self.typing_undo_group = None;
+            self.history.typing_undo_group = None;
             return;
         }
-        if let (Some(group), Some(next_offset)) = (&mut self.typing_undo_group, next_offset)
+        if let (Some(group), Some(next_offset)) = (&mut self.history.typing_undo_group, next_offset)
             && group.surface_id == surface_id
         {
             group.next_offset = next_offset;
@@ -313,8 +359,8 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn break_typing_coalescing(&mut self) {
-        self.pending_typing_undo = None;
-        self.typing_undo_group = None;
+        self.history.pending_typing_undo = None;
+        self.history.typing_undo_group = None;
         self.editing.typing_mark_override = None;
     }
 

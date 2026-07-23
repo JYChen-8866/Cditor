@@ -78,6 +78,7 @@ impl DocumentRuntime {
             .map_err(|error| error.to_string())?;
         let after_anchor = self.capture_undo_scroll_snapshot().anchor;
         if let Some(recorded) = self
+            .history
             .external_undo_stack
             .last_undo_transaction_mut()
             .filter(|recorded| recorded.id == transaction_id)

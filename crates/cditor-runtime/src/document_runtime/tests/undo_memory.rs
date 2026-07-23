@@ -18,8 +18,14 @@ fn text_undo_history_obeys_byte_budget_and_keeps_events_in_sync() {
         runtime.push_undo_snapshot(1).unwrap();
     }
 
-    let snapshot_count = runtime.undo_stacks.values().map(Vec::len).sum::<usize>();
+    let snapshot_count = runtime
+        .history
+        .undo_stacks
+        .values()
+        .map(Vec::len)
+        .sum::<usize>();
     let event_count = runtime
+        .history
         .undo_events
         .iter()
         .filter(|event| matches!(event, RuntimeUndoEvent::Text(_)))
@@ -39,12 +45,12 @@ fn new_text_edit_releases_every_redo_snapshot() {
     runtime.focus_block_at_offset(2, 0).unwrap();
     runtime.insert_char('b').unwrap();
     assert!(runtime.undo_focused_block().unwrap());
-    assert!(!runtime.redo_stacks.is_empty());
+    assert!(!runtime.history.redo_stacks.is_empty());
 
     runtime.focus_block_at_offset(1, 1).unwrap();
     runtime.insert_char('c').unwrap();
 
-    assert!(runtime.redo_stacks.is_empty());
-    assert!(runtime.redo_events.is_empty());
+    assert!(runtime.history.redo_stacks.is_empty());
+    assert!(runtime.history.redo_events.is_empty());
     assert!(!runtime.can_redo());
 }

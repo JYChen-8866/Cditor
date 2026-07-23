@@ -119,7 +119,7 @@ fn empty_preapplied_replacement_is_a_true_zero_mutation_noop() {
     runtime.focus_block_at_offset(1, 2).unwrap();
     let before_payload = runtime.block_payload_record(1).unwrap();
     let before_transaction_id = runtime.next_transaction_id;
-    let before_undo_events = runtime.undo_events.clone();
+    let before_undo_events = runtime.history.undo_events.clone();
     let before_layout = runtime.document.index.layout_meta[0];
 
     assert!(
@@ -130,7 +130,7 @@ fn empty_preapplied_replacement_is_a_true_zero_mutation_noop() {
 
     assert_eq!(runtime.block_payload_record(1).unwrap(), before_payload);
     assert_eq!(runtime.next_transaction_id, before_transaction_id);
-    assert_eq!(runtime.undo_events, before_undo_events);
+    assert_eq!(runtime.history.undo_events, before_undo_events);
     assert_eq!(runtime.document.index.layout_meta[0], before_layout);
     assert_eq!(runtime.pending_structure_transaction_count(), 0);
 }
@@ -145,7 +145,7 @@ fn divergent_live_text_is_rejected_before_any_preapplied_mutation() {
         .insert(1, PieceTableTextModel::new("stale live model"));
     let before_payload = runtime.block_payload_record(1).unwrap();
     let before_transaction_id = runtime.next_transaction_id;
-    let before_undo_events = runtime.undo_events.clone();
+    let before_undo_events = runtime.history.undo_events.clone();
     let before_pending = runtime.pending_structure_transaction_count();
 
     let error = runtime
@@ -159,7 +159,7 @@ fn divergent_live_text_is_rejected_before_any_preapplied_mutation() {
         "stale live model"
     );
     assert_eq!(runtime.next_transaction_id, before_transaction_id);
-    assert_eq!(runtime.undo_events, before_undo_events);
+    assert_eq!(runtime.history.undo_events, before_undo_events);
     assert_eq!(
         runtime.pending_structure_transaction_count(),
         before_pending
@@ -175,10 +175,10 @@ fn forbidden_hot_path_work_fails_before_undo_typing_or_document_mutation() {
     let before_payload = runtime.block_payload_record(1).unwrap();
     let before_model = runtime.document.text_models.get(&1).unwrap().clone();
     let before_editing = runtime.editing.session.clone();
-    let before_undo_stacks = runtime.undo_stacks.clone();
-    let before_redo_stacks = runtime.redo_stacks.clone();
-    let before_undo_events = runtime.undo_events.clone();
-    let before_redo_events = runtime.redo_events.clone();
+    let before_undo_stacks = runtime.history.undo_stacks.clone();
+    let before_redo_stacks = runtime.history.redo_stacks.clone();
+    let before_undo_events = runtime.history.undo_events.clone();
+    let before_redo_events = runtime.history.redo_events.clone();
     let before_selected_blocks = runtime.selection.selected_block_ids.clone();
     let before_transaction_id = runtime.next_transaction_id;
     let before_layout = runtime.document.index.layout_meta[0];
@@ -191,16 +191,16 @@ fn forbidden_hot_path_work_fails_before_undo_typing_or_document_mutation() {
     assert_eq!(runtime.block_payload_record(1).unwrap(), before_payload);
     assert_eq!(runtime.document.text_models.get(&1), Some(&before_model));
     assert_eq!(runtime.editing.session, before_editing);
-    assert_eq!(runtime.undo_stacks, before_undo_stacks);
-    assert_eq!(runtime.redo_stacks, before_redo_stacks);
-    assert_eq!(runtime.undo_events, before_undo_events);
-    assert_eq!(runtime.redo_events, before_redo_events);
+    assert_eq!(runtime.history.undo_stacks, before_undo_stacks);
+    assert_eq!(runtime.history.redo_stacks, before_redo_stacks);
+    assert_eq!(runtime.history.undo_events, before_undo_events);
+    assert_eq!(runtime.history.redo_events, before_redo_events);
     assert_eq!(runtime.selection.selected_block_ids, before_selected_blocks);
     assert_eq!(runtime.next_transaction_id, before_transaction_id);
     assert_eq!(runtime.document.index.layout_meta[0], before_layout);
     assert_eq!(runtime.pending_structure_transaction_count(), 0);
-    assert!(runtime.typing_undo_group.is_none());
-    assert!(runtime.pending_typing_undo.is_none());
+    assert!(runtime.history.typing_undo_group.is_none());
+    assert!(runtime.history.pending_typing_undo.is_none());
 }
 
 #[test]
@@ -582,8 +582,14 @@ fn rich_clipboard_paste_uses_import_origin_and_one_external_undo_transaction() {
     assert_eq!(transactions.len(), 1);
     assert_eq!(transactions[0].kind, EditTransactionKind::Paste);
     assert_eq!(transactions[0].origin, ChangeOrigin::Import);
-    assert!(runtime.undo_stacks.get(&1).is_none_or(Vec::is_empty));
-    assert_eq!(runtime.external_undo_stack.len(), 1);
+    assert!(
+        runtime
+            .history
+            .undo_stacks
+            .get(&1)
+            .is_none_or(Vec::is_empty)
+    );
+    assert_eq!(runtime.history.external_undo_stack.len(), 1);
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(
         runtime.block_payload_record(1).unwrap().plain_text(),

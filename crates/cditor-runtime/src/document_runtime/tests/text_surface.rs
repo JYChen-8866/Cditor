@@ -215,7 +215,7 @@ fn caption_composition_is_projection_only_then_commits_as_one_undo_step() {
             .plain_text(),
         "说明tion"
     );
-    assert_eq!(runtime.undo_stacks.get(&10).map(Vec::len), Some(1));
+    assert_eq!(runtime.history.undo_stacks.get(&10).map(Vec::len), Some(1));
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(
         runtime

@@ -21,6 +21,7 @@ mod focus;
 mod focus_transition;
 mod folding;
 mod format_transaction;
+mod history_state;
 mod inline_color;
 mod inline_format;
 mod layout_heights;
@@ -87,7 +88,14 @@ pub use text_surface::{
 };
 pub use transaction_apply::{AppliedTransaction, TransactionApplyError};
 
-use self::{selection::FocusedTextSelection, table::TableRuntime};
+use self::{
+    history_state::{
+        HistoryState, RuntimeUndoEvent, TextSnapshot, TypingUndoGroup, TypingUndoRequest,
+        UndoScrollSnapshot,
+    },
+    selection::FocusedTextSelection,
+    table::TableRuntime,
+};
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -196,8 +204,7 @@ pub use selection::RichTextSelectionSnapshot;
 pub use state::{DocumentRuntime, GlobalScrollTarget};
 use state::{
     EnterSplitMode, FocusedInnerSelection, FocusedTableCell, PendingMeasuredHeight,
-    RuntimeUndoEvent, TextSnapshot, TypingMarkOverride, TypingUndoGroup, TypingUndoRequest,
-    UndoScrollSnapshot, VisualCaretPosition,
+    TypingMarkOverride, VisualCaretPosition,
 };
 pub use table::TableClipboardSnapshot;
 

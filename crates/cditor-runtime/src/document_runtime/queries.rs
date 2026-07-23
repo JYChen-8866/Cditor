@@ -20,11 +20,11 @@ impl DocumentRuntime {
     }
 
     pub fn can_undo(&self) -> bool {
-        !self.undo_events.is_empty()
+        !self.history.undo_events.is_empty()
     }
 
     pub fn can_redo(&self) -> bool {
-        !self.redo_events.is_empty()
+        !self.history.redo_events.is_empty()
     }
 
     pub fn document_block_count(&self) -> usize {
