@@ -113,14 +113,15 @@ impl DocumentRuntime {
             .then(|| (block_id, self.caret_offset_for_block(block_id).unwrap_or(0)))
     }
 
-    pub fn begin_ai_request(
+    #[cfg(test)]
+    pub(crate) fn begin_ai_request(
         &mut self,
         instruction: impl Into<String>,
     ) -> Result<AiRequestDispatch, String> {
         self.begin_ai_request_with_presentation(instruction, AiRequestPresentation::Automatic)
     }
 
-    pub fn begin_ai_request_with_presentation(
+    pub(crate) fn begin_ai_request_with_presentation(
         &mut self,
         instruction: impl Into<String>,
         presentation: AiRequestPresentation,
@@ -195,7 +196,7 @@ impl DocumentRuntime {
         })
     }
 
-    pub fn apply_ai_stream_event(&mut self, event: AiStreamEvent) -> AiStreamApplyResult {
+    pub(crate) fn apply_ai_stream_event(&mut self, event: AiStreamEvent) -> AiStreamApplyResult {
         let Some(session) = self.ai_session.as_ref() else {
             return AiStreamApplyResult::IgnoredRequest;
         };
@@ -241,7 +242,7 @@ impl DocumentRuntime {
             })
     }
 
-    pub fn cancel_ai_request(&mut self) -> bool {
+    pub(crate) fn cancel_ai_request(&mut self) -> bool {
         let Some(session) = self.ai_session.take() else {
             return false;
         };
@@ -249,11 +250,12 @@ impl DocumentRuntime {
         true
     }
 
-    pub fn reject_ai_preview(&mut self) -> bool {
+    pub(crate) fn reject_ai_preview(&mut self) -> bool {
         self.cancel_ai_request()
     }
 
-    pub fn accept_ai_preview(&mut self) -> Result<bool, String> {
+    #[cfg(test)]
+    pub(crate) fn accept_ai_preview(&mut self) -> Result<bool, String> {
         let mode = match self.ai_session.as_ref().map(|session| &session.target) {
             Some(RuntimeAiTarget::InlineCaret(_)) => AiApplyMode::InsertAfter,
             Some(RuntimeAiTarget::TextSelection(_)) => AiApplyMode::Replace,

@@ -222,6 +222,16 @@ if [ -n "$direct_history_router_violations" ]; then
   exit 1
 fi
 
+direct_ai_session_mutation_violations=$(
+  grep -R -n -E '\.(begin_ai_request|begin_ai_request_with_presentation|apply_ai_stream_event|cancel_ai_request|reject_ai_preview|accept_ai_preview)\(' \
+    --include='*.rs' crates/cditor-editor/src || true
+)
+if [ -n "$direct_ai_session_mutation_violations" ]; then
+  echo 'error: Editor AI session lifecycle must use apply_ai_session_request:' >&2
+  echo "$direct_ai_session_mutation_violations" >&2
+  exit 1
+fi
+
 printable_keydown_violations=$(
   grep -R -n -E 'InsertChar|InsertSpaceOrMarkdownShortcut' --include='*.rs' crates/cditor-editor/src || true
 )

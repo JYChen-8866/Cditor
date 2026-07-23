@@ -1,4 +1,5 @@
 mod ai;
+mod ai_session_port;
 mod block_attrs;
 mod capabilities;
 mod clipboard;
@@ -63,6 +64,7 @@ pub use ai::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
     AiStreamApplyResult, RuntimeAiTarget,
 };
+pub use ai_session_port::{AiSessionOutcome, AiSessionRequest};
 pub use cditor_viewport::window::WindowMemoryPressure;
 pub use cold_start::{
     DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,

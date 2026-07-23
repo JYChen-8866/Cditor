@@ -4,7 +4,10 @@ use cditor_ai::{
     AiProvider, AiProviderError, AiStreamEvent, MockAiProvider, OpenAiCompatibleProvider,
     bounded_ai_stream,
 };
-use cditor_runtime::{AiApplyMode, AiRequestPresentation, AiStreamApplyResult, RuntimeAiTarget};
+use cditor_runtime::{
+    AiApplyMode, AiRequestPresentation, AiSessionOutcome, AiSessionRequest, AiStreamApplyResult,
+    RuntimeAiTarget,
+};
 use gpui::{AppContext, Context, px};
 
 use crate::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
@@ -87,7 +90,7 @@ impl CditorV2View {
             return false;
         }
         if let Some(runtime) = self.ready_runtime() {
-            runtime.cancel_ai_request();
+            let _ = runtime.apply_ai_session_request(AiSessionRequest::Cancel);
         }
         self.slash_menu = None;
         self.code_language_edit = None;
@@ -126,7 +129,14 @@ impl CditorV2View {
             .ready_runtime()
             .ok_or_else(|| "runtime is not ready".to_owned())
             .and_then(|runtime| {
-                runtime.begin_ai_request_with_presentation(instruction, presentation)
+                runtime.apply_ai_session_request(AiSessionRequest::Begin {
+                    instruction,
+                    presentation,
+                })
+            })
+            .and_then(|outcome| match outcome {
+                AiSessionOutcome::Started(dispatch) => Ok(dispatch),
+                _ => Err("AI begin returned an unexpected session outcome".to_owned()),
             }) {
             Ok(dispatch) => dispatch,
             Err(error) => {
@@ -167,7 +177,15 @@ impl CditorV2View {
                 let result = view.update(cx, |view, cx| {
                     let result = view
                         .ready_runtime()
-                        .map(|runtime| runtime.apply_ai_stream_event(event))
+                        .and_then(|runtime| {
+                            runtime
+                                .apply_ai_session_request(AiSessionRequest::Stream(event))
+                                .ok()
+                        })
+                        .and_then(|outcome| match outcome {
+                            AiSessionOutcome::StreamApplied(result) => Some(result),
+                            _ => None,
+                        })
                         .unwrap_or(AiStreamApplyResult::IgnoredRequest);
                     cx.notify();
                     result
@@ -262,7 +280,12 @@ impl CditorV2View {
     pub(crate) fn reject_ai_preview_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
         let changed = self
             .ready_runtime()
-            .is_some_and(|runtime| runtime.reject_ai_preview());
+            .and_then(|runtime| {
+                runtime
+                    .apply_ai_session_request(AiSessionRequest::RejectPreview)
+                    .ok()
+            })
+            .is_some_and(|outcome| matches!(outcome, AiSessionOutcome::PreviewRejected(true)));
         if changed {
             cx.notify();
         }
