@@ -5,6 +5,7 @@
 //! operations without returning runtime borrows.
 
 mod ai_port;
+mod diagnostics_snapshot;
 mod history_port;
 mod layout_port;
 mod render_port;
@@ -13,6 +14,7 @@ mod toolbar_snapshot;
 mod ui_snapshot;
 
 pub use ai_port::project_ai_session_request;
+pub use diagnostics_snapshot::{SessionDiagnosticsSnapshot, project_diagnostics_snapshot};
 pub use history_port::{
     HistoryActionSnapshot, HistoryDirection, project_history_action,
     project_hydrated_history_action,
