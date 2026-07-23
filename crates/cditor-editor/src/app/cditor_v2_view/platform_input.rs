@@ -310,12 +310,10 @@ mod tests {
             ));
             let runtime = view.ready_runtime_ref().unwrap();
             assert!(runtime.active_composition().is_some());
-            let committed = runtime
-                .loaded_payload_records_snapshot()
-                .into_iter()
-                .find(|record| record.block_id == 1)
-                .unwrap();
-            assert_eq!(committed.plain_text(), "ab");
+            assert_eq!(
+                crate::test_support::committed_block_plain_text(runtime, 1).as_deref(),
+                Some("ab")
+            );
         });
     }
 }

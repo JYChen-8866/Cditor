@@ -1070,6 +1070,7 @@ dependencies = [
  "cditor-core",
  "cditor-editor-protocol",
  "cditor-runtime",
+ "cditor-storage",
  "cditor-viewport",
 ]
 

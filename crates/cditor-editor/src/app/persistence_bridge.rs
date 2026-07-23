@@ -7,6 +7,7 @@ use cditor_session::{
     apply_payload_window_result, project_apply_undo_blob_write_result,
     project_begin_undo_blob_cleanup, project_begin_undo_blob_spill,
     project_finish_undo_blob_cleanup, project_history_action, project_hydrated_history_action,
+    project_persistence_save_failure, project_persistence_save_success,
     project_selection_materialization_result,
 };
 use cditor_storage::{StorageError, StorageSession, block_on_storage};
@@ -364,13 +365,12 @@ impl CditorV2View {
                         .storage_persistence
                         .finish_success(&request, outcome.saved_structure_version);
                     if let Some(runtime) = view.ready_runtime() {
-                        runtime.mark_payload_versions_persisted(&outcome.saved_payload_versions);
-                    }
-                    if saved_layout_or_structure
-                        && !should_reschedule
-                        && let Some(runtime) = view.ready_runtime()
-                    {
-                        runtime.mark_layout_saved();
+                        project_persistence_save_success(
+                            runtime,
+                            &outcome,
+                            saved_layout_or_structure,
+                            should_reschedule,
+                        );
                     }
                     view.trim_persistent_payload_cache();
                     let became_clean = view.dirty && !should_reschedule;
@@ -396,9 +396,7 @@ impl CditorV2View {
             (request, Err(message)) => {
                 let _ = view.update(cx, |view, cx| {
                     if let Some(runtime) = view.ready_runtime() {
-                        runtime.restore_pending_structure_transactions(
-                            request.transactions().to_vec(),
-                        );
+                        project_persistence_save_failure(runtime, request.transactions().to_vec());
                     }
                     let should_reschedule = view.storage_persistence.finish_failed(&request);
                     view.storage_persistence.fail_barriers(&message);

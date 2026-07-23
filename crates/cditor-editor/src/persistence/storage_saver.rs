@@ -7,12 +7,9 @@ use crate::app::CditorV2View;
 use crate::persistence::EditorSaveStatus;
 use cditor_api::CditorError;
 use cditor_api::document::SaveReport;
-use cditor_core::layout::PAGE_POLICY_VERSION;
 use cditor_runtime::DocumentRuntime;
-use cditor_storage::{
-    DOCUMENT_INDEX_VISIBLE_VERSION, StoragePageLayoutSnapshot, StorageSaveBatch,
-    StorageSaveOutcome, StorageSession,
-};
+use cditor_session::{PersistenceCaptureRequest, project_persistence_save_capture};
+use cditor_storage::{StorageSaveBatch, StorageSaveOutcome, StorageSession};
 
 pub const DEFAULT_STORAGE_SAVE_DEBOUNCE: Duration = Duration::from_millis(250);
 
@@ -254,60 +251,26 @@ impl StoragePersistenceState {
         if !self.has_unpersisted_changes() {
             return None;
         }
-        let transactions = runtime.drain_pending_structure_transactions();
-        let payloads = runtime.loaded_payload_records_snapshot();
-        let block_attrs = runtime.block_attrs_snapshot();
-        let structure_version = runtime.structure_version();
-        let should_save_structure = self
-            .last_saved_structure_version
-            .is_some_and(|saved| saved != structure_version)
-            || !transactions.is_empty()
-            || runtime.has_dirty_layout();
+        let layout_key = session.layout_key();
+        let capture = project_persistence_save_capture(
+            runtime,
+            PersistenceCaptureRequest {
+                last_saved_structure_version: self.last_saved_structure_version,
+                layout_key,
+            },
+        )?;
+        let structure_version = capture.structure_version;
         if self.last_saved_structure_version.is_none() {
             self.last_saved_structure_version = Some(structure_version);
         }
-        let index_records = if should_save_structure {
-            runtime.index_records_snapshot()
-        } else {
-            Default::default()
-        };
-
-        if transactions.is_empty() && payloads.is_empty() && index_records.is_empty() {
-            return None;
-        }
         self.saving = true;
-        self.in_flight_structure_version = (!index_records.is_empty()).then_some(structure_version);
-        let layout_key = session.layout_key();
-        let page_layout_snapshot = if should_save_structure {
-            let page_layout = runtime.page_layout_snapshot();
-            layout_key.and_then(|layout_key| {
-                StoragePageLayoutSnapshot::from_page_layout(
-                    DOCUMENT_INDEX_VISIBLE_VERSION,
-                    structure_version,
-                    layout_key,
-                    PAGE_POLICY_VERSION,
-                    &page_layout,
-                    runtime.visible_block_ids(),
-                )
-                .ok()
-            })
-        } else {
-            None
-        };
+        self.in_flight_structure_version =
+            capture.includes_structure().then_some(structure_version);
         Some(StorageSaveRequest {
             session,
-            batch: StorageSaveBatch {
-                document_id: runtime.document_id(),
-                layout_key,
-                payloads,
-                index_records,
-                structure_version,
-                transactions,
-                block_attrs,
-                page_layout_snapshot,
-            },
+            batch: capture.batch,
             generation: self.dirty_generation,
-            revision: runtime.revision(),
+            revision: capture.revision,
         })
     }
 
@@ -510,7 +473,10 @@ mod tests {
         assert_eq!(runtime.pending_structure_transaction_count(), 0);
         assert!(!persistence.finish_failed(&request));
 
-        runtime.restore_pending_structure_transactions(request.transactions().to_vec());
+        cditor_session::project_persistence_save_failure(
+            &mut runtime,
+            request.transactions().to_vec(),
+        );
         assert_eq!(runtime.pending_structure_transaction_count(), 1);
         let retry = persistence.begin_batch(&mut runtime).unwrap();
         assert_eq!(retry.transactions(), request.transactions());

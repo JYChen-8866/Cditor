@@ -264,6 +264,16 @@ if [ -n "$direct_external_undo_blob_violations" ]; then
   exit 1
 fi
 
+direct_persistence_capture_violations=$(
+  grep -R -n -E '\.(drain_pending_structure_transactions|loaded_payload_records_snapshot|block_attrs_snapshot|index_records_snapshot|page_layout_snapshot|mark_payload_versions_persisted|mark_layout_saved|restore_pending_structure_transactions)\(' \
+    --include='*.rs' --exclude='test_support.rs' crates/cditor-editor/src || true
+)
+if [ -n "$direct_persistence_capture_violations" ]; then
+  echo 'error: Editor save capture and completion must use cditor-session persistence ports:' >&2
+  echo "$direct_persistence_capture_violations" >&2
+  exit 1
+fi
+
 direct_ai_session_mutation_violations=$(
   grep -R -n -E '\.(apply_ai_session_request|begin_ai_request|begin_ai_request_with_presentation|apply_ai_stream_event|cancel_ai_request|reject_ai_preview|accept_ai_preview)\(' \
     --include='*.rs' crates/cditor-editor/src || true

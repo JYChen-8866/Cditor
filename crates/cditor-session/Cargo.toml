@@ -8,6 +8,7 @@ license.workspace = true
 cditor-core = { path = "../cditor-core" }
 cditor-editor-protocol = { path = "../cditor-editor-protocol" }
 cditor-runtime = { path = "../cditor-runtime" }
+cditor-storage = { path = "../cditor-storage" }
 cditor-viewport = { path = "../cditor-viewport" }
 
 [dev-dependencies]
