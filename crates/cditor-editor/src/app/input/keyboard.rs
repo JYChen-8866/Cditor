@@ -362,7 +362,7 @@ impl CditorV2View {
             );
         }
         if should_scroll_focus && let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.scroll_focused_block_into_view();
+            let _ = cditor_session::project_scroll_focused_block_into_view(runtime);
         }
     }
 }

@@ -255,12 +255,23 @@ if [ -n "$direct_history_router_violations" ]; then
 fi
 
 direct_ai_session_mutation_violations=$(
-  grep -R -n -E '\.(begin_ai_request|begin_ai_request_with_presentation|apply_ai_stream_event|cancel_ai_request|reject_ai_preview|accept_ai_preview)\(' \
+  grep -R -n -E '\.(apply_ai_session_request|begin_ai_request|begin_ai_request_with_presentation|apply_ai_stream_event|cancel_ai_request|reject_ai_preview|accept_ai_preview)\(' \
     --include='*.rs' crates/cditor-editor/src || true
 )
 if [ -n "$direct_ai_session_mutation_violations" ]; then
   echo 'error: Editor AI session lifecycle must use apply_ai_session_request:' >&2
   echo "$direct_ai_session_mutation_violations" >&2
+  exit 1
+fi
+
+direct_layout_mutation_violations=$(
+  grep -R -n -E \
+    '\.(queue_measured_height|apply_measured_height|flush_pending_height_corrections|flush_pending_height_corrections_with_priority|sync_viewport_height|scroll_by_delta|apply_scroll_accumulator_frame|scroll_focused_block_into_view|scroll_to_block_with_alignment|begin_scrollbar_drag|drag_scrollbar_to_thumb_top|finish_scrollbar_drag|current_page_window_planned|set_window_memory_pressure|set_table_horizontal_scroll_offset_px)\(' \
+    --include='*.rs' crates/cditor-editor/src || true
+)
+if [ -n "$direct_layout_mutation_violations" ]; then
+  echo 'error: Editor layout mutations must use cditor-session layout/render ports:' >&2
+  echo "$direct_layout_mutation_violations" >&2
   exit 1
 fi
 

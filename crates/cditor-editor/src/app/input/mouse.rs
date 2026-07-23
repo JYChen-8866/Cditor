@@ -2,8 +2,8 @@ use gpui::{Context, MouseMoveEvent, MouseUpEvent, ScrollDelta, ScrollWheelEvent,
 
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::app::interaction::scrollbar::scrollbar_local_pointer_y;
-use crate::app::interaction::scrollbar::scrollbar_policy;
 use crate::scroll::{ScrollDeltaMode, ScrollDevice, ScrollInput, ScrollPhase};
+use cditor_session::{project_drag_scrollbar, project_scroll_input_frame};
 
 impl CditorV2View {
     pub(in crate::app) fn on_scroll_wheel(
@@ -14,7 +14,9 @@ impl CditorV2View {
     ) {
         self.last_wheel_delta_y = scroll_delta_y(event);
         if let CditorViewState::Ready(runtime) = &mut self.state {
-            self.scroll_accumulator.push_input(
+            let _ = project_scroll_input_frame(
+                runtime,
+                &mut self.scroll_accumulator,
                 ScrollInput {
                     delta_y: self.last_wheel_delta_y,
                     mode: ScrollDeltaMode::Pixel,
@@ -22,9 +24,7 @@ impl CditorV2View {
                     device: ScrollDevice::Trackpad,
                     timestamp: std::time::Instant::now(),
                 },
-                runtime.viewport_height(),
             );
-            let _ = runtime.apply_scroll_accumulator_frame(&mut self.scroll_accumulator);
         }
         cx.stop_propagation();
         cx.notify();
@@ -87,10 +87,9 @@ impl CditorV2View {
             self.scrollbar_drag = None;
             return;
         };
-        let policy = scrollbar_policy(runtime);
         let thumb_top =
             scrollbar_local_pointer_y(f64::from(event.position.y)) - drag.pointer_y_offset_in_thumb;
-        let _ = runtime.drag_scrollbar_to_thumb_top(policy, thumb_top);
+        let _ = project_drag_scrollbar(runtime, thumb_top);
         cx.stop_propagation();
         cx.notify();
     }

@@ -352,10 +352,12 @@ impl CditorV2View {
             ScrollAlignment::End => Some(1.0),
             ScrollAlignment::Nearest => None,
         };
-        self.ready_runtime()
-            .ok_or(CditorError::NotReady)?
-            .scroll_to_block_with_alignment(block_id, alignment)
-            .map_err(|_| CditorError::BlockNotFound(block_id))?;
+        cditor_session::project_scroll_to_block(
+            self.ready_runtime().ok_or(CditorError::NotReady)?,
+            block_id,
+            alignment,
+        )
+        .map_err(|_| CditorError::BlockNotFound(block_id))?;
         cx.notify();
         Ok(())
     }

@@ -140,7 +140,10 @@ impl CditorV2View {
             pointer_y,
             runtime.viewport_height(),
         );
-        if delta.abs() < f64::EPSILON || runtime.scroll_by_delta(delta).is_err() {
+        if delta.abs() < f64::EPSILON
+            || !cditor_session::project_scroll_by_delta(runtime, delta)
+                .is_ok_and(|outcome| outcome.changed)
+        {
             return false;
         }
         self.update_text_drag_selection(drag.pointer_position, cx);

@@ -5,9 +5,11 @@ use gpui::{
 
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
-use crate::scroll::{ScrollbarPolicy, ScrollbarVisualState};
+use crate::scroll::ScrollbarVisualState;
 use crate::theme::GuiTheme;
-use cditor_runtime::DocumentRuntime;
+use cditor_session::{
+    project_begin_scrollbar_drag, project_drag_scrollbar, project_finish_scrollbar_drag,
+};
 
 const GUI_SCROLLBAR_WIDTH_PX: f32 = 10.0;
 const GUI_SCROLLBAR_RIGHT_PX: f32 = 8.0;
@@ -16,14 +18,6 @@ const GUI_SCROLLBAR_THUMB_INSET_PX: f32 = 2.0;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(in crate::app) struct GuiScrollbarDrag {
     pub(in crate::app) pointer_y_offset_in_thumb: f64,
-}
-
-pub(in crate::app) fn scrollbar_policy(runtime: &DocumentRuntime) -> ScrollbarPolicy {
-    ScrollbarPolicy {
-        track_height: runtime.viewport_height().max(1.0),
-        min_thumb_height: 24.0,
-        local_list_state_scrollbar_enabled: false,
-    }
 }
 
 pub(in crate::app) fn render_scrollbar(
@@ -78,8 +72,7 @@ impl CditorV2View {
         let CditorViewState::Ready(runtime) = &mut self.state else {
             return;
         };
-        let policy = scrollbar_policy(runtime);
-        let visual = runtime.begin_scrollbar_drag(policy);
+        let visual = project_begin_scrollbar_drag(runtime);
         if !visual.enabled {
             return;
         }
@@ -94,7 +87,7 @@ impl CditorV2View {
         self.scrollbar_drag = Some(GuiScrollbarDrag {
             pointer_y_offset_in_thumb,
         });
-        let _ = runtime.drag_scrollbar_to_thumb_top(policy, pointer_y - pointer_y_offset_in_thumb);
+        let _ = project_drag_scrollbar(runtime, pointer_y - pointer_y_offset_in_thumb);
         cx.stop_propagation();
         cx.notify();
     }
@@ -104,7 +97,7 @@ impl CditorV2View {
             return;
         }
         if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.finish_scrollbar_drag();
+            let _ = project_finish_scrollbar_drag(runtime);
         }
         cx.stop_propagation();
         cx.notify();

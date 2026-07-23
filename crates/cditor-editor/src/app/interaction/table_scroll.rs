@@ -134,7 +134,8 @@ impl CditorV2View {
         let Some(runtime) = self.ready_runtime() else {
             return false;
         };
-        let _ = runtime.set_table_horizontal_scroll_offset_px(block_id, next_offset_x);
+        let _ =
+            cditor_session::apply_table_horizontal_scroll_offset(runtime, block_id, next_offset_x);
         self.table_scroll_state
             .sync_handle_offset_x(block_id, next_offset_x);
         cx.notify();

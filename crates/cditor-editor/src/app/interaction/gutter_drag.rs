@@ -178,8 +178,7 @@ impl CditorV2View {
         if delta.abs() < f64::EPSILON {
             return false;
         }
-        let before = runtime.global_scroll_top();
-        runtime.scroll_by_delta(delta).is_ok() && runtime.global_scroll_top() != before
+        cditor_session::project_scroll_by_delta(runtime, delta).is_ok_and(|outcome| outcome.changed)
     }
 
     fn drop_target_for_document_y(

@@ -209,9 +209,13 @@ impl CditorV2View {
     ) -> bool {
         self.ready_runtime()
             .and_then(|runtime| {
-                runtime
-                    .queue_measured_height(block_id, content_version, measured_height)
-                    .ok()
+                cditor_session::project_measured_block_height(
+                    runtime,
+                    block_id,
+                    content_version,
+                    measured_height,
+                )
+                .ok()
             })
             .unwrap_or(false)
     }
@@ -270,9 +274,13 @@ impl CditorV2View {
         }
         self.ready_runtime()
             .and_then(|runtime| {
-                runtime
-                    .queue_measured_height(block_id, content_version, measured_height)
-                    .ok()
+                cditor_session::project_measured_block_height(
+                    runtime,
+                    block_id,
+                    content_version,
+                    measured_height,
+                )
+                .ok()
             })
             .unwrap_or(false)
     }
@@ -417,7 +425,7 @@ impl CditorV2View {
         if result.is_ok()
             && let Some(runtime) = self.ready_runtime()
         {
-            let _ = runtime.scroll_focused_block_into_view();
+            let _ = cditor_session::project_scroll_focused_block_into_view(runtime);
         }
         match result {
             Ok(_) => {

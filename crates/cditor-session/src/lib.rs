@@ -6,6 +6,7 @@
 
 mod ai_port;
 mod history_port;
+mod layout_port;
 mod render_port;
 mod session;
 mod toolbar_snapshot;
@@ -15,6 +16,11 @@ pub use ai_port::project_ai_session_request;
 pub use history_port::{
     HistoryActionSnapshot, HistoryDirection, project_history_action,
     project_hydrated_history_action,
+};
+pub use layout_port::{
+    LayoutScrollSnapshot, project_begin_scrollbar_drag, project_drag_scrollbar,
+    project_finish_scrollbar_drag, project_measured_block_height, project_scroll_by_delta,
+    project_scroll_focused_block_into_view, project_scroll_input_frame, project_scroll_to_block,
 };
 pub use render_port::{
     RenderFrameRequest, RenderFrameSnapshot, RenderFrameWarnings, activate_resident_payload_window,
