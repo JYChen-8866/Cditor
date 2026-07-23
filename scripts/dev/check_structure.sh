@@ -254,6 +254,16 @@ if [ -n "$direct_history_router_violations" ]; then
   exit 1
 fi
 
+direct_external_undo_blob_violations=$(
+  grep -R -n -E '\.(begin_external_undo_spill|complete_external_undo_spill|abort_external_undo_spill|drain_orphaned_external_undo_blobs|restore_orphaned_external_undo_blobs)\(' \
+    --include='*.rs' crates/cditor-editor/src || true
+)
+if [ -n "$direct_external_undo_blob_violations" ]; then
+  echo 'error: Editor external undo blob lifecycle must use cditor-session history ports:' >&2
+  echo "$direct_external_undo_blob_violations" >&2
+  exit 1
+fi
+
 direct_ai_session_mutation_violations=$(
   grep -R -n -E '\.(apply_ai_session_request|begin_ai_request|begin_ai_request_with_presentation|apply_ai_stream_event|cancel_ai_request|reject_ai_preview|accept_ai_preview)\(' \
     --include='*.rs' crates/cditor-editor/src || true

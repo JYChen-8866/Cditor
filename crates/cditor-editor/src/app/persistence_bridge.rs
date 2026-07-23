@@ -3,8 +3,10 @@ use gpui::{AppContext, Context};
 use cditor_runtime::SelectionMaterializationRequest;
 use cditor_runtime::content::payload_window::{PayloadWindowLoadRequest, PayloadWindowLoadResult};
 use cditor_session::{
-    HistoryActionSnapshot, HistoryDirection, apply_payload_window_error,
-    apply_payload_window_result, project_history_action, project_hydrated_history_action,
+    HistoryActionSnapshot, HistoryDirection, UndoBlobWriteResult, apply_payload_window_error,
+    apply_payload_window_result, project_apply_undo_blob_write_result,
+    project_begin_undo_blob_cleanup, project_begin_undo_blob_spill,
+    project_finish_undo_blob_cleanup, project_history_action, project_hydrated_history_action,
     project_selection_materialization_result,
 };
 use cditor_storage::{StorageError, StorageSession, block_on_storage};
@@ -268,10 +270,7 @@ impl CditorV2View {
         let Some(session) = self.storage_persistence.session().cloned() else {
             return;
         };
-        let Some(job) = self
-            .ready_runtime()
-            .and_then(|runtime| runtime.begin_external_undo_spill())
-        else {
+        let Some(job) = self.ready_runtime().and_then(project_begin_undo_blob_spill) else {
             return;
         };
         self.undo_spill_in_flight = true;
@@ -289,18 +288,9 @@ impl CditorV2View {
             let _ = view.update(cx, |view, cx| {
                 view.undo_spill_in_flight = false;
                 if let Some(runtime) = view.ready_runtime() {
-                    match result {
-                        Ok(reference) => {
-                            let orphaned = reference.clone();
-                            if let Err(job) = runtime.complete_external_undo_spill(job, reference) {
-                                let _ = runtime.abort_external_undo_spill(job);
-                                runtime.restore_orphaned_external_undo_blobs([orphaned]);
-                            }
-                        }
-                        Err(_) => {
-                            let _ = runtime.abort_external_undo_spill(job);
-                        }
-                    }
+                    let result =
+                        result.map_or(UndoBlobWriteResult::Failed, UndoBlobWriteResult::Stored);
+                    project_apply_undo_blob_write_result(runtime, job, result);
                 }
                 cx.notify();
             });
@@ -317,7 +307,7 @@ impl CditorV2View {
         };
         let references = self
             .ready_runtime()
-            .map(|runtime| runtime.drain_orphaned_external_undo_blobs())
+            .map(project_begin_undo_blob_cleanup)
             .unwrap_or_default();
         if references.is_empty() {
             return;
@@ -338,10 +328,8 @@ impl CditorV2View {
             let failed = cleanup_task.await;
             let _ = view.update(cx, |view, cx| {
                 view.undo_cleanup_in_flight = false;
-                if !failed.is_empty()
-                    && let Some(runtime) = view.ready_runtime()
-                {
-                    runtime.restore_orphaned_external_undo_blobs(failed);
+                if let Some(runtime) = view.ready_runtime() {
+                    project_finish_undo_blob_cleanup(runtime, failed);
                 }
                 cx.notify();
             });

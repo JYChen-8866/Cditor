@@ -1,4 +1,4 @@
-use cditor_core::edit::{EditTransaction, ExternalUndoBlobRef};
+use cditor_core::edit::{EditTransaction, ExternalUndoBlobRef, UndoExternalizationJob};
 use cditor_editor_protocol::{
     ProtocolError, ProtocolErrorCode,
     command::{CommandEnvelope, CommandSource, EditorCommand},
@@ -29,6 +29,69 @@ pub enum HistoryActionSnapshot {
         reference: ExternalUndoBlobRef,
         dispatch_error: String,
     },
+}
+
+#[derive(Debug)]
+pub enum UndoBlobWriteResult {
+    Stored(ExternalUndoBlobRef),
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UndoBlobSpillApplySnapshot {
+    pub completed: bool,
+    pub transaction_restored: bool,
+    pub cleanup_required: bool,
+}
+
+pub fn project_begin_undo_blob_spill(
+    runtime: &mut DocumentRuntime,
+) -> Option<UndoExternalizationJob> {
+    runtime.begin_external_undo_spill()
+}
+
+pub fn project_apply_undo_blob_write_result(
+    runtime: &mut DocumentRuntime,
+    job: UndoExternalizationJob,
+    result: UndoBlobWriteResult,
+) -> UndoBlobSpillApplySnapshot {
+    match result {
+        UndoBlobWriteResult::Stored(reference) => {
+            let orphaned = reference.clone();
+            match runtime.complete_external_undo_spill(job, reference) {
+                Ok(()) => UndoBlobSpillApplySnapshot {
+                    completed: true,
+                    transaction_restored: false,
+                    cleanup_required: false,
+                },
+                Err(job) => {
+                    let transaction_restored = runtime.abort_external_undo_spill(job);
+                    runtime.restore_orphaned_external_undo_blobs([orphaned]);
+                    UndoBlobSpillApplySnapshot {
+                        completed: false,
+                        transaction_restored,
+                        cleanup_required: true,
+                    }
+                }
+            }
+        }
+        UndoBlobWriteResult::Failed => UndoBlobSpillApplySnapshot {
+            completed: false,
+            transaction_restored: runtime.abort_external_undo_spill(job),
+            cleanup_required: false,
+        },
+    }
+}
+
+pub fn project_begin_undo_blob_cleanup(runtime: &mut DocumentRuntime) -> Vec<ExternalUndoBlobRef> {
+    runtime.drain_orphaned_external_undo_blobs()
+}
+
+pub fn project_finish_undo_blob_cleanup(
+    runtime: &mut DocumentRuntime,
+    failed: Vec<ExternalUndoBlobRef>,
+) {
+    runtime.restore_orphaned_external_undo_blobs(failed);
 }
 
 pub fn project_history_action(
@@ -92,14 +155,90 @@ impl EditorSessionHandle {
         }
         project_history_action(&mut session.runtime, source, direction)
     }
+
+    pub fn begin_undo_blob_spill(&self) -> Result<Option<UndoExternalizationJob>, ProtocolError> {
+        Ok(project_begin_undo_blob_spill(
+            &mut self.try_session_mut()?.runtime,
+        ))
+    }
+
+    pub fn apply_undo_blob_write_result(
+        &self,
+        job: UndoExternalizationJob,
+        result: UndoBlobWriteResult,
+    ) -> Result<UndoBlobSpillApplySnapshot, ProtocolError> {
+        Ok(project_apply_undo_blob_write_result(
+            &mut self.try_session_mut()?.runtime,
+            job,
+            result,
+        ))
+    }
+
+    pub fn begin_undo_blob_cleanup(&self) -> Result<Vec<ExternalUndoBlobRef>, ProtocolError> {
+        Ok(project_begin_undo_blob_cleanup(
+            &mut self.try_session_mut()?.runtime,
+        ))
+    }
+
+    pub fn finish_undo_blob_cleanup(
+        &self,
+        failed: Vec<ExternalUndoBlobRef>,
+    ) -> Result<(), ProtocolError> {
+        project_finish_undo_blob_cleanup(&mut self.try_session_mut()?.runtime, failed);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
     use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 
     use super::*;
     use crate::EditorSession;
+
+    fn runtime_with_externalizable_history() -> DocumentRuntime {
+        let block_count = 1_026;
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            (1..=block_count)
+                .map(|block_id| {
+                    BlockPayloadRecord::rich_text(
+                        block_id,
+                        RichBlockKind::Paragraph,
+                        block_id.to_string(),
+                    )
+                })
+                .collect(),
+            720.0,
+        );
+        runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::SetBlockSelectionRange {
+                    anchor_block_id: 1,
+                    focus_block_id: block_count,
+                },
+                CommandSource::Sdk,
+            ))
+            .unwrap();
+        runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::DeleteSelectedBlocks,
+                CommandSource::Sdk,
+            ))
+            .unwrap();
+        runtime
+    }
+
+    fn blob_reference(snapshot_id: u64, block_count: usize) -> ExternalUndoBlobRef {
+        ExternalUndoBlobRef {
+            snapshot_id,
+            storage_key: format!("undo:{snapshot_id}"),
+            checksum: format!("checksum:{snapshot_id}"),
+            encoded_len: 128,
+            block_count,
+        }
+    }
 
     #[test]
     fn empty_history_is_a_successful_no_op_snapshot() {
@@ -141,5 +280,70 @@ mod tests {
         };
         assert!(snapshot.outcome.changed());
         assert!(snapshot.revision > snapshot.before_revision);
+    }
+
+    #[test]
+    fn successful_blob_write_atomically_commits_externalized_history() {
+        let mut runtime = runtime_with_externalizable_history();
+        let job = project_begin_undo_blob_spill(&mut runtime).unwrap();
+        let reference = blob_reference(job.snapshot_id, job.block_count);
+
+        let outcome = project_apply_undo_blob_write_result(
+            &mut runtime,
+            job,
+            UndoBlobWriteResult::Stored(reference.clone()),
+        );
+
+        assert!(outcome.completed);
+        assert!(!outcome.transaction_restored);
+        assert!(!outcome.cleanup_required);
+        assert_eq!(runtime.pending_undo_hydration(), Some(reference));
+    }
+
+    #[test]
+    fn failed_or_stale_blob_write_restores_history_and_tracks_orphan_cleanup() {
+        let mut failed_runtime = runtime_with_externalizable_history();
+        let failed_job = project_begin_undo_blob_spill(&mut failed_runtime).unwrap();
+        let failed = project_apply_undo_blob_write_result(
+            &mut failed_runtime,
+            failed_job,
+            UndoBlobWriteResult::Failed,
+        );
+        assert!(!failed.completed);
+        assert!(failed.transaction_restored);
+        assert!(project_begin_undo_blob_spill(&mut failed_runtime).is_some());
+
+        let mut stale_runtime = runtime_with_externalizable_history();
+        let stale_job = project_begin_undo_blob_spill(&mut stale_runtime).unwrap();
+        let orphan = blob_reference(
+            stale_job.snapshot_id.saturating_add(1),
+            stale_job.block_count,
+        );
+        let stale = project_apply_undo_blob_write_result(
+            &mut stale_runtime,
+            stale_job,
+            UndoBlobWriteResult::Stored(orphan.clone()),
+        );
+        assert!(!stale.completed);
+        assert!(stale.transaction_restored);
+        assert!(stale.cleanup_required);
+        assert_eq!(
+            project_begin_undo_blob_cleanup(&mut stale_runtime),
+            vec![orphan]
+        );
+    }
+
+    #[test]
+    fn failed_cleanup_requeues_owned_references_without_duplicates() {
+        let mut runtime = DocumentRuntime::empty();
+        let reference = blob_reference(9, 3);
+
+        project_finish_undo_blob_cleanup(&mut runtime, vec![reference.clone(), reference.clone()]);
+
+        assert_eq!(
+            project_begin_undo_blob_cleanup(&mut runtime),
+            vec![reference]
+        );
+        assert!(project_begin_undo_blob_cleanup(&mut runtime).is_empty());
     }
 }

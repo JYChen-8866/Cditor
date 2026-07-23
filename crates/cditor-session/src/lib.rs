@@ -28,7 +28,9 @@ pub use document_snapshot::{
     project_text_block_context, project_visible_block_subset, project_whiteboard_scene,
 };
 pub use history_port::{
-    HistoryActionSnapshot, HistoryDirection, project_history_action,
+    HistoryActionSnapshot, HistoryDirection, UndoBlobSpillApplySnapshot, UndoBlobWriteResult,
+    project_apply_undo_blob_write_result, project_begin_undo_blob_cleanup,
+    project_begin_undo_blob_spill, project_finish_undo_blob_cleanup, project_history_action,
     project_hydrated_history_action,
 };
 pub use input_port::{
