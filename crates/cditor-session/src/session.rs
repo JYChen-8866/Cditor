@@ -104,7 +104,7 @@ impl EditorSession {
         }
     }
 
-    fn snapshot(&self) -> SessionSnapshot {
+    pub(crate) fn snapshot(&self) -> SessionSnapshot {
         let QueryResult::DocumentSummary(summary) = self.query(CommandQuery::DocumentSummary)
         else {
             unreachable!("document summary query returned the wrong result variant")

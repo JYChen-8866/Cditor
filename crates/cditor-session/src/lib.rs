@@ -6,8 +6,10 @@
 
 mod render_port;
 mod session;
+mod ui_snapshot;
 
 pub use render_port::{RenderFrameRequest, RenderFrameSnapshot};
 pub use session::{
     EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError, SessionSnapshot,
 };
+pub use ui_snapshot::SessionUiSnapshot;
