@@ -1,4 +1,5 @@
 use super::*;
+use cditor_core::rich_text::InlineMark;
 
 #[test]
 fn command_ids_require_stable_namespaces() {

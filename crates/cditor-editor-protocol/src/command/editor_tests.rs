@@ -1,4 +1,5 @@
 use super::*;
+use cditor_core::rich_text::InlineColorTarget;
 
 #[test]
 fn editor_commands_share_stable_ids_and_typed_arguments() {
