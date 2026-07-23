@@ -165,6 +165,16 @@ if [ -n "$direct_document_selection_violations" ]; then
   exit 1
 fi
 
+direct_whiteboard_mutation_violations=$(
+  grep -R -n -E '\.update_whiteboard_scene_json\(' \
+    --include='*.rs' crates/cditor-editor/src || true
+)
+if [ -n "$direct_whiteboard_mutation_violations" ]; then
+  echo 'error: Editor must route whiteboard scene updates through Runtime dispatch:' >&2
+  echo "$direct_whiteboard_mutation_violations" >&2
+  exit 1
+fi
+
 direct_interaction_focus_violations=$(
   grep -n -E '\.focus_block\(' \
     crates/cditor-editor/src/app/interaction/gutter_drag.rs \

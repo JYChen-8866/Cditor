@@ -174,6 +174,10 @@ pub enum CommandArgs {
         block_id: BlockId,
         ratio_milli: u16,
     },
+    WhiteboardScene {
+        block_id: BlockId,
+        scene_json: String,
+    },
     TableAxisResize {
         block_id: BlockId,
         axis: TableAxis,
@@ -231,6 +235,7 @@ impl CommandArgs {
             Self::TableAxisTarget { .. } => CommandArgumentKind::TableAxisTarget,
             Self::TableInsertAxis { .. } => CommandArgumentKind::TableInsertAxis,
             Self::MediaWidthRatio { .. } => CommandArgumentKind::MediaWidthRatio,
+            Self::WhiteboardScene { .. } => CommandArgumentKind::WhiteboardScene,
             Self::TableAxisResize { .. } => CommandArgumentKind::TableAxisResize,
             Self::TableAxisMove { .. } => CommandArgumentKind::TableAxisMove,
             Self::TableRangeTarget { .. } => CommandArgumentKind::TableRangeTarget,
@@ -270,6 +275,7 @@ pub enum CommandArgumentKind {
     TableAxisTarget,
     TableInsertAxis,
     MediaWidthRatio,
+    WhiteboardScene,
     TableAxisResize,
     TableAxisMove,
     TableRangeTarget,

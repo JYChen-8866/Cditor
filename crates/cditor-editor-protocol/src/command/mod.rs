@@ -424,6 +424,7 @@ pub mod builtin {
     pub const ASSET_UPDATE: &str = "asset.update";
     pub const ASSET_INSERT_IMAGE_PAYLOAD: &str = "asset.insert_image_payload";
     pub const MEDIA_SET_WIDTH_RATIO: &str = "media.set_width_ratio";
+    pub const WHITEBOARD_UPDATE_SCENE: &str = "whiteboard.update_scene";
     pub const AI_APPLY: &str = "ai.apply";
 }
 

@@ -87,6 +87,29 @@ fn down_placer_command_has_a_stable_catalog_contract() {
 }
 
 #[test]
+fn whiteboard_scene_command_uses_a_typed_document_contract() {
+    let scene_json = r#"{"elements":[{"id":"shape-1"}]}"#.to_owned();
+    let command = EditorCommand::UpdateWhiteboardScene {
+        block_id: 9,
+        scene_json: scene_json.clone(),
+    };
+    let invocation = command.invocation(CommandSource::Toolbar);
+
+    assert_eq!(invocation.id.as_str(), builtin::WHITEBOARD_UPDATE_SCENE);
+    assert_eq!(
+        invocation.args,
+        CommandArgs::WhiteboardScene {
+            block_id: 9,
+            scene_json,
+        }
+    );
+    assert_eq!(
+        CommandCatalog::builtin().validate_invocation(&invocation),
+        Ok(())
+    );
+}
+
+#[test]
 fn document_selection_command_preserves_direction_and_affinity() {
     let selection = cditor_core::edit::DocumentSelection {
         anchor: cditor_core::edit::TextPosition {

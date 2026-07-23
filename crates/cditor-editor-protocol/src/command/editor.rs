@@ -238,6 +238,11 @@ pub enum EditorCommand {
         ratio_milli: u16,
     },
     #[doc(hidden)]
+    UpdateWhiteboardScene {
+        block_id: cditor_core::ids::BlockId,
+        scene_json: String,
+    },
+    #[doc(hidden)]
     TableResizeAxis {
         block_id: cditor_core::ids::BlockId,
         axis: TableAxis,
@@ -315,6 +320,7 @@ impl EditorCommand {
             Self::TableClearRange { .. } => builtin::TABLE_CLEAR_RANGE,
             Self::TableSetRangeBackground { .. } => builtin::TABLE_SET_RANGE_COLOR,
             Self::SetMediaWidthRatio { .. } => builtin::MEDIA_SET_WIDTH_RATIO,
+            Self::UpdateWhiteboardScene { .. } => builtin::WHITEBOARD_UPDATE_SCENE,
             Self::TableResizeAxis { .. } => builtin::TABLE_RESIZE_AXIS,
             Self::TableMoveAxis { .. } => builtin::TABLE_MOVE_AXIS,
         }
@@ -519,6 +525,13 @@ impl EditorCommand {
             } => CommandArgs::MediaWidthRatio {
                 block_id: *block_id,
                 ratio_milli: *ratio_milli,
+            },
+            Self::UpdateWhiteboardScene {
+                block_id,
+                scene_json,
+            } => CommandArgs::WhiteboardScene {
+                block_id: *block_id,
+                scene_json: scene_json.clone(),
             },
             Self::TableResizeAxis {
                 block_id,

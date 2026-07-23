@@ -9,6 +9,7 @@ use crate::overlay::WhiteboardEditorSession;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::BlockPayload;
+use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 
 impl CditorV2View {
     pub(crate) fn open_whiteboard_editor_from_gui(
@@ -42,8 +43,14 @@ impl CditorV2View {
                         let result = match &mut view.state {
                             CditorViewState::Ready(runtime) => {
                                 let changed = runtime
-                                    .update_whiteboard_scene_json(block_id, scene_json)
-                                    .unwrap_or(false);
+                                    .dispatch(CommandEnvelope::new(
+                                        EditorCommand::UpdateWhiteboardScene {
+                                            block_id,
+                                            scene_json,
+                                        },
+                                        CommandSource::Toolbar,
+                                    ))
+                                    .is_ok_and(|outcome| outcome.changed());
                                 (changed, runtime.revision())
                             }
                             _ => (false, 0),
@@ -78,8 +85,14 @@ impl CditorV2View {
         let scene_json = session.board.read(cx).scene().to_json();
         if let Some(runtime) = self.ready_runtime() {
             let changed = runtime
-                .update_whiteboard_scene_json(session.block_id, scene_json)
-                .unwrap_or(false);
+                .dispatch(CommandEnvelope::new(
+                    EditorCommand::UpdateWhiteboardScene {
+                        block_id: session.block_id,
+                        scene_json,
+                    },
+                    CommandSource::Toolbar,
+                ))
+                .is_ok_and(|outcome| outcome.changed());
             let revision = runtime.revision();
             if changed {
                 self.whiteboard_thumbnails.invalidate(session.block_id);

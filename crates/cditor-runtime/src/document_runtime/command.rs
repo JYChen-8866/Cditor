@@ -277,6 +277,14 @@ impl DocumentRuntime {
                     self.update_image_display_width_ratio(block_id, ratio_milli)
                         .map_err(apply_error)?
                 }
+                EditorCommand::UpdateWhiteboardScene {
+                    block_id,
+                    scene_json,
+                } => {
+                    affected_blocks.push(block_id);
+                    self.update_whiteboard_scene_json(block_id, scene_json)
+                        .map_err(apply_error)?
+                }
                 EditorCommand::TableResizeAxis {
                     block_id,
                     axis,

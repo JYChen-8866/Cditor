@@ -190,6 +190,8 @@ mod typing_undo;
 mod undo_memory;
 #[path = "tests/undo_property.rs"]
 mod undo_property;
+#[path = "tests/whiteboard_command.rs"]
+mod whiteboard_command;
 #[path = "tests/window_projection.rs"]
 mod window_projection;
 #[path = "tests/windows_input.rs"]

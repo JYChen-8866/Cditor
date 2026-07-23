@@ -5,7 +5,7 @@ pub(super) fn default_whiteboard_payload() -> BlockPayload {
 }
 
 impl DocumentRuntime {
-    pub fn update_whiteboard_scene_json(
+    pub(crate) fn update_whiteboard_scene_json(
         &mut self,
         block_id: BlockId,
         scene_json: impl Into<String>,

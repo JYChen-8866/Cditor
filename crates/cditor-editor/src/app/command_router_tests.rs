@@ -166,6 +166,10 @@ fn representative_commands() -> Vec<CditorCommand> {
             block_id: 1,
             ratio_milli: 800,
         },
+        CditorCommand::UpdateWhiteboardScene {
+            block_id: 1,
+            scene_json: r#"{"elements":[]}"#.to_owned(),
+        },
         CditorCommand::TableResizeAxis {
             block_id: 3,
             axis: TableAxis::Column,

@@ -196,6 +196,7 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(TABLE_RESIZE_AXIS, Args::TableAxisResize, Document),
         definition(TABLE_MOVE_AXIS, Args::TableAxisMove, Document),
         definition(MEDIA_SET_WIDTH_RATIO, Args::MediaWidthRatio, Document),
+        definition(WHITEBOARD_UPDATE_SCENE, Args::WhiteboardScene, Document),
         definition(ASSET_INSERT_IMAGE_PAYLOAD, Args::ImageAsset, Document),
         definition(AI_APPLY, Args::AiApply, Document),
     ]

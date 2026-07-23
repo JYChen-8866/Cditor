@@ -271,6 +271,10 @@ impl CditorV2View {
                 runtime.block_kind(*block_id),
                 Some(cditor_core::rich_text::RichBlockKind::Image)
             ),
+            CditorCommand::UpdateWhiteboardScene { block_id, .. } => matches!(
+                runtime.block_kind(*block_id),
+                Some(cditor_core::rich_text::RichBlockKind::Whiteboard)
+            ),
             CditorCommand::TableResizeAxis {
                 block_id,
                 axis,
@@ -351,6 +355,7 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::TableClearRange { .. }
             | CditorCommand::TableSetRangeBackground { .. }
             | CditorCommand::SetMediaWidthRatio { .. }
+            | CditorCommand::UpdateWhiteboardScene { .. }
             | CditorCommand::TableResizeAxis { .. }
             | CditorCommand::TableMoveAxis { .. }
     )
