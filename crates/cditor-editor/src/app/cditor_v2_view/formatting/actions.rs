@@ -4,7 +4,10 @@ use cditor_core::rich_text::InlineMark;
 
 use crate::overlay::{BlockTransformAction, InlineFormatAction};
 use cditor_editor_protocol::command::{
-    BlockTransform, CditorCommand, CommandOutcomeStatus, CommandSource,
+    BlockTransform, CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
+};
+use cditor_session::{
+    project_command_dispatch, project_document_snapshot, project_text_block_context,
 };
 
 use super::super::CditorV2View;
@@ -37,14 +40,13 @@ impl CditorV2View {
             let prepared = self
                 .ready_runtime()
                 .and_then(|runtime| {
-                    let text_len = runtime
-                        .block_payload_record(block_id)
-                        .map(|payload| payload.plain_text().len())?;
+                    let text_len = project_text_block_context(runtime, block_id)?.text.len();
                     if text_len == 0 {
                         return Some(false);
                     }
-                    runtime
-                        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    project_command_dispatch(
+                        runtime,
+                        CommandEnvelope::new(
                             CditorCommand::SetDocumentSelection {
                                 selection: cditor_core::edit::DocumentSelection {
                                     anchor: cditor_core::edit::TextPosition::downstream(
@@ -56,8 +58,9 @@ impl CditorV2View {
                                 },
                             },
                             CommandSource::Toolbar,
-                        ))
-                        .ok()?;
+                        ),
+                    )
+                    .ok()?;
                     Some(true)
                 })
                 .unwrap_or(false);
@@ -81,21 +84,24 @@ impl CditorV2View {
         if self.readonly {
             return false;
         }
+        let readonly = self.readonly;
         let focused = self
             .ready_runtime()
             .ok_or_else(|| "runtime is not ready".to_owned())
             .and_then(|runtime| {
-                if runtime.focused_block_id() != Some(block_id) {
-                    runtime
-                        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                if project_document_snapshot(runtime, readonly).focused_block_id != Some(block_id) {
+                    project_command_dispatch(
+                        runtime,
+                        CommandEnvelope::new(
                             CditorCommand::SetDocumentSelection {
                                 selection: cditor_core::edit::DocumentSelection::caret(
                                     cditor_core::edit::TextPosition::downstream(block_id, 0),
                                 ),
                             },
                             CommandSource::Toolbar,
-                        ))
-                        .map_err(|error| error.to_string())?;
+                        ),
+                    )
+                    .map_err(|error| error.to_string())?;
                 }
                 Ok(())
             });

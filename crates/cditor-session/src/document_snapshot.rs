@@ -13,6 +13,7 @@ pub struct SessionDocumentSnapshot {
     pub readonly: bool,
     pub can_undo: bool,
     pub can_redo: bool,
+    pub focused_block_id: Option<BlockId>,
     pub selection: Option<DocumentSelection>,
 }
 
@@ -37,6 +38,7 @@ pub fn project_document_snapshot(
         readonly,
         can_undo: !readonly && runtime.can_undo(),
         can_redo: !readonly && runtime.can_redo(),
+        focused_block_id: runtime.focused_block_id(),
         selection: runtime.document_selection_snapshot(),
     }
 }
@@ -144,6 +146,7 @@ mod tests {
         assert!(snapshot.readonly);
         assert!(!snapshot.can_undo);
         assert!(!snapshot.can_redo);
+        assert_eq!(snapshot.focused_block_id, Some(block_id));
         assert!(snapshot.selection.is_some());
     }
 
