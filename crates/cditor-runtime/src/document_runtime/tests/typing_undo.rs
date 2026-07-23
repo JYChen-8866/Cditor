@@ -226,6 +226,7 @@ fn text_undo_redo_restore_semantic_viewport_anchors() {
         .unwrap();
     assert!(runtime.undo_focused_block().unwrap());
     let anchor_index = runtime
+        .document
         .visible_index
         .visible_index_of(anchor_block)
         .unwrap();
@@ -260,6 +261,7 @@ fn text_undo_anchor_survives_height_changes_above_the_viewport() {
     assert!(runtime.undo_focused_block().unwrap());
 
     let anchor_index = runtime
+        .document
         .visible_index
         .visible_index_of(anchor.block_id)
         .unwrap();
@@ -293,6 +295,7 @@ fn structure_undo_redo_restore_their_semantic_viewport_anchors() {
 
     assert!(runtime.undo_focused_block().unwrap());
     let before_index = runtime
+        .document
         .visible_index
         .visible_index_of(before_anchor.block_id)
         .unwrap();
@@ -303,6 +306,7 @@ fn structure_undo_redo_restore_their_semantic_viewport_anchors() {
 
     assert!(runtime.redo_focused_block().unwrap());
     let after_index = runtime
+        .document
         .visible_index
         .visible_index_of(after_anchor.block_id)
         .unwrap();

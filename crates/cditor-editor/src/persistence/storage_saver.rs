@@ -286,7 +286,7 @@ impl StoragePersistenceState {
                     layout_key,
                     PAGE_POLICY_VERSION,
                     &runtime.page_layout,
-                    &runtime.visible_index.visible_block_ids,
+                    runtime.visible_block_ids(),
                 )
                 .ok()
             })

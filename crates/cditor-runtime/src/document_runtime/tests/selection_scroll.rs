@@ -357,7 +357,7 @@ fn select_all_copy_cut_paste_and_inline_mark_work_on_focused_text() {
             .toggle_inline_mark_on_selection(InlineMark::Bold)
             .unwrap()
     );
-    let payload = runtime.payload_window.get(3).unwrap();
+    let payload = runtime.document.payload_window.get(3).unwrap();
     match &payload.payload {
         BlockPayload::RichText { spans } => {
             assert!(
@@ -456,9 +456,9 @@ fn flush_discards_stale_measured_height_versions() {
     runtime.insert_char('!').unwrap();
 
     assert!(!runtime.flush_pending_height_corrections().unwrap());
-    let block_index = runtime.index.index_of(3).unwrap();
+    let block_index = runtime.document.index.index_of(3).unwrap();
     assert_ne!(
-        runtime.index.layout_meta[block_index].measured_height,
+        runtime.document.index.layout_meta[block_index].measured_height,
         Some(96.0)
     );
 }

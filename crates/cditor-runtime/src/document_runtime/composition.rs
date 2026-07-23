@@ -34,7 +34,8 @@ impl DocumentRuntime {
                 if self.block_is_table(block_id) {
                     None
                 } else {
-                    self.text_models
+                    self.document
+                        .text_models
                         .get(&block_id)
                         .map(|model| (block_id, model.text().to_owned()))
                 }
@@ -338,7 +339,8 @@ impl DocumentRuntime {
     }
 
     fn block_is_table(&self, block_id: BlockId) -> bool {
-        self.payload_window
+        self.document
+            .payload_window
             .get(block_id)
             .is_some_and(|payload| matches!(payload.kind, RichBlockKind::Table))
     }

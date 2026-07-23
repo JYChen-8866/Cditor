@@ -26,7 +26,10 @@ fn same_text_surface_focus_preserves_active_composition_and_session() {
     assert_eq!(runtime.editing.as_ref().unwrap().selected_range, selection);
     assert_eq!(runtime.editing.as_ref().unwrap().marked_range, marked);
     assert!(runtime.active_composition().is_some());
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ab");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "ab"
+    );
 }
 
 #[test]
@@ -38,7 +41,10 @@ fn cross_block_focus_commits_composition_before_switching_target() {
 
     runtime.focus_block_at_offset(2, 0).unwrap();
 
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "a中b");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "a中b"
+    );
     assert!(runtime.active_composition().is_none());
     assert_eq!(
         runtime.input_session_target(),
@@ -55,6 +61,7 @@ fn failed_cross_surface_commit_preserves_original_focus_and_composition() {
     runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
     let selected_range = runtime.editing.as_ref().unwrap().selected_range.clone();
     runtime
+        .document
         .payload_window
         .payloads
         .get_mut(&1)
@@ -70,7 +77,10 @@ fn failed_cross_surface_commit_preserves_original_focus_and_composition() {
         selected_range
     );
     assert!(runtime.editing.as_ref().unwrap().composition.is_some());
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ab");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "ab"
+    );
     assert!(runtime.undo_stacks.get(&1).is_none_or(Vec::is_empty));
     assert!(runtime.commit_composition_before_external_focus().is_err());
     assert!(runtime.editing.as_ref().unwrap().composition.is_some());
@@ -91,7 +101,8 @@ fn table_cell_composition_commits_before_block_focus_switch() {
 
     runtime.focus_block_at_offset(1, 0).unwrap();
 
-    let BlockPayload::Table(table) = &runtime.payload_window.get(10).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(10).unwrap().payload
+    else {
         panic!("expected table payload");
     };
     assert_eq!(table.cell_plain_text(0, 1).as_deref(), Some("B中"));
@@ -114,7 +125,8 @@ fn same_table_cell_focus_preserves_composition_but_blur_commits_it() {
     assert_eq!(runtime.input_session_identity(), identity);
     assert!(runtime.active_composition().is_some());
     assert!(runtime.try_blur_table_cell().unwrap());
-    let BlockPayload::Table(table) = &runtime.payload_window.get(10).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(10).unwrap().payload
+    else {
         panic!("expected table payload");
     };
     assert_eq!(table.cell_plain_text(0, 1).as_deref(), Some("B中"));
@@ -133,7 +145,10 @@ fn external_focus_commit_uses_the_same_preflight_and_single_undo_boundary() {
 
     assert!(runtime.commit_composition_before_external_focus().unwrap());
 
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "a中b");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "a中b"
+    );
     assert!(runtime.active_composition().is_none());
     assert_eq!(runtime.undo_stacks.get(&1).map(Vec::len), Some(1));
     assert!(!runtime.commit_composition_before_external_focus().unwrap());

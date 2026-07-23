@@ -254,7 +254,7 @@ fn table_cell_tab_navigation_updates_focus_and_input_session() {
 fn plain_text_input_on_table_block_without_cell_focus_preserves_table_payload() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
 
-    assert!(!runtime.text_models.contains_key(&10));
+    assert!(!runtime.document.text_models.contains_key(&10));
     runtime.focus_block(10);
     assert_eq!(runtime.focused_text(), None);
     runtime.insert_char('x').unwrap();

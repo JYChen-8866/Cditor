@@ -19,7 +19,7 @@ impl DocumentRuntime {
         current_id: BlockId,
         previous_id: BlockId,
     ) -> Result<bool, String> {
-        let Some(current_index) = self.index.index_of(current_id) else {
+        let Some(current_index) = self.document.index.index_of(current_id) else {
             return Ok(false);
         };
         if self.subtree_end(current_index) > current_index + 1 {
@@ -28,12 +28,14 @@ impl DocumentRuntime {
         let before_selection = self.document_selection_snapshot();
         let before_selected_blocks = self.selected_block_ids_snapshot();
         let before_previous = self
+            .document
             .payload_window
             .get(previous_id)
             .cloned()
             .ok_or_else(|| format!("missing payload for block {previous_id}"))?;
         let current_record = self.index_record_for_block(current_id)?;
         let current_payload = self
+            .document
             .payload_window
             .get(current_id)
             .cloned()
@@ -117,6 +119,7 @@ impl DocumentRuntime {
             return Ok(false);
         };
         if self
+            .document
             .text_models
             .get(&current_id)
             .map(|model| !model.text().is_empty())
@@ -124,11 +127,11 @@ impl DocumentRuntime {
         {
             return Ok(false);
         }
-        if self.visible_index.total_visible_count() <= 1 {
+        if self.document.visible_index.total_visible_count() <= 1 {
             self.reset_last_block_to_paragraph(current_id)?;
             return Ok(false);
         }
-        let Some(current_index) = self.index.index_of(current_id) else {
+        let Some(current_index) = self.document.index.index_of(current_id) else {
             return Ok(false);
         };
         if self.subtree_end(current_index) > current_index + 1 {
@@ -139,7 +142,8 @@ impl DocumentRuntime {
             .or_else(|| self.adjacent_visible_block_id(current_id, -preferred_direction))
             .ok_or_else(|| "missing adjacent block for empty block delete".to_owned())?;
         let target_offset = if preferred_direction < 0 {
-            self.payload_window
+            self.document
+                .payload_window
                 .get(target_id)
                 .map(BlockPayloadRecord::plain_text)
                 .map(|text| text.len())
@@ -152,11 +156,11 @@ impl DocumentRuntime {
 
     /// Delete any block by ID, moving focus to an adjacent block.
     pub(crate) fn delete_block_by_id(&mut self, block_id: BlockId) -> Result<bool, String> {
-        if self.visible_index.total_visible_count() <= 1 {
+        if self.document.visible_index.total_visible_count() <= 1 {
             self.reset_last_block_to_paragraph(block_id)?;
             return Ok(true);
         }
-        let Some(current_index) = self.index.index_of(block_id) else {
+        let Some(current_index) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
         if self.subtree_end(current_index) > current_index + 1 {
@@ -167,6 +171,7 @@ impl DocumentRuntime {
             .or_else(|| self.adjacent_visible_block_id(block_id, 1))
             .ok_or_else(|| "no adjacent block for delete".to_owned())?;
         let target_offset = self
+            .document
             .payload_window
             .get(target_id)
             .map(BlockPayloadRecord::plain_text)
@@ -194,11 +199,13 @@ impl DocumentRuntime {
         target_offset: usize,
     ) -> Result<bool, String> {
         let index = self
+            .document
             .index
             .index_of(block_id)
             .ok_or_else(|| format!("missing block {block_id}"))?;
         let deleted_record = self.index_record_for_block(block_id)?;
         let deleted_payload = self
+            .document
             .payload_window
             .get(block_id)
             .cloned()

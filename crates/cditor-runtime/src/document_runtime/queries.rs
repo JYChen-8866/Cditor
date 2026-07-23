@@ -2,11 +2,11 @@ use super::*;
 
 impl DocumentRuntime {
     pub fn document_title(&self) -> Option<&str> {
-        self.document_title.as_deref()
+        self.document.document_title.as_deref()
     }
 
     pub fn revision(&self) -> u64 {
-        self.revision
+        self.document.revision
     }
 
     pub fn last_committed_transaction_id(&self) -> Option<u64> {
@@ -15,8 +15,8 @@ impl DocumentRuntime {
 
     /// Records a committed content change at the document-kernel boundary.
     pub fn note_content_changed(&mut self) -> u64 {
-        self.revision = self.revision.saturating_add(1);
-        self.revision
+        self.document.revision = self.document.revision.saturating_add(1);
+        self.document.revision
     }
 
     pub fn can_undo(&self) -> bool {
@@ -28,18 +28,31 @@ impl DocumentRuntime {
     }
 
     pub fn document_block_count(&self) -> usize {
-        self.index.total_count()
+        self.document.index.total_count()
     }
 
     pub fn loaded_payload_count(&self) -> usize {
-        self.payload_window.payloads.len()
+        self.document.payload_window.payloads.len()
+    }
+
+    pub fn visible_block_ids(&self) -> &[BlockId] {
+        &self.document.visible_index.visible_block_ids
+    }
+
+    pub fn payload_window_range(&self) -> Range<usize> {
+        self.document.payload_window.block_range.clone()
+    }
+
+    pub fn pending_payload_load_count(&self) -> usize {
+        self.document.payload_window.loading.len()
     }
 
     pub fn dirty_payload_count(&self) -> usize {
-        self.payload_window
+        self.document
+            .payload_window
             .payloads
             .keys()
-            .filter(|block_id| self.payload_window.is_dirty(**block_id))
+            .filter(|block_id| self.document.payload_window.is_dirty(**block_id))
             .count()
     }
 
@@ -48,8 +61,8 @@ impl DocumentRuntime {
     }
 
     pub fn block_layout_version(&self, block_id: BlockId) -> Option<u64> {
-        let index = self.index.index_of(block_id)?;
-        Some(self.index.layout_meta[index].layout_version)
+        let index = self.document.index.index_of(block_id)?;
+        Some(self.document.index.layout_meta[index].layout_version)
     }
 
     pub fn estimated_document_height(&self) -> f64 {
@@ -57,7 +70,7 @@ impl DocumentRuntime {
     }
 
     pub fn estimated_payload_memory_bytes(&self) -> usize {
-        self.payload_window.total_estimated_bytes()
+        self.document.payload_window.total_estimated_bytes()
     }
 
     pub fn estimated_text_undo_memory_bytes(&self) -> usize {
@@ -114,7 +127,7 @@ mod tests {
     #[test]
     fn block_layout_version_reads_the_authoritative_index_identity() {
         let mut runtime = DocumentRuntime::empty();
-        runtime.index.layout_meta[0].layout_version = 37;
+        runtime.document.index.layout_meta[0].layout_version = 37;
 
         assert_eq!(runtime.block_layout_version(1), Some(37));
         assert_eq!(runtime.block_layout_version(999), None);

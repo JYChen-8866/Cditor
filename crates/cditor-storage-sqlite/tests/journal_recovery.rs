@@ -305,12 +305,14 @@ async fn journal_replay_reconstructs_runtime_state() {
 
     // 语义一致：结构顺序与全部文本。
     let state = |runtime: &DocumentRuntime| -> Vec<(u64, String)> {
-        (0..runtime.index.total_count())
-            .map(|position| {
-                let block_id = runtime.index.id_at(position).unwrap();
+        runtime
+            .index_records_snapshot()
+            .into_iter()
+            .map(|record| {
+                let block_id = record.id;
                 (
                     block_id,
-                    runtime.payload_window.get(block_id).unwrap().plain_text(),
+                    runtime.block_payload_record(block_id).unwrap().plain_text(),
                 )
             })
             .collect()

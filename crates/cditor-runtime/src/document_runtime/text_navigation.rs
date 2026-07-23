@@ -31,18 +31,20 @@ impl DocumentRuntime {
         extend_selection: bool,
     ) -> Result<bool, String> {
         let Some(target_id) = (if to_end {
-            self.index.block_ids.last().copied()
+            self.document.index.block_ids.last().copied()
         } else {
-            self.index.block_ids.first().copied()
+            self.document.index.block_ids.first().copied()
         }) else {
             return Ok(false);
         };
         let target_offset = if to_end {
-            self.text_models
+            self.document
+                .text_models
                 .get(&target_id)
                 .map(PieceTableTextModel::len)
                 .or_else(|| {
-                    self.payload_window
+                    self.document
+                        .payload_window
                         .get(target_id)
                         .map(|payload| payload.plain_text().len())
                 })
@@ -178,6 +180,7 @@ impl DocumentRuntime {
             return Ok(false);
         }
         let model = self
+            .document
             .text_models
             .get(&block_id)
             .ok_or_else(|| format!("missing text model for block {block_id}"))?;
@@ -263,6 +266,7 @@ impl DocumentRuntime {
             return Ok(false);
         };
         let model = self
+            .document
             .text_models
             .get(&block_id)
             .ok_or_else(|| format!("missing text model for block {block_id}"))?;
@@ -338,6 +342,7 @@ impl DocumentRuntime {
             return Ok(false);
         };
         let target_len = self
+            .document
             .text_models
             .get(&target_id)
             .map(PieceTableTextModel::len)
@@ -356,7 +361,8 @@ impl DocumentRuntime {
             return Ok(false);
         };
         let caret = self.caret_offset_for_block(block_id).unwrap_or_else(|| {
-            self.text_models
+            self.document
+                .text_models
                 .get(&block_id)
                 .map(PieceTableTextModel::len)
                 .unwrap_or(0)
@@ -366,7 +372,8 @@ impl DocumentRuntime {
             .map(|selection| selection.anchor)
             .unwrap_or_else(|| TextPosition::downstream(block_id, caret));
         let target_offset = if target_end {
-            self.text_models
+            self.document
+                .text_models
                 .get(&target_id)
                 .map(PieceTableTextModel::len)
                 .unwrap_or(0)
@@ -387,13 +394,13 @@ impl DocumentRuntime {
         block_id: BlockId,
         direction: i32,
     ) -> Option<BlockId> {
-        let index = self.visible_index.visible_index_of(block_id)?;
+        let index = self.document.visible_index.visible_index_of(block_id)?;
         let target = if direction < 0 {
             index.checked_sub(1)?
         } else {
             index.checked_add(1)?
         };
-        self.visible_index.id_at_visible_index(target)
+        self.document.visible_index.id_at_visible_index(target)
     }
 }
 

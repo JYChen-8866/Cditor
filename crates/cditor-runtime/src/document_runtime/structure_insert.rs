@@ -9,7 +9,13 @@ impl DocumentRuntime {
     pub(crate) fn insert_paragraph_after_focused(&mut self) -> Result<BlockId, String> {
         let block_id = self
             .focused_block_id()
-            .or_else(|| self.visible_index.visible_block_ids.last().copied())
+            .or_else(|| {
+                self.document
+                    .visible_index
+                    .visible_block_ids
+                    .last()
+                    .copied()
+            })
             .ok_or_else(|| "cannot insert a paragraph into an empty document".to_owned())?;
         self.insert_paragraph_after_block(block_id)
     }
@@ -20,10 +26,12 @@ impl DocumentRuntime {
     ) -> Result<BlockId, String> {
         let before_selection = self.document_selection_snapshot();
         let current_index = self
+            .document
             .index
             .index_of(block_id)
             .ok_or_else(|| format!("block {block_id} is missing from index"))?;
         let new_block_id = self
+            .document
             .index
             .block_ids
             .iter()
@@ -31,8 +39,8 @@ impl DocumentRuntime {
             .max()
             .unwrap_or(0)
             .saturating_add(1);
-        let parent_id = self.index.parent_ids[current_index];
-        let depth = self.index.depths[current_index];
+        let parent_id = self.document.index.parent_ids[current_index];
+        let depth = self.document.index.depths[current_index];
         let insert_at = self.subtree_end(current_index);
         let mut payload =
             BlockPayloadRecord::rich_text(new_block_id, RichBlockKind::Paragraph, String::new());
@@ -71,14 +79,17 @@ impl DocumentRuntime {
         level: u8,
     ) -> Result<BlockId, String> {
         let current_index = self
+            .document
             .index
             .index_of(block_id)
             .ok_or_else(|| format!("block {block_id} is missing from index"))?;
         let insert_at = self
+            .document
             .visible_index
-            .fold_end_index(&self.index, block_id)
+            .fold_end_index(&self.document.index, block_id)
             .unwrap_or_else(|| current_index.saturating_add(1));
         let new_block_id = self
+            .document
             .index
             .block_ids
             .iter()
@@ -93,8 +104,8 @@ impl DocumentRuntime {
         payload.content_version = 0;
         let record = BlockIndexRecord::new(
             new_block_id,
-            self.index.parent_ids[current_index],
-            self.index.depths[current_index],
+            self.document.index.parent_ids[current_index],
+            self.document.index.depths[current_index],
             kind_tag_for_rich_block_kind(&kind),
             0,
         )
@@ -121,15 +132,23 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn focus_or_create_down_placer_paragraph(&mut self) -> Result<bool, String> {
-        let Some(last_block_id) = self.visible_index.visible_block_ids.last().copied() else {
+        let Some(last_block_id) = self
+            .document
+            .visible_index
+            .visible_block_ids
+            .last()
+            .copied()
+        else {
             return Ok(false);
         };
         let text_len = self
+            .document
             .text_models
             .get(&last_block_id)
             .map(PieceTableTextModel::len)
             .or_else(|| {
-                self.payload_window
+                self.document
+                    .payload_window
                     .get(last_block_id)
                     .map(BlockPayloadRecord::plain_text)
                     .map(|text| text.len())
@@ -154,6 +173,7 @@ impl DocumentRuntime {
         let before_selection = self.document_selection_snapshot();
         let Some(current_block_id) = self.focused_block_id() else {
             let first = self
+                .document
                 .visible_index
                 .visible_block_ids
                 .first()
@@ -163,10 +183,12 @@ impl DocumentRuntime {
             return Ok(first);
         };
         let current_index = self
+            .document
             .index
             .index_of(current_block_id)
             .ok_or_else(|| format!("focused block {current_block_id} is missing from index"))?;
         let current_kind = self
+            .document
             .payload_window
             .get(current_block_id)
             .map(|payload| payload.kind.clone())
@@ -182,6 +204,7 @@ impl DocumentRuntime {
             .unwrap_or_else(|| self.focused_text().map(str::len).unwrap_or(0));
         let (leading_payload, trailing_payload) = {
             let current_payload = self
+                .document
                 .payload_window
                 .get(current_block_id)
                 .ok_or_else(|| format!("missing payload for focused block {current_block_id}"))?;
@@ -189,12 +212,14 @@ impl DocumentRuntime {
         };
 
         let before_current_payload = self
+            .document
             .payload_window
             .get(current_block_id)
             .cloned()
             .ok_or_else(|| format!("missing payload for focused block {current_block_id}"))?;
         let before_content_version = before_current_payload.content_version;
         let new_block_id = self
+            .document
             .index
             .block_ids
             .iter()
@@ -202,8 +227,8 @@ impl DocumentRuntime {
             .max()
             .unwrap_or(0)
             .saturating_add(1);
-        let parent_id = self.index.parent_ids[current_index];
-        let depth = self.index.depths[current_index];
+        let parent_id = self.document.index.parent_ids[current_index];
+        let depth = self.document.index.depths[current_index];
         let insert_at = self.subtree_end(current_index);
         let new_payload = BlockPayloadRecord {
             block_id: new_block_id,

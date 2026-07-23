@@ -124,6 +124,7 @@ impl DocumentRuntime {
             .block_id()
             .ok_or_else(|| "ephemeral surface cannot be edited by DocumentRuntime".to_owned())?;
         let before_record = self
+            .document
             .payload_window
             .get(block_id)
             .cloned()
@@ -136,9 +137,10 @@ impl DocumentRuntime {
             .flatten();
         let before_anchor = self.capture_undo_scroll_snapshot().anchor;
         let before_layout_version = self
+            .document
             .index
             .index_of(block_id)
-            .map(|index| self.index.layout_meta[index].layout_version)
+            .map(|index| self.document.index.layout_meta[index].layout_version)
             .ok_or_else(|| format!("missing layout metadata for block {block_id}"))?;
         let replaced_range = edit.range.clone();
         super::local_transaction::validate_preapplied_text_preflight(
@@ -156,6 +158,7 @@ impl DocumentRuntime {
         self.next_transaction_id = self.next_transaction_id.saturating_add(1);
 
         let after_record = self
+            .document
             .payload_window
             .get(block_id)
             .cloned()
@@ -192,6 +195,7 @@ impl DocumentRuntime {
         let authoritative_text = before_surface.plain_text();
         let live_text = match before_surface.identity.surface_id {
             SurfaceId::Block(block_id) => self
+                .document
                 .text_models
                 .get(&block_id)
                 .map(|model| model.text().to_owned()),
@@ -276,6 +280,7 @@ impl DocumentRuntime {
         let typing_marks = self.typing_marks_for(surface_id, replacement_start);
         let (content_version, text_len_after, next_offset) = {
             let model = self
+                .document
                 .text_models
                 .get_mut(&block_id)
                 .ok_or_else(|| format!("missing text model for block {block_id}"))?;
@@ -287,7 +292,7 @@ impl DocumentRuntime {
             editing.set_input_target(InputTarget::BlockText { block_id });
             editing.set_collapsed_selection(inserted.end);
             super::typing_marks::sync_payload_after_replace_with_typing_marks(
-                &mut self.payload_window,
+                &mut self.document.payload_window,
                 block_id,
                 editing.content_version,
                 model,

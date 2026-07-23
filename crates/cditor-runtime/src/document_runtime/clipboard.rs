@@ -151,10 +151,12 @@ impl DocumentRuntime {
             .or_else(|| self.focused_block_id())
             .ok_or_else(|| "missing focused block".to_owned())?;
         let current_index = self
+            .document
             .index
             .index_of(current_block_id)
             .ok_or_else(|| "focused block is missing from index".to_owned())?;
         let before_current = self
+            .document
             .payload_window
             .get(current_block_id)
             .cloned()
@@ -168,6 +170,7 @@ impl DocumentRuntime {
         let current_text = plain_text_from_spans(current_spans);
         let (prefix, suffix) = if let Some(selection) = cross_selection {
             let end_payload = self
+                .document
                 .payload_window
                 .get(selection.end.block_id)
                 .ok_or_else(|| "selection end payload is not loaded".to_owned())?;
@@ -230,8 +233,8 @@ impl DocumentRuntime {
             spans: coalesce_clipboard_spans(first_spans),
         };
 
-        let parent_id = self.index.parent_ids[current_index];
-        let depth = self.index.depths[current_index];
+        let parent_id = self.document.index.parent_ids[current_index];
+        let depth = self.document.index.depths[current_index];
         let insert_at = cross_plan
             .as_ref()
             .map(|plan| plan.replacement_index)

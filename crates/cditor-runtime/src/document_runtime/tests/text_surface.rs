@@ -46,6 +46,7 @@ fn registry_discovers_block_table_caption_and_collection_title_without_text_copi
     ];
     payloads.extend(
         runtime_with_auxiliary_surfaces()
+            .document
             .payload_window
             .payloads
             .into_values(),
@@ -79,7 +80,8 @@ fn registry_discovers_block_table_caption_and_collection_title_without_text_copi
     assert_eq!(title.role, TextSurfaceRole::CollectionTitle);
     assert!(!title.capabilities.multiline);
     assert!(title.is_empty());
-    let BlockPayload::Collection(collection) = &runtime.payload_window.get(20).unwrap().payload
+    let BlockPayload::Collection(collection) =
+        &runtime.document.payload_window.get(20).unwrap().payload
     else {
         panic!("database payload must normalize to a collection");
     };
@@ -109,7 +111,7 @@ fn auxiliary_surface_selection_dispatch_is_session_only_and_stale_safe() {
     assert!(outcome.transaction_ids.is_empty());
     assert_eq!(runtime.focused_text_surface_id(), Some(surface_id));
     assert_eq!(runtime.text_surface_selection_range(surface_id), Some(1..4));
-    assert!(runtime.input_session_selection_reversed() == false);
+    assert!(!runtime.input_session_selection_reversed());
     assert_eq!(runtime.revision(), before_revision);
 
     let before_range = runtime.text_surface_selection_range(surface_id);
@@ -188,7 +190,8 @@ fn caption_composition_is_projection_only_then_commits_as_one_undo_step() {
         .begin_or_update_composition(10, 0..3, "说明")
         .unwrap();
 
-    let BlockPayload::Image(image) = &runtime.payload_window.get(10).unwrap().payload else {
+    let BlockPayload::Image(image) = &runtime.document.payload_window.get(10).unwrap().payload
+    else {
         panic!("expected image payload");
     };
     assert_eq!(image.caption.plain_text(), "caption");
@@ -341,6 +344,7 @@ fn unicode_word_navigation_uses_the_same_contract_for_block_table_and_auxiliary_
     ];
     payloads.extend(
         runtime_with_auxiliary_surfaces()
+            .document
             .payload_window
             .payloads
             .into_values(),

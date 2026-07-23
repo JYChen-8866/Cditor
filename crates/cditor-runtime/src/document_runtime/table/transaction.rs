@@ -51,7 +51,7 @@ impl DocumentRuntime {
         &mut self,
         block_id: BlockId,
     ) -> Result<bool, String> {
-        let Some(payload) = self.payload_window.get(block_id) else {
+        let Some(payload) = self.document.payload_window.get(block_id) else {
             return Ok(false);
         };
         if !matches!(payload.kind, RichBlockKind::Table) {

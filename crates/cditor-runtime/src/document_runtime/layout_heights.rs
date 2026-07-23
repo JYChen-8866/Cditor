@@ -20,21 +20,22 @@ impl DocumentRuntime {
                 "invalid measured height for block {block_id}: {height}"
             ));
         }
-        let Some(payload) = self.payload_window.get(block_id) else {
+        let Some(payload) = self.document.payload_window.get(block_id) else {
             return Ok(false);
         };
         if payload.content_version != content_version {
             return Ok(false);
         }
-        let Some(document_index) = self.index.index_of(block_id) else {
+        let Some(document_index) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
 
         let previous_height = self
+            .document
             .visible_index
             .visible_index_of(block_id)
             .and_then(|visible_index| self.height_index.heights.get(visible_index).copied())
-            .unwrap_or_else(|| self.index.layout_meta[document_index].effective_height());
+            .unwrap_or_else(|| self.document.index.layout_meta[document_index].effective_height());
         if (previous_height - height).abs() < 0.5 {
             self.pending_measured_heights.remove(&block_id);
             return Ok(false);
@@ -72,17 +73,18 @@ impl DocumentRuntime {
         let mut applied = false;
 
         for (block_id, pending_height) in pending {
-            let Some(payload) = self.payload_window.get(block_id) else {
+            let Some(payload) = self.document.payload_window.get(block_id) else {
                 continue;
             };
             if payload.content_version != pending_height.content_version {
                 continue;
             }
-            let Some(document_index) = self.index.index_of(block_id) else {
+            let Some(document_index) = self.document.index.index_of(block_id) else {
                 continue;
             };
-            let Some(visible_index) = self.visible_index.visible_index_of(block_id) else {
-                self.index.layout_meta[document_index].update_height(pending_height.height);
+            let Some(visible_index) = self.document.visible_index.visible_index_of(block_id) else {
+                self.document.index.layout_meta[document_index]
+                    .update_height(pending_height.height);
                 self.layout_dirty = true;
                 applied = true;
                 continue;
@@ -93,12 +95,14 @@ impl DocumentRuntime {
                 .heights
                 .get(visible_index)
                 .copied()
-                .unwrap_or_else(|| self.index.layout_meta[document_index].effective_height());
+                .unwrap_or_else(|| {
+                    self.document.index.layout_meta[document_index].effective_height()
+                });
             if (previous_height - pending_height.height).abs() < 0.5 {
                 continue;
             }
 
-            self.index.layout_meta[document_index].update_height(pending_height.height);
+            self.document.index.layout_meta[document_index].update_height(pending_height.height);
             self.layout_dirty = true;
             let height_change = self
                 .height_index

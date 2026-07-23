@@ -40,10 +40,12 @@ impl DocumentRuntime {
             .or_else(|| self.focused_block_id())
             .ok_or_else(|| "missing focused block".to_owned())?;
         let current_index = self
+            .document
             .index
             .index_of(current_block_id)
             .ok_or_else(|| "focused block is missing from index".to_owned())?;
         let before_current = self
+            .document
             .payload_window
             .get(current_block_id)
             .cloned()
@@ -60,6 +62,7 @@ impl DocumentRuntime {
         let current_text = plain_text_from_spans(&current_spans);
         let (prefix, suffix) = if let Some(plan) = &cross_plan {
             let end = self
+                .document
                 .payload_window
                 .get(plan.selection.end.block_id)
                 .ok_or_else(|| "selection end payload is not hydrated".to_owned())?;
@@ -127,8 +130,8 @@ impl DocumentRuntime {
             .as_ref()
             .map(|plan| plan.replacement_index)
             .unwrap_or_else(|| self.subtree_end(current_index));
-        let parent_id = self.index.parent_ids[current_index];
-        let depth = self.index.depths[current_index];
+        let parent_id = self.document.index.parent_ids[current_index];
+        let depth = self.document.index.depths[current_index];
         let plan = if imported
             .blocks
             .iter()
@@ -226,7 +229,7 @@ impl DocumentRuntime {
             "apply.done",
             format_args!(
                 "current_block={current_block_id} total_blocks={} focus={:?}",
-                self.index.total_count(),
+                self.document.index.total_count(),
                 self.focused_block_id()
             ),
         );

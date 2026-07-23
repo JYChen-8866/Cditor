@@ -11,21 +11,35 @@ use crate::document_runtime::TransactionApplyError;
 
 fn semantic_state(runtime: &DocumentRuntime) -> String {
     let mut state = String::new();
-    for position in 0..runtime.index.total_count() {
-        let block_id = runtime.index.id_at(position).expect("index position");
+    for position in 0..runtime.document.index.total_count() {
+        let block_id = runtime
+            .document
+            .index
+            .id_at(position)
+            .expect("index position");
         state.push_str(&format!(
             "{}:{:?}:{}:{};",
             block_id,
-            runtime.index.parent_id_at(position).expect("parent"),
-            runtime.index.depth_at(position).expect("depth"),
-            runtime.index.kind_tag_at(position).expect("kind"),
+            runtime
+                .document
+                .index
+                .parent_id_at(position)
+                .expect("parent"),
+            runtime.document.index.depth_at(position).expect("depth"),
+            runtime.document.index.kind_tag_at(position).expect("kind"),
         ));
     }
     state.push('\n');
-    let mut ids: Vec<BlockId> = runtime.payload_window.payloads.keys().copied().collect();
+    let mut ids: Vec<BlockId> = runtime
+        .document
+        .payload_window
+        .payloads
+        .keys()
+        .copied()
+        .collect();
     ids.sort_unstable();
     for block_id in ids {
-        let record = runtime.payload_window.get(block_id).unwrap();
+        let record = runtime.document.payload_window.get(block_id).unwrap();
         state.push_str(&format!("{block_id}->{}\n", record.plain_text()));
     }
     state
@@ -56,7 +70,12 @@ fn transaction(ops: Vec<EditOperation>, inverse_ops: Vec<EditOperation>) -> Edit
 #[test]
 fn text_ops_apply_with_version_and_dirty_range() {
     let mut runtime = base_runtime();
-    let content_before = runtime.payload_window.get(1).unwrap().content_version;
+    let content_before = runtime
+        .document
+        .payload_window
+        .get(1)
+        .unwrap()
+        .content_version;
     let revision_before = runtime.revision();
 
     let applied = runtime
@@ -80,12 +99,20 @@ fn text_ops_apply_with_version_and_dirty_range() {
         .expect("apply");
 
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
         "hello, 世界 world"
     );
-    assert_eq!(runtime.payload_window.get(2).unwrap().plain_text(), "ond");
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().content_version,
+        runtime.document.payload_window.get(2).unwrap().plain_text(),
+        "ond"
+    );
+    assert_eq!(
+        runtime
+            .document
+            .payload_window
+            .get(1)
+            .unwrap()
+            .content_version,
         content_before + 1
     );
     assert!(runtime.revision() > revision_before);
@@ -267,14 +294,19 @@ fn structural_ops_apply_and_validate_preorder() {
 
     assert!(applied.structure_changed);
     // preorder: 1, 3(child of 1), 10, 2
-    let order: Vec<BlockId> = (0..runtime.index.total_count())
-        .map(|position| runtime.index.id_at(position).unwrap())
+    let order: Vec<BlockId> = (0..runtime.document.index.total_count())
+        .map(|position| runtime.document.index.id_at(position).unwrap())
         .collect();
     assert_eq!(order, vec![1, 3, 10, 2]);
-    assert_eq!(runtime.index.parent_id_at(1).unwrap(), Some(1));
-    assert_eq!(runtime.index.depth_at(1).unwrap(), 1);
+    assert_eq!(runtime.document.index.parent_id_at(1).unwrap(), Some(1));
+    assert_eq!(runtime.document.index.depth_at(1).unwrap(), 1);
     assert_eq!(
-        runtime.payload_window.get(10).unwrap().plain_text(),
+        runtime
+            .document
+            .payload_window
+            .get(10)
+            .unwrap()
+            .plain_text(),
         "inserted"
     );
 }
@@ -320,9 +352,17 @@ fn split_and_merge_ops_round_trip() {
             ChangeOrigin::Remote,
         )
         .expect("split");
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "hello");
     assert_eq!(
-        runtime.payload_window.get(20).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "hello"
+    );
+    assert_eq!(
+        runtime
+            .document
+            .payload_window
+            .get(20)
+            .unwrap()
+            .plain_text(),
         " world"
     );
 
@@ -339,11 +379,11 @@ fn split_and_merge_ops_round_trip() {
         )
         .expect("merge");
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
         "hello world"
     );
-    assert!(runtime.index.index_of(20).is_none());
-    assert!(runtime.payload_window.get(20).is_none());
+    assert!(runtime.document.index.index_of(20).is_none());
+    assert!(runtime.document.payload_window.get(20).is_none());
 }
 
 #[test]
@@ -440,7 +480,8 @@ fn table_ops_apply_with_stale_state_rejection() {
             ChangeOrigin::Remote,
         )
         .expect("insert rows");
-    let BlockPayload::Table(table) = &runtime.payload_window.get(5).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(5).unwrap().payload
+    else {
         panic!("expected table");
     };
     assert_eq!(table.rows.len(), 3);
@@ -528,7 +569,7 @@ fn deleting_focused_block_clears_editing_state() {
         )
         .expect("delete");
     assert_eq!(runtime.focused_block_id(), None);
-    assert!(runtime.index.index_of(2).is_none());
+    assert!(runtime.document.index.index_of(2).is_none());
 }
 
 #[test]
@@ -573,7 +614,7 @@ fn subtree_splitting_range_delete_is_rejected() {
             ChangeOrigin::Remote,
         )
         .expect("subtree delete");
-    assert_eq!(runtime.index.total_count(), 1);
-    assert!(runtime.payload_window.get(1).is_none());
-    assert!(runtime.payload_window.get(2).is_none());
+    assert_eq!(runtime.document.index.total_count(), 1);
+    assert!(runtime.document.payload_window.get(1).is_none());
+    assert!(runtime.document.payload_window.get(2).is_none());
 }

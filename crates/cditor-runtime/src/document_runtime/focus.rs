@@ -27,6 +27,7 @@ impl DocumentRuntime {
 
         // Get block kind to determine input capability
         let kind = self
+            .document
             .payload_window
             .get(block_id)
             .map(|payload| payload.kind.clone())
@@ -55,6 +56,7 @@ impl DocumentRuntime {
         }
 
         let text_len = self
+            .document
             .text_models
             .get(&block_id)
             .map(PieceTableTextModel::len)
@@ -77,7 +79,8 @@ impl DocumentRuntime {
         let session_id = self.allocate_input_session_id();
         let mut editing = EditingSession::start_with_session_id(
             block_id,
-            self.payload_window
+            self.document
+                .payload_window
                 .get(block_id)
                 .map(|payload| payload.content_version)
                 .unwrap_or(1),
@@ -109,17 +112,20 @@ impl DocumentRuntime {
     }
 
     pub fn first_visible_block_id(&self) -> Option<BlockId> {
-        self.visible_index.id_at_visible_index(0)
+        self.document.visible_index.id_at_visible_index(0)
     }
 
     pub fn focused_text(&self) -> Option<&str> {
         let block_id = self.focused_block_id()?;
-        self.text_models.get(&block_id).map(|model| model.text())
+        self.document
+            .text_models
+            .get(&block_id)
+            .map(|model| model.text())
     }
 
     pub fn focused_text_owned(&self) -> Option<(BlockId, String)> {
         let block_id = self.focused_block_id()?;
-        let text = self.text_models.get(&block_id)?.text().to_owned();
+        let text = self.document.text_models.get(&block_id)?.text().to_owned();
         Some((block_id, text))
     }
 
@@ -171,6 +177,7 @@ impl DocumentRuntime {
         self.break_typing_coalescing();
         self.hydrate_payload_runtime_state(block_id);
         let payload_content_version = self
+            .document
             .payload_window
             .get(block_id)
             .map(|payload| payload.content_version)
@@ -435,6 +442,7 @@ impl DocumentRuntime {
         }
         let (offset, text_len) = {
             let model = self
+                .document
                 .text_models
                 .get(&block_id)
                 .ok_or_else(|| format!("missing text model for block {block_id}"))?;

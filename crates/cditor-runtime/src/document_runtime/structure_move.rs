@@ -34,10 +34,10 @@ impl DocumentRuntime {
     }
 
     fn can_indent_block(&self, block_id: BlockId) -> bool {
-        let Some(index) = self.index.index_of(block_id) else {
+        let Some(index) = self.document.index.index_of(block_id) else {
             return false;
         };
-        let parent_id = self.index.parent_ids[index];
+        let parent_id = self.document.index.parent_ids[index];
         let Some(sibling_index) = self.direct_child_position(parent_id, block_id) else {
             return false;
         };
@@ -49,7 +49,8 @@ impl DocumentRuntime {
         else {
             return false;
         };
-        self.index
+        self.document
+            .index
             .index_of(previous_sibling_id)
             .is_some_and(|previous| {
                 cditor_core::block::supports_list_children(&self.kind_at_index(previous))
@@ -57,16 +58,16 @@ impl DocumentRuntime {
     }
 
     fn can_outdent_block(&self, block_id: BlockId) -> bool {
-        let Some(index) = self.index.index_of(block_id) else {
+        let Some(index) = self.document.index.index_of(block_id) else {
             return false;
         };
-        let Some(parent_id) = self.index.parent_ids[index] else {
+        let Some(parent_id) = self.document.index.parent_ids[index] else {
             return false;
         };
-        let Some(parent_index) = self.index.index_of(parent_id) else {
+        let Some(parent_index) = self.document.index.index_of(parent_id) else {
             return false;
         };
-        self.direct_child_position(self.index.parent_ids[parent_index], parent_id)
+        self.direct_child_position(self.document.index.parent_ids[parent_index], parent_id)
             .is_some()
     }
 
@@ -93,10 +94,10 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn indent_block(&mut self, block_id: BlockId) -> Result<bool, String> {
-        let Some(index) = self.index.index_of(block_id) else {
+        let Some(index) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
-        let parent_id = self.index.parent_ids[index];
+        let parent_id = self.document.index.parent_ids[index];
         let Some(sibling_index) = self.direct_child_position(parent_id, block_id) else {
             return Ok(false);
         };
@@ -107,7 +108,7 @@ impl DocumentRuntime {
         let Some(previous_sibling_id) = siblings.get(sibling_index - 1).copied() else {
             return Ok(false);
         };
-        let Some(previous_sibling_index) = self.index.index_of(previous_sibling_id) else {
+        let Some(previous_sibling_index) = self.document.index.index_of(previous_sibling_id) else {
             return Ok(false);
         };
         let previous_kind = self.kind_at_index(previous_sibling_index);
@@ -119,16 +120,16 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn outdent_block(&mut self, block_id: BlockId) -> Result<bool, String> {
-        let Some(index) = self.index.index_of(block_id) else {
+        let Some(index) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
-        let Some(parent_id) = self.index.parent_ids[index] else {
+        let Some(parent_id) = self.document.index.parent_ids[index] else {
             return Ok(false);
         };
-        let Some(parent_index) = self.index.index_of(parent_id) else {
+        let Some(parent_index) = self.document.index.index_of(parent_id) else {
             return Ok(false);
         };
-        let grandparent_id = self.index.parent_ids[parent_index];
+        let grandparent_id = self.document.index.parent_ids[parent_index];
         let Some(parent_sibling_index) = self.direct_child_position(grandparent_id, parent_id)
         else {
             return Ok(false);

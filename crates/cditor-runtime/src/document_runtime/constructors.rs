@@ -1,3 +1,4 @@
+use super::document_state::DocumentState;
 use super::*;
 
 impl DocumentRuntime {
@@ -51,7 +52,7 @@ impl DocumentRuntime {
         );
         log_runtime_timing("large_demo.runtime_from_index", start, Some(count));
 
-        runtime.demo_payload_count = Some(count);
+        runtime.document.demo_payload_count = Some(count);
         log_runtime_timing("large_demo.total", total_start, Some(count));
         runtime
     }
@@ -95,7 +96,7 @@ impl DocumentRuntime {
             document.structure_version,
             viewport_height,
         );
-        runtime.block_attrs = block_attrs;
+        runtime.document.block_attrs = block_attrs;
         runtime
     }
 
@@ -180,11 +181,15 @@ impl DocumentRuntime {
 
         let start = Instant::now();
         let list_projection_cache = ListProjectionCache::build(&index);
-        log_runtime_timing("runtime.list_projection_cache", start, Some(record_count));
+        log_runtime_timing(
+            "runtime.document.list_projection_cache",
+            start,
+            Some(record_count),
+        );
 
         let start = Instant::now();
         let visible_index = VisibleDocumentIndex::from_document_index(&index);
-        log_runtime_timing("runtime.visible_index", start, Some(record_count));
+        log_runtime_timing("runtime.document.visible_index", start, Some(record_count));
 
         let start = Instant::now();
         let height_index = BlockHeightIndex::from_visible_document(&index, &visible_index)
@@ -220,25 +225,28 @@ impl DocumentRuntime {
 
         Self {
             document_id,
-            document_title: None,
-            revision: structure_version,
-            index,
-            visible_index,
+            document: DocumentState {
+                document_title: None,
+                revision: structure_version,
+                index,
+                visible_index,
+                payload_window,
+                block_attrs: HashMap::new(),
+                collection_records: HashMap::new(),
+                comment_threads: HashMap::new(),
+                assets: HashMap::new(),
+                block_asset_ids: HashMap::new(),
+                table_runtimes,
+                text_models,
+                list_projection_cache,
+                demo_payload_count: None,
+            },
             height_index,
             page_layout,
             scroll,
             editing: None,
-            payload_window,
-            block_attrs: HashMap::new(),
-            collection_records: HashMap::new(),
-            comment_threads: HashMap::new(),
-            assets: HashMap::new(),
-            block_asset_ids: HashMap::new(),
-            table_runtimes,
             table_horizontal_scroll_offsets: HashMap::new(),
-            text_models,
             selected_block_ids: HashSet::new(),
-            list_projection_cache,
             document_selection: None,
             visual_caret_position: None,
             ai_session: None,
@@ -267,7 +275,6 @@ impl DocumentRuntime {
             pending_measured_heights: HashMap::new(),
             layout_dirty: false,
             scrollbar_drag: None,
-            demo_payload_count: None,
         }
     }
 }

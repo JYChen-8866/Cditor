@@ -36,7 +36,7 @@ pub struct RealtimeInputOutcome {
 pub enum RealtimeInputError {
     StaleIdentity {
         expected: InputSessionIdentity,
-        current: Option<InputSessionIdentity>,
+        current: Box<Option<InputSessionIdentity>>,
     },
     ApplyFailed(String),
 }
@@ -66,7 +66,7 @@ impl DocumentRuntime {
         if current != Some(request.expected) {
             return Err(RealtimeInputError::StaleIdentity {
                 expected: request.expected,
-                current,
+                current: Box::new(current),
             });
         }
 

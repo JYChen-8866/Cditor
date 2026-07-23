@@ -53,7 +53,7 @@ fn typed_text_operations_cover_block_and_auxiliary_surfaces_once() {
         ],
         720.0,
     );
-    let layout_before = runtime.index.layout_meta[0].layout_version;
+    let layout_before = runtime.document.index.layout_meta[0].layout_version;
 
     let applied = runtime
         .apply_transaction(

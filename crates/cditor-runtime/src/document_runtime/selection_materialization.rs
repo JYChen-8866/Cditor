@@ -32,37 +32,42 @@ impl DocumentRuntime {
         if !self.selected_block_ids.is_empty() {
             ids = self.selected_block_subtree_ids();
             if let (Some(first), Some(last)) = (ids.first(), ids.last()) {
-                let start = self.index.index_of(*first)?;
-                let end = self.index.index_of(*last)?.saturating_add(1);
-                let survivor = if start == 0 && end == self.index.total_count() {
+                let start = self.document.index.index_of(*first)?;
+                let end = self.document.index.index_of(*last)?.saturating_add(1);
+                let survivor = if start == 0 && end == self.document.index.total_count() {
                     Some(0)
                 } else if start > 0 {
                     Some(start - 1)
-                } else if end < self.index.total_count() {
+                } else if end < self.document.index.total_count() {
                     Some(end)
                 } else {
                     None
                 };
                 if let Some(index) = survivor {
-                    ids.push(self.index.block_ids[index]);
+                    ids.push(self.document.index.block_ids[index]);
                 }
             }
         } else if let Some(normalized) = self
             .document_selection
-            .and_then(|selection| selection.normalize(&self.index).ok())
+            .and_then(|selection| selection.normalize(&self.document.index).ok())
         {
-            let start = self.index.index_of(normalized.start.block_id)?;
-            let end = self.index.index_of(normalized.end.block_id)?;
-            ids.extend(self.index.block_ids[start..=end].iter().copied());
+            let start = self.document.index.index_of(normalized.start.block_id)?;
+            let end = self.document.index.index_of(normalized.end.block_id)?;
+            ids.extend(self.document.index.block_ids[start..=end].iter().copied());
         } else if let Some(block_id) = self.focused_block_id() {
             ids.push(block_id);
         }
 
-        ids.sort_unstable_by_key(|block_id| self.index.index_of(*block_id).unwrap_or(usize::MAX));
+        ids.sort_unstable_by_key(|block_id| {
+            self.document
+                .index
+                .index_of(*block_id)
+                .unwrap_or(usize::MAX)
+        });
         ids.dedup();
         let missing = ids
             .into_iter()
-            .filter(|block_id| !self.payload_window.payloads.contains_key(block_id))
+            .filter(|block_id| !self.document.payload_window.payloads.contains_key(block_id))
             .collect::<Vec<_>>();
         if missing.is_empty() {
             return None;
@@ -81,17 +86,18 @@ impl DocumentRuntime {
         let mut roots = self
             .selected_block_ids
             .iter()
-            .filter_map(|block_id| self.index.index_of(*block_id))
+            .filter_map(|block_id| self.document.index.index_of(*block_id))
             .filter(|index| {
-                let mut parent = self.index.parent_ids[*index];
+                let mut parent = self.document.index.parent_ids[*index];
                 while let Some(parent_id) = parent {
                     if self.selected_block_ids.contains(&parent_id) {
                         return false;
                     }
                     parent = self
+                        .document
                         .index
                         .index_of(parent_id)
-                        .and_then(|position| self.index.parent_ids[position]);
+                        .and_then(|position| self.document.index.parent_ids[position]);
                 }
                 true
             })
@@ -100,7 +106,7 @@ impl DocumentRuntime {
         roots
             .into_iter()
             .flat_map(|root| {
-                self.index.block_ids[root..self.subtree_end(root)]
+                self.document.index.block_ids[root..self.subtree_end(root)]
                     .iter()
                     .copied()
             })
@@ -126,16 +132,21 @@ impl DocumentRuntime {
         let expected = request.block_ids.iter().copied().collect::<HashSet<_>>();
         for record in records {
             if expected.contains(&record.block_id)
-                && !self.payload_window.payloads.contains_key(&record.block_id)
+                && !self
+                    .document
+                    .payload_window
+                    .payloads
+                    .contains_key(&record.block_id)
             {
                 let mut record = normalize_payload_record_for_kind(record);
                 self.sync_table_runtime_from_loaded_record(&mut record);
-                self.payload_window.insert_loaded(record);
+                self.document.payload_window.insert_loaded(record);
             }
         }
         for block_id in missing_block_ids {
             if expected.contains(block_id) {
-                self.payload_window
+                self.document
+                    .payload_window
                     .mark_failed(*block_id, "payload missing from store");
             }
         }
@@ -178,8 +189,8 @@ mod tests {
                 },
             })
             .unwrap();
-        runtime.payload_window.payloads.remove(&2);
-        runtime.payload_window.payloads.remove(&3);
+        runtime.document.payload_window.payloads.remove(&2);
+        runtime.document.payload_window.payloads.remove(&3);
 
         let request = runtime.selection_materialization_request().unwrap();
         assert_eq!(request.block_ids, vec![2, 3]);
@@ -214,7 +225,7 @@ mod tests {
         );
         runtime.focus_block_at_offset(1, 0).unwrap();
         runtime.select_all_command();
-        runtime.payload_window.payloads.remove(&1);
+        runtime.document.payload_window.payloads.remove(&1);
         let request = runtime.selection_materialization_request().unwrap();
         runtime
             .set_document_selection(DocumentSelection::caret(TextPosition::downstream(1, 0)))
@@ -238,7 +249,7 @@ mod tests {
                 focus: TextPosition::downstream(2, 3),
             })
             .unwrap();
-        let record = runtime.payload_window.payloads.remove(&2).unwrap();
+        let record = runtime.document.payload_window.payloads.remove(&2).unwrap();
         let request = runtime.selection_materialization_request().unwrap();
 
         assert_eq!(
@@ -247,7 +258,7 @@ mod tests {
         );
         assert!(runtime.selection_materialization_request().is_none());
 
-        runtime.payload_window.payloads.remove(&2);
+        runtime.document.payload_window.payloads.remove(&2);
         runtime
             .set_document_selection(DocumentSelection::caret(TextPosition::downstream(1, 0)))
             .unwrap();
@@ -255,7 +266,7 @@ mod tests {
             runtime.apply_selection_materialization_result(&request, vec![record], &[]),
             SelectionMaterializationApplyDecision::DiscardedStale
         );
-        assert!(!runtime.payload_window.payloads.contains_key(&2));
+        assert!(!runtime.document.payload_window.payloads.contains_key(&2));
     }
 
     #[test]
@@ -269,10 +280,10 @@ mod tests {
             ],
             800.0,
         );
-        runtime.index.parent_ids[1] = Some(1);
-        runtime.index.depths[1] = 1;
+        runtime.document.index.parent_ids[1] = Some(1);
+        runtime.document.index.depths[1] = 1;
         runtime.selected_block_ids.insert(1);
-        runtime.payload_window.payloads.remove(&2);
+        runtime.document.payload_window.payloads.remove(&2);
 
         let request = runtime.selection_materialization_request().unwrap();
         assert_eq!(request.block_ids, vec![2]);

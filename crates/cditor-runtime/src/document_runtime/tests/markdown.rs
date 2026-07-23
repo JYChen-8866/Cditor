@@ -12,10 +12,10 @@ fn large_markdown_paste_hydrates_only_focused_and_viewport_text_models() {
     assert!(runtime.insert_markdown_paste(&markdown).unwrap());
     let projection = runtime.projection_for_window_planned();
 
-    assert_eq!(runtime.index.total_count(), 2_000);
+    assert_eq!(runtime.document.index.total_count(), 2_000);
     assert!(projection.blocks.len() <= 320);
-    assert!(runtime.text_models.len() <= 322);
-    assert!(runtime.text_models.len() < runtime.index.total_count());
+    assert!(runtime.document.text_models.len() <= 322);
+    assert!(runtime.document.text_models.len() < runtime.document.index.total_count());
 }
 
 #[test]
@@ -26,13 +26,13 @@ fn markdown_paste_heading_replaces_current_block_and_preserves_prefix_suffix() {
 
     assert!(runtime.insert_markdown_paste("# Title").unwrap());
 
-    assert_eq!(runtime.index.total_count(), 1);
+    assert_eq!(runtime.document.index.total_count(), 1);
     assert_eq!(
         runtime.kind_at_index(0),
         RichBlockKind::Heading { level: 1 }
     );
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
         "helloTitle world"
     );
     assert_eq!(runtime.focused_block_id(), Some(1));
@@ -51,15 +51,15 @@ fn markdown_paste_multiline_list_inserts_structured_siblings() {
 
     assert!(runtime.insert_markdown_paste("- one\n- two").unwrap());
 
-    assert_eq!(runtime.index.total_count(), 2);
+    assert_eq!(runtime.document.index.total_count(), 2);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::BulletedList);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::BulletedList);
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
         "prefix one"
     );
     assert_eq!(
-        runtime.payload_window.get(3).unwrap().plain_text(),
+        runtime.document.payload_window.get(3).unwrap().plain_text(),
         "twosuffix"
     );
     assert_eq!(runtime.focused_block_id(), Some(3));
@@ -85,7 +85,7 @@ fn markdown_paste_parses_inline_only_formatting() {
             .unwrap()
     );
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text payload");
     };
@@ -111,29 +111,50 @@ fn markdown_paste_deletes_cross_block_selection_and_undo_restores_it() {
     runtime.set_document_text_selection(1, 1, 3, 1).unwrap();
 
     assert!(runtime.insert_markdown_paste("- x\n- y").unwrap());
-    assert_eq!(runtime.index.total_count(), 2);
+    assert_eq!(runtime.document.index.total_count(), 2);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::BulletedList);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::BulletedList);
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ax");
-    assert_eq!(runtime.payload_window.get(5).unwrap().plain_text(), "yhi");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "ax"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(5).unwrap().plain_text(),
+        "yhi"
+    );
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.total_count(), 3);
+    assert_eq!(runtime.document.index.total_count(), 3);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::Paragraph);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::Paragraph);
     assert_eq!(runtime.kind_at_index(2), RichBlockKind::Paragraph);
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "abc");
-    assert_eq!(runtime.payload_window.get(2).unwrap().plain_text(), "def");
-    assert_eq!(runtime.payload_window.get(3).unwrap().plain_text(), "ghi");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "abc"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(2).unwrap().plain_text(),
+        "def"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(3).unwrap().plain_text(),
+        "ghi"
+    );
     assert_eq!(runtime.focused_block_id(), Some(3));
     assert_eq!(runtime.caret_offset_for_block(3), Some(1));
 
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.index.total_count(), 2);
+    assert_eq!(runtime.document.index.total_count(), 2);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::BulletedList);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::BulletedList);
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ax");
-    assert_eq!(runtime.payload_window.get(5).unwrap().plain_text(), "yhi");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "ax"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(5).unwrap().plain_text(),
+        "yhi"
+    );
 }
 
 #[test]
@@ -148,8 +169,11 @@ fn markdown_paste_over_nested_boundary_preserves_trailing_subtree_transactionall
     let before_selection = runtime.document_selection_snapshot();
 
     assert!(runtime.insert_markdown_paste("- x\n- y").unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 6, 3, 4]);
-    assert_eq!(runtime.index.parent_ids, vec![None, None, None, None]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 6, 3, 4]);
+    assert_eq!(
+        runtime.document.index.parent_ids,
+        vec![None, None, None, None]
+    );
     assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "Ax");
     assert_eq!(runtime.block_payload_record(6).unwrap().plain_text(), "yB");
     assert_eq!(runtime.block_payload_record(3).unwrap().plain_text(), "CC");
@@ -170,11 +194,14 @@ fn markdown_paste_over_nested_boundary_preserves_trailing_subtree_transactionall
     ));
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3, 4]);
-    assert_eq!(runtime.index.parent_ids, vec![None, Some(1), Some(2), None]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3, 4]);
+    assert_eq!(
+        runtime.document.index.parent_ids,
+        vec![None, Some(1), Some(2), None]
+    );
     assert_eq!(runtime.document_selection_snapshot(), before_selection);
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 6, 3, 4]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 6, 3, 4]);
 }
 
 #[test]
@@ -188,29 +215,29 @@ fn markdown_paste_undo_redo_restores_structure_and_payloads() {
     runtime.focus_block_at_offset(1, 7).unwrap();
 
     assert!(runtime.insert_markdown_paste("- one\n- two").unwrap());
-    assert_eq!(runtime.index.total_count(), 2);
+    assert_eq!(runtime.document.index.total_count(), 2);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::BulletedList);
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.total_count(), 1);
+    assert_eq!(runtime.document.index.total_count(), 1);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::Paragraph);
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
         "prefix suffix"
     );
     assert_eq!(runtime.focused_block_id(), Some(1));
     assert_eq!(runtime.caret_offset_for_block(1), Some("prefix ".len()));
 
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.index.total_count(), 2);
+    assert_eq!(runtime.document.index.total_count(), 2);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::BulletedList);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::BulletedList);
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
         "prefix one"
     );
     assert_eq!(
-        runtime.payload_window.get(3).unwrap().plain_text(),
+        runtime.document.payload_window.get(3).unwrap().plain_text(),
         "twosuffix"
     );
     assert_eq!(runtime.focused_block_id(), Some(3));
@@ -233,15 +260,18 @@ fn markdown_paste_table_with_suffix_adds_trailing_paragraph() {
             .unwrap()
     );
 
-    assert_eq!(runtime.index.total_count(), 3);
+    assert_eq!(runtime.document.index.total_count(), 3);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::Paragraph);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::Table);
     assert_eq!(runtime.kind_at_index(2), RichBlockKind::Paragraph);
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
         "before "
     );
-    assert_eq!(runtime.payload_window.get(3).unwrap().plain_text(), "after");
+    assert_eq!(
+        runtime.document.payload_window.get(3).unwrap().plain_text(),
+        "after"
+    );
     assert_eq!(runtime.focused_block_id(), Some(3));
     assert_eq!(runtime.caret_offset_for_block(3), Some("after".len()));
 }

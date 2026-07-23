@@ -7,14 +7,15 @@ impl DocumentRuntime {
     ) -> Result<(BlockId, BlockId), String> {
         let current_block_id = self
             .focused_block_id()
-            .or_else(|| self.index.block_ids.last().copied())
+            .or_else(|| self.document.index.block_ids.last().copied())
             .ok_or_else(|| "missing focused block".to_owned())?;
         let current_index = self
+            .document
             .index
             .index_of(current_block_id)
             .ok_or_else(|| format!("missing block index for {current_block_id}"))?;
-        let parent_id = self.index.parent_ids[current_index];
-        let depth = self.index.depths[current_index];
+        let parent_id = self.document.index.parent_ids[current_index];
+        let depth = self.document.index.depths[current_index];
         let insert_at = self.subtree_end(current_index);
         let image_block_id = self.next_available_block_id();
         let trailing_block_id = image_block_id.saturating_add(1);
@@ -74,6 +75,7 @@ impl DocumentRuntime {
     ) -> Result<bool, String> {
         let ratio = display_width_ratio_milli.clamp(200, 1000);
         let record = self
+            .document
             .payload_window
             .get(block_id)
             .cloned()

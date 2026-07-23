@@ -151,6 +151,7 @@ impl DocumentRuntime {
 
     pub(super) fn snapshot(&self, block_id: BlockId) -> Result<TextSnapshot, String> {
         let payload = self
+            .document
             .payload_window
             .get(block_id)
             .cloned()
@@ -326,7 +327,7 @@ impl DocumentRuntime {
         let focused_table_cell = snapshot.focused_table_cell;
         self.replace_block_kind_and_payload(block_id, snapshot.kind, snapshot.payload)?;
         let _ = self.refresh_table_block_height(block_id)?;
-        if let Some(payload) = self.payload_window.payloads.get_mut(&block_id) {
+        if let Some(payload) = self.document.payload_window.payloads.get_mut(&block_id) {
             payload.content_version = snapshot.content_version;
         }
         match input_target {
@@ -364,7 +365,7 @@ impl DocumentRuntime {
                         }
                     })
                     .unwrap_or(text.len());
-                if self.text_models.contains_key(&block_id) {
+                if self.document.text_models.contains_key(&block_id) {
                     self.focus_block_at_offset(block_id, offset)?;
                 } else {
                     self.focus_block(block_id);
@@ -437,7 +438,7 @@ impl DocumentRuntime {
         self.selected_block_ids = block_ids
             .iter()
             .copied()
-            .filter(|block_id| self.index.index_of(*block_id).is_some())
+            .filter(|block_id| self.document.index.index_of(*block_id).is_some())
             .collect();
         if !self.selected_block_ids.is_empty() {
             self.document_selection = None;

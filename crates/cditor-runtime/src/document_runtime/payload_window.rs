@@ -3,19 +3,19 @@ use super::*;
 impl DocumentRuntime {
     pub fn activate_payload_window_if_resident(&mut self, block_range: Range<usize>) -> bool {
         let bounded_range = self.bounded_payload_window_range(block_range);
-        if self.payload_window.block_range == bounded_range {
+        if self.document.payload_window.block_range == bounded_range {
             return false;
         }
         let block_ids = self.payload_window_block_ids(&bounded_range);
         let all_resident = block_ids
             .iter()
-            .all(|block_id| self.payload_window.payloads.contains_key(block_id));
+            .all(|block_id| self.document.payload_window.payloads.contains_key(block_id));
         if !all_resident {
             return false;
         }
-        self.payload_window.block_range = bounded_range;
+        self.document.payload_window.block_range = bounded_range;
         for block_id in block_ids {
-            self.payload_window.touch(block_id);
+            self.document.payload_window.touch(block_id);
         }
         true
     }
@@ -26,17 +26,17 @@ impl DocumentRuntime {
     ) -> Option<PayloadWindowLoadRequest> {
         let bounded_range = self.bounded_payload_window_range(block_range);
         let block_ids = self.payload_window_block_ids(&bounded_range);
-        let range_changed = self.payload_window.block_range != bounded_range;
+        let range_changed = self.document.payload_window.block_range != bounded_range;
         let has_missing = block_ids
             .iter()
-            .any(|block_id| !self.payload_window.payloads.contains_key(block_id));
+            .any(|block_id| !self.document.payload_window.payloads.contains_key(block_id));
         let missing_block_ids = block_ids
             .iter()
             .copied()
             .filter(|block_id| {
-                !self.payload_window.payloads.contains_key(block_id)
-                    && !self.payload_window.loading.contains(block_id)
-                    && self.payload_window.can_retry(*block_id)
+                !self.document.payload_window.payloads.contains_key(block_id)
+                    && !self.document.payload_window.loading.contains(block_id)
+                    && self.document.payload_window.can_retry(*block_id)
             })
             .collect::<Vec<_>>();
 
@@ -49,9 +49,9 @@ impl DocumentRuntime {
         // that generation alive and wait for its result.
         if missing_block_ids.is_empty() {
             if !has_missing {
-                self.payload_window.block_range = bounded_range;
+                self.document.payload_window.block_range = bounded_range;
                 for block_id in block_ids {
-                    self.payload_window.touch(block_id);
+                    self.document.payload_window.touch(block_id);
                 }
             }
             return None;
@@ -59,14 +59,21 @@ impl DocumentRuntime {
 
         self.payload_window_generation = self.payload_window_generation.saturating_add(1);
         let generation = self.payload_window_generation;
-        self.payload_window.block_range = bounded_range.clone();
+        self.document.payload_window.block_range = bounded_range.clone();
         for &block_id in &block_ids {
-            if self.payload_window.payloads.contains_key(&block_id) {
-                self.payload_window.touch(block_id);
+            if self
+                .document
+                .payload_window
+                .payloads
+                .contains_key(&block_id)
+            {
+                self.document.payload_window.touch(block_id);
             }
         }
         for block_id in &missing_block_ids {
-            self.payload_window.mark_loading(*block_id, generation);
+            self.document
+                .payload_window
+                .mark_loading(*block_id, generation);
         }
 
         Some(PayloadWindowLoadRequest {
@@ -83,14 +90,16 @@ impl DocumentRuntime {
         self.payload_window_generation = self.payload_window_generation.saturating_add(1);
         let generation = self.payload_window_generation;
         let bounded_range = self.bounded_payload_window_range(block_range);
-        self.payload_window.block_range = bounded_range.clone();
+        self.document.payload_window.block_range = bounded_range.clone();
         let block_ids = self.payload_window_block_ids(&bounded_range);
 
         for block_id in &block_ids {
-            if self.payload_window.payloads.contains_key(block_id) {
-                self.payload_window.touch(*block_id);
+            if self.document.payload_window.payloads.contains_key(block_id) {
+                self.document.payload_window.touch(*block_id);
             } else {
-                self.payload_window.mark_loading(*block_id, generation);
+                self.document
+                    .payload_window
+                    .mark_loading(*block_id, generation);
             }
         }
 
@@ -109,7 +118,7 @@ impl DocumentRuntime {
         let result_generation = result.request.generation;
         let is_current = result_generation == expected_generation;
         if is_current {
-            self.payload_window.block_range = result.request.block_range.clone();
+            self.document.payload_window.block_range = result.request.block_range.clone();
         }
         for payload in result.records {
             // Results from an older viewport are still valid cache data. Apply
@@ -117,6 +126,7 @@ impl DocumentRuntime {
             // late database response can never overwrite a local edit or a newer
             // request for the same block.
             if !self
+                .document
                 .payload_window
                 .finish_loading(payload.block_id, result_generation)
             {
@@ -124,14 +134,16 @@ impl DocumentRuntime {
             }
             let mut payload = normalize_payload_record_for_kind(payload);
             self.sync_table_runtime_from_loaded_record(&mut payload);
-            self.payload_window.insert_loaded(payload);
+            self.document.payload_window.insert_loaded(payload);
         }
         for block_id in result.missing_block_ids {
             if self
+                .document
                 .payload_window
                 .finish_loading(block_id, result_generation)
             {
-                self.payload_window
+                self.document
+                    .payload_window
                     .mark_failed(block_id, "payload missing from store");
             }
         }
@@ -158,10 +170,13 @@ impl DocumentRuntime {
         let message = message.into();
         for block_id in request.block_ids {
             if self
+                .document
                 .payload_window
                 .finish_loading(block_id, request_generation)
             {
-                self.payload_window.mark_failed(block_id, message.clone());
+                self.document
+                    .payload_window
+                    .mark_failed(block_id, message.clone());
             }
         }
         if request_generation != expected_generation {
@@ -179,10 +194,19 @@ impl DocumentRuntime {
         let bounded_range = self.bounded_payload_window_range(block_range);
         let mut reset_count = 0;
         for block_id in self.payload_window_block_ids(&bounded_range) {
-            if self.payload_window.failed.remove(&block_id).is_some() {
+            if self
+                .document
+                .payload_window
+                .failed
+                .remove(&block_id)
+                .is_some()
+            {
                 reset_count += 1;
             }
-            self.payload_window.failure_attempts.remove(&block_id);
+            self.document
+                .payload_window
+                .failure_attempts
+                .remove(&block_id);
         }
         reset_count
     }
@@ -190,10 +214,10 @@ impl DocumentRuntime {
     fn bounded_payload_window_range(&self, block_range: Range<usize>) -> Range<usize> {
         block_range
             .start
-            .min(self.visible_index.total_visible_count())
+            .min(self.document.visible_index.total_visible_count())
             ..block_range
                 .end
-                .min(self.visible_index.total_visible_count())
+                .min(self.document.visible_index.total_visible_count())
     }
 
     fn payload_window_block_ids(&self, block_range: &Range<usize>) -> Vec<BlockId> {
@@ -210,7 +234,11 @@ impl DocumentRuntime {
             }
         }
         for visible_index in block_range.clone() {
-            if let Some(block_id) = self.visible_index.id_at_visible_index(visible_index) {
+            if let Some(block_id) = self
+                .document
+                .visible_index
+                .id_at_visible_index(visible_index)
+            {
                 push_unique(&mut block_ids, block_id);
             }
         }

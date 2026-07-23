@@ -209,6 +209,7 @@ impl DocumentRuntime {
         after_payload: BlockPayload,
     ) -> Result<bool, String> {
         let before = self
+            .document
             .payload_window
             .get(block_id)
             .cloned()
@@ -261,6 +262,7 @@ impl DocumentRuntime {
         };
         let inserted_range = offset..offset.saturating_add(inserted_len);
         let inserted_spans = self
+            .document
             .payload_window
             .get(block_id)
             .and_then(|payload| match &payload.payload {
@@ -287,9 +289,9 @@ impl DocumentRuntime {
             new_spans: Vec::new(),
         })]
         .into();
-        let before_layout_version = self.index.index_of(block_id).map_or_else(
+        let before_layout_version = self.document.index.index_of(block_id).map_or_else(
             || panic!("missing layout metadata for block {block_id}"),
-            |index| self.index.layout_meta[index].layout_version,
+            |index| self.document.index.layout_meta[index].layout_version,
         );
         self.queue_preapplied_transaction(transaction, block_id, before_layout_version);
     }
@@ -346,8 +348,8 @@ impl DocumentRuntime {
         let transaction_id = transaction.id;
         self.pending_structure_transactions.push(transaction);
         self.last_committed_transaction_id = Some(transaction_id);
-        if let Some(position) = self.index.index_of(block_id) {
-            let layout = &mut self.index.layout_meta[position];
+        if let Some(position) = self.document.index.index_of(block_id) {
+            let layout = &mut self.document.index.layout_meta[position];
             if layout.layout_version == before_layout_version {
                 layout.layout_version = layout.layout_version.saturating_add(1);
             }

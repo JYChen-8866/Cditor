@@ -80,6 +80,7 @@ impl DocumentRuntime {
     pub(super) fn base_text_for_target(&self, target: InputTarget) -> Option<String> {
         match target {
             InputTarget::BlockText { block_id } => self
+                .document
                 .text_models
                 .get(&block_id)
                 .map(|model| model.text().to_owned()),

@@ -1,3 +1,4 @@
+use super::ai_utils::{ai_selection_fingerprint, bounded_prefix, bounded_suffix};
 use super::*;
 
 use cditor_ai::{AiCancellationToken, AiProviderRequest, AiStreamEvent, AiTaskKind};
@@ -104,11 +105,11 @@ impl DocumentRuntime {
             return None;
         }
         let block_id = self.focused_block_id()?;
-        let payload = self.payload_window.get(block_id)?;
+        let payload = self.document.payload_window.get(block_id)?;
         if !empty_text_kind_supports_ai(&payload.kind) {
             return None;
         }
-        let text = self.text_models.get(&block_id)?.text();
+        let text = self.document.text_models.get(&block_id)?.text();
         text.is_empty()
             .then(|| (block_id, self.caret_offset_for_block(block_id).unwrap_or(0)))
     }
@@ -147,7 +148,9 @@ impl DocumentRuntime {
             let block_id = self
                 .focused_block_id()
                 .ok_or_else(|| "Inline AI requires a focused text block".to_owned())?;
-            if self.focused_table_cell.is_some() || !self.text_models.contains_key(&block_id) {
+            if self.focused_table_cell.is_some()
+                || !self.document.text_models.contains_key(&block_id)
+            {
                 return Err("Inline AI requires an editable text block".to_owned());
             }
             let offset = self
@@ -314,7 +317,7 @@ impl DocumentRuntime {
             }
             RuntimeAiTarget::TextSelection(selection) => {
                 let normalized = selection
-                    .normalize(&self.index)
+                    .normalize(&self.document.index)
                     .map_err(|error| format!("{error:?}"))?;
                 match mode {
                     AiApplyMode::InsertAfter => {
@@ -395,7 +398,7 @@ impl DocumentRuntime {
         let (block_id, anchor_offset, replacement_range) = match session.target {
             RuntimeAiTarget::InlineCaret(position) => (position.block_id, position.offset, None),
             RuntimeAiTarget::TextSelection(selection) => {
-                let normalized = selection.normalize(&self.index).ok()?;
+                let normalized = selection.normalize(&self.document.index).ok()?;
                 let replacement_range = (normalized.start.block_id == normalized.end.block_id)
                     .then_some(normalized.start.offset..normalized.end.offset);
                 (
@@ -405,7 +408,7 @@ impl DocumentRuntime {
                 )
             }
         };
-        let visible_index = self.visible_index.visible_index_of(block_id)?;
+        let visible_index = self.document.visible_index.visible_index_of(block_id)?;
         if !block_range.contains(&visible_index) {
             return None;
         }
@@ -465,17 +468,19 @@ impl DocumentRuntime {
             RuntimeAiTarget::InlineCaret(position) => vec![position.block_id],
             RuntimeAiTarget::TextSelection(selection) => {
                 let normalized = selection
-                    .normalize(&self.index)
+                    .normalize(&self.document.index)
                     .map_err(|error| format!("{error:?}"))?;
                 let start = self
+                    .document
                     .index
                     .index_of(normalized.start.block_id)
                     .ok_or_else(|| "AI selection start block is missing".to_owned())?;
                 let end = self
+                    .document
                     .index
                     .index_of(normalized.end.block_id)
                     .ok_or_else(|| "AI selection end block is missing".to_owned())?;
-                self.index.block_ids[start..=end].to_vec()
+                self.document.index.block_ids[start..=end].to_vec()
             }
         };
         block_ids
@@ -495,6 +500,7 @@ impl DocumentRuntime {
         match target {
             RuntimeAiTarget::InlineCaret(position) => {
                 let text = self
+                    .document
                     .text_models
                     .get(&position.block_id)
                     .ok_or_else(|| "AI caret block is not loaded".to_owned())?
@@ -509,14 +515,16 @@ impl DocumentRuntime {
             }
             RuntimeAiTarget::TextSelection(selection) => {
                 let normalized = selection
-                    .normalize(&self.index)
+                    .normalize(&self.document.index)
                     .map_err(|error| format!("{error:?}"))?;
                 let start_text = self
+                    .document
                     .text_models
                     .get(&normalized.start.block_id)
                     .ok_or_else(|| "AI selection start block is not loaded".to_owned())?
                     .text();
                 let end_text = self
+                    .document
                     .text_models
                     .get(&normalized.end.block_id)
                     .ok_or_else(|| "AI selection end block is not loaded".to_owned())?
@@ -542,14 +550,16 @@ impl DocumentRuntime {
         replacement: &str,
     ) -> Result<bool, String> {
         let normalized = selection
-            .normalize(&self.index)
+            .normalize(&self.document.index)
             .map_err(|error| format!("{error:?}"))?;
         let start_block_id = normalized.start.block_id;
         let start_index = self
+            .document
             .index
             .index_of(start_block_id)
             .ok_or_else(|| "AI selection start block is missing".to_owned())?;
         let end_index = self
+            .document
             .index
             .index_of(normalized.end.block_id)
             .ok_or_else(|| "AI selection end block is missing".to_owned())?;
@@ -560,11 +570,13 @@ impl DocumentRuntime {
             delete_range.clone(),
         )?;
         let before_current = self
+            .document
             .payload_window
             .get(start_block_id)
             .cloned()
             .ok_or_else(|| format!("missing payload for block {start_block_id}"))?;
         let end_payload = self
+            .document
             .payload_window
             .get(normalized.end.block_id)
             .cloned()
@@ -593,7 +605,8 @@ impl DocumentRuntime {
         let deleted_payloads = deleted_records
             .iter()
             .map(|record| {
-                self.payload_window
+                self.document
+                    .payload_window
                     .get(record.id)
                     .cloned()
                     .ok_or_else(|| format!("missing AI selection payload {}", record.id))
@@ -648,53 +661,4 @@ impl DocumentRuntime {
         self.focus_block_at_offset(start_block_id, caret)?;
         Ok(true)
     }
-}
-
-fn bounded_prefix(value: &str, max_bytes: usize) -> String {
-    if value.len() <= max_bytes {
-        return value.to_owned();
-    }
-    let mut end = max_bytes;
-    while end > 0 && !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    value[..end].to_owned()
-}
-
-fn bounded_suffix(value: &str, max_bytes: usize) -> String {
-    if value.len() <= max_bytes {
-        return value.to_owned();
-    }
-    let mut start = value.len() - max_bytes;
-    while start < value.len() && !value.is_char_boundary(start) {
-        start += 1;
-    }
-    value[start..].to_owned()
-}
-
-fn ai_selection_fingerprint(target: &RuntimeAiTarget, versions: &[(BlockId, u64)]) -> u64 {
-    let mut value = 0xcbf29ce484222325u64;
-    let mut mix = |part: u64| {
-        value ^= part;
-        value = value.wrapping_mul(0x100000001b3);
-    };
-    match target {
-        RuntimeAiTarget::InlineCaret(position) => {
-            mix(1);
-            mix(position.block_id);
-            mix(position.offset as u64);
-        }
-        RuntimeAiTarget::TextSelection(selection) => {
-            mix(2);
-            mix(selection.anchor.block_id);
-            mix(selection.anchor.offset as u64);
-            mix(selection.focus.block_id);
-            mix(selection.focus.offset as u64);
-        }
-    }
-    for (block_id, version) in versions {
-        mix(*block_id);
-        mix(*version);
-    }
-    value
 }

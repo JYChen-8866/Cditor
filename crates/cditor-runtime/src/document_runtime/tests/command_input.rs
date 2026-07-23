@@ -507,16 +507,16 @@ fn structure_input_commands_dispatch_without_false_document_changes() {
 
     let indent = dispatch(&mut runtime, EditorCommand::IndentBlock);
     assert!(indent.changed());
-    assert_eq!(runtime.index.parent_ids[1], Some(1));
-    assert_eq!(runtime.index.depths[1], 1);
+    assert_eq!(runtime.document.index.parent_ids[1], Some(1));
+    assert_eq!(runtime.document.index.depths[1], 1);
 
     let unavailable_indent = dispatch(&mut runtime, EditorCommand::IndentBlock);
     assert!(!unavailable_indent.changed());
 
     let outdent = dispatch(&mut runtime, EditorCommand::OutdentBlock);
     assert!(outdent.changed());
-    assert_eq!(runtime.index.parent_ids[1], None);
-    assert_eq!(runtime.index.depths[1], 0);
+    assert_eq!(runtime.document.index.parent_ids[1], None);
+    assert_eq!(runtime.document.index.depths[1], 0);
 }
 
 #[test]
@@ -678,6 +678,6 @@ fn block_drag_commands_dispatch_one_structure_transaction() {
     );
     assert!(nested.changed());
     assert_eq!(nested.transaction_ids.len(), 1);
-    let index = runtime.index.index_of(3).unwrap();
-    assert_eq!(runtime.index.parent_ids[index], Some(1));
+    let index = runtime.document.index.index_of(3).unwrap();
+    assert_eq!(runtime.document.index.parent_ids[index], Some(1));
 }

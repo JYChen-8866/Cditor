@@ -9,16 +9,16 @@ fn move_block_subtree_before_moves_children_and_preserves_total_height() {
         (RichBlockKind::NumberedList, 0, None),
     ]);
     let total_height = runtime.height_index.total_height();
-    let before_version = runtime.index.structure_version;
+    let before_version = runtime.document.index.structure_version;
 
     assert!(runtime.move_block_subtree_before(1, Some(4)).unwrap());
 
-    assert_eq!(runtime.index.structure_version, before_version + 1);
-    assert_eq!(runtime.index.block_ids, vec![3, 1, 2, 4]);
-    assert_eq!(runtime.index.parent_ids[1], None);
-    assert_eq!(runtime.index.parent_ids[2], Some(1));
-    assert_eq!(runtime.index.depths[1], 0);
-    assert_eq!(runtime.index.depths[2], 1);
+    assert_eq!(runtime.document.index.structure_version, before_version + 1);
+    assert_eq!(runtime.document.index.block_ids, vec![3, 1, 2, 4]);
+    assert_eq!(runtime.document.index.parent_ids[1], None);
+    assert_eq!(runtime.document.index.parent_ids[2], Some(1));
+    assert_eq!(runtime.document.index.depths[1], 0);
+    assert_eq!(runtime.document.index.depths[2], 1);
     assert_eq!(runtime.height_index.total_height(), total_height);
     let projection = runtime.full_projection_for_tests();
     assert_eq!(
@@ -76,11 +76,11 @@ fn move_block_subtree_to_parent_reparents_and_updates_depth_delta() {
 
     assert!(runtime.move_block_subtree_to_parent(2, Some(1), 0).unwrap());
 
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3]);
-    assert_eq!(runtime.index.parent_ids[1], Some(1));
-    assert_eq!(runtime.index.depths[1], 1);
-    assert_eq!(runtime.index.parent_ids[2], Some(2));
-    assert_eq!(runtime.index.depths[2], 2);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3]);
+    assert_eq!(runtime.document.index.parent_ids[1], Some(1));
+    assert_eq!(runtime.document.index.depths[1], 1);
+    assert_eq!(runtime.document.index.parent_ids[2], Some(2));
+    assert_eq!(runtime.document.index.depths[2], 2);
     assert_eq!(runtime.height_index.total_height(), total_height);
     let projection = runtime.full_projection_for_tests();
     assert!(projection.blocks[0].chrome.has_children);
@@ -98,17 +98,17 @@ fn undo_and_redo_restore_structure_move_without_full_snapshot() {
     ]);
 
     assert!(runtime.move_block_subtree_before(1, Some(4)).unwrap());
-    assert_eq!(runtime.index.block_ids, vec![3, 1, 2, 4]);
+    assert_eq!(runtime.document.index.block_ids, vec![3, 1, 2, 4]);
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3, 4]);
-    assert_eq!(runtime.index.parent_ids[1], Some(1));
-    assert_eq!(runtime.index.depths[1], 1);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3, 4]);
+    assert_eq!(runtime.document.index.parent_ids[1], Some(1));
+    assert_eq!(runtime.document.index.depths[1], 1);
 
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![3, 1, 2, 4]);
-    assert_eq!(runtime.index.parent_ids[2], Some(1));
-    assert_eq!(runtime.index.depths[2], 1);
+    assert_eq!(runtime.document.index.block_ids, vec![3, 1, 2, 4]);
+    assert_eq!(runtime.document.index.parent_ids[2], Some(1));
+    assert_eq!(runtime.document.index.depths[2], 1);
 }
 
 #[test]
@@ -181,10 +181,10 @@ fn undo_order_prefers_newer_text_edit_over_older_structure_move() {
 
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(runtime.focused_text(), Some("item"));
-    assert_eq!(runtime.index.block_ids, vec![3, 1, 2, 4]);
+    assert_eq!(runtime.document.index.block_ids, vec![3, 1, 2, 4]);
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3, 4]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3, 4]);
 }
 
 #[test]
@@ -197,5 +197,5 @@ fn move_block_subtree_to_parent_rejects_invalid_parent() {
 
     assert!(!runtime.move_block_subtree_to_parent(2, Some(1), 0).unwrap());
     assert!(!runtime.move_block_subtree_to_parent(2, Some(3), 0).unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3]);
 }

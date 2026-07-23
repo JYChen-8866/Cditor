@@ -308,9 +308,12 @@ fn gutter_add_inserts_after_the_entire_target_subtree() {
     let inserted = runtime.insert_paragraph_after_block(1).unwrap();
 
     assert_eq!(inserted, 4);
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 4, 3]);
-    assert_eq!(runtime.index.parent_ids, vec![None, Some(1), None, None]);
-    assert_eq!(runtime.index.depths, vec![0, 1, 0, 0]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 4, 3]);
+    assert_eq!(
+        runtime.document.index.parent_ids,
+        vec![None, Some(1), None, None]
+    );
+    assert_eq!(runtime.document.index.depths, vec![0, 1, 0, 0]);
     assert_eq!(runtime.focused_block_id(), Some(4));
     assert_eq!(runtime.height_index.heights.len(), 4);
 }
@@ -410,7 +413,11 @@ fn space_shortcuts_cover_dynamic_lists_dividers_and_callouts() {
 
         runtime.insert_space_or_markdown_shortcut().unwrap();
 
-        let payload = runtime.payload_window.get(1).expect("converted payload");
+        let payload = runtime
+            .document
+            .payload_window
+            .get(1)
+            .expect("converted payload");
         assert_eq!(payload.kind, expected_kind, "marker: {marker}");
         if marker == "---" {
             assert_eq!(payload.payload, BlockPayload::Empty);

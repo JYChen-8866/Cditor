@@ -7,8 +7,8 @@ fn table_resize_commits_one_typed_drag_transaction() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
     let revision_before = runtime.revision();
     let content_before = runtime.block_content_version(10).unwrap();
-    let table_index = runtime.index.index_of(10).unwrap();
-    let layout_before = runtime.index.layout_meta[table_index].layout_version;
+    let table_index = runtime.document.index.index_of(10).unwrap();
+    let layout_before = runtime.document.index.layout_meta[table_index].layout_version;
     assert!(
         runtime
             .set_table_column_width(10, 0, TableTrackSize::Px(180))
@@ -17,7 +17,7 @@ fn table_resize_commits_one_typed_drag_transaction() {
     assert_eq!(runtime.revision(), revision_before + 1);
     assert_eq!(runtime.block_content_version(10), Some(content_before + 1));
     assert_eq!(
-        runtime.index.layout_meta[table_index].layout_version,
+        runtime.document.index.layout_meta[table_index].layout_version,
         layout_before + 1
     );
     let transactions = runtime.drain_pending_structure_transactions();

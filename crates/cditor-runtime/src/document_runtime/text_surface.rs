@@ -463,7 +463,7 @@ impl DocumentRuntime {
         surface_id: SurfaceId,
     ) -> Option<TextSurfaceSnapshot> {
         let block_id = surface_id.block_id()?;
-        let record = self.payload_window.get(block_id)?.clone();
+        let record = self.document.payload_window.get(block_id)?.clone();
         let record = self.table_runtime_payload_record(block_id, record);
         TextSurfaceRegistry.snapshot(&record, surface_id)
     }
@@ -485,7 +485,7 @@ impl DocumentRuntime {
     }
 
     pub fn text_surface_ids_for_block(&self, block_id: BlockId) -> Vec<SurfaceId> {
-        let Some(record) = self.payload_window.get(block_id).cloned() else {
+        let Some(record) = self.document.payload_window.get(block_id).cloned() else {
             return Vec::new();
         };
         let record = self.table_runtime_payload_record(block_id, record);
@@ -502,7 +502,7 @@ impl DocumentRuntime {
         let Some(block_id) = identity.surface_id.block_id() else {
             return false;
         };
-        let Some(record) = self.payload_window.get(block_id).cloned() else {
+        let Some(record) = self.document.payload_window.get(block_id).cloned() else {
             return false;
         };
         let record = self.table_runtime_payload_record(block_id, record);
@@ -596,6 +596,7 @@ impl DocumentRuntime {
 
         let next_content_version = {
             let record = self
+                .document
                 .payload_window
                 .payloads
                 .get_mut(&block_id)

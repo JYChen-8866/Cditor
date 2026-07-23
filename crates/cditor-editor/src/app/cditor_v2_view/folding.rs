@@ -50,8 +50,7 @@ impl CditorV2View {
                     .ready_runtime_ref()
                     .map(|runtime| {
                         runtime
-                            .visible_index
-                            .visible_block_ids
+                            .visible_block_ids()
                             .iter()
                             .copied()
                             .collect::<std::collections::HashSet<_>>()

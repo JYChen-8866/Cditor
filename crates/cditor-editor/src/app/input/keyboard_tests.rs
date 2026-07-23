@@ -168,7 +168,7 @@ fn paste_text_from_clipboard_uses_validated_rich_metadata() {
         Some(&selection)
     ));
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.block_payload_record(1).unwrap();
     match &payload.payload {
         BlockPayload::RichText { spans } => {
             assert_eq!(payload.plain_text(), "hello bold");
@@ -243,7 +243,7 @@ fn paste_text_from_clipboard_never_reuses_stale_rich_state_for_external_text() {
 
     assert!(dispatch_clipboard_data(&mut runtime, "plain", None));
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.block_payload_record(1).unwrap();
     match &payload.payload {
         BlockPayload::RichText { spans } => {
             assert_eq!(payload.plain_text(), "hello plain");
@@ -267,7 +267,7 @@ fn paste_text_from_external_clipboard_parses_inline_markdown() {
         None
     ));
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.block_payload_record(1).unwrap();
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text payload");
     };
@@ -329,7 +329,7 @@ fn paste_text_from_clipboard_uses_validated_table_metadata() {
         Some(&selection)
     ));
 
-    let payload = target.payload_window.get(2).unwrap();
+    let payload = target.block_payload_record(2).unwrap();
     let BlockPayload::Table(table) = &payload.payload else {
         panic!("expected table payload");
     };
@@ -346,7 +346,7 @@ fn paste_text_from_clipboard_treats_external_tsv_as_table_range_when_cell_is_foc
 
     assert!(dispatch_clipboard_data(&mut target, "a\tb\nc\td", None));
 
-    let payload = target.payload_window.get(2).unwrap();
+    let payload = target.block_payload_record(2).unwrap();
     let BlockPayload::Table(table) = &payload.payload else {
         panic!("expected table payload");
     };

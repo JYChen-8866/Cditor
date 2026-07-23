@@ -484,6 +484,7 @@ pub(super) fn apply_asset_operation(
         .cloned()
         .unwrap_or_else(|| {
             runtime
+                .document
                 .block_asset_ids
                 .get(&block_id)
                 .cloned()
@@ -674,6 +675,7 @@ fn collection_records_mut<'a>(
         .entry(collection_id)
         .or_insert_with(|| {
             runtime
+                .document
                 .collection_records
                 .get(&collection_id)
                 .cloned()

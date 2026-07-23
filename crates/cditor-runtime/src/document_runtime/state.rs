@@ -1,31 +1,17 @@
 use super::ai::RuntimeAiSession;
+use super::document_state::DocumentState;
 use super::*;
 
 #[derive(Debug)]
 pub struct DocumentRuntime {
     pub document_id: DocumentId,
-    pub(super) document_title: Option<String>,
-    pub(super) revision: u64,
-    pub index: DocumentIndex,
-    pub visible_index: VisibleDocumentIndex,
+    pub(super) document: DocumentState,
     pub height_index: BlockHeightIndex,
     pub page_layout: PageLayoutIndex,
     pub scroll: VirtualScrollState,
     pub editing: Option<EditingSession>,
-    pub payload_window: PayloadWindow,
-    /// Sparse, block-level visual attributes. Inline marks remain in payload spans.
-    pub(super) block_attrs: HashMap<BlockId, BlockAttrs>,
-    /// Collection data is owned separately from the hosting block payload so
-    /// record edits do not serialize the collection schema or every record.
-    pub(super) collection_records: HashMap<CollectionId, Vec<CollectionRecordSnapshot>>,
-    pub(super) comment_threads: HashMap<CommentThreadId, CommentThreadSnapshot>,
-    pub(super) assets: HashMap<AssetId, AssetSnapshot>,
-    pub(super) block_asset_ids: HashMap<BlockId, BTreeSet<AssetId>>,
-    pub(super) table_runtimes: HashMap<BlockId, TableRuntime>,
     pub(super) table_horizontal_scroll_offsets: HashMap<BlockId, f32>,
-    pub(super) text_models: HashMap<BlockId, PieceTableTextModel>,
     pub(super) selected_block_ids: HashSet<BlockId>,
-    pub(super) list_projection_cache: ListProjectionCache,
     pub(super) document_selection: Option<DocumentSelection>,
     pub(super) visual_caret_position: Option<VisualCaretPosition>,
     pub(super) ai_session: Option<RuntimeAiSession>,
@@ -54,7 +40,6 @@ pub struct DocumentRuntime {
     pub(super) pending_measured_heights: HashMap<BlockId, PendingMeasuredHeight>,
     pub(super) layout_dirty: bool,
     pub(super) scrollbar_drag: Option<ScrollbarDragSession>,
-    pub(super) demo_payload_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

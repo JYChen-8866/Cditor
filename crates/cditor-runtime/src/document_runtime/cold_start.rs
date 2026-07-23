@@ -149,9 +149,9 @@ impl DocumentRuntime {
             viewport_height,
             0..window_end,
         );
-        runtime.document_title = Some(document_title.clone());
-        runtime.block_attrs = data.block_attrs.into_iter().collect();
-        let total_blocks = runtime.index.total_count();
+        runtime.document.document_title = Some(document_title.clone());
+        runtime.document.block_attrs = data.block_attrs.into_iter().collect();
+        let total_blocks = runtime.document.index.total_count();
 
         Ok((
             runtime,
@@ -172,7 +172,7 @@ impl DocumentRuntime {
             return Err("cached page layout policy does not match the runtime policy".to_owned());
         }
         page_layout
-            .validate_covers_blocks(self.visible_index.total_visible_count())
+            .validate_covers_blocks(self.document.visible_index.total_visible_count())
             .map_err(|error| error.to_string())?;
         let total_height = self.scroll_extent_height(page_layout.total_height());
         self.page_layout = page_layout;
@@ -226,8 +226,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(runtime.document_id, 9);
-        assert_eq!(runtime.index.structure_version, 3);
-        assert_eq!(runtime.payload_window.block_range, 0..2);
+        assert_eq!(runtime.document.index.structure_version, 3);
+        assert_eq!(runtime.document.payload_window.block_range, 0..2);
         assert_eq!(report.document_title, "Loaded");
         assert_eq!(report.index_source, DocumentRuntimeIndexSource::Snapshot);
         assert_eq!(report.total_blocks, 3);

@@ -6,8 +6,9 @@ impl DocumentRuntime {
         let can_toggle = match kind {
             RichBlockKind::Heading { .. } => true,
             RichBlockKind::Toggle => self
+                .document
                 .visible_index
-                .has_foldable_content(&self.index, block_id),
+                .has_foldable_content(&self.document.index, block_id),
             _ => false,
         };
         if !can_toggle {
@@ -16,34 +17,37 @@ impl DocumentRuntime {
 
         let scroll_anchor = self.target_for_global_offset(self.scroll.global_scroll_top);
         let update = self
+            .document
             .visible_index
-            .toggle_folded(&self.index, block_id)
+            .toggle_folded(&self.document.index, block_id)
             .map_err(|error| error.to_string())?;
         let Some((_, folded)) = update.folded else {
             return Ok(false);
         };
         let document_index = self
+            .document
             .index
             .index_of(block_id)
             .ok_or_else(|| format!("missing block {block_id} in document index"))?;
         if folded {
-            self.index.flags[document_index] |= cditor_core::document::BLOCK_FLAG_FOLDED;
+            self.document.index.flags[document_index] |= cditor_core::document::BLOCK_FLAG_FOLDED;
         } else {
-            self.index.flags[document_index] &= !cditor_core::document::BLOCK_FLAG_FOLDED;
+            self.document.index.flags[document_index] &= !cditor_core::document::BLOCK_FLAG_FOLDED;
         }
 
         self.rebuild_height_indexes_from_layout_meta()?;
         // Visibility changes remap visible indices. Keep the range permissive and let
         // payload_window_covers verify every block id, otherwise expanding after a
         // collapsed structural insertion leaves a stale short range and renders only skeletons.
-        self.payload_window.block_range = 0..self.visible_index.total_visible_count();
+        self.document.payload_window.block_range =
+            0..self.document.visible_index.total_visible_count();
         self.restore_scroll_anchor_after_visibility_change(scroll_anchor)?;
         self.layout_dirty = true;
         Ok(true)
     }
 
     pub fn is_block_folded(&self, block_id: BlockId) -> bool {
-        self.visible_index.is_folded(block_id)
+        self.document.visible_index.is_folded(block_id)
     }
 
     fn restore_scroll_anchor_after_visibility_change(
@@ -54,8 +58,9 @@ impl DocumentRuntime {
             return Ok(());
         };
         let Some(target) = self
+            .document
             .visible_index
-            .resolve_scroll_target(&self.index, anchor.block_id)
+            .resolve_scroll_target(&self.document.index, anchor.block_id)
         else {
             return Ok(());
         };
@@ -112,7 +117,10 @@ mod tests {
         assert!(runtime.toggle_block_fold(1).unwrap());
 
         assert!(runtime.is_block_folded(1));
-        assert_eq!(runtime.visible_index.visible_block_ids, vec![1, 7, 8]);
+        assert_eq!(
+            runtime.document.visible_index.visible_block_ids,
+            vec![1, 7, 8]
+        );
         assert_eq!(runtime.height_index.len(), 3);
         assert!(runtime.height_index.total_height() < expanded_height);
         assert_eq!(runtime.full_projection_for_tests().total_visible_blocks, 3);
@@ -123,7 +131,7 @@ mod tests {
             cditor_core::block::BlockPrefixSnapshot::Heading { collapsed: true }
         );
         assert_ne!(
-            runtime.index.flags[0] & cditor_core::document::BLOCK_FLAG_FOLDED,
+            runtime.document.index.flags[0] & cditor_core::document::BLOCK_FLAG_FOLDED,
             0
         );
         assert!(runtime.has_dirty_layout());
@@ -138,7 +146,7 @@ mod tests {
         assert!(runtime.toggle_block_fold(1).unwrap());
 
         assert!(!runtime.is_block_folded(1));
-        assert_eq!(runtime.visible_index.total_visible_count(), 8);
+        assert_eq!(runtime.document.visible_index.total_visible_count(), 8);
         assert_eq!(runtime.height_index.total_height(), expanded_height);
     }
 
@@ -152,22 +160,36 @@ mod tests {
 
         let inserted = runtime.focused_block_id().unwrap();
         assert_eq!(inserted, 9);
-        assert_eq!(runtime.index.block_ids, vec![1, 2, 3, 4, 5, 6, 9, 7, 8]);
-        assert_eq!(runtime.visible_index.visible_block_ids, vec![1, 9, 7, 8]);
+        assert_eq!(
+            runtime.document.index.block_ids,
+            vec![1, 2, 3, 4, 5, 6, 9, 7, 8]
+        );
+        assert_eq!(
+            runtime.document.visible_index.visible_block_ids,
+            vec![1, 9, 7, 8]
+        );
         assert_eq!(
             runtime.kind_for_block(inserted),
             RichBlockKind::Heading { level: 1 }
         );
-        assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "H1");
         assert_eq!(
-            runtime.payload_window.get(inserted).unwrap().plain_text(),
+            runtime.document.payload_window.get(1).unwrap().plain_text(),
+            "H1"
+        );
+        assert_eq!(
+            runtime
+                .document
+                .payload_window
+                .get(inserted)
+                .unwrap()
+                .plain_text(),
             ""
         );
 
         runtime.toggle_block_fold(1).unwrap();
 
         assert_eq!(
-            runtime.visible_index.visible_block_ids,
+            runtime.document.visible_index.visible_block_ids,
             vec![1, 2, 3, 4, 5, 6, 9, 7, 8]
         );
         assert!(
@@ -199,7 +221,7 @@ mod tests {
 
         assert!(runtime.toggle_block_fold(1).unwrap());
         assert!(runtime.is_block_folded(1));
-        assert_eq!(runtime.visible_index.visible_block_ids, vec![1]);
+        assert_eq!(runtime.document.visible_index.visible_block_ids, vec![1]);
         assert_eq!(
             runtime.full_projection_for_tests().blocks[0].chrome.prefix,
             cditor_core::block::BlockPrefixSnapshot::Heading { collapsed: true }
@@ -214,7 +236,7 @@ mod tests {
         let mut runtime = section_runtime();
 
         assert!(!runtime.toggle_block_fold(2).unwrap());
-        assert_eq!(runtime.visible_index.total_visible_count(), 8);
+        assert_eq!(runtime.document.visible_index.total_visible_count(), 8);
     }
 
     #[test]

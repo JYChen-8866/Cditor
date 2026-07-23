@@ -12,7 +12,7 @@ impl DocumentRuntime {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
-        let Some(record) = self.payload_window.get(block_id).cloned() else {
+        let Some(record) = self.document.payload_window.get(block_id).cloned() else {
             return Ok(false);
         };
         if record.kind == kind {
@@ -40,14 +40,14 @@ impl DocumentRuntime {
             let trimmed = language.trim().to_lowercase();
             (!trimmed.is_empty()).then_some(trimmed)
         });
-        let Some(record) = self.payload_window.get(block_id).cloned() else {
+        let Some(record) = self.document.payload_window.get(block_id).cloned() else {
             return Ok(false);
         };
         let BlockPayload::Code { text, .. } = record.payload else {
             return Ok(false);
         };
         if matches!(&record.kind, RichBlockKind::Code { language: current } if current == &language)
-            && matches!(self.payload_window.get(block_id).map(|record| &record.payload), Some(BlockPayload::Code { language: current, .. }) if current == &language)
+            && matches!(self.document.payload_window.get(block_id).map(|record| &record.payload), Some(BlockPayload::Code { language: current, .. }) if current == &language)
         {
             return Ok(false);
         }
@@ -62,7 +62,7 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn toggle_todo_checked(&mut self, block_id: BlockId) -> Result<bool, String> {
-        let Some(record) = self.payload_window.get(block_id).cloned() else {
+        let Some(record) = self.document.payload_window.get(block_id).cloned() else {
             return Ok(false);
         };
         let checked = match &record.kind {
@@ -88,13 +88,14 @@ impl DocumentRuntime {
 
         // Get block kind and input capability
         let kind = self
+            .document
             .payload_window
             .get(block_id)
             .map(|payload| payload.kind.clone())
             .unwrap_or_else(|| RichBlockKind::Paragraph);
 
         if let RichBlockKind::Heading { level } = &kind
-            && self.visible_index.is_folded(block_id)
+            && self.document.visible_index.is_folded(block_id)
         {
             self.insert_heading_after_folded_section(block_id, *level)?;
             return Ok(());
@@ -124,6 +125,7 @@ impl DocumentRuntime {
 
         // Get text for shortcut detection
         let text = self
+            .document
             .text_models
             .get(&block_id)
             .map(|model| model.text().to_owned())
@@ -150,9 +152,10 @@ impl DocumentRuntime {
         // Handle list item empty state
         if cditor_core::block::is_list_item_kind(&kind) && text.trim().is_empty() {
             let depth = self
+                .document
                 .index
                 .index_of(block_id)
-                .and_then(|index| self.index.depths.get(index).copied())
+                .and_then(|index| self.document.index.depths.get(index).copied())
                 .unwrap_or_default();
             if depth == 0 {
                 self.apply_local_block_payload_transaction(
@@ -188,7 +191,7 @@ impl DocumentRuntime {
     }
 
     pub fn structure_version(&self) -> u64 {
-        self.index.structure_version
+        self.document.index.structure_version
     }
 
     pub fn index_records_snapshot(&self) -> Vec<BlockIndexRecord> {
@@ -196,7 +199,8 @@ impl DocumentRuntime {
     }
 
     pub fn loaded_payload_records_snapshot(&self) -> Vec<BlockPayloadRecord> {
-        self.payload_window
+        self.document
+            .payload_window
             .payloads
             .values()
             .cloned()
@@ -224,14 +228,14 @@ impl DocumentRuntime {
         block_id: BlockId,
         before_block_id: Option<BlockId>,
     ) -> Result<bool, String> {
-        let Some(source_start) = self.index.index_of(block_id) else {
+        let Some(source_start) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
-        let source_parent = self.index.parent_ids[source_start];
+        let source_parent = self.document.index.parent_ids[source_start];
         let source_sibling_index = self.direct_child_position(source_parent, block_id);
         let target_parent = before_block_id
-            .and_then(|before_block_id| self.index.index_of(before_block_id))
-            .map(|index| self.index.parent_ids[index])
+            .and_then(|before_block_id| self.document.index.index_of(before_block_id))
+            .map(|index| self.document.index.parent_ids[index])
             .unwrap_or(source_parent);
         let sibling_index = match before_block_id {
             Some(before_block_id) => {
@@ -266,10 +270,10 @@ impl DocumentRuntime {
     ) -> Result<bool, String> {
         let before_selection = self.document_selection_snapshot();
         let before_selected_blocks = self.selected_block_ids_snapshot();
-        let Some(source_start) = self.index.index_of(block_id) else {
+        let Some(source_start) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
-        let old_parent_id = self.index.parent_ids[source_start];
+        let old_parent_id = self.document.index.parent_ids[source_start];
         let Some(old_sibling_index) = self.direct_child_position(old_parent_id, block_id) else {
             return Ok(false);
         };
@@ -278,7 +282,7 @@ impl DocumentRuntime {
         }
         let source_end = self.subtree_end(source_start);
         if let Some(parent_id) = new_parent_id {
-            let Some(parent_index) = self.index.index_of(parent_id) else {
+            let Some(parent_index) = self.document.index.index_of(parent_id) else {
                 return Ok(false);
             };
             if (source_start..source_end).contains(&parent_index)
@@ -342,33 +346,35 @@ impl DocumentRuntime {
     ) -> Result<(), String> {
         let payload = ensure_table_payload_for_kind(&kind, payload);
         let editable_text = editable_text_for_payload(&payload);
-        if let Some(index) = self.index.index_of(block_id) {
+        if let Some(index) = self.document.index.index_of(block_id) {
             let height_estimate = estimate_block_height(&kind, &payload, DEFAULT_LAYOUT_WIDTH_PX);
-            self.index.kind_tags[index] = kind_tag_for_rich_block_kind(&kind);
+            self.document.index.kind_tags[index] = kind_tag_for_rich_block_kind(&kind);
             if !matches!(kind, RichBlockKind::Heading { .. } | RichBlockKind::Toggle) {
-                self.index.flags[index] &= !cditor_core::document::BLOCK_FLAG_FOLDED;
+                self.document.index.flags[index] &= !cditor_core::document::BLOCK_FLAG_FOLDED;
             }
-            self.index.layout_meta[index].estimated_height = height_estimate.height;
-            self.index.layout_meta[index].measured_height = None;
-            self.index.layout_meta[index].dirty = true;
+            self.document.index.layout_meta[index].estimated_height = height_estimate.height;
+            self.document.index.layout_meta[index].measured_height = None;
+            self.document.index.layout_meta[index].dirty = true;
             if advance_versions {
-                self.index.layout_meta[index].layout_version = self.index.layout_meta[index]
-                    .layout_version
-                    .saturating_add(1);
+                self.document.index.layout_meta[index].layout_version =
+                    self.document.index.layout_meta[index]
+                        .layout_version
+                        .saturating_add(1);
             }
             self.pending_measured_heights.remove(&block_id);
             self.layout_dirty = true;
-            self.visible_index = VisibleDocumentIndex::from_document_index(&self.index);
+            self.document.visible_index =
+                VisibleDocumentIndex::from_document_index(&self.document.index);
             self.rebuild_height_indexes_from_layout_meta()?;
-            self.list_projection_cache = ListProjectionCache::build(&self.index);
+            self.document.list_projection_cache = ListProjectionCache::build(&self.document.index);
         }
-        let content_version = match self.payload_window.get(block_id) {
+        let content_version = match self.document.payload_window.get(block_id) {
             Some(payload) if advance_versions => payload.content_version.saturating_add(1),
             Some(payload) => payload.content_version,
             None => 1,
         };
         let mut updated_record = None;
-        if let Some(record) = self.payload_window.payloads.get_mut(&block_id) {
+        if let Some(record) = self.document.payload_window.payloads.get_mut(&block_id) {
             record.kind = kind;
             record.payload = payload;
             record.content_version = content_version;
@@ -376,7 +382,7 @@ impl DocumentRuntime {
         }
         if let Some(mut record) = updated_record {
             self.sync_table_runtime_from_loaded_record(&mut record);
-            self.payload_window.insert(record);
+            self.document.payload_window.insert(record);
         }
         if let Some(editing) = self
             .editing
@@ -401,7 +407,7 @@ impl DocumentRuntime {
             return Ok(false);
         }
         let normalized = selection
-            .normalize(&self.index)
+            .normalize(&self.document.index)
             .map_err(|error| format!("{error:?}"))?;
         if normalized.start.block_id == normalized.end.block_id {
             let range = normalized.start.offset..normalized.end.offset;
@@ -419,11 +425,13 @@ impl DocumentRuntime {
         let plan = self.plan_cross_block_replacement(selection)?;
         let start_block_id = normalized.start.block_id;
         let before_current_payload = self
+            .document
             .payload_window
             .get(start_block_id)
             .cloned()
             .ok_or_else(|| format!("missing payload for block {start_block_id}"))?;
         let end_payload = self
+            .document
             .payload_window
             .get(normalized.end.block_id)
             .ok_or_else(|| "selection end payload is not hydrated".to_owned())?;

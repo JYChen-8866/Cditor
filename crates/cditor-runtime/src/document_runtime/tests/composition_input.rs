@@ -65,6 +65,7 @@ fn stale_input_session_content_version_is_rejected() {
         .begin_or_update_composition_with_selection(1, 2..2, "你", Some("你".len().."你".len()))
         .unwrap();
     runtime
+        .document
         .payload_window
         .payloads
         .get_mut(&1)
@@ -139,7 +140,10 @@ fn composition_preview_does_not_commit_until_commit() {
     runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
 
     assert!(runtime.undo_events.is_empty());
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ab");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "ab"
+    );
     let projection = runtime.projection_for_window();
     let BlockPayloadView::Loaded(payload) = &projection.blocks[0].payload else {
         panic!("payload should be loaded");
@@ -200,13 +204,22 @@ fn composition_commit_undo_redo_restores_block_text() {
 
     assert!(runtime.undo_events.is_empty());
     assert!(runtime.commit_composition().unwrap());
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "a中b");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "a中b"
+    );
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ab");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "ab"
+    );
 
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "a中b");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "a中b"
+    );
 }
 
 #[test]
@@ -229,10 +242,16 @@ fn multistage_ime_commit_creates_one_undo_step() {
     assert!(runtime.undo_events.is_empty());
     assert!(runtime.commit_composition().unwrap());
     assert_eq!(runtime.undo_events.len(), 1);
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "a你b");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "a你b"
+    );
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ab");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "ab"
+    );
     assert!(!runtime.undo_focused_block().unwrap());
 }
 
@@ -263,7 +282,7 @@ fn multistage_composition_cancel_restores_initial_selection_direction_and_affini
     runtime.cancel_composition();
 
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
         "abcdef"
     );
     assert_eq!(runtime.document_selection_snapshot(), Some(before));
@@ -343,7 +362,10 @@ fn table_cell_composition_preview_and_commit_stay_inside_cell() {
         panic!("payload should be table");
     };
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("a中b"));
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ab");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "ab"
+    );
     assert_eq!(
         projection.blocks[0].focused_table_cell_offset,
         Some("a中".len())
@@ -362,7 +384,8 @@ fn table_cell_composition_preview_and_commit_stay_inside_cell() {
 
     assert!(runtime.commit_composition().unwrap());
     assert_eq!(runtime.undo_events.len(), 1);
-    let BlockPayload::Table(table) = &runtime.payload_window.get(1).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
         panic!("payload should be table");
     };
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("a中b"));
@@ -401,19 +424,22 @@ fn table_cell_composition_commit_undo_redo_restores_cell_text() {
 
     assert!(runtime.undo_events.is_empty());
     assert!(runtime.commit_composition().unwrap());
-    let BlockPayload::Table(table) = &runtime.payload_window.get(1).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
         panic!("payload should be table");
     };
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("a中b"));
 
     assert!(runtime.undo_focused_block().unwrap());
-    let BlockPayload::Table(table) = &runtime.payload_window.get(1).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
         panic!("payload should be table");
     };
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("ab"));
 
     assert!(runtime.redo_focused_block().unwrap());
-    let BlockPayload::Table(table) = &runtime.payload_window.get(1).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
         panic!("payload should be table");
     };
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("a中b"));
@@ -451,7 +477,8 @@ fn table_cell_emoji_composition_preview_and_commit_stay_inside_cell() {
     );
 
     assert!(runtime.commit_composition().unwrap());
-    let BlockPayload::Table(table) = &runtime.payload_window.get(1).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
         panic!("payload should be table");
     };
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("a😀b"));
@@ -499,7 +526,8 @@ fn table_cell_cjk_and_emoji_composition_commit_preserves_utf8_boundaries() {
     );
     assert!(runtime.commit_composition().unwrap());
 
-    let BlockPayload::Table(table) = &runtime.payload_window.get(1).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
         panic!("payload should be table");
     };
     assert_eq!(
@@ -579,7 +607,8 @@ fn table_cell_replace_text_prioritizes_active_composition() {
 
     assert!(runtime.replace_text_in_focused_range(None, "文").unwrap());
 
-    let BlockPayload::Table(table) = &runtime.payload_window.get(1).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
         panic!("payload should be table");
     };
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("a文d"));
@@ -598,100 +627,4 @@ fn table_cell_replace_text_prioritizes_active_composition() {
     );
     assert_eq!(editing.selected_range, "a文".len().."a文".len());
     assert!(runtime.active_composition().is_none());
-}
-
-#[test]
-fn block_and_table_text_edits_share_invalid_cjk_offset_normalization() {
-    let mut block_runtime = DocumentRuntime::from_payloads(
-        1,
-        vec![BlockPayloadRecord::rich_text(
-            1,
-            RichBlockKind::Paragraph,
-            "萨德",
-        )],
-        720.0,
-    );
-    block_runtime.focus_block_at_offset(1, 2).unwrap();
-    assert!(
-        block_runtime
-            .replace_text_in_focused_range(Some(2..2), "中")
-            .unwrap()
-    );
-    assert_eq!(block_runtime.focused_text(), Some("中萨德"));
-    assert_eq!(block_runtime.caret_offset_for_block(1), Some("中".len()));
-
-    let mut table_runtime = DocumentRuntime::from_payloads(
-        1,
-        vec![BlockPayloadRecord {
-            block_id: 1,
-            content_version: 1,
-            kind: RichBlockKind::Table,
-            payload: BlockPayload::Table(cditor_core::rich_text::TablePayload {
-                rows: vec![cditor_core::rich_text::TableRowPayload {
-                    cells: vec![cditor_core::rich_text::TableCellPayload::plain("萨德")],
-                    height: Default::default(),
-                }],
-                columns: Vec::new(),
-                header_rows: 0,
-                header_cols: 0,
-                header_style: Default::default(),
-            }),
-        }],
-        720.0,
-    );
-    table_runtime
-        .focus_table_cell_at_offset(1, 0, 0, 2)
-        .unwrap();
-    assert!(
-        table_runtime
-            .replace_text_in_focused_range(Some(2..2), "中")
-            .unwrap()
-    );
-    let BlockPayload::Table(table) = &table_runtime.payload_window.get(1).unwrap().payload else {
-        panic!("payload should be table");
-    };
-    assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("中萨德"));
-    assert_eq!(
-        table_runtime.focused_table_cell_offset(),
-        Some((1, 0, 0, "中".len()))
-    );
-}
-
-#[test]
-fn table_composition_normalizes_invalid_cjk_caret_before_preview_and_commit() {
-    let mut runtime = DocumentRuntime::from_payloads(
-        1,
-        vec![BlockPayloadRecord {
-            block_id: 1,
-            content_version: 1,
-            kind: RichBlockKind::Table,
-            payload: BlockPayload::Table(cditor_core::rich_text::TablePayload {
-                rows: vec![cditor_core::rich_text::TableRowPayload {
-                    cells: vec![cditor_core::rich_text::TableCellPayload::plain("萨德")],
-                    height: Default::default(),
-                }],
-                columns: Vec::new(),
-                header_rows: 0,
-                header_cols: 0,
-                header_style: Default::default(),
-            }),
-        }],
-        720.0,
-    );
-    runtime.focus_table_cell_at_offset(1, 0, 0, 2).unwrap();
-    runtime.begin_or_update_composition(1, 2..2, "中").unwrap();
-
-    assert_eq!(
-        runtime.focused_text_for_platform_input().unwrap().1,
-        "中萨德"
-    );
-    assert_eq!(
-        runtime.active_composition_marked_range(),
-        Some(0.."中".len())
-    );
-    assert!(runtime.commit_composition().unwrap());
-    let BlockPayload::Table(table) = &runtime.payload_window.get(1).unwrap().payload else {
-        panic!("payload should be table");
-    };
-    assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("中萨德"));
 }

@@ -27,7 +27,7 @@ impl CditorV2View {
         let (queues, window, entities, payload_and_undo_bytes, payload_over_budget) = self
             .ready_runtime_ref()
             .map(|runtime| {
-                let payload_range = runtime.payload_window.block_range.clone();
+                let payload_range = runtime.payload_window_range();
                 let page_range = runtime.current_page_window();
                 let resident_bytes = runtime
                     .estimated_payload_memory_bytes()
@@ -35,7 +35,7 @@ impl CditorV2View {
                 (
                     FrameQueueSnapshot {
                         pending_layout_tasks: runtime.pending_layout_task_count(),
-                        pending_payload_loads: runtime.payload_window.loading.len(),
+                        pending_payload_loads: runtime.pending_payload_load_count(),
                         pending_saves: self.storage_persistence.pending_operation_count(),
                         // P6-006 keeps this false until all GPUI dispatch is routed
                         // through the five production scheduler lanes.

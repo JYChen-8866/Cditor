@@ -55,6 +55,7 @@ impl DocumentRuntime {
         caret: usize,
     ) -> Result<bool, String> {
         let text = self
+            .document
             .text_models
             .get(&block_id)
             .ok_or_else(|| format!("missing text model for block {block_id}"))?
@@ -65,6 +66,7 @@ impl DocumentRuntime {
             return Ok(false);
         }
         let current_kind = self
+            .document
             .payload_window
             .get(block_id)
             .map(|payload| payload.kind.clone())
@@ -104,6 +106,7 @@ impl DocumentRuntime {
         block_id: BlockId,
     ) -> Result<bool, String> {
         let Some(kind) = self
+            .document
             .payload_window
             .get(block_id)
             .map(|payload| payload.kind.clone())
@@ -125,6 +128,7 @@ impl DocumentRuntime {
 
         // Get current text and caret position
         let text = self
+            .document
             .text_models
             .get(&block_id)
             .ok_or_else(|| format!("missing text model for block {block_id}"))?
@@ -175,6 +179,7 @@ impl DocumentRuntime {
 
         // Get existing spans to check for marks in the affected range
         let existing_spans = self
+            .document
             .payload_window
             .get(block_id)
             .and_then(|p| match &p.payload {
@@ -216,6 +221,7 @@ impl DocumentRuntime {
 
         // Update text model: replace "**content**" with "content"
         let model = self
+            .document
             .text_models
             .get_mut(&block_id)
             .ok_or_else(|| format!("missing text model for block {block_id}"))?;
@@ -237,7 +243,7 @@ impl DocumentRuntime {
         }
 
         // Update payload with new spans
-        if let Some(payload) = self.payload_window.payloads.get_mut(&block_id) {
+        if let Some(payload) = self.document.payload_window.payloads.get_mut(&block_id) {
             payload.content_version = self
                 .editing
                 .as_ref()

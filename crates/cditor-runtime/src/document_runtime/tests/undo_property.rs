@@ -11,20 +11,28 @@ use super::*;
 fn semantic_state(runtime: &DocumentRuntime) -> String {
     // 结构：preorder 的 (id, parent, depth, kind_tag)。
     let mut state = String::new();
-    for position in 0..runtime.index.total_count() {
-        let block_id = runtime.index.id_at(position).expect("index position");
+    for position in 0..runtime.document.index.total_count() {
+        let block_id = runtime
+            .document
+            .index
+            .id_at(position)
+            .expect("index position");
         state.push_str(&format!(
             "{}:{:?}:{}:{};",
             block_id,
-            runtime.index.parent_id_at(position).expect("parent"),
-            runtime.index.depth_at(position).expect("depth"),
-            runtime.index.kind_tag_at(position).expect("kind"),
+            runtime
+                .document
+                .index
+                .parent_id_at(position)
+                .expect("parent"),
+            runtime.document.index.depth_at(position).expect("depth"),
+            runtime.document.index.kind_tag_at(position).expect("kind"),
         ));
     }
     state.push('\n');
     // 内容：稳定排序的 (id -> kind + plain text)。
     let mut contents: BTreeMap<BlockId, String> = BTreeMap::new();
-    for (block_id, record) in &runtime.payload_window.payloads {
+    for (block_id, record) in &runtime.document.payload_window.payloads {
         contents.insert(
             *block_id,
             format!("{:?}={}", record.kind, payload_text(record)),
@@ -74,16 +82,17 @@ impl Lcg {
 
 /// 对 runtime 执行一个随机编辑；返回是否真的做了编辑。
 fn random_edit(runtime: &mut DocumentRuntime, rng: &mut Lcg) -> bool {
-    let block_count = runtime.index.total_count();
+    let block_count = runtime.document.index.total_count();
     if block_count == 0 {
         return false;
     }
     let target_position = rng.next(block_count);
-    let Some(block_id) = runtime.index.id_at(target_position) else {
+    let Some(block_id) = runtime.document.index.id_at(target_position) else {
         return false;
     };
     // 只编辑 rich text 块，保持编辑合法。
     let text_len = runtime
+        .document
         .payload_window
         .get(block_id)
         .and_then(|record| match &record.payload {
@@ -148,7 +157,7 @@ fn random_edit(runtime: &mut DocumentRuntime, rng: &mut Lcg) -> bool {
 }
 
 fn clamp_to_char_boundary(runtime: &DocumentRuntime, block_id: BlockId, offset: usize) -> usize {
-    let Some(record) = runtime.payload_window.get(block_id) else {
+    let Some(record) = runtime.document.payload_window.get(block_id) else {
         return 0;
     };
     let text = payload_text(record);

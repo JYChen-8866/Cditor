@@ -70,7 +70,7 @@ fn payload_window_store_discards_stale_generation_result() {
             actual: 1,
         }
     );
-    assert_eq!(runtime.payload_window.block_range, 2..4);
+    assert_eq!(runtime.document.payload_window.block_range, 2..4);
 }
 
 #[test]
@@ -107,12 +107,18 @@ fn stale_viewport_result_populates_cache_and_releases_its_loading_markers() {
             actual: current.generation - 1,
         }
     );
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "one");
-    assert_eq!(runtime.payload_window.get(2).unwrap().plain_text(), "two");
-    assert!(!runtime.payload_window.loading.contains(&1));
-    assert!(!runtime.payload_window.loading.contains(&2));
-    assert!(runtime.payload_window.loading.contains(&5));
-    assert!(runtime.payload_window.loading.contains(&6));
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "one"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(2).unwrap().plain_text(),
+        "two"
+    );
+    assert!(!runtime.document.payload_window.loading.contains(&1));
+    assert!(!runtime.document.payload_window.loading.contains(&2));
+    assert!(runtime.document.payload_window.loading.contains(&5));
+    assert!(runtime.document.payload_window.loading.contains(&6));
 }
 
 #[test]
@@ -143,8 +149,8 @@ fn stale_result_cannot_clear_or_overwrite_a_newer_request_for_the_same_block() {
         missing_block_ids: Vec::new(),
     });
 
-    assert!(runtime.payload_window.loading.contains(&2));
-    assert!(runtime.payload_window.get(2).is_none());
+    assert!(runtime.document.payload_window.loading.contains(&2));
+    assert!(runtime.document.payload_window.get(2).is_none());
 
     runtime.apply_payload_window_result(PayloadWindowLoadResult {
         request: current,
@@ -156,7 +162,7 @@ fn stale_result_cannot_clear_or_overwrite_a_newer_request_for_the_same_block() {
         missing_block_ids: Vec::new(),
     });
     assert_eq!(
-        runtime.payload_window.get(2).unwrap().plain_text(),
+        runtime.document.payload_window.get(2).unwrap().plain_text(),
         "current"
     );
 }
@@ -194,9 +200,9 @@ fn all_in_flight_blocks_keep_their_generation_until_the_request_finishes() {
         request,
         missing_block_ids: Vec::new(),
     });
-    assert!(runtime.payload_window.loading.is_empty());
+    assert!(runtime.document.payload_window.loading.is_empty());
     assert!(runtime.plan_payload_window_load_if_needed(1..3).is_none());
-    assert_eq!(runtime.payload_window.block_range, 1..3);
+    assert_eq!(runtime.document.payload_window.block_range, 1..3);
 }
 
 #[test]
@@ -221,7 +227,7 @@ fn revisiting_a_resident_window_activates_it_without_a_database_request() {
         DocumentRuntime::from_index_records_with_window(1, records, payloads, 1, 720.0, 4..8);
 
     assert!(runtime.activate_payload_window_if_resident(0..4));
-    assert_eq!(runtime.payload_window.block_range, 0..4);
+    assert_eq!(runtime.document.payload_window.block_range, 0..4);
     assert!(runtime.plan_payload_window_load_if_needed(0..4).is_none());
     assert!(!runtime.activate_payload_window_if_resident(0..4));
 }
@@ -243,8 +249,8 @@ fn payload_window_store_marks_loading_and_missing_payload_errors() {
         DocumentRuntime::from_index_records_with_window(1, records, Vec::new(), 1, 720.0, 0..0);
 
     let request = runtime.plan_payload_window_load(0..2);
-    assert!(runtime.payload_window.loading.contains(&1));
-    assert!(runtime.payload_window.loading.contains(&2));
+    assert!(runtime.document.payload_window.loading.contains(&1));
+    assert!(runtime.document.payload_window.loading.contains(&2));
 
     let decision = runtime.apply_payload_window_result(PayloadWindowLoadResult {
         request,
@@ -253,9 +259,9 @@ fn payload_window_store_marks_loading_and_missing_payload_errors() {
     });
 
     assert_eq!(decision, PayloadWindowApplyDecision::Applied);
-    assert!(runtime.payload_window.loading.is_empty());
-    assert!(runtime.payload_window.failed.contains_key(&1));
-    assert!(runtime.payload_window.failed.contains_key(&2));
+    assert!(runtime.document.payload_window.loading.is_empty());
+    assert!(runtime.document.payload_window.failed.contains_key(&1));
+    assert!(runtime.document.payload_window.failed.contains_key(&2));
 }
 
 #[test]
@@ -309,9 +315,17 @@ fn payload_window_store_retries_failures_but_stops_after_the_limit() {
     }
 
     assert!(runtime.plan_payload_window_load_if_needed(0..2).is_none());
-    assert_eq!(runtime.payload_window.failure_attempts.get(&1), Some(&3));
     assert_eq!(
-        runtime.payload_window.failed.get(&1).map(String::as_str),
+        runtime.document.payload_window.failure_attempts.get(&1),
+        Some(&3)
+    );
+    assert_eq!(
+        runtime
+            .document
+            .payload_window
+            .failed
+            .get(&1)
+            .map(String::as_str),
         Some("attempt 3")
     );
 
@@ -325,8 +339,8 @@ fn payload_window_store_retries_failures_but_stops_after_the_limit() {
     assert!(!failure.automatic_retry_pending);
 
     assert_eq!(runtime.retry_failed_payload_window(0..2), 2);
-    assert!(runtime.payload_window.failed.is_empty());
-    assert!(runtime.payload_window.failure_attempts.is_empty());
+    assert!(runtime.document.payload_window.failed.is_empty());
+    assert!(runtime.document.payload_window.failure_attempts.is_empty());
     assert!(runtime.plan_payload_window_load_if_needed(0..2).is_some());
 }
 
@@ -389,7 +403,7 @@ fn planned_window_load_replaces_bounded_placeholder_without_full_hydration() {
     let loaded = runtime.projection_for_window_planned();
     assert!(!loaded.render_window.is_placeholder());
     assert!(loaded.blocks.len() <= 320);
-    assert!(runtime.payload_window.payloads.len() < 500);
+    assert!(runtime.document.payload_window.payloads.len() < 500);
 }
 
 #[test]

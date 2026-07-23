@@ -12,12 +12,15 @@ fn enter_on_bulleted_list_splits_and_inherits_kind() {
 
     runtime.handle_enter().unwrap();
 
-    assert_eq!(runtime.index.total_count(), 2);
+    assert_eq!(runtime.document.index.total_count(), 2);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::BulletedList);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::BulletedList);
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "hello");
     assert_eq!(
-        runtime.payload_window.get(2).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "hello"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(2).unwrap().plain_text(),
         " world"
     );
     assert_eq!(runtime.focused_block_id(), Some(2));
@@ -39,8 +42,14 @@ fn enter_on_numbered_list_splits_and_inherits_kind() {
 
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::NumberedList);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::NumberedList);
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "one");
-    assert_eq!(runtime.payload_window.get(2).unwrap().plain_text(), " two");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "one"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(2).unwrap().plain_text(),
+        " two"
+    );
     let projection = runtime.projection_for_window_planned();
     assert_eq!(
         projection.blocks[0].chrome.prefix,
@@ -72,9 +81,12 @@ fn enter_on_todo_splits_and_new_item_is_unchecked() {
         runtime.kind_at_index(1),
         RichBlockKind::Todo { checked: false }
     );
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "done");
     assert_eq!(
-        runtime.payload_window.get(2).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "done"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(2).unwrap().plain_text(),
         " later"
     );
 }
@@ -108,9 +120,15 @@ fn enter_splits_trailing_rich_spans_and_preserves_marks() {
 
     runtime.handle_enter().unwrap();
 
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "abc");
-    assert_eq!(runtime.payload_window.get(2).unwrap().plain_text(), "d");
-    match &runtime.payload_window.get(2).unwrap().payload {
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "abc"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(2).unwrap().plain_text(),
+        "d"
+    );
+    match &runtime.document.payload_window.get(2).unwrap().payload {
         BlockPayload::RichText { spans } => {
             assert_eq!(spans.len(), 1);
             assert_eq!(spans[0].text, "d");
@@ -131,8 +149,14 @@ fn command_enter_inserts_empty_paragraph_without_splitting_list_content() {
     assert_eq!(new_block_id, 2);
     assert_eq!(runtime.kind_at_index(0), RichBlockKind::NumberedList);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::Paragraph);
-    assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "abcde");
-    assert_eq!(runtime.payload_window.get(2).unwrap().plain_text(), "");
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "abcde"
+    );
+    assert_eq!(
+        runtime.document.payload_window.get(2).unwrap().plain_text(),
+        ""
+    );
     assert_eq!(runtime.focused_block_id(), Some(2));
 }
 
@@ -143,13 +167,13 @@ fn indent_focused_block_requires_previous_block_that_supports_children() {
         (RichBlockKind::BulletedList, 0, None),
     ]);
     runtime.focus_block(2);
-    let before_version = runtime.index.structure_version;
+    let before_version = runtime.document.index.structure_version;
 
     assert!(runtime.indent_focused_block().unwrap());
 
-    assert_eq!(runtime.index.structure_version, before_version + 1);
-    assert_eq!(runtime.index.parent_ids[1], Some(1));
-    assert_eq!(runtime.index.depths[1], 1);
+    assert_eq!(runtime.document.index.structure_version, before_version + 1);
+    assert_eq!(runtime.document.index.parent_ids[1], Some(1));
+    assert_eq!(runtime.document.index.depths[1], 1);
     let projection = runtime.full_projection_for_tests();
     assert!(projection.blocks[0].chrome.has_children);
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 1);
@@ -160,8 +184,8 @@ fn indent_focused_block_requires_previous_block_that_supports_children() {
     ]);
     runtime.focus_block(2);
     assert!(!runtime.indent_focused_block().unwrap());
-    assert_eq!(runtime.index.parent_ids[1], None);
-    assert_eq!(runtime.index.depths[1], 0);
+    assert_eq!(runtime.document.index.parent_ids[1], None);
+    assert_eq!(runtime.document.index.depths[1], 0);
 }
 
 #[test]
@@ -207,20 +231,23 @@ fn code_tab_inserts_four_spaces_without_structure_change() {
         },
     );
     runtime.focus_block_at_offset(1, 2).unwrap();
-    let before_structure_version = runtime.index.structure_version;
+    let before_structure_version = runtime.document.index.structure_version;
 
     assert!(runtime.indent_focused_block().unwrap());
 
     assert_eq!(runtime.focused_text().unwrap(), "fn     main()");
     assert_eq!(runtime.caret_offset_for_block(1), Some(6));
-    assert_eq!(runtime.index.structure_version, before_structure_version);
+    assert_eq!(
+        runtime.document.index.structure_version,
+        before_structure_version
+    );
     let transactions = runtime.drain_pending_structure_transactions();
     assert_eq!(transactions.len(), 1);
     assert!(matches!(
         transactions[0].ops.as_slice(),
         [EditOperation::Text(_)]
     ));
-    match &runtime.payload_window.get(1).unwrap().payload {
+    match &runtime.document.payload_window.get(1).unwrap().payload {
         BlockPayload::Code { text, .. } => assert_eq!(text, "fn     main()"),
         other => panic!("expected code payload, got {other:?}"),
     }
@@ -242,7 +269,7 @@ fn code_shift_tab_removes_line_indent_without_structure_change() {
         .unwrap();
     assert!(runtime.can_indent_focused_block());
     assert!(runtime.can_outdent_focused_block());
-    let before_structure_version = runtime.index.structure_version;
+    let before_structure_version = runtime.document.index.structure_version;
 
     assert!(runtime.outdent_focused_block().unwrap());
 
@@ -251,7 +278,10 @@ fn code_shift_tab_removes_line_indent_without_structure_change() {
         runtime.caret_offset_for_block(1),
         Some("fn main() {\nva".len())
     );
-    assert_eq!(runtime.index.structure_version, before_structure_version);
+    assert_eq!(
+        runtime.document.index.structure_version,
+        before_structure_version
+    );
     let transactions = runtime.drain_pending_structure_transactions();
     assert_eq!(transactions.len(), 1);
     assert!(matches!(
@@ -270,13 +300,16 @@ fn raw_markdown_tab_and_shift_tab_are_payload_only() {
         },
     );
     runtime.focus_block_at_offset(1, 0).unwrap();
-    let before_structure_version = runtime.index.structure_version;
+    let before_structure_version = runtime.document.index.structure_version;
 
     assert!(runtime.indent_focused_block().unwrap());
     assert_eq!(runtime.focused_text().unwrap(), "    alpha");
     assert!(runtime.outdent_focused_block().unwrap());
     assert_eq!(runtime.focused_text().unwrap(), "alpha");
-    assert_eq!(runtime.index.structure_version, before_structure_version);
+    assert_eq!(
+        runtime.document.index.structure_version,
+        before_structure_version
+    );
     let transactions = runtime.drain_pending_structure_transactions();
     assert_eq!(transactions.len(), 2);
     assert!(
@@ -297,9 +330,9 @@ fn tab_indents_block_under_previous_sibling_children_tail() {
 
     assert!(runtime.indent_focused_block().unwrap());
 
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3]);
-    assert_eq!(runtime.index.parent_ids[2], Some(1));
-    assert_eq!(runtime.index.depths[2], 1);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3]);
+    assert_eq!(runtime.document.index.parent_ids[2], Some(1));
+    assert_eq!(runtime.document.index.depths[2], 1);
     assert_eq!(runtime.direct_child_position(Some(1), 3), Some(1));
     assert_eq!(runtime.focused_block_id(), Some(3));
     assert_eq!(runtime.pending_structure_transaction_count(), 1);
@@ -341,12 +374,12 @@ fn tab_first_sibling_does_nothing() {
         (RichBlockKind::BulletedList, 0, None),
     ]);
     runtime.focus_block(1);
-    let before_version = runtime.index.structure_version;
+    let before_version = runtime.document.index.structure_version;
 
     assert!(!runtime.indent_focused_block().unwrap());
 
-    assert_eq!(runtime.index.structure_version, before_version);
-    assert_eq!(runtime.index.parent_ids, vec![None, None]);
+    assert_eq!(runtime.document.index.structure_version, before_version);
+    assert_eq!(runtime.document.index.parent_ids, vec![None, None]);
     assert_eq!(runtime.pending_structure_transaction_count(), 0);
 }
 
@@ -357,12 +390,12 @@ fn tab_previous_non_container_does_nothing() {
         (RichBlockKind::BulletedList, 0, None),
     ]);
     runtime.focus_block(2);
-    let before_version = runtime.index.structure_version;
+    let before_version = runtime.document.index.structure_version;
 
     assert!(!runtime.indent_focused_block().unwrap());
 
-    assert_eq!(runtime.index.structure_version, before_version);
-    assert_eq!(runtime.index.parent_ids[1], None);
+    assert_eq!(runtime.document.index.structure_version, before_version);
+    assert_eq!(runtime.document.index.parent_ids[1], None);
     assert_eq!(runtime.pending_structure_transaction_count(), 0);
 }
 
@@ -374,15 +407,15 @@ fn outdent_focused_block_moves_subtree_up_one_level() {
         (RichBlockKind::Todo { checked: false }, 2, Some(2)),
     ]);
     runtime.focus_block(2);
-    let before_version = runtime.index.structure_version;
+    let before_version = runtime.document.index.structure_version;
 
     assert!(runtime.outdent_focused_block().unwrap());
 
-    assert_eq!(runtime.index.structure_version, before_version + 1);
-    assert_eq!(runtime.index.parent_ids[1], None);
-    assert_eq!(runtime.index.depths[1], 0);
-    assert_eq!(runtime.index.parent_ids[2], Some(2));
-    assert_eq!(runtime.index.depths[2], 1);
+    assert_eq!(runtime.document.index.structure_version, before_version + 1);
+    assert_eq!(runtime.document.index.parent_ids[1], None);
+    assert_eq!(runtime.document.index.depths[1], 0);
+    assert_eq!(runtime.document.index.parent_ids[2], Some(2));
+    assert_eq!(runtime.document.index.depths[2], 1);
     let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 0);
     assert_eq!(projection.blocks[2].chrome.list_info.depth, 1);
@@ -400,11 +433,11 @@ fn shift_tab_outdents_block_after_parent_subtree() {
 
     assert!(runtime.outdent_focused_block().unwrap());
 
-    assert_eq!(runtime.index.block_ids, vec![1, 4, 2, 3]);
-    assert_eq!(runtime.index.parent_ids[2], None);
-    assert_eq!(runtime.index.depths[2], 0);
-    assert_eq!(runtime.index.parent_ids[3], Some(2));
-    assert_eq!(runtime.index.depths[3], 1);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 4, 2, 3]);
+    assert_eq!(runtime.document.index.parent_ids[2], None);
+    assert_eq!(runtime.document.index.depths[2], 0);
+    assert_eq!(runtime.document.index.parent_ids[3], Some(2));
+    assert_eq!(runtime.document.index.depths[3], 1);
     assert_eq!(runtime.focused_block_id(), Some(2));
     assert_eq!(runtime.pending_structure_transaction_count(), 1);
 }
@@ -416,12 +449,12 @@ fn shift_tab_root_block_does_nothing() {
         (RichBlockKind::BulletedList, 0, None),
     ]);
     runtime.focus_block(2);
-    let before_version = runtime.index.structure_version;
+    let before_version = runtime.document.index.structure_version;
 
     assert!(!runtime.outdent_focused_block().unwrap());
 
-    assert_eq!(runtime.index.structure_version, before_version);
-    assert_eq!(runtime.index.parent_ids, vec![None, None]);
+    assert_eq!(runtime.document.index.structure_version, before_version);
+    assert_eq!(runtime.document.index.parent_ids, vec![None, None]);
     assert_eq!(runtime.pending_structure_transaction_count(), 0);
 }
 
@@ -435,17 +468,17 @@ fn indent_outdent_preserve_subtree_children_and_queue_transactions() {
     runtime.focus_block(2);
 
     assert!(runtime.indent_focused_block().unwrap());
-    assert_eq!(runtime.index.parent_ids[1], Some(1));
-    assert_eq!(runtime.index.depths[1], 1);
-    assert_eq!(runtime.index.parent_ids[2], Some(2));
-    assert_eq!(runtime.index.depths[2], 2);
+    assert_eq!(runtime.document.index.parent_ids[1], Some(1));
+    assert_eq!(runtime.document.index.depths[1], 1);
+    assert_eq!(runtime.document.index.parent_ids[2], Some(2));
+    assert_eq!(runtime.document.index.depths[2], 2);
     assert_eq!(runtime.pending_structure_transaction_count(), 1);
 
     assert!(runtime.outdent_focused_block().unwrap());
-    assert_eq!(runtime.index.parent_ids[1], None);
-    assert_eq!(runtime.index.depths[1], 0);
-    assert_eq!(runtime.index.parent_ids[2], Some(2));
-    assert_eq!(runtime.index.depths[2], 1);
+    assert_eq!(runtime.document.index.parent_ids[1], None);
+    assert_eq!(runtime.document.index.depths[1], 0);
+    assert_eq!(runtime.document.index.parent_ids[2], Some(2));
+    assert_eq!(runtime.document.index.depths[2], 1);
     assert_eq!(runtime.pending_structure_transaction_count(), 2);
 }
 
@@ -457,7 +490,7 @@ fn numbered_ordinal_recomputes_after_enter_indent_outdent() {
     ]);
     runtime.focus_block_at_offset(1, 3).unwrap();
     runtime.handle_enter().unwrap();
-    assert_eq!(runtime.index.block_ids, vec![1, 3, 2]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 3, 2]);
 
     let projection = runtime.projection_for_window_planned();
     assert_eq!(
@@ -515,18 +548,18 @@ fn indent_outdent_undo_redo_restore_tree() {
     runtime.focus_block(2);
 
     assert!(runtime.indent_focused_block().unwrap());
-    assert_eq!(runtime.index.parent_ids[1], Some(1));
-    assert_eq!(runtime.index.depths[2], 2);
+    assert_eq!(runtime.document.index.parent_ids[1], Some(1));
+    assert_eq!(runtime.document.index.depths[2], 2);
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.parent_ids[1], None);
-    assert_eq!(runtime.index.depths[1], 0);
-    assert_eq!(runtime.index.parent_ids[2], Some(2));
-    assert_eq!(runtime.index.depths[2], 1);
+    assert_eq!(runtime.document.index.parent_ids[1], None);
+    assert_eq!(runtime.document.index.depths[1], 0);
+    assert_eq!(runtime.document.index.parent_ids[2], Some(2));
+    assert_eq!(runtime.document.index.depths[2], 1);
 
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.index.parent_ids[1], Some(1));
-    assert_eq!(runtime.index.depths[1], 1);
-    assert_eq!(runtime.index.parent_ids[2], Some(2));
-    assert_eq!(runtime.index.depths[2], 2);
+    assert_eq!(runtime.document.index.parent_ids[1], Some(1));
+    assert_eq!(runtime.document.index.depths[1], 1);
+    assert_eq!(runtime.document.index.parent_ids[2], Some(2));
+    assert_eq!(runtime.document.index.depths[2], 2);
 }

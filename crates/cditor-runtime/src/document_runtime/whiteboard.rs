@@ -12,6 +12,7 @@ impl DocumentRuntime {
     ) -> Result<bool, String> {
         let scene_json = scene_json.into();
         let record = self
+            .document
             .payload_window
             .get(block_id)
             .cloned()

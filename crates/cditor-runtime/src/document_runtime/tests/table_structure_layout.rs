@@ -182,7 +182,7 @@ fn table_cell_enter_updates_block_height_and_pushes_following_blocks_down() {
     let table = sample_table_payload();
     let paragraph = BlockPayloadRecord::rich_text(11, RichBlockKind::Paragraph, "below");
     let mut runtime = DocumentRuntime::from_payloads(1, vec![table, paragraph], 720.0);
-    let before_table_height = runtime.index.layout_meta[0].effective_height();
+    let before_table_height = runtime.document.index.layout_meta[0].effective_height();
     let before_second_offset = runtime.height_index.offset_of_block(1).unwrap();
 
     runtime.focus_table_cell_at_offset(10, 0, 0, 1).unwrap();

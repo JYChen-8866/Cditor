@@ -261,7 +261,7 @@ fn cross_block_ai_rewrite_accepts_atomically_and_undo_restores_blocks() {
         request_id: dispatch.request.request_id,
     });
     assert!(runtime.accept_ai_preview().unwrap());
-    assert!(runtime.index.index_of(second).is_none());
+    assert!(runtime.document.index.index_of(second).is_none());
     let transactions = runtime.drain_pending_structure_transactions();
     assert_eq!(transactions.len(), 1);
     assert_eq!(transactions[0].kind, EditTransactionKind::AiApply);
@@ -423,8 +423,8 @@ fn cross_block_ai_insert_preserves_all_selected_blocks() {
     });
 
     assert!(runtime.apply_ai_preview(AiApplyMode::InsertAfter).unwrap());
-    assert!(runtime.index.index_of(first).is_some());
-    assert!(runtime.index.index_of(second).is_some());
+    assert!(runtime.document.index.index_of(first).is_some());
+    assert!(runtime.document.index.index_of(second).is_some());
     assert_eq!(runtime.block_payload_record(first).unwrap(), before_first);
     assert_ne!(runtime.block_payload_record(second).unwrap(), before_second);
     assert!(runtime.undo_focused_block().unwrap());

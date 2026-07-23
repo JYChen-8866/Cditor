@@ -270,7 +270,10 @@ mod tests {
             assert!(view.commit_document_composition_before_external_focus(cx));
             assert!(view.dirty);
             let runtime = view.ready_runtime_ref().unwrap();
-            assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "a中b");
+            assert_eq!(
+                runtime.block_payload_record(1).unwrap().plain_text(),
+                "a中b"
+            );
             assert!(runtime.active_composition().is_none());
         });
     }
@@ -287,9 +290,8 @@ mod tests {
                 .and_then(DocumentRuntime::input_session_identity);
             view.ready_runtime()
                 .unwrap()
-                .payload_window
-                .payloads
-                .get_mut(&1)
+                .editing
+                .as_mut()
                 .unwrap()
                 .content_version += 1;
 
@@ -301,7 +303,7 @@ mod tests {
             ));
             let runtime = view.ready_runtime_ref().unwrap();
             assert!(runtime.editing.as_ref().unwrap().composition.is_some());
-            assert_eq!(runtime.payload_window.get(1).unwrap().plain_text(), "ab");
+            assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "ab");
         });
     }
 }

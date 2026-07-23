@@ -478,6 +478,7 @@ impl DocumentRuntime {
         block_id: BlockId,
     ) -> Result<(RichBlockKind, TableRuntime), String> {
         let kind = self
+            .document
             .payload_window
             .get(block_id)
             .map(|record| record.kind.clone())

@@ -11,7 +11,7 @@ impl DocumentRuntime {
         if self.focused_block_id() != Some(block_id) || trigger_range.is_empty() {
             return false;
         }
-        let Some(record) = self.payload_window.get(block_id) else {
+        let Some(record) = self.document.payload_window.get(block_id) else {
             return false;
         };
         let BlockPayload::RichText { .. } = &record.payload else {
@@ -38,6 +38,7 @@ impl DocumentRuntime {
             return Err("slash command precondition failed".to_owned());
         }
         let before = self
+            .document
             .payload_window
             .get(block_id)
             .cloned()

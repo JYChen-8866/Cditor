@@ -7,11 +7,14 @@ fn text_undo_history_obeys_byte_budget_and_keeps_events_in_sync() {
 
     for revision in 1..=40 {
         let marker = char::from(b'a' + (revision % 26) as u8);
-        runtime.payload_window.insert(BlockPayloadRecord::rich_text(
-            1,
-            RichBlockKind::Paragraph,
-            marker.to_string().repeat(text_bytes),
-        ));
+        runtime
+            .document
+            .payload_window
+            .insert(BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                marker.to_string().repeat(text_bytes),
+            ));
         runtime.push_undo_snapshot(1).unwrap();
     }
 

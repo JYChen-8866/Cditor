@@ -109,7 +109,7 @@ fn projection_for_window_exposes_total_visible_count_and_spacers() {
 
     assert_eq!(
         projection.total_visible_blocks,
-        runtime.visible_index.total_visible_count()
+        runtime.document.visible_index.total_visible_count()
     );
     assert_eq!(projection.before_window_height, 0.0);
     assert_eq!(projection.placeholder_window_height, None);
@@ -139,8 +139,9 @@ fn scrollbar_drag_projects_the_target_placeholder_for_live_loading() {
     let mut runtime = DocumentRuntime::from_index_records(1, records, payloads, 1, 720.0);
     let loaded = runtime.projection_for_window_planned();
     assert!(!loaded.render_window.is_placeholder());
-    runtime.payload_window.block_range = 0..64;
+    runtime.document.payload_window.block_range = 0..64;
     runtime
+        .document
         .payload_window
         .payloads
         .retain(|block_id, _| *block_id <= 64);

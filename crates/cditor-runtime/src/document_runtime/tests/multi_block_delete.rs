@@ -26,14 +26,17 @@ fn test_delete_selected_blocks_with_backspace() {
 
     // Verify blocks 1 and 2 are deleted
     assert!(
-        runtime.index.index_of(1).is_none(),
+        runtime.document.index.index_of(1).is_none(),
         "Block 1 should be deleted"
     );
     assert!(
-        runtime.index.index_of(2).is_none(),
+        runtime.document.index.index_of(2).is_none(),
         "Block 2 should be deleted"
     );
-    assert!(runtime.index.index_of(3).is_some(), "Block 3 should remain");
+    assert!(
+        runtime.document.index.index_of(3).is_some(),
+        "Block 3 should remain"
+    );
 
     // Verify selection is cleared
     assert!(
@@ -55,12 +58,12 @@ fn test_delete_selected_blocks_with_backspace() {
     assert_eq!(transaction.before_selected_blocks, vec![1, 2]);
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3]);
     assert_eq!(runtime.selected_block_ids, HashSet::from([1, 2]));
     assert!(!runtime.undo_focused_block().unwrap());
 
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![3]);
+    assert_eq!(runtime.document.index.block_ids, vec![3]);
     assert!(runtime.selected_block_ids.is_empty());
     assert!(!runtime.redo_focused_block().unwrap());
 }
@@ -88,12 +91,18 @@ fn test_delete_selected_blocks_with_delete_key() {
     );
 
     // Verify block 2 is deleted
-    assert!(runtime.index.index_of(1).is_some(), "Block 1 should remain");
     assert!(
-        runtime.index.index_of(2).is_none(),
+        runtime.document.index.index_of(1).is_some(),
+        "Block 1 should remain"
+    );
+    assert!(
+        runtime.document.index.index_of(2).is_none(),
         "Block 2 should be deleted"
     );
-    assert!(runtime.index.index_of(3).is_some(), "Block 3 should remain");
+    assert!(
+        runtime.document.index.index_of(3).is_some(),
+        "Block 3 should remain"
+    );
 
     // Verify selection is cleared
     assert!(runtime.selected_block_ids.is_empty());
@@ -120,7 +129,7 @@ fn test_delete_all_blocks_leaves_one_paragraph() {
 
     // Verify we still have at least one block (empty paragraph)
     assert!(
-        !runtime.index.block_ids.is_empty(),
+        !runtime.document.index.block_ids.is_empty(),
         "Should have at least one block"
     );
 
@@ -171,10 +180,10 @@ fn test_delete_selected_blocks_with_mixed_types() {
     assert!(result.is_ok() && result.unwrap());
 
     // Verify correct blocks were deleted
-    assert!(runtime.index.index_of(1).is_some());
-    assert!(runtime.index.index_of(2).is_none());
-    assert!(runtime.index.index_of(3).is_none());
-    assert!(runtime.index.index_of(4).is_some());
+    assert!(runtime.document.index.index_of(1).is_some());
+    assert!(runtime.document.index.index_of(2).is_none());
+    assert!(runtime.document.index.index_of(3).is_none());
+    assert!(runtime.document.index.index_of(4).is_some());
 }
 
 #[test]
@@ -198,9 +207,9 @@ fn deleting_a_selected_parent_removes_and_restores_its_whole_subtree_once() {
     runtime.selected_block_ids.insert(1);
 
     assert!(runtime.delete_backward().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![4]);
+    assert_eq!(runtime.document.index.block_ids, vec![4]);
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3, 4]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3, 4]);
     assert_eq!(runtime.selected_block_ids, HashSet::from([1]));
     assert!(!runtime.undo_focused_block().unwrap());
 }
@@ -217,12 +226,12 @@ fn non_contiguous_whole_block_selection_is_rejected_atomically() {
         720.0,
     );
     runtime.selected_block_ids.extend([1, 3]);
-    let before = runtime.index.block_ids.clone();
+    let before = runtime.document.index.block_ids.clone();
 
     let error = runtime.delete_backward().unwrap_err();
 
     assert!(error.contains("contiguous range"));
-    assert_eq!(runtime.index.block_ids, before);
+    assert_eq!(runtime.document.index.block_ids, before);
     assert_eq!(runtime.selected_block_ids, HashSet::from([1, 3]));
     assert!(!runtime.can_undo());
 }

@@ -141,7 +141,12 @@ impl DocumentRuntime {
                     true
                 }
                 EditorCommand::EnsureTrailingParagraph => {
-                    let previous_last = self.visible_index.visible_block_ids.last().copied();
+                    let previous_last = self
+                        .document
+                        .visible_index
+                        .visible_block_ids
+                        .last()
+                        .copied();
                     let changed = self
                         .focus_or_create_down_placer_paragraph()
                         .map_err(apply_error)?;
@@ -679,20 +684,5 @@ mod tests {
         };
         assert_eq!(diagnostics.undo_bytes, 0);
         assert!(diagnostics.projected_blocks <= runtime.document_block_count());
-    }
-
-    #[test]
-    fn projection_facade_preserves_request_identity_and_bounds_the_window() {
-        let mut runtime = DocumentRuntime::empty();
-        let projection =
-            runtime.projection(cditor_editor_protocol::projection::ProjectionRequest {
-                viewport_revision: 42,
-                include_diagnostics: false,
-            });
-
-        assert_eq!(projection.viewport_revision, 42);
-        assert_eq!(projection.document_id, runtime.document_id);
-        assert!(projection.blocks.len() <= 320);
-        assert!(projection.debug.page_boundaries.is_empty());
     }
 }

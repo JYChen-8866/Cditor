@@ -65,12 +65,22 @@ fn cross_block_clipboard_preserves_partial_spans_and_block_boundaries() {
     target.focus_block_at_offset(10, 1).unwrap();
     assert!(target.paste_clipboard_selection(&selection).unwrap());
 
-    assert_eq!(target.index.block_ids, vec![10, 11, 12]);
-    assert_eq!(target.payload_window.get(10).unwrap().plain_text(), "Xb");
-    assert_eq!(target.payload_window.get(11).unwrap().plain_text(), "cd");
-    assert_eq!(target.payload_window.get(12).unwrap().plain_text(), "eY");
+    assert_eq!(target.document.index.block_ids, vec![10, 11, 12]);
+    assert_eq!(
+        target.document.payload_window.get(10).unwrap().plain_text(),
+        "Xb"
+    );
+    assert_eq!(
+        target.document.payload_window.get(11).unwrap().plain_text(),
+        "cd"
+    );
+    assert_eq!(
+        target.document.payload_window.get(12).unwrap().plain_text(),
+        "eY"
+    );
     assert!(matches!(target.kind_for_block(11), RichBlockKind::Quote));
-    let BlockPayload::RichText { spans } = &target.payload_window.get(12).unwrap().payload else {
+    let BlockPayload::RichText { spans } = &target.document.payload_window.get(12).unwrap().payload
+    else {
         panic!("expected rich text");
     };
     assert!(
@@ -91,11 +101,17 @@ fn cross_block_clipboard_preserves_partial_spans_and_block_boundaries() {
             if payloads.len() == 2
     ));
     assert!(target.undo_focused_block().unwrap());
-    assert_eq!(target.index.block_ids, vec![10]);
-    assert_eq!(target.payload_window.get(10).unwrap().plain_text(), "XY");
+    assert_eq!(target.document.index.block_ids, vec![10]);
+    assert_eq!(
+        target.document.payload_window.get(10).unwrap().plain_text(),
+        "XY"
+    );
     assert!(target.redo_focused_block().unwrap());
-    assert_eq!(target.index.block_ids, vec![10, 11, 12]);
-    assert_eq!(target.payload_window.get(12).unwrap().plain_text(), "eY");
+    assert_eq!(target.document.index.block_ids, vec![10, 11, 12]);
+    assert_eq!(
+        target.document.payload_window.get(12).unwrap().plain_text(),
+        "eY"
+    );
 }
 
 #[test]
@@ -116,12 +132,12 @@ fn whole_block_copy_paste_undo_redo_preserves_opaque_plugin_bytes() {
     );
     target.focus_block_at_offset(10, 6).unwrap();
     assert!(target.paste_clipboard_selection(&selection).unwrap());
-    assert_unknown_plugin_bytes(target.payload_window.get(11).unwrap());
+    assert_unknown_plugin_bytes(target.document.payload_window.get(11).unwrap());
 
     assert!(target.undo_focused_block().unwrap());
-    assert!(target.payload_window.get(11).is_none());
+    assert!(target.document.payload_window.get(11).is_none());
     assert!(target.redo_focused_block().unwrap());
-    assert_unknown_plugin_bytes(target.payload_window.get(11).unwrap());
+    assert_unknown_plugin_bytes(target.document.payload_window.get(11).unwrap());
 }
 
 #[test]
@@ -194,9 +210,12 @@ fn cross_block_clipboard_preserves_first_kind_marks_and_nested_hierarchy() {
     target.focus_block_at_offset(10, 0).unwrap();
     assert!(target.paste_clipboard_selection(&selection).unwrap());
 
-    assert_eq!(target.index.block_ids, vec![10, 11, 12]);
-    assert_eq!(target.index.parent_ids, vec![None, Some(10), Some(11)]);
-    assert_eq!(target.index.depths, vec![0, 1, 2]);
+    assert_eq!(target.document.index.block_ids, vec![10, 11, 12]);
+    assert_eq!(
+        target.document.index.parent_ids,
+        vec![None, Some(10), Some(11)]
+    );
+    assert_eq!(target.document.index.depths, vec![0, 1, 2]);
     assert!(matches!(
         target.kind_for_block(10),
         RichBlockKind::Todo { checked: true }
@@ -205,7 +224,8 @@ fn cross_block_clipboard_preserves_first_kind_marks_and_nested_hierarchy() {
         target.kind_for_block(11),
         RichBlockKind::Todo { checked: false }
     ));
-    let BlockPayload::RichText { spans } = &target.payload_window.get(10).unwrap().payload else {
+    let BlockPayload::RichText { spans } = &target.document.payload_window.get(10).unwrap().payload
+    else {
         panic!("expected rich text");
     };
     assert!(spans[0].marks.contains(&InlineMark::Bold));
@@ -237,7 +257,7 @@ fn fragment_paste_over_cross_block_selection_is_one_payload_complete_transaction
     let before_selection = target.document_selection_snapshot();
 
     assert!(target.paste_clipboard_selection(&selection).unwrap());
-    assert_eq!(target.index.block_ids, vec![1, 4]);
+    assert_eq!(target.document.index.block_ids, vec![1, 4]);
     assert_eq!(target.block_payload_record(1).unwrap().plain_text(), "Ax");
     assert_eq!(target.block_payload_record(4).unwrap().plain_text(), "yC");
     let transactions = target.drain_pending_structure_transactions();
@@ -260,13 +280,13 @@ fn fragment_paste_over_cross_block_selection_is_one_payload_complete_transaction
     ));
 
     assert!(target.undo_focused_block().unwrap());
-    assert_eq!(target.index.block_ids, vec![1, 2, 3]);
+    assert_eq!(target.document.index.block_ids, vec![1, 2, 3]);
     assert_eq!(target.block_payload_record(1).unwrap().plain_text(), "AA");
     assert_eq!(target.block_payload_record(2).unwrap().plain_text(), "BB");
     assert_eq!(target.block_payload_record(3).unwrap().plain_text(), "CC");
     assert_eq!(target.document_selection_snapshot(), before_selection);
     assert!(target.redo_focused_block().unwrap());
-    assert_eq!(target.index.block_ids, vec![1, 4]);
+    assert_eq!(target.document.index.block_ids, vec![1, 4]);
 }
 
 #[test]
@@ -290,8 +310,11 @@ fn fragment_paste_preserves_unselected_nested_tail_in_the_same_transaction() {
     target.set_document_text_selection(1, 1, 2, 1).unwrap();
 
     assert!(target.paste_clipboard_selection(&selection).unwrap());
-    assert_eq!(target.index.block_ids, vec![1, 5, 3, 4]);
-    assert_eq!(target.index.parent_ids, vec![None, None, None, None]);
+    assert_eq!(target.document.index.block_ids, vec![1, 5, 3, 4]);
+    assert_eq!(
+        target.document.index.parent_ids,
+        vec![None, None, None, None]
+    );
     assert_eq!(target.block_payload_record(1).unwrap().plain_text(), "Ax");
     assert_eq!(target.block_payload_record(5).unwrap().plain_text(), "yB");
     assert_eq!(target.block_payload_record(3).unwrap().plain_text(), "CC");
@@ -306,10 +329,13 @@ fn fragment_paste_preserves_unselected_nested_tail_in_the_same_transaction() {
         ] if payloads.len() == 2
     ));
     assert!(target.undo_focused_block().unwrap());
-    assert_eq!(target.index.block_ids, vec![1, 2, 3, 4]);
-    assert_eq!(target.index.parent_ids, vec![None, Some(1), Some(2), None]);
+    assert_eq!(target.document.index.block_ids, vec![1, 2, 3, 4]);
+    assert_eq!(
+        target.document.index.parent_ids,
+        vec![None, Some(1), Some(2), None]
+    );
     assert!(target.redo_focused_block().unwrap());
-    assert_eq!(target.index.block_ids, vec![1, 5, 3, 4]);
+    assert_eq!(target.document.index.block_ids, vec![1, 5, 3, 4]);
 }
 
 #[test]
@@ -357,12 +383,13 @@ fn whole_block_clipboard_remaps_ids_and_preserves_complex_payload_hierarchy() {
     target.focus_block_at_offset(10, 6).unwrap();
     assert!(target.paste_clipboard_selection(&selection).unwrap());
 
-    assert_eq!(target.index.block_ids, vec![10, 11, 12]);
+    assert_eq!(target.document.index.block_ids, vec![10, 11, 12]);
     assert_eq!(
-        target.index.parent_ids[target.index.index_of(12).unwrap()],
+        target.document.index.parent_ids[target.document.index.index_of(12).unwrap()],
         Some(11)
     );
-    let BlockPayload::Whiteboard(whiteboard) = &target.payload_window.get(12).unwrap().payload
+    let BlockPayload::Whiteboard(whiteboard) =
+        &target.document.payload_window.get(12).unwrap().payload
     else {
         panic!("expected whiteboard payload");
     };
@@ -390,7 +417,7 @@ fn whole_block_clipboard_remaps_ids_and_preserves_complex_payload_hierarchy() {
     ));
 
     assert!(target.undo_focused_block().is_ok());
-    assert_eq!(target.index.block_ids, vec![10]);
+    assert_eq!(target.document.index.block_ids, vec![10]);
 }
 
 #[test]
@@ -424,10 +451,10 @@ fn large_whole_block_clipboard_paste_rebuilds_structure_once_and_hydrates_a_wind
     );
     let projection = target.projection_for_window_planned();
 
-    assert_eq!(target.index.total_count(), 2_001);
+    assert_eq!(target.document.index.total_count(), 2_001);
     assert_eq!(target.structure_version(), 2);
     assert!(projection.blocks.len() <= 320);
-    assert!(target.text_models.len() <= 322);
+    assert!(target.document.text_models.len() <= 322);
     let undo = target.external_undo_stack.last().unwrap();
     let persistent = target.pending_structure_transactions.last().unwrap();
     assert!(std::sync::Arc::ptr_eq(&undo.ops, &persistent.ops));
@@ -437,10 +464,10 @@ fn large_whole_block_clipboard_paste_rebuilds_structure_once_and_hydrates_a_wind
     ));
 
     assert!(target.undo_focused_block().unwrap());
-    assert_eq!(target.index.total_count(), 1);
+    assert_eq!(target.document.index.total_count(), 1);
     assert!(target.redo_focused_block().unwrap());
-    assert_eq!(target.index.total_count(), 2_001);
-    assert!(target.text_models.len() <= 322);
+    assert_eq!(target.document.index.total_count(), 2_001);
+    assert!(target.document.text_models.len() <= 322);
 }
 
 #[test]
@@ -467,7 +494,8 @@ fn table_clipboard_metadata_preserves_cell_marks_and_style() {
     target.focus_table_cell_at_offset(10, 0, 0, 0).unwrap();
     assert!(target.paste_clipboard_selection(&selection).unwrap());
 
-    let BlockPayload::Table(table) = &target.payload_window.get(10).unwrap().payload else {
+    let BlockPayload::Table(table) = &target.document.payload_window.get(10).unwrap().payload
+    else {
         panic!("expected table");
     };
     let cell = &table.rows[0].cells[0];
@@ -484,7 +512,8 @@ fn table_cut_clear_preserves_cell_style() {
         .unwrap();
     assert!(runtime.clear_table_range(10, range).unwrap());
 
-    let BlockPayload::Table(table) = &runtime.payload_window.get(10).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(10).unwrap().payload
+    else {
         panic!("expected table");
     };
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some(""));
@@ -507,7 +536,8 @@ fn inline_clipboard_paste_into_table_cell_preserves_marks() {
     };
     assert!(runtime.paste_clipboard_selection(&selection).unwrap());
 
-    let BlockPayload::Table(table) = &runtime.payload_window.get(10).unwrap().payload else {
+    let BlockPayload::Table(table) = &runtime.document.payload_window.get(10).unwrap().payload
+    else {
         panic!("expected table");
     };
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("Abold"));

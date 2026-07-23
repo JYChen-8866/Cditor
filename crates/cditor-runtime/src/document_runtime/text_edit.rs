@@ -60,6 +60,7 @@ impl DocumentRuntime {
         }
         let content_version = self.block_content_version(block_id).unwrap_or_default();
         let text_len_after = self
+            .document
             .text_models
             .get(&block_id)
             .map(PieceTableTextModel::len)
@@ -92,6 +93,7 @@ impl DocumentRuntime {
         }
         let offset = {
             let model = self
+                .document
                 .text_models
                 .get(&block_id)
                 .ok_or_else(|| format!("missing text model for block {block_id}"))?;
@@ -106,7 +108,8 @@ impl DocumentRuntime {
         let typing_marks = self.typing_marks_for(surface_id, offset);
         self.hot_path
             .preflight_insert_char(
-                self.text_models
+                self.document
+                    .text_models
                     .get(&block_id)
                     .expect("text model was resolved above"),
                 offset,
@@ -114,7 +117,8 @@ impl DocumentRuntime {
             .map_err(|error| format!("{error:?}"))?;
         let shortcut_before = if matches!(ch, '*' | '_' | '~' | '+' | '`' | ')' | ']') {
             let before = (
-                self.payload_window
+                self.document
+                    .payload_window
                     .get(block_id)
                     .cloned()
                     .ok_or_else(|| format!("missing payload for block {block_id}"))?,
@@ -122,9 +126,10 @@ impl DocumentRuntime {
                     .ok_or_else(|| format!("missing text surface {surface_id:?}"))?,
                 self.document_selection_snapshot(),
                 self.capture_undo_scroll_snapshot().anchor,
-                self.index
+                self.document
+                    .index
                     .index_of(block_id)
-                    .map(|index| self.index.layout_meta[index].layout_version)
+                    .map(|index| self.document.index.layout_meta[index].layout_version)
                     .ok_or_else(|| format!("missing layout metadata for block {block_id}"))?,
             );
             super::local_transaction::validate_preapplied_text_preflight(
@@ -148,6 +153,7 @@ impl DocumentRuntime {
         let transaction_id = self.next_transaction_id;
         let hot_path_result = {
             let model = self
+                .document
                 .text_models
                 .get_mut(&block_id)
                 .ok_or_else(|| format!("missing text model for block {block_id}"))?;
@@ -164,7 +170,7 @@ impl DocumentRuntime {
                 )
                 .map_err(|error| format!("{error:?}"))?;
             super::typing_marks::sync_payload_after_replace_with_typing_marks(
-                &mut self.payload_window,
+                &mut self.document.payload_window,
                 block_id,
                 editing.content_version,
                 model,
@@ -197,6 +203,7 @@ impl DocumentRuntime {
             )) = shortcut_before
             {
                 let after_record = self
+                    .document
                     .payload_window
                     .get(block_id)
                     .cloned()
@@ -259,29 +266,31 @@ impl DocumentRuntime {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
-        let Some(document_index) = self.index.index_of(block_id) else {
+        let Some(document_index) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
-        let Some(visible_index) = self.visible_index.visible_index_of(block_id) else {
+        let Some(visible_index) = self.document.visible_index.visible_index_of(block_id) else {
             return Ok(false);
         };
         let kind = self
+            .document
             .payload_window
             .get(block_id)
             .map(|payload| payload.kind.clone())
             .unwrap_or_else(|| RichBlockKind::Paragraph);
         let text = self
+            .document
             .text_models
             .get(&block_id)
             .map(|model| model.text().to_owned())
             .unwrap_or_default();
         let next_height = estimate_text_block_height_for_text(&kind, &text);
-        let previous_height = self.index.layout_meta[document_index].effective_height();
+        let previous_height = self.document.index.layout_meta[document_index].effective_height();
         if (previous_height - next_height).abs() < 0.5 {
             return Ok(false);
         }
 
-        self.index.layout_meta[document_index].update_height(next_height);
+        self.document.index.layout_meta[document_index].update_height(next_height);
         let height_change = self
             .height_index
             .update_height(visible_index, next_height)
@@ -372,7 +381,7 @@ impl DocumentRuntime {
         };
         // Non-text blocks (whiteboard, image, etc.) have no text model.
         // Backspace deletes them outright.
-        let Some(text_model) = self.text_models.get(&block_id) else {
+        let Some(text_model) = self.document.text_models.get(&block_id) else {
             return self.delete_block_by_id(block_id);
         };
         let text = text_model.text().to_owned();
@@ -410,6 +419,7 @@ impl DocumentRuntime {
             return Ok(false);
         }
         let text = self
+            .document
             .text_models
             .get(&block_id)
             .ok_or_else(|| format!("missing text model for block {block_id}"))?
@@ -448,7 +458,7 @@ impl DocumentRuntime {
         };
         // Non-text blocks (whiteboard, image, etc.) have no text model.
         // Delete key removes them outright.
-        let Some(model) = self.text_models.get(&block_id) else {
+        let Some(model) = self.document.text_models.get(&block_id) else {
             return self.delete_block_by_id(block_id);
         };
         let caret = self
@@ -491,20 +501,22 @@ impl DocumentRuntime {
         let mut roots = selected
             .iter()
             .filter_map(|block_id| {
-                self.index
+                self.document
+                    .index
                     .index_of(*block_id)
                     .map(|index| (*block_id, index))
             })
             .filter(|(_, index)| {
-                let mut parent = self.index.parent_ids[*index];
+                let mut parent = self.document.index.parent_ids[*index];
                 while let Some(parent_id) = parent {
                     if selected.contains(&parent_id) {
                         return false;
                     }
                     parent = self
+                        .document
                         .index
                         .index_of(parent_id)
-                        .and_then(|position| self.index.parent_ids[position]);
+                        .and_then(|position| self.document.index.parent_ids[position]);
                 }
                 true
             })
@@ -532,6 +544,7 @@ impl DocumentRuntime {
         };
         let current_block_id = records[current_index].id;
         let before_current_payload = self
+            .document
             .payload_window
             .get(current_block_id)
             .cloned()
@@ -542,7 +555,8 @@ impl DocumentRuntime {
         let deleted_payloads = deleted_records
             .iter()
             .map(|record| {
-                self.payload_window
+                self.document
+                    .payload_window
                     .get(record.id)
                     .cloned()
                     .ok_or_else(|| format!("missing payload for block {}", record.id))

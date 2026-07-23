@@ -11,7 +11,7 @@ fn backspace_at_start_merges_non_empty_paragraph_into_previous() {
 
     assert!(runtime.delete_backward().unwrap());
 
-    assert_eq!(runtime.index.total_count(), 1);
+    assert_eq!(runtime.document.index.total_count(), 1);
     assert_eq!(runtime.focused_block_id(), Some(1));
     assert_eq!(runtime.focused_text(), Some("hello world"));
     assert_eq!(runtime.selected_focused_text(), Some("world".to_owned()));
@@ -32,7 +32,7 @@ fn backspace_at_start_merges_non_empty_paragraph_into_previous() {
         ] if payloads.len() == 1
     ));
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2]);
     assert_eq!(
         runtime.block_payload_record(2).unwrap().plain_text(),
         "world"
@@ -57,10 +57,10 @@ fn list_item_backspace_first_resets_then_second_merges() {
         runtime.kind_for_block(2),
         RichBlockKind::Paragraph
     ));
-    assert_eq!(runtime.index.total_count(), 2);
+    assert_eq!(runtime.document.index.total_count(), 2);
 
     assert!(runtime.delete_backward().unwrap());
-    assert_eq!(runtime.index.total_count(), 1);
+    assert_eq!(runtime.document.index.total_count(), 1);
     assert_eq!(runtime.focused_block_id(), Some(1));
     assert_eq!(runtime.focused_text(), Some("ab"));
 }
@@ -75,7 +75,7 @@ fn empty_block_backspace_and_delete_remove_block_and_focus_adjacent() {
     runtime.focus_block_at_offset(2, 0).unwrap();
 
     assert!(runtime.delete_backward().unwrap());
-    assert_eq!(runtime.index.total_count(), 2);
+    assert_eq!(runtime.document.index.total_count(), 2);
     assert_eq!(runtime.focused_block_id(), Some(1));
 
     let mut runtime = runtime_with_kind_depths_and_text(vec![
@@ -86,7 +86,7 @@ fn empty_block_backspace_and_delete_remove_block_and_focus_adjacent() {
     runtime.focus_block_at_offset(2, 0).unwrap();
 
     assert!(runtime.delete_forward().unwrap());
-    assert_eq!(runtime.index.total_count(), 2);
+    assert_eq!(runtime.document.index.total_count(), 2);
     assert_eq!(runtime.focused_block_id(), Some(3));
 }
 
@@ -97,7 +97,7 @@ fn last_empty_block_is_not_deleted() {
     runtime.focus_block_at_offset(1, 0).unwrap();
 
     assert!(!runtime.delete_backward().unwrap());
-    assert_eq!(runtime.index.total_count(), 1);
+    assert_eq!(runtime.document.index.total_count(), 1);
     assert_eq!(runtime.focused_block_id(), Some(1));
     assert_eq!(runtime.focused_text(), Some(""));
 }
@@ -111,7 +111,7 @@ fn delete_at_end_merges_next_block_into_current() {
     runtime.focus_block_at_offset(1, 1).unwrap();
 
     assert!(runtime.delete_forward().unwrap());
-    assert_eq!(runtime.index.total_count(), 1);
+    assert_eq!(runtime.document.index.total_count(), 1);
     assert_eq!(runtime.focused_block_id(), Some(1));
     assert_eq!(runtime.focused_text(), Some("ab"));
 }
@@ -150,7 +150,7 @@ fn delete_document_selection_collapses_cross_block_range() {
 
     assert!(runtime.delete_document_selection().unwrap());
 
-    assert_eq!(runtime.index.total_count(), 1);
+    assert_eq!(runtime.document.index.total_count(), 1);
     assert_eq!(runtime.focused_block_id(), Some(1));
     assert_eq!(runtime.focused_text(), Some("ad"));
     assert_eq!(runtime.caret_offset_for_block(1), Some(1));
@@ -167,8 +167,8 @@ fn delete_document_selection_preserves_nested_tail_and_undo_restores_hierarchy()
     runtime.set_document_text_selection(1, 1, 2, 1).unwrap();
 
     assert!(runtime.delete_document_selection().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 3, 4]);
-    assert_eq!(runtime.index.parent_ids, vec![None, None, None]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 3, 4]);
+    assert_eq!(runtime.document.index.parent_ids, vec![None, None, None]);
     assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "AB");
     assert_eq!(runtime.block_payload_record(3).unwrap().plain_text(), "CC");
     let transactions = runtime.drain_pending_structure_transactions();
@@ -187,10 +187,13 @@ fn delete_document_selection_preserves_nested_tail_and_undo_restores_hierarchy()
     ));
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3, 4]);
-    assert_eq!(runtime.index.parent_ids, vec![None, Some(1), Some(2), None]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3, 4]);
+    assert_eq!(
+        runtime.document.index.parent_ids,
+        vec![None, Some(1), Some(2), None]
+    );
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 3, 4]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 3, 4]);
 }
 
 #[test]
@@ -383,9 +386,9 @@ fn measured_height_rejects_stale_content_version() {
     let applied = runtime.apply_measured_height(3, 1, 96.0).unwrap();
 
     assert!(!applied);
-    let block_index = runtime.index.index_of(3).unwrap();
+    let block_index = runtime.document.index.index_of(3).unwrap();
     assert_ne!(
-        runtime.index.layout_meta[block_index].measured_height,
+        runtime.document.index.layout_meta[block_index].measured_height,
         Some(96.0)
     );
 }
@@ -411,7 +414,7 @@ fn editing_code_block_preserves_code_payload() {
     runtime.focus_block_at_offset(1, 2).unwrap();
     runtime.insert_char('x').unwrap();
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     match &payload.payload {
         BlockPayload::Code { language, text } => {
             assert_eq!(language.as_deref(), Some("rust"));
@@ -460,18 +463,20 @@ fn enter_in_quote_soft_wraps_and_grows_block_height() {
     let mut runtime = DocumentRuntime::from_index_records(1, records, payloads, 1, 720.0);
     runtime.focus_block(1);
     let before = runtime
+        .document
         .index
         .index_of(1)
-        .map(|index| runtime.index.layout_meta[index].effective_height())
+        .map(|index| runtime.document.index.layout_meta[index].effective_height())
         .unwrap();
 
     runtime.handle_enter().unwrap();
 
     assert!(runtime.focused_text().unwrap().contains('\n'));
     let after = runtime
+        .document
         .index
         .index_of(1)
-        .map(|index| runtime.index.layout_meta[index].effective_height())
+        .map(|index| runtime.document.index.layout_meta[index].effective_height())
         .unwrap();
     assert!(
         after > before,

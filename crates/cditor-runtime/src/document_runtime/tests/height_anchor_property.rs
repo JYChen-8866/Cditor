@@ -37,6 +37,7 @@ fn randomized_measured_height_stale_result_and_anchor_property() {
         let block_index = rng.usize(BLOCK_COUNT);
         let block_id = block_index as BlockId + 1;
         let current_version = runtime
+            .document
             .payload_window
             .get(block_id)
             .expect("all property payloads stay resident")
@@ -52,6 +53,7 @@ fn randomized_measured_height_stale_result_and_anchor_property() {
 
         if stale && queued {
             runtime
+                .document
                 .payload_window
                 .payloads
                 .get_mut(&block_id)

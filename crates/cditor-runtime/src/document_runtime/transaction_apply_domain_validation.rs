@@ -118,7 +118,7 @@ pub(super) fn current_thread(
         .comment_threads
         .get(&thread_id)
         .cloned()
-        .unwrap_or_else(|| runtime.comment_threads.get(&thread_id).cloned())
+        .unwrap_or_else(|| runtime.document.comment_threads.get(&thread_id).cloned())
 }
 
 pub(super) fn require_thread(
@@ -162,5 +162,5 @@ pub(super) fn current_asset(
         .assets
         .get(&asset_id)
         .cloned()
-        .unwrap_or_else(|| runtime.assets.get(&asset_id).cloned())
+        .unwrap_or_else(|| runtime.document.assets.get(&asset_id).cloned())
 }

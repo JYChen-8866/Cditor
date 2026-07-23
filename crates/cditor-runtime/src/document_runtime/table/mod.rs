@@ -85,7 +85,7 @@ pub(super) fn default_table_payload(first_cell_text: String) -> BlockPayload {
 impl DocumentRuntime {
     pub(super) fn sync_table_runtime_for_payload(&mut self, record: &mut BlockPayloadRecord) {
         if !matches!(record.kind, RichBlockKind::Table) {
-            self.table_runtimes.remove(&record.block_id);
+            self.document.table_runtimes.remove(&record.block_id);
             self.table_horizontal_scroll_offsets
                 .remove(&record.block_id);
             return;
@@ -97,6 +97,7 @@ impl DocumentRuntime {
                 TableRuntime::from_payload(record.payload.clone())
             }
             _ => self
+                .document
                 .table_runtimes
                 .get(&record.block_id)
                 .cloned()
@@ -105,8 +106,8 @@ impl DocumentRuntime {
                 }),
         };
         record.payload = next.payload();
-        self.table_runtimes.insert(record.block_id, next);
-        self.text_models.remove(&record.block_id);
+        self.document.table_runtimes.insert(record.block_id, next);
+        self.document.text_models.remove(&record.block_id);
     }
 
     pub(super) fn sync_table_runtime_from_loaded_record(
@@ -114,7 +115,7 @@ impl DocumentRuntime {
         record: &mut BlockPayloadRecord,
     ) {
         self.sync_table_runtime_for_payload(record);
-        sync_text_model_for_payload(&mut self.text_models, record);
+        sync_text_model_for_payload(&mut self.document.text_models, record);
     }
 
     pub(super) fn table_runtime_payload_record(
@@ -123,7 +124,7 @@ impl DocumentRuntime {
         mut record: BlockPayloadRecord,
     ) -> BlockPayloadRecord {
         if matches!(record.kind, RichBlockKind::Table)
-            && let Some(runtime) = self.table_runtimes.get(&block_id)
+            && let Some(runtime) = self.document.table_runtimes.get(&block_id)
         {
             record.payload = runtime.payload();
         }
@@ -131,10 +132,10 @@ impl DocumentRuntime {
     }
 
     pub(super) fn table_runtime(&self, block_id: BlockId) -> Option<&TableRuntime> {
-        self.table_runtimes.get(&block_id)
+        self.document.table_runtimes.get(&block_id)
     }
 
     pub(super) fn table_runtime_mut(&mut self, block_id: BlockId) -> Option<&mut TableRuntime> {
-        self.table_runtimes.get_mut(&block_id)
+        self.document.table_runtimes.get_mut(&block_id)
     }
 }

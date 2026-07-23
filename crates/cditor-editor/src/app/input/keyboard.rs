@@ -159,22 +159,21 @@ impl CditorV2View {
                 }
                 GuiInputCommand::PasteClipboard => {
                     if let Some(item) = cx.read_from_clipboard() {
-                        deferred_command = if let Some(asset) =
-                            image_asset_from_clipboard_item(&item)
-                        {
-                            Some(
+                        deferred_command =
+                            if let Some(asset) = image_asset_from_clipboard_item(&item) {
+                                Some(
                                 cditor_editor_protocol::command::EditorCommand::InsertImageAsset {
                                     payload: asset.payload,
                                 },
                             )
-                        } else if let Some(text) = item.text() {
-                            Some(cditor_editor_protocol::command::EditorCommand::ApplyClipboardData {
+                            } else {
+                                item.text().map(|text| {
+                                cditor_editor_protocol::command::EditorCommand::ApplyClipboardData {
                                 text,
                                 metadata_json: item.metadata().cloned(),
+                                }
                             })
-                        } else {
-                            None
-                        };
+                            };
                     }
                 }
                 GuiInputCommand::UndoFocusedBlock | GuiInputCommand::RedoFocusedBlock => {

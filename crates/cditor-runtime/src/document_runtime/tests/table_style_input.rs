@@ -130,7 +130,7 @@ fn table_kind_with_non_table_payload_is_normalized_on_load() {
         720.0,
     );
 
-    assert!(!runtime.text_models.contains_key(&10));
+    assert!(!runtime.document.text_models.contains_key(&10));
     runtime.focus_block(10);
     runtime.focus_block(10);
     let projection = runtime.projection_for_window();
@@ -172,7 +172,12 @@ fn table_runtime_survives_stale_empty_payload_snapshot() {
 
     runtime.focus_table_cell(10, 0, 1).unwrap();
     runtime.insert_char('!').unwrap();
-    let payload = runtime.payload_window.payloads.get_mut(&10).unwrap();
+    let payload = runtime
+        .document
+        .payload_window
+        .payloads
+        .get_mut(&10)
+        .unwrap();
     payload.payload = BlockPayload::Table(cditor_core::rich_text::TablePayload::default());
     payload.content_version = payload.content_version.saturating_add(1);
 
@@ -221,7 +226,7 @@ fn converting_to_table_removes_plain_text_model() {
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "/table")]);
 
     runtime.focus_block_at_offset(1, "/table".len()).unwrap();
-    assert!(runtime.text_models.contains_key(&1));
+    assert!(runtime.document.text_models.contains_key(&1));
     assert!(
         runtime
             .replace_text_in_focused_range(Some(0.."/table".len()), "")
@@ -233,7 +238,7 @@ fn converting_to_table_removes_plain_text_model() {
             .unwrap()
     );
 
-    assert!(!runtime.text_models.contains_key(&1));
+    assert!(!runtime.document.text_models.contains_key(&1));
     assert_eq!(runtime.focused_text(), None);
     assert!(matches!(
         runtime.block_payload_record(1).unwrap().payload,
@@ -248,7 +253,7 @@ fn editing_table_cell_does_not_create_block_text_model() {
     runtime.focus_table_cell(10, 0, 1).unwrap();
     runtime.insert_char('!').unwrap();
 
-    assert!(!runtime.text_models.contains_key(&10));
+    assert!(!runtime.document.text_models.contains_key(&10));
     let payload = runtime.block_payload_record(10).unwrap();
     let BlockPayload::Table(table) = payload.payload else {
         panic!("expected table payload");
@@ -263,8 +268,8 @@ fn enter_on_table_block_without_cell_focus_preserves_table_payload() {
     runtime.focus_block(10);
     runtime.handle_enter().unwrap();
 
-    assert_eq!(runtime.index.block_ids, vec![10]);
-    assert!(!runtime.text_models.contains_key(&10));
+    assert_eq!(runtime.document.index.block_ids, vec![10]);
+    assert!(!runtime.document.text_models.contains_key(&10));
     let payload = runtime.block_payload_record(10).unwrap();
     let BlockPayload::Table(table) = payload.payload else {
         panic!("expected table payload");
@@ -282,7 +287,7 @@ fn splitting_table_payload_never_exports_cell_text_to_new_paragraph() {
         .split_focused_block_at_caret(EnterSplitMode::ForceParagraph)
         .unwrap();
 
-    assert_eq!(runtime.index.block_ids, vec![10, 11]);
+    assert_eq!(runtime.document.index.block_ids, vec![10, 11]);
     let current = runtime.block_payload_record(10).unwrap();
     let BlockPayload::Table(table) = current.payload else {
         panic!("expected original table payload");
@@ -299,8 +304,8 @@ fn enter_in_focused_table_cell_inserts_newline_inside_cell() {
     runtime.focus_table_cell(10, 0, 1).unwrap();
     runtime.handle_enter().unwrap();
 
-    assert_eq!(runtime.index.block_ids, vec![10]);
-    assert!(!runtime.text_models.contains_key(&10));
+    assert_eq!(runtime.document.index.block_ids, vec![10]);
+    assert!(!runtime.document.text_models.contains_key(&10));
     let payload = runtime.block_payload_record(10).unwrap();
     let BlockPayload::Table(table) = payload.payload else {
         panic!("expected table payload");
@@ -317,11 +322,11 @@ fn backspace_and_delete_in_table_cell_do_not_delete_table_block() {
 
     runtime.focus_table_cell_at_offset(10, 0, 0, 0).unwrap();
     assert!(!runtime.delete_backward().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![10, 11]);
+    assert_eq!(runtime.document.index.block_ids, vec![10, 11]);
     assert_eq!(runtime.focused_table_cell_offset(), Some((10, 0, 0, 0)));
 
     assert!(runtime.delete_forward().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![10, 11]);
+    assert_eq!(runtime.document.index.block_ids, vec![10, 11]);
     let payload = runtime.block_payload_record(10).unwrap();
     let BlockPayload::Table(table) = payload.payload else {
         panic!("expected table payload");

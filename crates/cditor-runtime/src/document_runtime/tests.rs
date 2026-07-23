@@ -134,6 +134,8 @@ mod command_input;
 mod complex_block_input;
 #[path = "tests/composition_input.rs"]
 mod composition_input;
+#[path = "tests/composition_input_normalization.rs"]
+mod composition_input_normalization;
 #[path = "tests/conversion_clipboard_media.rs"]
 mod conversion_clipboard_media;
 #[path = "tests/delete_navigation_height.rs"]

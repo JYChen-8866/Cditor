@@ -5,7 +5,9 @@ impl DocumentRuntime {
     /// Acknowledges the exact payload versions included in a successful save.
     /// A newer edit made while the save was in flight remains dirty and pinned.
     pub fn mark_payload_versions_persisted(&mut self, versions: &[(BlockId, u64)]) {
-        self.payload_window.mark_persisted_versions(versions);
+        self.document
+            .payload_window
+            .mark_persisted_versions(versions);
     }
 
     /// Trims heavyweight payload entities without evicting the active viewport,
@@ -15,35 +17,41 @@ impl DocumentRuntime {
         policy: PayloadCachePolicy,
         extra_pins: impl IntoIterator<Item = BlockId>,
     ) -> PayloadCacheTrimReport {
-        self.payload_window.refresh_estimated_bytes();
-        let before_entries = self.payload_window.payloads.len();
-        let before_estimated_bytes = self.payload_window.total_estimated_bytes();
+        self.document.payload_window.refresh_estimated_bytes();
+        let before_entries = self.document.payload_window.payloads.len();
+        let before_estimated_bytes = self.document.payload_window.total_estimated_bytes();
 
         let active_ids = self
+            .document
             .payload_window
             .block_range
             .clone()
-            .filter_map(|visible_index| self.visible_index.id_at_visible_index(visible_index))
+            .filter_map(|visible_index| {
+                self.document
+                    .visible_index
+                    .id_at_visible_index(visible_index)
+            })
             .collect::<Vec<_>>();
         let mut protected = active_ids.iter().copied().collect::<HashSet<_>>();
         for block_id in active_ids {
-            self.payload_window.touch(block_id);
+            self.document.payload_window.touch(block_id);
         }
 
         if let Some(editing) = self.editing.as_ref() {
             protected.extend(editing.pinned_blocks().iter().copied());
         }
-        if let Some(first) = self
-            .selected_block_ids
-            .iter()
-            .min_by_key(|block_id| self.index.index_of(**block_id).unwrap_or(usize::MAX))
-        {
+        if let Some(first) = self.selected_block_ids.iter().min_by_key(|block_id| {
+            self.document
+                .index
+                .index_of(**block_id)
+                .unwrap_or(usize::MAX)
+        }) {
             protected.insert(*first);
         }
         if let Some(last) = self
             .selected_block_ids
             .iter()
-            .max_by_key(|block_id| self.index.index_of(**block_id).unwrap_or(0))
+            .max_by_key(|block_id| self.document.index.index_of(**block_id).unwrap_or(0))
         {
             protected.insert(*last);
         }
@@ -55,17 +63,18 @@ impl DocumentRuntime {
             protected.insert(focused.block_id);
         }
         protected.extend(self.ai_payload_pin_ids());
-        protected.extend(self.payload_window.loading.iter().copied());
+        protected.extend(self.document.payload_window.loading.iter().copied());
         protected.extend(extra_pins);
 
         let dirty = self
+            .document
             .payload_window
             .payloads
             .keys()
             .copied()
-            .filter(|block_id| self.payload_window.is_dirty(*block_id))
+            .filter(|block_id| self.document.payload_window.is_dirty(*block_id))
             .collect::<HashSet<_>>();
-        let evicted = self.payload_window.evict_to_limits(
+        let evicted = self.document.payload_window.evict_to_limits(
             policy.max_entries,
             policy.max_estimated_bytes,
             |block_id, _| !protected.contains(&block_id) && !dirty.contains(&block_id),
@@ -73,15 +82,15 @@ impl DocumentRuntime {
         let mut evicted_block_ids = Vec::with_capacity(evicted.len());
         for evicted in evicted {
             let block_id = evicted.block_id;
-            self.text_models.remove(&block_id);
-            self.table_runtimes.remove(&block_id);
+            self.document.text_models.remove(&block_id);
+            self.document.table_runtimes.remove(&block_id);
             self.table_horizontal_scroll_offsets.remove(&block_id);
             self.pending_measured_heights.remove(&block_id);
             evicted_block_ids.push(block_id);
         }
 
-        let after_entries = self.payload_window.payloads.len();
-        let after_estimated_bytes = self.payload_window.total_estimated_bytes();
+        let after_entries = self.document.payload_window.payloads.len();
+        let after_estimated_bytes = self.document.payload_window.total_estimated_bytes();
         PayloadCacheTrimReport {
             before_entries,
             after_entries,
@@ -107,7 +116,7 @@ mod tests {
     }
 
     fn narrow_active_window(runtime: &mut DocumentRuntime, range: Range<usize>) {
-        runtime.payload_window.block_range = range;
+        runtime.document.payload_window.block_range = range;
     }
 
     fn entry_policy(max_entries: usize) -> PayloadCachePolicy {
@@ -126,8 +135,8 @@ mod tests {
 
         assert_eq!(report.after_entries, 3);
         assert_eq!(report.evicted_entries, 7);
-        assert!(runtime.payload_window.get(9).is_some());
-        assert!(runtime.payload_window.get(10).is_some());
+        assert!(runtime.document.payload_window.get(9).is_some());
+        assert!(runtime.document.payload_window.get(10).is_some());
     }
 
     #[test]
@@ -138,10 +147,10 @@ mod tests {
 
         runtime.trim_payload_cache(entry_policy(2), []);
 
-        assert!(runtime.payload_window.get(1).is_some());
-        assert!(runtime.payload_window.get(4).is_some());
-        assert!(runtime.payload_window.get(2).is_none());
-        assert!(runtime.payload_window.get(3).is_none());
+        assert!(runtime.document.payload_window.get(1).is_some());
+        assert!(runtime.document.payload_window.get(4).is_some());
+        assert!(runtime.document.payload_window.get(2).is_none());
+        assert!(runtime.document.payload_window.get(3).is_none());
     }
 
     #[test]
@@ -154,7 +163,10 @@ mod tests {
 
         assert!(!report.over_capacity);
         for block_id in [1, 9, 10] {
-            assert!(runtime.payload_window.get(block_id).is_some(), "{block_id}");
+            assert!(
+                runtime.document.payload_window.get(block_id).is_some(),
+                "{block_id}"
+            );
         }
     }
 
@@ -168,7 +180,10 @@ mod tests {
 
         assert!(!report.over_capacity);
         for block_id in [2, 3, 9, 10] {
-            assert!(runtime.payload_window.get(block_id).is_some(), "{block_id}");
+            assert!(
+                runtime.document.payload_window.get(block_id).is_some(),
+                "{block_id}"
+            );
         }
     }
 
@@ -176,22 +191,22 @@ mod tests {
     fn dirty_payload_cannot_be_evicted_until_its_exact_version_is_saved() {
         let mut runtime = runtime_with_paragraph_blocks(4);
         narrow_active_window(&mut runtime, 3..4);
-        let mut edited = runtime.payload_window.get(1).unwrap().clone();
+        let mut edited = runtime.document.payload_window.get(1).unwrap().clone();
         edited.content_version = 2;
-        runtime.payload_window.insert(edited);
+        runtime.document.payload_window.insert(edited);
 
         let dirty_report = runtime.trim_payload_cache(entry_policy(1), []);
         assert!(dirty_report.over_capacity);
-        assert!(runtime.payload_window.get(1).is_some());
-        assert!(runtime.payload_window.get(4).is_some());
+        assert!(runtime.document.payload_window.get(1).is_some());
+        assert!(runtime.document.payload_window.get(4).is_some());
 
         runtime.mark_payload_versions_persisted(&[(1, 1)]);
-        assert!(runtime.payload_window.is_dirty(1));
+        assert!(runtime.document.payload_window.is_dirty(1));
         runtime.mark_payload_versions_persisted(&[(1, 2)]);
         let saved_report = runtime.trim_payload_cache(entry_policy(1), []);
         assert!(!saved_report.over_capacity);
-        assert!(runtime.payload_window.get(1).is_none());
-        assert!(runtime.payload_window.get(4).is_some());
+        assert!(runtime.document.payload_window.get(1).is_none());
+        assert!(runtime.document.payload_window.get(4).is_some());
     }
 
     #[test]
@@ -203,9 +218,9 @@ mod tests {
             .unwrap();
         runtime.selected_block_ids.extend([3, 4, 5, 6]);
 
-        let mut dirty = runtime.payload_window.get(8).unwrap().clone();
+        let mut dirty = runtime.document.payload_window.get(8).unwrap().clone();
         dirty.content_version = dirty.content_version.saturating_add(1);
-        runtime.payload_window.insert(dirty);
+        runtime.document.payload_window.insert(dirty);
 
         let report = runtime.trim_payload_cache(entry_policy(7), [7]);
 
@@ -215,22 +230,25 @@ mod tests {
         // whole-block selection endpoints; 7 represents an App drag pin; 8
         // is dirty; and 9..10 is the active payload window.
         for block_id in [1, 3, 6, 7, 8, 9, 10] {
-            assert!(runtime.payload_window.get(block_id).is_some(), "{block_id}");
+            assert!(
+                runtime.document.payload_window.get(block_id).is_some(),
+                "{block_id}"
+            );
         }
-        assert!(runtime.payload_window.get(4).is_none());
-        assert!(runtime.payload_window.get(5).is_none());
+        assert!(runtime.document.payload_window.get(4).is_none());
+        assert!(runtime.document.payload_window.get(5).is_none());
     }
 
     #[test]
     fn eviction_releases_runtime_text_entities() {
         let mut runtime = runtime_with_paragraph_blocks(3);
         narrow_active_window(&mut runtime, 2..3);
-        assert!(runtime.text_models.contains_key(&1));
+        assert!(runtime.document.text_models.contains_key(&1));
 
         runtime.trim_payload_cache(entry_policy(1), []);
 
-        assert!(runtime.payload_window.get(1).is_none());
-        assert!(!runtime.text_models.contains_key(&1));
+        assert!(runtime.document.payload_window.get(1).is_none());
+        assert!(!runtime.document.text_models.contains_key(&1));
     }
 
     #[test]
@@ -245,14 +263,14 @@ mod tests {
         let mut runtime =
             DocumentRuntime::from_payloads(1, vec![table_payload.clone(), paragraph], 720.0);
         narrow_active_window(&mut runtime, 1..2);
-        assert!(runtime.table_runtimes.contains_key(&1));
+        assert!(runtime.document.table_runtimes.contains_key(&1));
 
         runtime.trim_payload_cache(entry_policy(1), []);
-        assert!(!runtime.table_runtimes.contains_key(&1));
+        assert!(!runtime.document.table_runtimes.contains_key(&1));
 
-        runtime.payload_window.insert_loaded(table_payload);
+        runtime.document.payload_window.insert_loaded(table_payload);
         runtime.hydrate_payload_runtime_state(1);
-        assert!(runtime.table_runtimes.contains_key(&1));
+        assert!(runtime.document.table_runtimes.contains_key(&1));
     }
 
     #[test]
@@ -269,6 +287,7 @@ mod tests {
         let mut runtime = DocumentRuntime::from_payloads(1, payloads, 720.0);
         narrow_active_window(&mut runtime, 3..4);
         let active_bytes = runtime
+            .document
             .payload_window
             .get(4)
             .map(crate::content::payload_cache::estimated_payload_record_bytes)
@@ -284,7 +303,7 @@ mod tests {
 
         assert!(!report.over_capacity);
         assert_eq!(report.after_entries, 1);
-        assert!(runtime.payload_window.get(4).is_some());
+        assert!(runtime.document.payload_window.get(4).is_some());
     }
 
     #[test]
@@ -296,6 +315,6 @@ mod tests {
 
         assert!(!report.over_capacity);
         assert_eq!(report.after_entries, 128);
-        assert_eq!(runtime.text_models.len(), 128);
+        assert_eq!(runtime.document.text_models.len(), 128);
     }
 }

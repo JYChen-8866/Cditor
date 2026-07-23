@@ -36,7 +36,10 @@ impl DocumentRuntime {
     ) -> Result<(), String> {
         let global_scroll_top = anchor
             .and_then(|anchor| {
-                let visible_index = self.visible_index.visible_index_of(anchor.block_id)?;
+                let visible_index = self
+                    .document
+                    .visible_index
+                    .visible_index_of(anchor.block_id)?;
                 let block_top = self.height_index.offset_of_block(visible_index)?;
                 Some(block_top + anchor.offset_in_block - anchor.viewport_y)
             })
@@ -87,7 +90,7 @@ impl DocumentRuntime {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
-        let Some(visible_index) = self.visible_index.visible_index_of(block_id) else {
+        let Some(visible_index) = self.document.visible_index.visible_index_of(block_id) else {
             return Ok(false);
         };
         let Some(block_top) = self.height_index.offset_of_block(visible_index) else {
@@ -130,8 +133,9 @@ impl DocumentRuntime {
         alignment: Option<f64>,
     ) -> Result<bool, String> {
         let target = self
+            .document
             .visible_index
-            .resolve_scroll_target(&self.index, block_id)
+            .resolve_scroll_target(&self.document.index, block_id)
             .ok_or_else(|| format!("block {block_id} is missing from the document"))?;
         let block_top = self
             .height_index
@@ -203,7 +207,10 @@ impl DocumentRuntime {
     pub fn target_for_global_offset(&self, global_y: f64) -> Option<GlobalScrollTarget> {
         let clamped = self.scroll.clamp_global_scroll_top(global_y);
         let block_hit = self.height_index.block_at_offset(clamped)?;
-        let block_id = self.visible_index.id_at_visible_index(block_hit.index)?;
+        let block_id = self
+            .document
+            .visible_index
+            .id_at_visible_index(block_hit.index)?;
         let page_hit = self.page_layout.page_at_offset(clamped)?;
         let confidence = self
             .height_index
@@ -295,13 +302,13 @@ impl DocumentRuntime {
     fn pinned_pages_for_window_plan(&self) -> BTreeSet<usize> {
         let mut pages = BTreeSet::new();
         if let Some(block_id) = self.focused_block_id()
-            && let Some(visible_index) = self.visible_index.visible_index_of(block_id)
+            && let Some(visible_index) = self.document.visible_index.visible_index_of(block_id)
             && let Some(page) = self.page_layout.page_for_block_index(visible_index)
         {
             pages.insert(page);
         }
         for block_id in &self.selected_block_ids {
-            if let Some(visible_index) = self.visible_index.visible_index_of(*block_id)
+            if let Some(visible_index) = self.document.visible_index.visible_index_of(*block_id)
                 && let Some(page) = self.page_layout.page_for_block_index(visible_index)
             {
                 pages.insert(page);
@@ -346,7 +353,7 @@ mod tests {
         let mut runtime = DocumentRuntime::from_payloads(1, payloads, 240.0);
         runtime.sync_viewport_height(241.0).unwrap();
         runtime.focus_block_at_offset(8, 0).unwrap();
-        let visible_index = runtime.visible_index.visible_index_of(8).unwrap();
+        let visible_index = runtime.document.visible_index.visible_index_of(8).unwrap();
         let block_bottom = runtime.height_index.offset_of_block(visible_index).unwrap()
             + runtime.height_index.heights[visible_index];
         runtime
@@ -393,6 +400,7 @@ mod tests {
 
         assert!(runtime.focus_or_create_down_placer_paragraph().unwrap());
         let trailing = runtime
+            .document
             .visible_index
             .visible_block_ids
             .last()
@@ -400,12 +408,17 @@ mod tests {
             .unwrap();
         assert_eq!(runtime.focused_block_id(), Some(trailing));
         assert_eq!(
-            runtime.payload_window.get(trailing).unwrap().plain_text(),
+            runtime
+                .document
+                .payload_window
+                .get(trailing)
+                .unwrap()
+                .plain_text(),
             ""
         );
 
         assert!(!runtime.focus_or_create_down_placer_paragraph().unwrap());
-        assert_eq!(runtime.visible_index.total_visible_count(), 2);
+        assert_eq!(runtime.document.visible_index.total_visible_count(), 2);
     }
 
     #[test]

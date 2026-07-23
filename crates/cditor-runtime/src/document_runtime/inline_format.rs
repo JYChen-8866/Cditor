@@ -30,6 +30,7 @@ impl DocumentRuntime {
             return Ok(false);
         };
         let text = self
+            .document
             .text_models
             .get(&block_id)
             .ok_or_else(|| format!("missing text model for block {block_id}"))?
@@ -40,6 +41,7 @@ impl DocumentRuntime {
             return Ok(false);
         }
         let current_spans = self
+            .document
             .payload_window
             .get(block_id)
             .and_then(|payload| match &payload.payload {
@@ -126,6 +128,7 @@ impl DocumentRuntime {
         color: Option<&str>,
     ) -> Result<bool, String> {
         let text = self
+            .document
             .text_models
             .get(&block_id)
             .ok_or_else(|| format!("missing text model for block {block_id}"))?
@@ -136,6 +139,7 @@ impl DocumentRuntime {
             return Ok(false);
         }
         let current_spans = self
+            .document
             .payload_window
             .get(block_id)
             .and_then(|payload| match &payload.payload {

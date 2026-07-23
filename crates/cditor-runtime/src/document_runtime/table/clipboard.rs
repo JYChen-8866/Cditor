@@ -84,6 +84,7 @@ impl DocumentRuntime {
             return Ok(false);
         }
         let kind = self
+            .document
             .payload_window
             .get(focused.block_id)
             .map(|record| record.kind.clone())

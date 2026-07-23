@@ -223,7 +223,7 @@ fn runtime_from_loaded(
             options.layout_key,
             options.page_policy_version,
             PagePolicy::default(),
-            &runtime.visible_index.visible_block_ids,
+            runtime.visible_block_ids(),
         )
         && runtime.apply_cached_page_layout(page_layout).is_ok()
     {

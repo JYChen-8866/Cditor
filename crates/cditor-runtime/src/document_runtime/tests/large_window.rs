@@ -9,7 +9,7 @@ fn move_block_subtree_before_rejects_target_inside_source_subtree() {
     ]);
 
     assert!(!runtime.move_block_subtree_before(1, Some(2)).unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3]);
 }
 
 #[test]
@@ -25,7 +25,11 @@ fn enter_on_empty_root_list_turns_it_into_paragraph() {
     runtime.handle_enter().unwrap();
 
     assert!(matches!(
-        runtime.payload_window.get(1).map(|record| &record.kind),
+        runtime
+            .document
+            .payload_window
+            .get(1)
+            .map(|record| &record.kind),
         Some(RichBlockKind::Paragraph)
     ));
     let projection = runtime.full_projection_for_tests();
@@ -50,11 +54,15 @@ fn enter_on_empty_nested_list_outdents_it() {
     runtime.handle_enter().unwrap();
 
     assert!(matches!(
-        runtime.payload_window.get(2).map(|record| &record.kind),
+        runtime
+            .document
+            .payload_window
+            .get(2)
+            .map(|record| &record.kind),
         Some(RichBlockKind::BulletedList)
     ));
-    assert_eq!(runtime.index.parent_ids[1], None);
-    assert_eq!(runtime.index.depths[1], 0);
+    assert_eq!(runtime.document.index.parent_ids[1], None);
+    assert_eq!(runtime.document.index.depths[1], 0);
     let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 0);
 }
@@ -72,7 +80,11 @@ fn enter_on_empty_root_todo_turns_paragraph_and_clears_checkbox() {
     runtime.handle_enter().unwrap();
 
     assert!(matches!(
-        runtime.payload_window.get(1).map(|record| &record.kind),
+        runtime
+            .document
+            .payload_window
+            .get(1)
+            .map(|record| &record.kind),
         Some(RichBlockKind::Paragraph)
     ));
     let projection = runtime.full_projection_for_tests();
@@ -94,11 +106,15 @@ fn enter_on_empty_nested_todo_outdents_and_preserves_todo_kind() {
     runtime.handle_enter().unwrap();
 
     assert!(matches!(
-        runtime.payload_window.get(2).map(|record| &record.kind),
+        runtime
+            .document
+            .payload_window
+            .get(2)
+            .map(|record| &record.kind),
         Some(RichBlockKind::Todo { checked: true })
     ));
-    assert_eq!(runtime.index.parent_ids[1], None);
-    assert_eq!(runtime.index.depths[1], 0);
+    assert_eq!(runtime.document.index.parent_ids[1], None);
+    assert_eq!(runtime.document.index.depths[1], 0);
     let projection = runtime.full_projection_for_tests();
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 0);
     assert_eq!(
@@ -115,9 +131,13 @@ fn enter_on_whitespace_only_list_item_uses_trim_empty_check() {
 
     runtime.handle_enter().unwrap();
 
-    assert_eq!(runtime.index.total_count(), 1);
+    assert_eq!(runtime.document.index.total_count(), 1);
     assert!(matches!(
-        runtime.payload_window.get(1).map(|record| &record.kind),
+        runtime
+            .document
+            .payload_window
+            .get(1)
+            .map(|record| &record.kind),
         Some(RichBlockKind::Paragraph)
     ));
 }
@@ -141,14 +161,18 @@ fn enter_on_empty_list_does_not_create_block_or_move_scroll_top() {
         .unwrap();
     runtime.focus_block(21);
     let before_scroll_top = runtime.scroll.global_scroll_top;
-    let before_count = runtime.index.total_count();
+    let before_count = runtime.document.index.total_count();
 
     runtime.handle_enter().unwrap();
 
-    assert_eq!(runtime.index.total_count(), before_count);
+    assert_eq!(runtime.document.index.total_count(), before_count);
     assert_eq!(runtime.scroll.global_scroll_top, before_scroll_top);
     assert!(matches!(
-        runtime.payload_window.get(21).map(|record| &record.kind),
+        runtime
+            .document
+            .payload_window
+            .get(21)
+            .map(|record| &record.kind),
         Some(RichBlockKind::Paragraph)
     ));
 }
@@ -162,7 +186,11 @@ fn toggle_todo_checked_updates_payload_kind_and_projection_prefix() {
     assert!(runtime.toggle_todo_checked(1).unwrap());
 
     assert!(matches!(
-        runtime.payload_window.get(1).map(|record| &record.kind),
+        runtime
+            .document
+            .payload_window
+            .get(1)
+            .map(|record| &record.kind),
         Some(RichBlockKind::Todo { checked: true })
     ));
     let projection = runtime.projection_for_window();
@@ -180,9 +208,12 @@ fn toggle_todo_checked_updates_payload_kind_and_projection_prefix() {
 fn runtime_with_100k_blocks_fixture_builds_without_large_strings() {
     let runtime = runtime_with_paragraph_blocks(100_000);
 
-    assert_eq!(runtime.index.total_count(), 100_000);
-    assert_eq!(runtime.visible_index.total_visible_count(), 100_000);
-    assert_eq!(runtime.payload_window.payloads.len(), 100_000);
+    assert_eq!(runtime.document.index.total_count(), 100_000);
+    assert_eq!(
+        runtime.document.visible_index.total_visible_count(),
+        100_000
+    );
+    assert_eq!(runtime.document.payload_window.payloads.len(), 100_000);
     assert_eq!(runtime.height_index.total_height(), 3_200_000.0);
     assert!(runtime.page_layout.page_count() >= 100);
 }
@@ -192,11 +223,11 @@ fn large_mixed_demo_keeps_payloads_windowed() {
     let mut runtime = DocumentRuntime::large_mixed_demo();
 
     assert_eq!(
-        runtime.index.total_count(),
+        runtime.document.index.total_count(),
         cditor_core::demo_fixtures::LARGE_MIXED_DEMO_BLOCKS
     );
-    assert!(runtime.payload_window.payloads.len() < 2_000);
-    assert!(runtime.payload_window.block_range.start == 0);
+    assert!(runtime.document.payload_window.payloads.len() < 2_000);
+    assert!(runtime.document.payload_window.block_range.start == 0);
 
     runtime
         .scroll
@@ -209,8 +240,8 @@ fn large_mixed_demo_keeps_payloads_windowed() {
 
     assert!(!projection.blocks.is_empty());
     assert!(projection.blocks.len() <= 320);
-    assert!(runtime.payload_window.payloads.len() < 5_000);
-    assert!(runtime.payload_window.block_range.start > 0);
+    assert!(runtime.document.payload_window.payloads.len() < 5_000);
+    assert!(runtime.document.payload_window.block_range.start > 0);
 }
 
 #[test]

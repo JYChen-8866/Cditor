@@ -15,22 +15,24 @@ impl DocumentRuntime {
             .selected_block_ids
             .iter()
             .filter_map(|block_id| {
-                self.index
+                self.document
+                    .index
                     .index_of(*block_id)
                     .map(|index| (index, *block_id))
             })
             .max_by_key(|pair| pair.0)
             .map(|pair| pair.1)
             .or_else(|| self.focused_block_id())
-            .or_else(|| self.index.block_ids.last().copied())
+            .or_else(|| self.document.index.block_ids.last().copied())
             .ok_or_else(|| "document has no paste anchor".to_owned())?;
         let anchor_index = self
+            .document
             .index
             .index_of(anchor_id)
             .ok_or_else(|| "paste anchor is missing".to_owned())?;
         let insert_at = self.subtree_end(anchor_index);
-        let target_parent = self.index.parent_ids[anchor_index];
-        let target_depth = self.index.depths[anchor_index];
+        let target_parent = self.document.index.parent_ids[anchor_index];
+        let target_depth = self.document.index.depths[anchor_index];
         let mut next_id = self.next_available_block_id();
         let mut id_map = HashMap::new();
         for block in blocks {

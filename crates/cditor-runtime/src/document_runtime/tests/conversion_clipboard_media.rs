@@ -75,8 +75,8 @@ fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "hello")]);
     runtime.focus_block(1);
-    let document_index = runtime.index.index_of(1).unwrap();
-    runtime.index.layout_meta[document_index].update_height(36.0);
+    let document_index = runtime.document.index.index_of(1).unwrap();
+    runtime.document.index.layout_meta[document_index].update_height(36.0);
     runtime.height_index.update_height(0, 36.0).unwrap();
     runtime.queue_measured_height(1, 1, 48.0).unwrap();
 
@@ -86,7 +86,7 @@ fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
             .unwrap()
     );
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     let BlockPayload::Table(table) = &payload.payload else {
         panic!("payload should be table");
     };
@@ -107,9 +107,9 @@ fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
         "Auto-width table should not exceed old fixed width, got: {}",
         table_view.width_px
     );
-    let document_index = runtime.index.index_of(1).unwrap();
+    let document_index = runtime.document.index.index_of(1).unwrap();
     assert_eq!(
-        runtime.index.layout_meta[document_index].measured_height,
+        runtime.document.index.layout_meta[document_index].measured_height,
         None
     );
     assert!(!runtime.pending_measured_heights.contains_key(&1));
@@ -205,7 +205,7 @@ fn replace_focused_range_with_rich_text_spans_preserves_inserted_marks() {
             .unwrap()
     );
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     match &payload.payload {
         BlockPayload::RichText { spans } => {
             assert_eq!(payload.plain_text(), "hello bold");
@@ -242,7 +242,7 @@ fn set_code_block_language_updates_kind_and_payload() {
             .set_code_block_language(1, Some(" TypeScript ".to_owned()))
             .unwrap()
     );
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     assert!(matches!(
         &payload.kind,
         RichBlockKind::Code { language } if language.as_deref() == Some("typescript")
@@ -258,7 +258,7 @@ fn set_code_block_language_updates_kind_and_payload() {
             .set_code_block_language(1, Some(" ".to_owned()))
             .unwrap()
     );
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     assert!(matches!(
         &payload.kind,
         RichBlockKind::Code { language } if language.is_none()
@@ -295,7 +295,7 @@ fn image_projection_clamps_legacy_short_layout_height() {
             display_width_ratio_milli: None,
         }),
     );
-    runtime.index.layout_meta[0].estimated_height = 220.0;
+    runtime.document.index.layout_meta[0].estimated_height = 220.0;
 
     let projection = runtime.projection_for_window_planned();
 
@@ -320,7 +320,7 @@ fn image_asset_insert_creates_image_block_and_trailing_paragraph() {
         })
         .unwrap();
 
-    assert_eq!(runtime.index.total_count(), 3);
+    assert_eq!(runtime.document.index.total_count(), 3);
     assert_eq!(runtime.kind_at_index(1), RichBlockKind::Image);
     assert_eq!(runtime.kind_at_index(2), RichBlockKind::Paragraph);
     assert_eq!(runtime.focused_block_id(), Some(trailing_block_id));
@@ -338,9 +338,9 @@ fn image_asset_insert_creates_image_block_and_trailing_paragraph() {
         [EditOperation::InsertBlocks { payloads, .. }] if payloads.len() == 2
     ));
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.total_count(), 1);
+    assert_eq!(runtime.document.index.total_count(), 1);
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.index.total_count(), 3);
+    assert_eq!(runtime.document.index.total_count(), 3);
 }
 
 #[test]

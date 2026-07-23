@@ -204,6 +204,7 @@ impl DocumentRuntime {
 
     fn clamp_text_offset(&self, block_id: BlockId, offset: usize) -> Result<usize, String> {
         let model = self
+            .document
             .text_models
             .get(&block_id)
             .ok_or_else(|| format!("missing text model for block {block_id}"))?;
@@ -218,7 +219,7 @@ impl DocumentRuntime {
         let Some(block_id) = self.focused_block_id() else {
             return false;
         };
-        let Some(model) = self.text_models.get(&block_id) else {
+        let Some(model) = self.document.text_models.get(&block_id) else {
             return false;
         };
         let len = model.len();
@@ -261,6 +262,7 @@ impl DocumentRuntime {
             return false;
         };
         let Some(block_len) = self
+            .document
             .text_models
             .get(&block_id)
             .map(PieceTableTextModel::len)
@@ -275,7 +277,7 @@ impl DocumentRuntime {
                     && selection.anchor.offset.min(selection.focus.offset) == 0
                     && selection.anchor.offset.max(selection.focus.offset) == block_len
             });
-        if !focused_block_is_fully_selected || self.index.total_count() <= 1 {
+        if !focused_block_is_fully_selected || self.document.index.total_count() <= 1 {
             trace_input(
                 "select_all_command.block",
                 format_args!("block={block_id} text_len={block_len}"),
@@ -283,18 +285,20 @@ impl DocumentRuntime {
             return self.select_focused_text_all();
         }
 
-        let Some(first_block_id) = self.index.block_ids.first().copied() else {
+        let Some(first_block_id) = self.document.index.block_ids.first().copied() else {
             return false;
         };
-        let Some(last_block_id) = self.index.block_ids.last().copied() else {
+        let Some(last_block_id) = self.document.index.block_ids.last().copied() else {
             return false;
         };
         let Some(last_offset) = self
+            .document
             .text_models
             .get(&last_block_id)
             .map(PieceTableTextModel::len)
             .or_else(|| {
-                self.payload_window
+                self.document
+                    .payload_window
                     .get(last_block_id)
                     .map(|payload| payload.plain_text().len())
             })
@@ -363,7 +367,7 @@ impl DocumentRuntime {
             return (!range.is_empty()).then(|| text[range].to_owned());
         }
         let block_id = self.focused_block_id()?;
-        let model = self.text_models.get(&block_id)?;
+        let model = self.document.text_models.get(&block_id)?;
         let range = self.focused_text_selection_range()?;
         model.text().get(range).map(ToOwned::to_owned)
     }
@@ -388,12 +392,12 @@ impl DocumentRuntime {
             return (!text.is_empty()).then_some(RichTextSelectionSnapshot { text, spans });
         }
         let block_id = self.focused_block_id()?;
-        let model = self.text_models.get(&block_id)?;
+        let model = self.document.text_models.get(&block_id)?;
         let range = safe_char_range(model.text(), self.focused_text_selection_range()?);
         if range.is_empty() {
             return None;
         }
-        let payload = self.payload_window.get(block_id)?;
+        let payload = self.document.payload_window.get(block_id)?;
         let BlockPayload::RichText { spans } = &payload.payload else {
             return None;
         };
@@ -412,13 +416,13 @@ impl DocumentRuntime {
             let blocks = block_ids
                 .into_iter()
                 .map(|block_id| {
-                    let index = self.index.index_of(block_id)?;
-                    let payload = self.payload_window.get(block_id)?;
+                    let index = self.document.index.index_of(block_id)?;
+                    let payload = self.document.payload_window.get(block_id)?;
                     Some(ClipboardBlock {
                         source_id: block_id,
-                        parent_source_id: self.index.parent_ids[index]
+                        parent_source_id: self.document.index.parent_ids[index]
                             .filter(|parent| included.contains(parent)),
-                        depth: self.index.depths[index],
+                        depth: self.document.index.depths[index],
                         kind: payload.kind.clone(),
                         payload: payload.payload.clone(),
                     })
@@ -428,13 +432,16 @@ impl DocumentRuntime {
         }
 
         if self.has_cross_block_text_selection() {
-            let normalized = self.document_selection?.normalize(&self.index).ok()?;
-            let start_index = self.index.index_of(normalized.start.block_id)?;
-            let end_index = self.index.index_of(normalized.end.block_id)?;
+            let normalized = self
+                .document_selection?
+                .normalize(&self.document.index)
+                .ok()?;
+            let start_index = self.document.index.index_of(normalized.start.block_id)?;
+            let end_index = self.document.index.index_of(normalized.end.block_id)?;
             let mut fragments = Vec::with_capacity(end_index.saturating_sub(start_index) + 1);
             for index in start_index..=end_index {
-                let block_id = self.index.block_ids[index];
-                let payload = self.payload_window.get(block_id)?;
+                let block_id = self.document.index.block_ids[index];
+                let payload = self.document.payload_window.get(block_id)?;
                 let BlockPayload::RichText { spans } = &payload.payload else {
                     return None;
                 };
@@ -456,12 +463,15 @@ impl DocumentRuntime {
                 };
                 fragments.push(ClipboardBlockFragment {
                     source_id: block_id,
-                    parent_source_id: self.index.parent_ids[index].filter(|parent| {
-                        self.index.index_of(*parent).is_some_and(|parent_index| {
-                            parent_index >= start_index && parent_index <= end_index
-                        })
+                    parent_source_id: self.document.index.parent_ids[index].filter(|parent| {
+                        self.document
+                            .index
+                            .index_of(*parent)
+                            .is_some_and(|parent_index| {
+                                parent_index >= start_index && parent_index <= end_index
+                            })
                     }),
-                    depth: self.index.depths[index],
+                    depth: self.document.index.depths[index],
                     kind: payload.kind.clone(),
                     spans: slice_rich_text_spans(spans, range.clone()),
                     boundary,
@@ -493,22 +503,24 @@ impl DocumentRuntime {
     pub fn has_entire_document_text_selection(&self) -> bool {
         let Some(selection) = self
             .document_selection
-            .and_then(|selection| selection.normalize(&self.index).ok())
+            .and_then(|selection| selection.normalize(&self.document.index).ok())
         else {
             return false;
         };
-        let Some(first_block_id) = self.index.block_ids.first().copied() else {
+        let Some(first_block_id) = self.document.index.block_ids.first().copied() else {
             return false;
         };
-        let Some(last_block_id) = self.index.block_ids.last().copied() else {
+        let Some(last_block_id) = self.document.index.block_ids.last().copied() else {
             return false;
         };
         let Some(last_offset) = self
+            .document
             .text_models
             .get(&last_block_id)
             .map(PieceTableTextModel::len)
             .or_else(|| {
-                self.payload_window
+                self.document
+                    .payload_window
                     .get(last_block_id)
                     .map(|payload| payload.plain_text().len())
             })
@@ -522,23 +534,28 @@ impl DocumentRuntime {
     }
 
     pub fn document_text_selection_fragments(&self) -> Option<Vec<DocumentTextSelectionFragment>> {
-        let selection = self.document_selection?.normalize(&self.index).ok()?;
+        let selection = self
+            .document_selection?
+            .normalize(&self.document.index)
+            .ok()?;
         if selection.start.block_id == selection.end.block_id
             && selection.start.offset == selection.end.offset
         {
             return None;
         }
-        let start_index = self.index.index_of(selection.start.block_id)?;
-        let end_index = self.index.index_of(selection.end.block_id)?;
+        let start_index = self.document.index.index_of(selection.start.block_id)?;
+        let end_index = self.document.index.index_of(selection.end.block_id)?;
         let mut fragments = Vec::with_capacity(end_index.saturating_sub(start_index) + 1);
         for index in start_index..=end_index {
-            let block_id = self.index.block_ids[index];
+            let block_id = self.document.index.block_ids[index];
             let text_len = self
+                .document
                 .text_models
                 .get(&block_id)
                 .map(|model| model.len())
                 .or_else(|| {
-                    self.payload_window
+                    self.document
+                        .payload_window
                         .get(block_id)
                         .map(|payload| payload.plain_text().len())
                 })?;
@@ -616,18 +633,18 @@ impl DocumentRuntime {
 
     pub fn selected_document_text(&self) -> Option<String> {
         let selection = self.document_selection?;
-        let normalized = selection.normalize(&self.index).ok()?;
+        let normalized = selection.normalize(&self.document.index).ok()?;
         if normalized.start.block_id == normalized.end.block_id {
-            let model = self.text_models.get(&normalized.start.block_id)?;
+            let model = self.document.text_models.get(&normalized.start.block_id)?;
             let range = normalized.start.offset..normalized.end.offset;
             return model.text().get(range).map(ToOwned::to_owned);
         }
-        let start_index = self.index.index_of(normalized.start.block_id)?;
-        let end_index = self.index.index_of(normalized.end.block_id)?;
+        let start_index = self.document.index.index_of(normalized.start.block_id)?;
+        let end_index = self.document.index.index_of(normalized.end.block_id)?;
         let mut parts = Vec::new();
         for index in start_index..=end_index {
-            let block_id = self.index.block_ids[index];
-            let model = self.text_models.get(&block_id)?;
+            let block_id = self.document.index.block_ids[index];
+            let model = self.document.text_models.get(&block_id)?;
             let text = model.text();
             let range = if block_id == normalized.start.block_id {
                 normalized.start.offset..text.len()
@@ -639,47 +656,5 @@ impl DocumentRuntime {
             parts.push(text.get(range)?.to_owned());
         }
         Some(parts.join("\n"))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn select_all_visible_blocks(&mut self) -> bool {
-        self.break_typing_coalescing();
-        self.focused_table_cell = None;
-        self.selected_block_ids = self
-            .visible_index
-            .visible_block_ids
-            .iter()
-            .copied()
-            .collect();
-        true
-    }
-
-    pub fn has_selected_blocks(&self) -> bool {
-        !self.selected_block_ids.is_empty()
-    }
-
-    pub(crate) fn delete_selected_block_selection(&mut self) -> Result<bool, String> {
-        self.delete_selected_blocks()
-    }
-
-    pub(crate) fn select_visible_block_range(&mut self, anchor: BlockId, focus: BlockId) -> bool {
-        self.break_typing_coalescing();
-        let Some(anchor_index) = self.visible_index.visible_index_of(anchor) else {
-            return false;
-        };
-        let Some(focus_index) = self.visible_index.visible_index_of(focus) else {
-            return false;
-        };
-        let start = anchor_index.min(focus_index);
-        let end = anchor_index.max(focus_index);
-        self.focused_table_cell = None;
-        self.selected_block_ids.clear();
-        for index in start..=end {
-            if let Some(block_id) = self.visible_index.id_at_visible_index(index) {
-                self.selected_block_ids.insert(block_id);
-            }
-        }
-        self.editing = None;
-        true
     }
 }

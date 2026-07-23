@@ -3,24 +3,28 @@ use cditor_editor_protocol::projection::ProjectionRequest;
 
 impl DocumentRuntime {
     pub fn block_content_version(&self, block_id: BlockId) -> Option<u64> {
-        self.payload_window
+        self.document
+            .payload_window
             .get(block_id)
             .map(|payload| payload.content_version)
     }
 
     pub fn block_kind(&self, block_id: BlockId) -> Option<RichBlockKind> {
-        self.payload_window
+        self.document
+            .payload_window
             .get(block_id)
             .map(|payload| payload.kind.clone())
             .or_else(|| {
-                self.index
+                self.document
+                    .index
                     .index_of(block_id)
-                    .map(|index| rich_block_kind_from_tag(self.index.kind_tags[index]))
+                    .map(|index| rich_block_kind_from_tag(self.document.index.kind_tags[index]))
             })
     }
 
     pub fn block_payload_record(&self, block_id: BlockId) -> Option<BlockPayloadRecord> {
-        self.payload_window
+        self.document
+            .payload_window
             .get(block_id)
             .cloned()
             .map(|payload| self.table_runtime_payload_record(block_id, payload))
@@ -79,7 +83,7 @@ impl DocumentRuntime {
             ..render_range
                 .end
                 .saturating_add(after)
-                .min(self.visible_index.total_visible_count())
+                .min(self.document.visible_index.total_visible_count())
     }
 
     pub fn projection(&mut self, request: ProjectionRequest) -> EditorViewProjection {
@@ -99,12 +103,12 @@ impl DocumentRuntime {
     pub(crate) fn full_projection_for_tests(&self) -> EditorViewProjection {
         self.projection_for_ranges(
             0..self.page_layout.page_count(),
-            0..self.visible_index.total_visible_count(),
+            0..self.document.visible_index.total_visible_count(),
         )
     }
 
     fn viewport_window_ranges(&self) -> (Range<usize>, Range<usize>) {
-        let total_visible = self.visible_index.total_visible_count();
+        let total_visible = self.document.visible_index.total_visible_count();
         if total_visible == 0 {
             return (0..0, 0..0);
         }
@@ -144,14 +148,14 @@ impl DocumentRuntime {
     }
 
     fn ensure_demo_payload_window(&mut self, block_range: &Range<usize>) {
-        let Some(count) = self.demo_payload_count else {
+        let Some(count) = self.document.demo_payload_count else {
             return;
         };
         if block_range.is_empty() || self.payload_window_covers(block_range) {
             return;
         }
 
-        let total_visible = self.visible_index.total_visible_count();
+        let total_visible = self.document.visible_index.total_visible_count();
         let preload = 256usize;
         let start = block_range.start.saturating_sub(preload);
         let end = block_range.end.saturating_add(preload).min(total_visible);
@@ -163,13 +167,13 @@ impl DocumentRuntime {
         );
         let payload_count = payloads.len();
 
-        self.payload_window = PayloadWindow::new(payload_range.clone());
-        self.text_models.clear();
-        self.table_runtimes.clear();
+        self.document.payload_window = PayloadWindow::new(payload_range.clone());
+        self.document.text_models.clear();
+        self.document.table_runtimes.clear();
         for payload in payloads {
             let mut payload = normalize_payload_record_for_kind(payload);
             self.sync_table_runtime_from_loaded_record(&mut payload);
-            self.payload_window.insert_loaded(payload);
+            self.document.payload_window.insert_loaded(payload);
         }
         eprintln!(
             "[cditor][timing] demo_payload_window range={:?} payloads={} elapsed_ms={:.2}",
@@ -180,7 +184,7 @@ impl DocumentRuntime {
     }
 
     fn block_range_for_page_window(&self, page_range: &Range<usize>) -> Range<usize> {
-        let total_visible = self.visible_index.total_visible_count();
+        let total_visible = self.document.visible_index.total_visible_count();
         let page_count = self.page_layout.page_count();
         if page_range.is_empty() || page_count == 0 || total_visible == 0 {
             return 0..0;
@@ -206,7 +210,7 @@ impl DocumentRuntime {
         page_range: Range<usize>,
         block_range: Range<usize>,
     ) -> EditorViewProjection {
-        let total_visible_blocks = self.visible_index.total_visible_count();
+        let total_visible_blocks = self.document.visible_index.total_visible_count();
         let block_start = block_range.start.min(total_visible_blocks);
         let block_end = block_range.end.min(total_visible_blocks).max(block_start);
         let block_range = block_start..block_end;
@@ -218,15 +222,16 @@ impl DocumentRuntime {
         if !self.payload_window_covers(&block_range) && !self.payload_window_has_any(&block_range) {
             return self.placeholder_projection_for_ranges(page_range, block_range);
         }
-        let block_ids = self.visible_index.visible_block_ids[block_range.clone()].to_vec();
+        let block_ids = self.document.visible_index.visible_block_ids[block_range.clone()].to_vec();
         let local_height_index =
             BlockHeightIndex::new(block_ids.iter().enumerate().map(|(local_index, block_id)| {
                 let source_index = self
+                    .document
                     .index
                     .index_of(*block_id)
                     .unwrap_or(block_range.start + local_index);
                 HeightEstimate::new(
-                    self.index.layout_meta[source_index].effective_height(),
+                    self.document.index.layout_meta[source_index].effective_height(),
                     HeightConfidence::Historical,
                     4.0,
                 )
@@ -242,15 +247,16 @@ impl DocumentRuntime {
         .expect("projection render window is valid");
         let selection_fragments = self
             .document_selection
-            .and_then(|selection| selection.normalize(&self.index).ok())
+            .and_then(|selection| selection.normalize(&self.document.index).ok())
             .and_then(|selection| {
                 selection
                     .visible_selection_fragments(
                         block_range.clone(),
-                        &self.index,
-                        &self.visible_index,
+                        &self.document.index,
+                        &self.document.visible_index,
                         |block_id| {
-                            self.text_models
+                            self.document
+                                .text_models
                                 .get(&block_id)
                                 .map(|model| model.len())
                                 .unwrap_or(0)
@@ -263,19 +269,22 @@ impl DocumentRuntime {
             .into_iter()
             .map(|fragment| (fragment.block_id, fragment.range))
             .collect::<HashMap<_, _>>();
-        let selection_overlay_blocks =
-            whole_text_selection_blocks(&block_ids, &selection_ranges, &self.payload_window);
+        let selection_overlay_blocks = whole_text_selection_blocks(
+            &block_ids,
+            &selection_ranges,
+            &self.document.payload_window,
+        );
         let blocks = block_ids
             .iter()
             .enumerate()
             .map(|(local_index, block_id)| {
                 let visible_index = block_range.start + local_index;
-                let source_index = self.index.index_of(*block_id).unwrap_or(visible_index);
+                let source_index = self.document.index.index_of(*block_id).unwrap_or(visible_index);
                 let marked_range = self
                     .active_composition()
                     .filter(|composition| composition.block_id == *block_id)
                     .and_then(|_| self.active_composition_marked_range());
-                let payload = self
+                let payload = self.document
                     .payload_window
                     .get(*block_id)
                     .cloned()
@@ -288,10 +297,10 @@ impl DocumentRuntime {
                 let placeholder = matches!(payload, BlockPayloadView::Placeholder { .. });
                 let kind = match &payload {
                     BlockPayloadView::Loaded(payload) => payload.kind.clone(),
-                    _ => rich_block_kind_from_tag(self.index.kind_tags[source_index]),
+                    _ => rich_block_kind_from_tag(self.document.index.kind_tags[source_index]),
                 };
                 let selection_range = selection_ranges.get(block_id).cloned();
-                let mut layout = self.index.layout_meta[source_index];
+                let mut layout = self.document.index.layout_meta[source_index];
                 if matches!(kind, RichBlockKind::Image)
                     && layout.effective_height() < IMAGE_BLOCK_ESTIMATED_HEIGHT_PX
                 {
@@ -299,18 +308,18 @@ impl DocumentRuntime {
                     layout.measured_height = None;
                     layout.dirty = true;
                 }
-                let chrome = self
+                let chrome = self.document
                     .list_projection_cache
                     .entry(source_index)
                     .map(|entry| {
-                        let has_foldable_content = self
+                        let has_foldable_content = self.document
                             .visible_index
-                            .has_foldable_content(&self.index, *block_id);
+                            .has_foldable_content(&self.document.index, *block_id);
                         cditor_core::block::BlockChromeSnapshot::from_kind(
                             &kind,
                             entry.list_info,
                             has_foldable_content,
-                            self.visible_index.is_folded(*block_id),
+                            self.document.visible_index.is_folded(*block_id),
                         )
                     })
                     .unwrap_or_else(cditor_core::block::BlockChromeSnapshot::plain);
@@ -364,12 +373,12 @@ impl DocumentRuntime {
                         ),
                     );
                 }
-                let mut attrs = self.block_attrs.get(block_id).cloned().unwrap_or_default();
-                attrs.folded = self.visible_index.is_folded(*block_id);
+                let mut attrs = self.document.block_attrs.get(block_id).cloned().unwrap_or_default();
+                attrs.folded = self.document.visible_index.is_folded(*block_id);
                 ViewBlockSnapshot {
                     block_id: *block_id,
                     visible_index,
-                    depth: self.index.depths[source_index],
+                    depth: self.document.index.depths[source_index],
                     chrome,
                     kind,
                     attrs,
@@ -442,23 +451,35 @@ impl DocumentRuntime {
         if block_range.is_empty() {
             return true;
         }
-        if self.payload_window.block_range.start > block_range.start
-            || block_range.end > self.payload_window.block_range.end
+        if self.document.payload_window.block_range.start > block_range.start
+            || block_range.end > self.document.payload_window.block_range.end
         {
             return false;
         }
         block_range.clone().all(|visible_index| {
-            self.visible_index
+            self.document
+                .visible_index
                 .id_at_visible_index(visible_index)
-                .is_some_and(|block_id| self.payload_window.payloads.contains_key(&block_id))
+                .is_some_and(|block_id| {
+                    self.document
+                        .payload_window
+                        .payloads
+                        .contains_key(&block_id)
+                })
         })
     }
 
     fn payload_window_has_any(&self, block_range: &Range<usize>) -> bool {
         block_range.clone().any(|visible_index| {
-            self.visible_index
+            self.document
+                .visible_index
                 .id_at_visible_index(visible_index)
-                .is_some_and(|block_id| self.payload_window.payloads.contains_key(&block_id))
+                .is_some_and(|block_id| {
+                    self.document
+                        .payload_window
+                        .payloads
+                        .contains_key(&block_id)
+                })
         })
     }
 
@@ -467,16 +488,20 @@ impl DocumentRuntime {
         page_range: Range<usize>,
         block_range: Range<usize>,
     ) -> EditorViewProjection {
-        let total_visible_blocks = self.visible_index.total_visible_count();
+        let total_visible_blocks = self.document.visible_index.total_visible_count();
         let before_window_height = self
             .height_index
             .offset_of_block(block_range.start)
             .unwrap_or(0.0);
         let placeholder_height = self.height_for_block_range(&block_range);
         let placeholder_window_failure = block_range.clone().find_map(|visible_index| {
-            let block_id = self.visible_index.id_at_visible_index(visible_index)?;
-            let message = self.payload_window.failed.get(&block_id)?.clone();
+            let block_id = self
+                .document
+                .visible_index
+                .id_at_visible_index(visible_index)?;
+            let message = self.document.payload_window.failed.get(&block_id)?.clone();
             let attempts = self
+                .document
                 .payload_window
                 .failure_attempts
                 .get(&block_id)
@@ -486,7 +511,7 @@ impl DocumentRuntime {
                 message,
                 attempts,
                 max_attempts: crate::content::payload_window::MAX_PAYLOAD_WINDOW_LOAD_ATTEMPTS,
-                automatic_retry_pending: self.payload_window.can_retry(block_id),
+                automatic_retry_pending: self.document.payload_window.can_retry(block_id),
             })
         });
         let placeholder_window_error = placeholder_window_failure
@@ -584,4 +609,23 @@ fn whole_text_selection_blocks(
         run_start = run_end;
     }
     selected
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn projection_facade_preserves_request_identity_and_bounds_the_window() {
+        let mut runtime = DocumentRuntime::empty();
+        let projection = runtime.projection(ProjectionRequest {
+            viewport_revision: 42,
+            include_diagnostics: false,
+        });
+
+        assert_eq!(projection.viewport_revision, 42);
+        assert_eq!(projection.document_id, runtime.document_id);
+        assert!(projection.blocks.len() <= 320);
+        assert!(projection.debug.page_boundaries.is_empty());
+    }
 }

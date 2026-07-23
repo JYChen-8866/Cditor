@@ -2,42 +2,46 @@ use super::*;
 
 impl DocumentRuntime {
     pub(super) fn kind_for_block(&self, block_id: BlockId) -> RichBlockKind {
-        self.payload_window
+        self.document
+            .payload_window
             .get(block_id)
             .map(|payload| payload.kind.clone())
             .or_else(|| {
-                self.index
+                self.document
+                    .index
                     .index_of(block_id)
-                    .map(|index| rich_block_kind_from_tag(self.index.kind_tags[index]))
+                    .map(|index| rich_block_kind_from_tag(self.document.index.kind_tags[index]))
             })
             .unwrap_or(RichBlockKind::Paragraph)
     }
 
     pub(super) fn kind_at_index(&self, index: usize) -> RichBlockKind {
-        self.index
+        self.document
+            .index
             .block_ids
             .get(index)
-            .and_then(|block_id| self.payload_window.get(*block_id))
+            .and_then(|block_id| self.document.payload_window.get(*block_id))
             .map(|payload| payload.kind.clone())
-            .unwrap_or_else(|| rich_block_kind_from_tag(self.index.kind_tags[index]))
+            .unwrap_or_else(|| rich_block_kind_from_tag(self.document.index.kind_tags[index]))
     }
 
     pub(super) fn subtree_end(&self, index: usize) -> usize {
-        let depth = self.index.depths[index];
+        let depth = self.document.index.depths[index];
         let mut end = index + 1;
-        while end < self.index.block_ids.len() && self.index.depths[end] > depth {
+        while end < self.document.index.block_ids.len() && self.document.index.depths[end] > depth {
             end += 1;
         }
         end
     }
 
     pub(super) fn direct_children(&self, parent_id: Option<BlockId>) -> Vec<BlockId> {
-        self.index
+        self.document
+            .index
             .block_ids
             .iter()
             .enumerate()
             .filter_map(|(index, block_id)| {
-                (self.index.parent_ids[index] == parent_id).then_some(*block_id)
+                (self.document.index.parent_ids[index] == parent_id).then_some(*block_id)
             })
             .collect()
     }
@@ -57,33 +61,35 @@ impl DocumentRuntime {
         block_id: BlockId,
     ) -> Result<BlockIndexRecord, String> {
         let index = self
+            .document
             .index
             .index_of(block_id)
             .ok_or_else(|| format!("missing block {block_id} in index"))?;
         Ok(BlockIndexRecord::new(
             block_id,
-            self.index.parent_ids[index],
-            self.index.depths[index],
-            self.index.kind_tags[index],
-            self.index.flags[index],
+            self.document.index.parent_ids[index],
+            self.document.index.depths[index],
+            self.document.index.kind_tags[index],
+            self.document.index.flags[index],
         )
-        .with_layout_meta(self.index.layout_meta[index]))
+        .with_layout_meta(self.document.index.layout_meta[index]))
     }
 
     pub(super) fn index_records(&self) -> Vec<BlockIndexRecord> {
-        self.index
+        self.document
+            .index
             .block_ids
             .iter()
             .enumerate()
             .map(|(index, block_id)| {
                 BlockIndexRecord::new(
                     *block_id,
-                    self.index.parent_ids[index],
-                    self.index.depths[index],
-                    self.index.kind_tags[index],
-                    self.index.flags[index],
+                    self.document.index.parent_ids[index],
+                    self.document.index.depths[index],
+                    self.document.index.kind_tags[index],
+                    self.document.index.flags[index],
                 )
-                .with_layout_meta(self.index.layout_meta[index])
+                .with_layout_meta(self.document.index.layout_meta[index])
             })
             .collect()
     }
@@ -92,24 +98,28 @@ impl DocumentRuntime {
         &mut self,
         records: Vec<BlockIndexRecord>,
     ) -> Result<(), String> {
-        self.index = DocumentIndex::new(
+        self.document.index = DocumentIndex::new(
             self.document_id,
             records,
-            self.index.structure_version.saturating_add(1),
+            self.document.index.structure_version.saturating_add(1),
         )
         .map_err(|error| error.to_string())?;
-        self.visible_index = VisibleDocumentIndex::from_document_index(&self.index);
-        self.list_projection_cache = ListProjectionCache::build(&self.index);
-        self.payload_window.block_range = 0..self.visible_index.total_visible_count();
+        self.document.visible_index =
+            VisibleDocumentIndex::from_document_index(&self.document.index);
+        self.document.list_projection_cache = ListProjectionCache::build(&self.document.index);
+        self.document.payload_window.block_range =
+            0..self.document.visible_index.total_visible_count();
         self.rebuild_height_indexes_from_layout_meta()?;
         self.selected_block_ids.clear();
         Ok(())
     }
 
     pub(super) fn rebuild_height_indexes_from_layout_meta(&mut self) -> Result<(), String> {
-        self.height_index =
-            BlockHeightIndex::from_visible_document(&self.index, &self.visible_index)
-                .map_err(|error| error.to_string())?;
+        self.height_index = BlockHeightIndex::from_visible_document(
+            &self.document.index,
+            &self.document.visible_index,
+        )
+        .map_err(|error| error.to_string())?;
         self.page_layout =
             PageLayoutIndex::from_block_height_index(&self.height_index, PagePolicy::default())
                 .map_err(|error| error.to_string())?;
@@ -124,11 +134,12 @@ impl DocumentRuntime {
     }
 
     pub(super) fn next_available_block_id(&self) -> BlockId {
-        self.index
+        self.document
+            .index
             .block_ids
             .iter()
             .copied()
-            .chain(self.payload_window.payloads.keys().copied())
+            .chain(self.document.payload_window.payloads.keys().copied())
             .max()
             .unwrap_or(0)
             .saturating_add(1)

@@ -41,7 +41,7 @@ fn bold_markdown_shortcut_creates_bold_not_italic() {
 
     assert!(runtime.apply_inline_markdown_shortcut(1).unwrap());
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text payload");
     };
@@ -76,7 +76,7 @@ fn inserting_inside_bold_span_preserves_bold_mark() {
 
     runtime.insert_char('X').unwrap();
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text payload");
     };
@@ -106,7 +106,7 @@ fn deleting_inside_bold_span_preserves_remaining_bold_mark() {
 
     assert!(runtime.delete_backward().unwrap());
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text payload");
     };
@@ -545,7 +545,7 @@ fn ime_composition_update_replaces_base_range_for_cjk_text() {
 
     assert!(runtime.commit_composition().unwrap());
     assert_eq!(
-        runtime.payload_window.get(1).unwrap().plain_text(),
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
         "ab한cd"
     );
 }

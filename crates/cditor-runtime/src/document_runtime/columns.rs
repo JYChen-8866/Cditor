@@ -10,6 +10,7 @@ impl DocumentRuntime {
         available_width: f64,
     ) -> Result<bool, String> {
         let before = self
+            .document
             .payload_window
             .get(group_id)
             .cloned()
@@ -42,6 +43,7 @@ impl DocumentRuntime {
         available_width: f64,
     ) -> Result<cditor_core::layout::ColumnsLayout, String> {
         let payload = self
+            .document
             .payload_window
             .get(group_id)
             .ok_or_else(|| format!("missing columns payload for block {group_id}"))?;
@@ -59,13 +61,16 @@ impl DocumentRuntime {
             .iter()
             .map(|column| {
                 let index = self
+                    .document
                     .index
                     .index_of(column.block_id)
                     .ok_or_else(|| format!("missing column block {}", column.block_id))?;
-                Ok(self.index.layout_meta[index + 1..self.subtree_end(index)]
-                    .iter()
-                    .map(cditor_core::layout::BlockLayoutMeta::effective_height)
-                    .sum::<f64>())
+                Ok(
+                    self.document.index.layout_meta[index + 1..self.subtree_end(index)]
+                        .iter()
+                        .map(cditor_core::layout::BlockLayoutMeta::effective_height)
+                        .sum::<f64>(),
+                )
             })
             .collect::<Result<Vec<_>, String>>()?;
         model

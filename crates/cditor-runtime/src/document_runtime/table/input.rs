@@ -60,6 +60,7 @@ impl DocumentRuntime {
         };
         let next_content_version = {
             let payload = self
+                .document
                 .payload_window
                 .payloads
                 .get_mut(&focused.block_id)
@@ -69,7 +70,7 @@ impl DocumentRuntime {
             payload.content_version
         };
 
-        self.text_models.remove(&focused.block_id);
+        self.document.text_models.remove(&focused.block_id);
         if let Some(editing) = self.editing.as_mut()
             && editing.block_id == focused.block_id
         {

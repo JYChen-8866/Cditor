@@ -54,13 +54,15 @@ impl DocumentRuntime {
         selection: DocumentSelection,
     ) -> Result<CrossBlockReplacementPlan, String> {
         let selection = selection
-            .normalize(&self.index)
+            .normalize(&self.document.index)
             .map_err(|error| format!("{error:?}"))?;
         let start = self
+            .document
             .index
             .index_of(selection.start.block_id)
             .ok_or_else(|| "selection start block is missing".to_owned())?;
         let end = self
+            .document
             .index
             .index_of(selection.end.block_id)
             .ok_or_else(|| "selection end block is missing".to_owned())?;
@@ -83,7 +85,8 @@ impl DocumentRuntime {
         let deleted_payloads = deleted_records
             .iter()
             .map(|record| {
-                self.payload_window
+                self.document
+                    .payload_window
                     .get(record.id)
                     .cloned()
                     .ok_or_else(|| format!("selected block payload {} is not hydrated", record.id))
@@ -97,7 +100,8 @@ impl DocumentRuntime {
         let preserved_payloads = preserved_records
             .iter()
             .map(|record| {
-                self.payload_window
+                self.document
+                    .payload_window
                     .get(record.id)
                     .cloned()
                     .ok_or_else(|| format!("preserved block payload {} is not hydrated", record.id))

@@ -185,9 +185,9 @@ fn paragraph_insert_and_enter_split_use_payload_complete_structure_transactions(
             if payloads.len() == 1 && payloads[0].block_id == new_block_id
     ));
     assert!(inserted.undo_focused_block().unwrap());
-    assert_eq!(inserted.index.block_ids, vec![1]);
+    assert_eq!(inserted.document.index.block_ids, vec![1]);
     assert!(inserted.redo_focused_block().unwrap());
-    assert_eq!(inserted.index.block_ids, vec![1, new_block_id]);
+    assert_eq!(inserted.document.index.block_ids, vec![1, new_block_id]);
 
     let mut split = DocumentRuntime::from_payloads(
         1,
@@ -211,9 +211,9 @@ fn paragraph_insert_and_enter_split_use_payload_complete_structure_transactions(
         ] if payloads.len() == 1
     ));
     assert!(split.undo_focused_block().unwrap());
-    assert_eq!(split.index.block_ids, vec![1]);
+    assert_eq!(split.document.index.block_ids, vec![1]);
     assert_eq!(split.block_payload_record(1).unwrap().plain_text(), "abcd");
     assert!(split.redo_focused_block().unwrap());
-    assert_eq!(split.index.block_ids, vec![1, 2]);
+    assert_eq!(split.document.index.block_ids, vec![1, 2]);
     assert_eq!(split.block_payload_record(2).unwrap().plain_text(), "cd");
 }

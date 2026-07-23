@@ -24,7 +24,7 @@ fn test_consecutive_inline_markdown_preserves_previous_marks() {
     }
 
     // Check that we have "asd" with Bold mark
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text");
     };
@@ -46,7 +46,7 @@ fn test_consecutive_inline_markdown_preserves_previous_marks() {
     }
 
     // Check that BOTH marks are preserved
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text");
     };
@@ -96,7 +96,7 @@ fn test_nested_inline_markdown() {
         runtime.insert_char(ch).unwrap();
     }
 
-    let payload = runtime.payload_window.get(1).unwrap();
+    let payload = runtime.document.payload_window.get(1).unwrap();
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text");
     };
@@ -153,7 +153,7 @@ fn closed_inline_markdown_does_not_leak_marks_to_following_text() {
             runtime.insert_char(ch).unwrap();
         }
 
-        let payload = runtime.payload_window.get(1).unwrap();
+        let payload = runtime.document.payload_window.get(1).unwrap();
         let BlockPayload::RichText { spans } = &payload.payload else {
             panic!("expected rich text for {source}");
         };

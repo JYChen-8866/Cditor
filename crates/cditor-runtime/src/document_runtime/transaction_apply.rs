@@ -23,7 +23,7 @@ use super::transaction_apply_domain::{
     apply_comment_operation, apply_text_operation,
 };
 use super::transaction_apply_payload::{
-    apply_table_op, delete_text_from_payload, insert_text_into_payload, split_payload_text,
+    apply_table_op, delete_text_from_payload, insert_text_into_payload,
 };
 use super::transaction_apply_structure::{
     ensure_complete_subtrees, position_of, stage_insert_blocks, stage_move_to_parent, subtree_end,
@@ -206,13 +206,13 @@ impl DocumentRuntime {
             }
         } else {
             for block_id in &dirty_blocks {
-                let Some(position) = self.index.index_of(*block_id) else {
+                let Some(position) = self.document.index.index_of(*block_id) else {
                     continue;
                 };
                 let Some(staged_position) = position_of(&records, *block_id) else {
                     continue;
                 };
-                self.index.layout_meta[position] = records[staged_position].layout_meta;
+                self.document.index.layout_meta[position] = records[staged_position].layout_meta;
             }
         }
 
@@ -227,19 +227,20 @@ impl DocumentRuntime {
             if matches!(record.kind, RichBlockKind::Table) {
                 self.sync_table_runtime_from_loaded_record(&mut record);
             } else {
-                self.table_runtimes.remove(block_id);
+                self.document.table_runtimes.remove(block_id);
                 self.table_horizontal_scroll_offsets.remove(block_id);
             }
             if !inserted.contains(block_id) {
-                sync_text_model_for_payload(&mut self.text_models, &record);
+                sync_text_model_for_payload(&mut self.document.text_models, &record);
             }
-            self.payload_window.insert(record);
+            self.document.payload_window.insert(record);
             if let Some(editing) = self
                 .editing
                 .as_mut()
                 .filter(|editing| editing.block_id == *block_id)
             {
                 editing.content_version = self
+                    .document
                     .payload_window
                     .get(*block_id)
                     .map(|payload| payload.content_version)
@@ -247,60 +248,70 @@ impl DocumentRuntime {
             }
         }
         for block_id in &deleted {
-            self.payload_window.remove(*block_id);
-            self.text_models.remove(block_id);
-            self.table_runtimes.remove(block_id);
-            self.block_attrs.remove(block_id);
-            self.block_asset_ids.remove(block_id);
+            self.document.payload_window.remove(*block_id);
+            self.document.text_models.remove(block_id);
+            self.document.table_runtimes.remove(block_id);
+            self.document.block_attrs.remove(block_id);
+            self.document.block_asset_ids.remove(block_id);
         }
         for (block_id, attrs) in block_attrs {
             if attrs == BlockAttrs::default() {
-                self.block_attrs.remove(&block_id);
+                self.document.block_attrs.remove(&block_id);
             } else {
-                self.block_attrs.insert(block_id, attrs);
+                self.document.block_attrs.insert(block_id, attrs);
             }
         }
         for (collection_id, records) in collection_records {
-            self.collection_records.insert(collection_id, records);
+            self.document
+                .collection_records
+                .insert(collection_id, records);
         }
         for (thread_id, thread) in comment_threads {
             if let Some(thread) = thread {
-                self.comment_threads.insert(thread_id, thread);
+                self.document.comment_threads.insert(thread_id, thread);
             } else {
-                self.comment_threads.remove(&thread_id);
+                self.document.comment_threads.remove(&thread_id);
             }
         }
         for (asset_id, asset) in assets {
             if let Some(asset) = asset {
-                self.assets.insert(asset_id, asset);
+                self.document.assets.insert(asset_id, asset);
             } else {
-                self.assets.remove(&asset_id);
+                self.document.assets.remove(&asset_id);
             }
         }
         for (block_id, asset_ids) in block_asset_ids {
             if asset_ids.is_empty() {
-                self.block_asset_ids.remove(&block_id);
+                self.document.block_asset_ids.remove(&block_id);
             } else {
-                self.block_asset_ids.insert(block_id, asset_ids);
+                self.document.block_asset_ids.insert(block_id, asset_ids);
             }
         }
         self.remap_focused_table_cell_after_table_operations(&transaction.ops);
 
         // focus/selection 指向已删除块时清理（不变量：selection 指向存在的块）。
         if let Some(editing) = &self.editing
-            && self.index.index_of(editing.block_id).is_none()
+            && self.document.index.index_of(editing.block_id).is_none()
         {
             self.editing = None;
             self.focused_text_selection = None;
         }
         if let Some(cell) = self.focused_table_cell
-            && self.index.index_of(cell.block_id).is_none()
+            && self.document.index.index_of(cell.block_id).is_none()
         {
             self.focused_table_cell = None;
         }
         if let Some(selection) = self.document_selection
-            && (self.index.index_of(selection.anchor.block_id).is_none()
-                || self.index.index_of(selection.focus.block_id).is_none())
+            && (self
+                .document
+                .index
+                .index_of(selection.anchor.block_id)
+                .is_none()
+                || self
+                    .document
+                    .index
+                    .index_of(selection.focus.block_id)
+                    .is_none())
         {
             self.document_selection = None;
         }
@@ -320,7 +331,7 @@ impl DocumentRuntime {
         let dirty_range = {
             let positions: Vec<usize> = affected_blocks
                 .iter()
-                .filter_map(|block_id| self.index.index_of(*block_id))
+                .filter_map(|block_id| self.document.index.index_of(*block_id))
                 .collect();
             positions
                 .iter()
@@ -331,14 +342,16 @@ impl DocumentRuntime {
         for block_id in &affected_blocks {
             self.pending_measured_heights.remove(block_id);
             if self
+                .document
                 .payload_window
                 .get(*block_id)
                 .is_some_and(|record| matches!(record.kind, RichBlockKind::Table))
             {
                 let committed_layout_version = self
+                    .document
                     .index
                     .index_of(*block_id)
-                    .map(|position| self.index.layout_meta[position].layout_version);
+                    .map(|position| self.document.index.layout_meta[position].layout_version);
                 // The payload/table runtime are already committed and valid.
                 // Height refresh is derived layout state inside this same
                 // commit epoch. `apply_measured_height` may advance the layout
@@ -346,17 +359,19 @@ impl DocumentRuntime {
                 // back here because staging already advanced this transaction's
                 // layout identity exactly once.
                 let _ = self.refresh_table_block_height(*block_id);
-                if let (Some(committed), Some(position)) =
-                    (committed_layout_version, self.index.index_of(*block_id))
-                {
-                    self.index.layout_meta[position].layout_version = committed;
+                if let (Some(committed), Some(position)) = (
+                    committed_layout_version,
+                    self.document.index.index_of(*block_id),
+                ) {
+                    self.document.index.layout_meta[position].layout_version = committed;
                 }
             }
         }
         let content_versions = affected_blocks
             .iter()
             .filter_map(|block_id| {
-                self.payload_window
+                self.document
+                    .payload_window
                     .get(*block_id)
                     .map(|payload| (*block_id, payload.content_version))
             })
@@ -364,8 +379,11 @@ impl DocumentRuntime {
         let layout_versions = affected_blocks
             .iter()
             .filter_map(|block_id| {
-                let position = self.index.index_of(*block_id)?;
-                Some((*block_id, self.index.layout_meta[position].layout_version))
+                let position = self.document.index.index_of(*block_id)?;
+                Some((
+                    *block_id,
+                    self.document.index.layout_meta[position].layout_version,
+                ))
             })
             .collect();
 
@@ -440,12 +458,12 @@ impl DocumentRuntime {
                     ))
                 }
                 TransactionPrecondition::BlockExists(block_id)
-                    if self.index.index_of(*block_id).is_none() =>
+                    if self.document.index.index_of(*block_id).is_none() =>
                 {
                     Some(format!("block {block_id} does not exist"))
                 }
                 TransactionPrecondition::BlockAbsent(block_id)
-                    if self.index.index_of(*block_id).is_some() =>
+                    if self.document.index.index_of(*block_id).is_some() =>
                 {
                     Some(format!("block {block_id} already exists"))
                 }
@@ -597,6 +615,7 @@ impl DocumentRuntime {
                 return Err(format!("block {block_id} does not exist"));
             }
             let record = self
+                .document
                 .payload_window
                 .get(block_id)
                 .cloned()
@@ -623,73 +642,5 @@ impl DocumentRuntime {
             .payloads
             .get_mut(&block_id)
             .expect("payload staged above"))
-    }
-
-    fn stage_split_block(
-        &self,
-        staging: &mut StagingState,
-        block_id: BlockId,
-        offset: usize,
-        new_block_id: BlockId,
-    ) -> Result<(), String> {
-        if position_of(&staging.records, new_block_id).is_some() {
-            return Err(format!("new block id {new_block_id} already exists"));
-        }
-        let position = position_of(&staging.records, block_id)
-            .ok_or_else(|| format!("block {block_id} does not exist"))?;
-        let (leading, trailing, kind) = {
-            let record = self.staged_payload(staging, block_id)?;
-            let (leading, trailing) = split_payload_text(record, offset)?;
-            (leading, trailing, record.kind.clone())
-        };
-        let record = self.staged_payload(staging, block_id)?;
-        record.payload = leading;
-
-        let source = staging.records[position];
-        let insert_at = subtree_end(&staging.records, position);
-        let new_record = BlockIndexRecord::new(
-            new_block_id,
-            source.parent_id,
-            source.depth,
-            source.kind_tag,
-            0,
-        );
-        staging.records.insert(insert_at, new_record);
-        staging.payloads.insert(
-            new_block_id,
-            BlockPayloadRecord {
-                block_id: new_block_id,
-                content_version: 0,
-                kind,
-                payload: trailing,
-            },
-        );
-        staging.touched.insert(new_block_id);
-        staging.structure_changed = true;
-        Ok(())
-    }
-
-    fn stage_merge_blocks(
-        &self,
-        staging: &mut StagingState,
-        previous: BlockId,
-        current: BlockId,
-    ) -> Result<(), String> {
-        let current_position = position_of(&staging.records, current)
-            .ok_or_else(|| format!("block {current} does not exist"))?;
-        if subtree_end(&staging.records, current_position) != current_position + 1 {
-            return Err(format!("block {current} has children and cannot be merged"));
-        }
-        let current_text = self.staged_payload(staging, current)?.plain_text();
-        {
-            let record = self.staged_payload(staging, previous)?;
-            record.payload = append_plain_text_to_payload(record.payload.clone(), current_text);
-        }
-        staging.records.remove(current_position);
-        staging.payloads.remove(&current);
-        staging.touched.remove(&current);
-        staging.deleted.insert(current);
-        staging.structure_changed = true;
-        Ok(())
     }
 }

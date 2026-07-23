@@ -2,8 +2,13 @@ use super::*;
 
 impl DocumentRuntime {
     pub fn block_attrs(&self, block_id: BlockId) -> BlockAttrs {
-        let mut attrs = self.block_attrs.get(&block_id).cloned().unwrap_or_default();
-        attrs.folded = self.visible_index.is_folded(block_id);
+        let mut attrs = self
+            .document
+            .block_attrs
+            .get(&block_id)
+            .cloned()
+            .unwrap_or_default();
+        attrs.folded = self.document.visible_index.is_folded(block_id);
         attrs
     }
 
@@ -18,11 +23,11 @@ impl DocumentRuntime {
             "set.begin",
             format_args!(
                 "block_id={block_id} target={target:?} value={value:?} index_present={} payload_loaded={} before={before:?}",
-                self.index.index_of(block_id).is_some(),
-                self.payload_window.get(block_id).is_some(),
+                self.document.index.index_of(block_id).is_some(),
+                self.document.payload_window.get(block_id).is_some(),
             ),
         );
-        if self.index.index_of(block_id).is_none() {
+        if self.document.index.index_of(block_id).is_none() {
             trace_block_color("set.error", format_args!("missing block_id={block_id}"));
             return Err(format!("missing block {block_id}"));
         }
@@ -32,17 +37,18 @@ impl DocumentRuntime {
         // so that legacy representation would make the new block attribute
         // appear ineffective. Migrate only a uniform, full-block mark of the
         // same family; partial inline styling remains an intentional override.
-        let legacy_inline_spans =
-            self.payload_window
-                .get(block_id)
-                .and_then(|record| match &record.payload {
-                    BlockPayload::RichText { spans }
-                        if has_uniform_full_block_color_mark(spans, target) =>
-                    {
-                        Some(spans.clone())
-                    }
-                    _ => None,
-                });
+        let legacy_inline_spans = self
+            .document
+            .payload_window
+            .get(block_id)
+            .and_then(|record| match &record.payload {
+                BlockPayload::RichText { spans }
+                    if has_uniform_full_block_color_mark(spans, target) =>
+                {
+                    Some(spans.clone())
+                }
+                _ => None,
+            });
         let migrated_legacy_inline = legacy_inline_spans.is_some();
         if let Some(spans) = &legacy_inline_spans {
             trace_block_color(
@@ -128,9 +134,10 @@ impl DocumentRuntime {
     }
 
     pub fn block_attrs_snapshot(&self) -> Vec<(BlockId, BlockAttrs)> {
-        self.block_attrs
+        self.document
+            .block_attrs
             .iter()
-            .filter(|(block_id, _)| self.index.index_of(**block_id).is_some())
+            .filter(|(block_id, _)| self.document.index.index_of(**block_id).is_some())
             .map(|(block_id, attrs)| (*block_id, attrs.clone()))
             .collect()
     }

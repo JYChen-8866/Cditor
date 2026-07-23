@@ -15,6 +15,7 @@ impl DocumentRuntime {
         focus: InnerSelectionAnchor,
     ) -> Result<bool, String> {
         let kind = self
+            .document
             .payload_window
             .get(block_id)
             .map(|payload| payload.kind.clone())
@@ -73,7 +74,8 @@ impl DocumentRuntime {
                 .selected_block_ids
                 .iter()
                 .filter_map(|block_id| {
-                    self.index
+                    self.document
+                        .index
                         .index_of(*block_id)
                         .map(|index| (index, *block_id))
                 })

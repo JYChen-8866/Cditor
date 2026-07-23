@@ -19,16 +19,18 @@ impl DocumentRuntime {
                 dirty: self.dirty_payload_count() > 0,
             }),
             CommandQuery::BlockExists { block_id } => {
-                QueryResult::BlockExists(self.index.index_of(block_id).is_some())
+                QueryResult::BlockExists(self.document.index.index_of(block_id).is_some())
             }
             CommandQuery::Diagnostics { include_expensive } => {
                 QueryResult::Diagnostics(DiagnosticsSnapshot {
                     resident_blocks: self.loaded_payload_count(),
                     projected_blocks: self.projection_for_window().blocks.len(),
                     pending_tasks: self.pending_layout_task_count(),
-                    undo_bytes: include_expensive
-                        .then(|| self.estimated_text_undo_memory_bytes())
-                        .unwrap_or_default(),
+                    undo_bytes: if include_expensive {
+                        self.estimated_text_undo_memory_bytes()
+                    } else {
+                        0
+                    },
                     stale_results_discarded: 0,
                 })
             }

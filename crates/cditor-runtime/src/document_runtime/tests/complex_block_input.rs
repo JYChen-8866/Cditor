@@ -51,6 +51,7 @@ fn test_whiteboard_enter_inserts_paragraph_after_not_split() {
 
     // Get the original scene JSON
     let original_scene = runtime
+        .document
         .payload_window
         .get(wb_id)
         .and_then(|p| match &p.payload {
@@ -72,7 +73,11 @@ fn test_whiteboard_enter_inserts_paragraph_after_not_split() {
     assert!(result.is_ok(), "handle_enter should succeed: {:?}", result);
 
     // Check that the whiteboard block still exists with its kind and payload intact
-    let wb_payload = runtime.payload_window.get(wb_id).expect("wb still exists");
+    let wb_payload = runtime
+        .document
+        .payload_window
+        .get(wb_id)
+        .expect("wb still exists");
     assert_eq!(
         wb_payload.kind,
         RichBlockKind::Whiteboard,
@@ -90,12 +95,16 @@ fn test_whiteboard_enter_inserts_paragraph_after_not_split() {
     );
 
     // Check that a new paragraph was inserted after the whiteboard
-    let wb_index = runtime.index.index_of(wb_id).expect("wb in index");
-    let next_id = runtime.index.block_ids.get(wb_index + 1).copied();
+    let wb_index = runtime.document.index.index_of(wb_id).expect("wb in index");
+    let next_id = runtime.document.index.block_ids.get(wb_index + 1).copied();
     assert!(next_id.is_some(), "A block should be inserted after wb");
 
     if let Some(next_id) = next_id {
-        let next_payload = runtime.payload_window.get(next_id).expect("next exists");
+        let next_payload = runtime
+            .document
+            .payload_window
+            .get(next_id)
+            .expect("next exists");
         assert!(
             matches!(next_payload.kind, RichBlockKind::Paragraph),
             "New block should be paragraph, got {:?}",
@@ -133,7 +142,7 @@ fn test_mermaid_source_focuses_as_text_and_enter_inserts_newline() {
         .handle_enter()
         .expect("enter should insert a newline");
 
-    assert_eq!(runtime.index.block_ids, vec![1]);
+    assert_eq!(runtime.document.index.block_ids, vec![1]);
     assert_eq!(
         runtime
             .block_payload_record(1)
@@ -157,7 +166,7 @@ fn html_enter_inserts_newline_in_source_instead_of_splitting_block() {
 
     runtime.handle_enter().unwrap();
 
-    assert_eq!(runtime.index.block_ids, vec![1]);
+    assert_eq!(runtime.document.index.block_ids, vec![1]);
     assert_eq!(
         runtime.block_payload_record(1).unwrap().plain_text(),
         "<div>\nvalue</div>"
@@ -191,13 +200,13 @@ fn test_image_block_enter_does_not_split() {
     assert!(result.is_ok());
 
     // Image should remain intact
-    let img_payload = runtime.payload_window.get(img_id).unwrap();
+    let img_payload = runtime.document.payload_window.get(img_id).unwrap();
     assert_eq!(img_payload.kind, RichBlockKind::Image);
     assert!(matches!(img_payload.payload, BlockPayload::Image(_)));
 
     // New paragraph should be inserted after
-    let img_index = runtime.index.index_of(img_id).unwrap();
-    let next_id = runtime.index.block_ids.get(img_index + 1).copied();
+    let img_index = runtime.document.index.index_of(img_id).unwrap();
+    let next_id = runtime.document.index.block_ids.get(img_index + 1).copied();
     assert!(next_id.is_some());
 }
 
@@ -224,11 +233,11 @@ fn atomic_block_delete_is_typed_and_undo_restores_payload() {
     runtime.focus_block(2);
 
     assert!(runtime.delete_backward().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 3]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 3]);
     assert_eq!(runtime.focused_block_id(), Some(1));
 
     assert!(runtime.undo_focused_block().unwrap());
-    assert_eq!(runtime.index.block_ids, vec![1, 2, 3]);
+    assert_eq!(runtime.document.index.block_ids, vec![1, 2, 3]);
     assert!(matches!(
         runtime.block_payload_record(2).unwrap().payload,
         BlockPayload::Image(_)
@@ -261,7 +270,7 @@ fn test_file_block_enter_does_not_split() {
     assert!(result.is_ok());
 
     // File should remain intact
-    let file_payload = runtime.payload_window.get(file_id).unwrap();
+    let file_payload = runtime.document.payload_window.get(file_id).unwrap();
     assert_eq!(file_payload.kind, RichBlockKind::File);
     assert!(matches!(file_payload.payload, BlockPayload::File(_)));
 }
