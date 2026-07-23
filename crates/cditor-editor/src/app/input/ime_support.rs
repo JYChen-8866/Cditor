@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ops::Range;
 
 use gpui::UTF16Selection;
@@ -7,7 +8,9 @@ use cditor_runtime::{
     DocumentRuntime, InputSessionIdentity, RealtimeInput, RealtimeInputOutcome,
     RealtimeInputRequest,
 };
-use cditor_session::{SessionRealtimeError, project_realtime_input};
+use cditor_session::{
+    InputContextSnapshot, SessionRealtimeError, project_input_context, project_realtime_input,
+};
 
 use crate::app::cditor_v2_view::GuiPlatformInputTarget;
 use crate::app::input_trace::trace_input;
@@ -17,13 +20,31 @@ use crate::input::ime::{
 };
 use crate::text::{RichTextPlatformLayout, TextPlatformLayoutIdentity};
 
+pub(crate) trait InputContextSource {
+    fn input_context(&self) -> Cow<'_, InputContextSnapshot>;
+}
+
+impl InputContextSource for InputContextSnapshot {
+    fn input_context(&self) -> Cow<'_, InputContextSnapshot> {
+        Cow::Borrowed(self)
+    }
+}
+
+#[cfg(test)]
+impl InputContextSource for DocumentRuntime {
+    fn input_context(&self) -> Cow<'_, InputContextSnapshot> {
+        Cow::Owned(project_input_context(self))
+    }
+}
+
 pub(super) fn apply_platform_text_replacement(
     runtime: &mut DocumentRuntime,
     expected: InputSessionIdentity,
     range: Option<Range<usize>>,
     text: &str,
 ) -> Result<RealtimeInputOutcome, SessionRealtimeError> {
-    let has_active_selection = runtime.has_active_selection();
+    let context = project_input_context(runtime);
+    let has_active_selection = context.has_active_selection;
     let route = if text.is_empty() && has_active_selection {
         "delete_active_selection"
     } else {
@@ -34,10 +55,10 @@ pub(super) fn apply_platform_text_replacement(
         format_args!(
             "route={route} text_len={} explicit_range={range:?} focus={:?} active_selection={has_active_selection} cross_block={} focused_range={:?} session_range={:?}",
             text.len(),
-            runtime.focused_block_id(),
-            runtime.has_cross_block_text_selection(),
-            runtime.focused_text_selection_range(),
-            runtime.input_session_selected_range(),
+            context.focused_block_id,
+            context.has_cross_block_text_selection,
+            context.focused_text_selection_range,
+            context.selected_range,
         ),
     );
     let result = project_realtime_input(
@@ -69,29 +90,29 @@ pub(super) fn apply_platform_unmark(
     )
 }
 
-pub(in crate::app) fn platform_input_target_allows(
+pub(in crate::app) fn platform_input_target_allows<S: InputContextSource + ?Sized>(
     registered: Option<GuiPlatformInputTarget>,
     registered_identity: Option<InputSessionIdentity>,
-    runtime: &DocumentRuntime,
+    source: &S,
 ) -> bool {
+    let context = source.input_context();
     let Some(registered) = registered else {
         return false;
     };
-    let Some(runtime_target) = runtime.input_session_target() else {
+    let Some(runtime_target) = context.target else {
         return false;
     };
-    registered.matches_runtime_target(runtime_target)
-        && registered_identity == runtime.input_session_identity()
+    registered.matches_runtime_target(runtime_target) && registered_identity == context.identity
 }
 
-pub(in crate::app) fn platform_input_geometry_allows(
+pub(in crate::app) fn platform_input_geometry_allows<S: InputContextSource + ?Sized>(
     registered: Option<GuiPlatformInputTarget>,
     registered_session: Option<InputSessionIdentity>,
     registered_layout: Option<TextPlatformLayoutIdentity>,
-    runtime: &DocumentRuntime,
+    source: &S,
     cache: &RichTextPlatformLayout,
 ) -> bool {
-    platform_input_target_allows(registered, registered_session, runtime)
+    platform_input_target_allows(registered, registered_session, source)
         && registered_layout == Some(cache.identity())
         && cache.input_session_identity == registered_session
 }
@@ -120,93 +141,98 @@ pub(in crate::app) fn table_menu_input_target_allows(
     registered.is_some_and(|target| target.is_table_menu_query_for(block_id))
 }
 
-pub(in crate::app) fn platform_selected_text_range(
-    runtime: &DocumentRuntime,
+pub(in crate::app) fn platform_selected_text_range<S: InputContextSource + ?Sized>(
+    source: &S,
 ) -> Option<UTF16Selection> {
-    let (block_id, text) = runtime.focused_text_for_platform_input()?;
-    if let Some(selection) = runtime.input_session_selected_range() {
+    let context = source.input_context();
+    let focused = context.focused_text.as_ref()?;
+    let block_id = focused.block_id;
+    let text = &focused.text;
+    if let Some(selection) = &context.selected_range {
         return Some(UTF16Selection {
-            range: utf8_range_to_utf16_range(&text, &selection),
-            reversed: runtime.input_session_selection_reversed(),
+            range: utf8_range_to_utf16_range(text, selection),
+            reversed: context.selection_reversed,
         });
     }
-    if let Some(marked_range) = runtime.active_composition_marked_range() {
-        let caret = utf8_to_utf16_offset(&text, marked_range.end.min(text.len()));
+    if let Some(marked_range) = context
+        .composition
+        .as_ref()
+        .and_then(|composition| composition.preview_marked_range.as_ref())
+    {
+        let caret = utf8_to_utf16_offset(text, marked_range.end.min(text.len()));
         return Some(UTF16Selection {
             range: caret..caret,
             reversed: false,
         });
     }
-    if runtime.input_session_target().is_some() {
+    if context.target.is_some() {
         trace_input(
             "selected_text_range.missing_session_selection",
-            format_args!(
-                "block={block_id} target={:?}",
-                runtime.input_session_target()
-            ),
+            format_args!("block={block_id} target={:?}", context.target),
         );
         return None;
     }
-    if let Some(selection) = runtime.focused_text_selection_range() {
+    if let Some(selection) = &context.focused_text_selection_range {
         return Some(UTF16Selection {
-            range: utf8_range_to_utf16_range(&text, &selection),
+            range: utf8_range_to_utf16_range(text, selection),
             reversed: false,
         });
     }
-    let caret = runtime
-        .focused_table_cell_offset()
+    let caret = context
+        .focused_table_cell_offset
         .filter(|(focused_block_id, _, _, _)| *focused_block_id == block_id)
         .map(|(_, _, _, offset)| offset)
         .unwrap_or(0)
         .min(text.len());
-    let caret = utf8_to_utf16_offset(&text, caret);
+    let caret = utf8_to_utf16_offset(text, caret);
     Some(UTF16Selection {
         range: caret..caret,
         reversed: false,
     })
 }
 
-pub(in crate::app) fn platform_input_fallback_range(
-    runtime: &DocumentRuntime,
+pub(in crate::app) fn platform_input_fallback_range<S: InputContextSource + ?Sized>(
+    source: &S,
     block_id: BlockId,
 ) -> Range<usize> {
-    runtime
-        .active_composition()
+    let context = source.input_context();
+    context
+        .composition
+        .as_ref()
         .filter(|composition| composition.block_id == block_id)
-        .map(|composition| composition.range_start as usize..composition.range_end as usize)
-        .or_else(|| runtime.input_session_marked_range())
-        .or_else(|| runtime.input_session_selected_range())
+        .map(|composition| composition.base_range.clone())
+        .or_else(|| context.marked_range.clone())
+        .or_else(|| context.selected_range.clone())
         .unwrap_or_else(|| {
-            if runtime.input_session_target().is_some() {
+            if context.target.is_some() {
                 trace_input(
                     "platform_input_fallback_range.missing_session_selection",
-                    format_args!(
-                        "block={block_id} target={:?}",
-                        runtime.input_session_target()
-                    ),
+                    format_args!("block={block_id} target={:?}", context.target),
                 );
                 return 0..0;
             }
-            let caret = runtime
-                .focused_text_selection_range()
+            let caret = context
+                .focused_text_selection_range
+                .as_ref()
                 .map(|range| range.end)
                 .unwrap_or(0);
             caret..caret
         })
 }
 
-pub(super) fn ime_replacement_range(
-    runtime: &DocumentRuntime,
+pub(super) fn ime_replacement_range<S: InputContextSource + ?Sized>(
+    source: &S,
     range_utf16: Option<Range<usize>>,
 ) -> Option<Range<usize>> {
+    let context = source.input_context();
     let range_utf16 = range_utf16?;
-    let (_block_id, text) = runtime.focused_text_for_platform_input()?;
-    let preview_range = utf16_range_to_utf8_range(&text, &range_utf16);
-    let Some(composition) = runtime.active_composition() else {
+    let text = &context.focused_text.as_ref()?.text;
+    let preview_range = utf16_range_to_utf8_range(text, &range_utf16);
+    let Some(composition) = &context.composition else {
         return Some(preview_range);
     };
-    let preview_marked_range = runtime.active_composition_marked_range()?;
-    let base_marked_range = composition.range_start as usize..composition.range_end as usize;
+    let preview_marked_range = composition.preview_marked_range.clone()?;
+    let base_marked_range = composition.base_range.clone();
     Some(marked_preview_range_to_base_range(
         preview_range,
         base_marked_range,

@@ -66,19 +66,21 @@ impl EntityInputHandler for CditorV2View {
         }
         let registered_target = self.platform_input_target;
         let registered_identity = self.platform_input_session_identity;
-        let runtime = self.ready_runtime()?;
-        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
+        let context = self
+            .ready_runtime_ref()
+            .map(cditor_session::project_input_context)?;
+        if !platform_input_target_allows(registered_target, registered_identity, &context) {
             trace_input(
                 "text_for_range.rejected_target",
                 format_args!(
                     "registered={:?} runtime={:?}",
-                    registered_target,
-                    runtime.input_session_target()
+                    registered_target, context.target
                 ),
             );
             return None;
         }
-        let (block_id, text) = runtime.focused_text_for_platform_input()?;
+        let focused = context.focused_text?;
+        let (block_id, text) = (focused.block_id, focused.text);
         let range = utf16_range_to_utf8_range(&text, &range_utf16);
         let actual = utf8_range_to_utf16_range(&text, &range);
         actual_range.replace(actual.clone());
@@ -139,24 +141,25 @@ impl EntityInputHandler for CditorV2View {
         }
         let registered_target = self.platform_input_target;
         let registered_identity = self.platform_input_session_identity;
-        let runtime = self.ready_runtime()?;
-        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
+        let context = self
+            .ready_runtime_ref()
+            .map(cditor_session::project_input_context)?;
+        if !platform_input_target_allows(registered_target, registered_identity, &context) {
             trace_input(
                 "selected_text_range.rejected_target",
                 format_args!(
                     "registered={:?} runtime={:?}",
-                    registered_target,
-                    runtime.input_session_target()
+                    registered_target, context.target
                 ),
             );
             return None;
         }
-        let selection = platform_selected_text_range(runtime);
+        let selection = platform_selected_text_range(&context);
         trace_input(
             "selected_text_range",
             format_args!(
                 "focused={:?} selection={selection:?}",
-                runtime.focused_block_id()
+                context.focused_block_id
             ),
         );
         selection
@@ -204,25 +207,26 @@ impl EntityInputHandler for CditorV2View {
                 .map(|range| utf8_range_to_utf16_range(&edit.draft, range));
         }
         let runtime = self.ready_runtime_ref()?;
+        let context = cditor_session::project_input_context(runtime);
         if !platform_input_target_allows(
             self.platform_input_target,
             self.platform_input_session_identity,
-            runtime,
+            &context,
         ) {
             trace_input(
                 "marked_text_range.rejected_target",
                 format_args!(
                     "registered={:?} runtime={:?}",
-                    self.platform_input_target,
-                    runtime.input_session_target()
+                    self.platform_input_target, context.target
                 ),
             );
             return None;
         }
-        let (block_id, text) = runtime.focused_text_for_platform_input()?;
-        let marked = runtime
-            .input_session_marked_range()
-            .or_else(|| runtime.active_composition_marked_range())
+        let focused = context.focused_text?;
+        let (block_id, text) = (focused.block_id, focused.text);
+        let marked = context
+            .marked_range
+            .or_else(|| context.composition?.preview_marked_range)
             .map(|range| utf8_range_to_utf16_range(&text, &range));
         trace_input(
             "marked_text_range",
@@ -495,23 +499,24 @@ impl EntityInputHandler for CditorV2View {
             return Some(utf8_to_utf16_offset(&edit.draft, utf8));
         }
         let runtime = self.ready_runtime_ref()?;
+        let context = cditor_session::project_input_context(runtime);
         if !platform_input_target_allows(
             self.platform_input_target,
             self.platform_input_session_identity,
-            runtime,
+            &context,
         ) {
             trace_input(
                 "character_index_for_point.rejected_target",
                 format_args!(
                     "registered={:?} runtime={:?}",
-                    self.platform_input_target,
-                    runtime.input_session_target()
+                    self.platform_input_target, context.target
                 ),
             );
             return None;
         }
-        let (block_id, text) = runtime.focused_text_for_platform_input()?;
-        match runtime.input_session_target()? {
+        let focused = context.focused_text.as_ref()?;
+        let (block_id, text) = (focused.block_id, &focused.text);
+        match context.target? {
             InputTarget::TableCell {
                 block_id: target_block_id,
                 row,
@@ -526,14 +531,14 @@ impl EntityInputHandler for CditorV2View {
                     self.platform_input_target,
                     self.platform_input_session_identity,
                     self.platform_input_layout_identity,
-                    runtime,
+                    &context,
                     cache,
                 ) {
                     record_unavailable_geometry();
                     return None;
                 }
                 let utf8 = platform_index_for_point(cache, point).min(text.len());
-                Some(utf8_to_utf16_offset(&text, utf8))
+                Some(utf8_to_utf16_offset(text, utf8))
             }
             InputTarget::BlockText {
                 block_id: target_block_id,
@@ -546,14 +551,14 @@ impl EntityInputHandler for CditorV2View {
                     self.platform_input_target,
                     self.platform_input_session_identity,
                     self.platform_input_layout_identity,
-                    runtime,
+                    &context,
                     cache,
                 ) {
                     record_unavailable_geometry();
                     return None;
                 }
                 let utf8 = platform_index_for_point(cache, point).min(text.len());
-                let utf16 = utf8_to_utf16_offset(&text, utf8);
+                let utf16 = utf8_to_utf16_offset(text, utf8);
                 trace_input(
                     "character_index_for_point",
                     format_args!(
@@ -572,7 +577,7 @@ impl EntityInputHandler for CditorV2View {
                 runtime,
                 target.surface_id()?,
                 point,
-                &text,
+                text,
             ),
             _ => None,
         }
@@ -595,10 +600,11 @@ impl EntityInputHandler for CditorV2View {
         !self.readonly
             && matches!(self.state, CditorViewState::Ready(_))
             && self.ready_runtime_ref().is_none_or(|runtime| {
+                let context = cditor_session::project_input_context(runtime);
                 platform_input_target_allows(
                     self.platform_input_target,
                     self.platform_input_session_identity,
-                    runtime,
+                    &context,
                 )
             })
     }

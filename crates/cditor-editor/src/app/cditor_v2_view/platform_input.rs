@@ -1,7 +1,8 @@
 use cditor_core::ids::{BlockId, SurfaceId};
-use cditor_runtime::{DocumentRuntime, InputTarget};
+use cditor_runtime::InputTarget;
 
 use crate::app::cditor_v2_view::CditorV2View;
+use crate::app::input::ime_support::InputContextSource;
 use crate::app::input_trace::trace_input;
 use crate::text::TextPlatformLayoutIdentity;
 
@@ -112,10 +113,14 @@ impl CditorV2View {
         cx: &mut gpui::Context<Self>,
     ) -> bool {
         let expected = self.platform_input_session_identity;
+        let has_pending_composition = self
+            .ready_runtime_ref()
+            .map(cditor_session::project_input_context)
+            .is_some_and(|context| context.has_pending_composition);
+        if !has_pending_composition {
+            return true;
+        }
         let result = self.ready_runtime().map(|runtime| {
-            if !runtime.has_pending_composition() {
-                return Ok(None);
-            }
             let expected = expected
                 .ok_or_else(|| "active composition has no registered input identity".to_owned())?;
             cditor_session::project_realtime_input(
@@ -185,19 +190,18 @@ impl CditorV2View {
         let Some(runtime) = self.ready_runtime_ref() else {
             return false;
         };
-        if !platform_input_registration_allows(self.platform_input_target, target, runtime) {
+        let input_context = cditor_session::project_input_context(runtime);
+        if !platform_input_registration_allows(self.platform_input_target, target, &input_context) {
             trace_input(
                 "register_platform_input_target.rejected",
                 format_args!(
                     "current={:?} target={:?} runtime={:?}",
-                    self.platform_input_target,
-                    target,
-                    runtime.input_session_target()
+                    self.platform_input_target, target, input_context.target
                 ),
             );
             return false;
         }
-        let input_session_identity = runtime.input_session_identity();
+        let input_session_identity = input_context.identity;
         self.platform_input_target = Some(target);
         self.platform_input_session_identity = input_session_identity;
         self.platform_input_layout_identity = Some(layout_identity);
@@ -211,11 +215,12 @@ impl CditorV2View {
     }
 }
 
-pub(crate) fn platform_input_registration_allows(
+pub(crate) fn platform_input_registration_allows<S: InputContextSource + ?Sized>(
     current: Option<GuiPlatformInputTarget>,
     target: GuiPlatformInputTarget,
-    runtime: &DocumentRuntime,
+    source: &S,
 ) -> bool {
+    let input_context = source.input_context();
     if matches!(
         target,
         GuiPlatformInputTarget::AiPrompt { .. } | GuiPlatformInputTarget::TableMenuQuery { .. }
@@ -225,14 +230,15 @@ pub(crate) fn platform_input_registration_allows(
     if current.is_some_and(|current| current != target) {
         return false;
     }
-    runtime
-        .input_session_target()
+    input_context
+        .target
         .is_some_and(|runtime_target| target.matches_runtime_target(runtime_target))
 }
 
 #[cfg(test)]
 mod tests {
     use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
+    use cditor_runtime::DocumentRuntime;
     use gpui::{AppContext, TestAppContext};
 
     use super::*;

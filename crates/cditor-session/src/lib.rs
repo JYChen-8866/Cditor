@@ -9,6 +9,7 @@ mod cold_start;
 mod diagnostics_snapshot;
 mod document_snapshot;
 mod history_port;
+mod input_port;
 mod layout_port;
 mod render_port;
 mod selection_materialization_port;
@@ -28,6 +29,10 @@ pub use document_snapshot::{
 pub use history_port::{
     HistoryActionSnapshot, HistoryDirection, project_history_action,
     project_hydrated_history_action,
+};
+pub use input_port::{
+    FocusedPlatformTextSnapshot, InputCompositionSnapshot, InputContextSnapshot,
+    project_input_context,
 };
 pub use layout_port::{
     LayoutScrollSnapshot, LayoutViewportSnapshot, project_begin_scrollbar_drag,

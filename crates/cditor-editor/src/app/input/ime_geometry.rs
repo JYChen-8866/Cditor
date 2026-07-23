@@ -24,6 +24,7 @@ impl CditorV2View {
         point: Point<Pixels>,
         text: &str,
     ) -> Option<usize> {
+        let input_context = cditor_session::project_input_context(runtime);
         let Some(cache) = self.current_text_surface_layout_cache(runtime, surface_id) else {
             record_unavailable_geometry();
             return None;
@@ -32,7 +33,7 @@ impl CditorV2View {
             self.platform_input_target,
             self.platform_input_session_identity,
             self.platform_input_layout_identity,
-            runtime,
+            &input_context,
             cache,
         ) {
             record_unavailable_geometry();
@@ -130,24 +131,25 @@ impl CditorV2View {
             });
         }
         let runtime = self.ready_runtime_ref()?;
+        let input_context = cditor_session::project_input_context(runtime);
         if !platform_input_target_allows(
             self.platform_input_target,
             self.platform_input_session_identity,
-            runtime,
+            &input_context,
         ) {
             trace_input(
                 "bounds_for_range.rejected_target",
                 format_args!(
                     "registered={:?} runtime={:?}",
-                    self.platform_input_target,
-                    runtime.input_session_target()
+                    self.platform_input_target, input_context.target
                 ),
             );
             return None;
         }
-        let (block_id, text) = runtime.focused_text_for_platform_input()?;
-        let range = utf16_range_to_utf8_range(&text, &range_utf16);
-        match runtime.input_session_target()? {
+        let focused = input_context.focused_text.as_ref()?;
+        let (block_id, text) = (focused.block_id, &focused.text);
+        let range = utf16_range_to_utf8_range(text, &range_utf16);
+        match input_context.target? {
             InputTarget::TableCell {
                 block_id: target_block_id,
                 row,
@@ -162,7 +164,7 @@ impl CditorV2View {
                     self.platform_input_target,
                     self.platform_input_session_identity,
                     self.platform_input_layout_identity,
-                    runtime,
+                    &input_context,
                     cache,
                 ) {
                     record_unavailable_geometry();
@@ -181,7 +183,7 @@ impl CditorV2View {
                     self.platform_input_target,
                     self.platform_input_session_identity,
                     self.platform_input_layout_identity,
-                    runtime,
+                    &input_context,
                     cache,
                 ) {
                     record_unavailable_geometry();
@@ -205,7 +207,7 @@ impl CditorV2View {
                     self.platform_input_target,
                     self.platform_input_session_identity,
                     self.platform_input_layout_identity,
-                    runtime,
+                    &input_context,
                     cache,
                 ) {
                     record_unavailable_geometry();

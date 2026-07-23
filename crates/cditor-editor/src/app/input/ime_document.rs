@@ -24,11 +24,14 @@ impl CditorV2View {
         let registered_target = self.platform_input_target;
         let empty_line_ai_input = is_empty_line_ai_platform_input(range_utf16.as_ref(), text)
             && self.ready_runtime_ref().is_some_and(|runtime| {
+                let input_context = cditor_session::project_input_context(runtime);
                 platform_input_target_allows(
                     registered_target,
                     self.platform_input_session_identity,
-                    runtime,
-                ) && runtime.focused_empty_text_block_for_ai().is_some()
+                    &input_context,
+                ) && cditor_session::project_ai_context(runtime)
+                    .focused_empty_text_block
+                    .is_some()
             });
         if empty_line_ai_input && self.invoke_empty_line_ai_from_gui(cx) {
             cx.notify();
@@ -45,21 +48,27 @@ impl CditorV2View {
             return;
         }
         let registered_identity = self.platform_input_session_identity;
-        let Some(runtime) = self.ready_runtime() else {
+        let Some(input_context) = self
+            .ready_runtime_ref()
+            .map(cditor_session::project_input_context)
+        else {
             return;
         };
-        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
+        if !platform_input_target_allows(registered_target, registered_identity, &input_context) {
             trace_input(
                 "replace_text_in_range.rejected_target",
                 format_args!(
                     "registered={registered_target:?} runtime={:?}",
-                    runtime.input_session_target()
+                    input_context.target
                 ),
             );
             return;
         }
-        let focused = runtime.focused_block_id();
-        let range = ime_replacement_range(runtime, range_utf16.clone());
+        let focused = input_context.focused_block_id;
+        let range = ime_replacement_range(&input_context, range_utf16.clone());
+        let Some(runtime) = self.ready_runtime() else {
+            return;
+        };
         trace_input(
             "replace_text_in_range",
             format_args!(
@@ -109,26 +118,29 @@ impl CditorV2View {
         }
         let registered_target = self.platform_input_target;
         let registered_identity = self.platform_input_session_identity;
-        let Some(runtime) = self.ready_runtime() else {
+        let Some(input_context) = self
+            .ready_runtime_ref()
+            .map(cditor_session::project_input_context)
+        else {
             return;
         };
-        if !platform_input_target_allows(registered_target, registered_identity, runtime) {
+        if !platform_input_target_allows(registered_target, registered_identity, &input_context) {
             trace_input(
                 "replace_and_mark_text_in_range.rejected_target",
                 format_args!(
                     "registered={registered_target:?} runtime={:?}",
-                    runtime.input_session_target()
+                    input_context.target
                 ),
             );
             return;
         }
-        let Some(block_id) = runtime.focused_block_id() else {
+        let Some(block_id) = input_context.focused_block_id else {
             return;
         };
-        let range_from_ime = ime_replacement_range(runtime, range_utf16.clone());
+        let range_from_ime = ime_replacement_range(&input_context, range_utf16.clone());
         let range = range_from_ime
             .clone()
-            .unwrap_or_else(|| platform_input_fallback_range(runtime, block_id));
+            .unwrap_or_else(|| platform_input_fallback_range(&input_context, block_id));
         let selected_range = new_selected_range
             .clone()
             .map(|range| crate::input::ime::utf16_range_to_utf8_range(new_text, &range));
@@ -139,6 +151,9 @@ impl CditorV2View {
                 new_text.len()
             ),
         );
+        let Some(runtime) = self.ready_runtime() else {
+            return;
+        };
         let result = cditor_session::project_realtime_input(
             runtime,
             cditor_runtime::RealtimeInputRequest {
