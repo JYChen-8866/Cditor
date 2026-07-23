@@ -27,6 +27,7 @@ fn randomized_measured_height_stale_result_and_anchor_property() {
         .collect();
     let mut runtime = DocumentRuntime::from_payloads(1, payloads, 720.0);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(8_000.25, ScrollOrigin::UserWheel)
         .unwrap();
@@ -43,7 +44,7 @@ fn randomized_measured_height_stale_result_and_anchor_property() {
             .expect("all property payloads stay resident")
             .content_version;
         let before_anchor = runtime
-            .target_for_global_offset(runtime.scroll.global_scroll_top)
+            .target_for_global_offset(runtime.layout.scroll.global_scroll_top)
             .expect("non-empty document has a viewport anchor");
         let next_height = 24.0 + rng.usize(121) as f64;
         let stale = rng.next().is_multiple_of(4);
@@ -66,7 +67,7 @@ fn randomized_measured_height_stale_result_and_anchor_property() {
         let applied = runtime.flush_pending_height_corrections().unwrap();
         assert_eq!(applied, queued && !stale, "step={step}");
         let after_anchor = runtime
-            .target_for_global_offset(runtime.scroll.global_scroll_top)
+            .target_for_global_offset(runtime.layout.scroll.global_scroll_top)
             .expect("anchor remains resolvable after measurement");
         assert_eq!(after_anchor.block_id, before_anchor.block_id, "step={step}");
         assert!(
@@ -76,11 +77,11 @@ fn randomized_measured_height_stale_result_and_anchor_property() {
 
         let expected_total: f64 = expected_heights.iter().sum();
         assert!(
-            (runtime.height_index.total_height() - expected_total).abs() < 1e-6,
+            (runtime.layout.height_index.total_height() - expected_total).abs() < 1e-6,
             "step={step}"
         );
         assert_eq!(
-            runtime.height_index.heights, expected_heights,
+            runtime.layout.height_index.heights, expected_heights,
             "step={step}"
         );
     }

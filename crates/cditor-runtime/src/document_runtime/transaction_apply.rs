@@ -228,7 +228,7 @@ impl DocumentRuntime {
                 self.sync_table_runtime_from_loaded_record(&mut record);
             } else {
                 self.document.table_runtimes.remove(block_id);
-                self.table_horizontal_scroll_offsets.remove(block_id);
+                self.layout.table_horizontal_scroll_offsets.remove(block_id);
             }
             if !inserted.contains(block_id) {
                 sync_text_model_for_payload(&mut self.document.text_models, &record);
@@ -341,7 +341,7 @@ impl DocumentRuntime {
                 .map(|(min, max)| *min..max.saturating_add(1))
         };
         for block_id in &affected_blocks {
-            self.pending_measured_heights.remove(block_id);
+            self.layout.pending_measured_heights.remove(block_id);
             if self
                 .document
                 .payload_window
@@ -407,7 +407,7 @@ impl DocumentRuntime {
             self.trim_runtime_undo_history();
         }
         if !affected_blocks.is_empty() || structure_changed {
-            self.layout_dirty = true;
+            self.layout.dirty = true;
             self.note_content_changed();
         }
         if !transaction.ops.is_empty()

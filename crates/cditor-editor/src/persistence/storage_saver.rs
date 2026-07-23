@@ -279,13 +279,14 @@ impl StoragePersistenceState {
         self.in_flight_structure_version = (!index_records.is_empty()).then_some(structure_version);
         let layout_key = session.layout_key();
         let page_layout_snapshot = if should_save_structure {
+            let page_layout = runtime.page_layout_snapshot();
             layout_key.and_then(|layout_key| {
                 StoragePageLayoutSnapshot::from_page_layout(
                     DOCUMENT_INDEX_VISIBLE_VERSION,
                     structure_version,
                     layout_key,
                     PAGE_POLICY_VERSION,
-                    &runtime.page_layout,
+                    &page_layout,
                     runtime.visible_block_ids(),
                 )
                 .ok()

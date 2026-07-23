@@ -8,7 +8,7 @@ const FOCUSED_BLOCK_MIN_EDGE_MARGIN_PX: f64 = 8.0;
 
 impl DocumentRuntime {
     pub(super) fn capture_undo_scroll_snapshot(&self) -> UndoScrollSnapshot {
-        let fallback_global_scroll_top = self.scroll.global_scroll_top;
+        let fallback_global_scroll_top = self.layout.scroll.global_scroll_top;
         let anchor = self
             .target_for_global_offset(fallback_global_scroll_top)
             .map(|target| ScrollAnchor {
@@ -40,19 +40,20 @@ impl DocumentRuntime {
                     .document
                     .visible_index
                     .visible_index_of(anchor.block_id)?;
-                let block_top = self.height_index.offset_of_block(visible_index)?;
+                let block_top = self.layout.height_index.offset_of_block(visible_index)?;
                 Some(block_top + anchor.offset_in_block - anchor.viewport_y)
             })
             .unwrap_or(fallback_global_scroll_top);
-        self.scroll
+        self.layout
+            .scroll
             .scroll_to_global_offset(global_scroll_top, ScrollOrigin::ProgrammaticVirtualScroll)
             .map_err(|error| error.to_string())?;
-        self.scroll.set_anchor(anchor);
+        self.layout.scroll.set_anchor(anchor);
         Ok(())
     }
 
     pub fn down_placer_height(&self) -> f64 {
-        (self.scroll.viewport_height * DOWN_PLACER_VIEWPORT_RATIO)
+        (self.layout.scroll.viewport_height * DOWN_PLACER_VIEWPORT_RATIO)
             .clamp(DOWN_PLACER_MIN_HEIGHT_PX, DOWN_PLACER_MAX_HEIGHT_PX)
     }
 
@@ -62,28 +63,42 @@ impl DocumentRuntime {
 
     pub fn sync_viewport_height(&mut self, viewport_height: f64) -> Result<bool, String> {
         let viewport_height = viewport_height.max(1.0);
-        if (self.scroll.viewport_height - viewport_height).abs() < 0.5 {
+        if (self.layout.scroll.viewport_height - viewport_height).abs() < 0.5 {
             return Ok(false);
         }
-        self.scroll
+        self.layout
+            .scroll
             .set_viewport_height(viewport_height)
             .map_err(|error| error.to_string())?;
-        let total_height = self.scroll_extent_height(self.page_layout.total_height());
-        self.scroll
+        let total_height = self.scroll_extent_height(self.layout.page_layout.total_height());
+        self.layout
+            .scroll
             .set_model_total_height(total_height)
             .map_err(|error| error.to_string())?;
-        self.scroll
+        self.layout
+            .scroll
             .set_displayed_total_height(total_height)
             .map_err(|error| error.to_string())?;
         Ok(true)
     }
 
     pub fn scroll_by_delta(&mut self, delta_y: f64) -> Result<(), String> {
-        self.scroll
+        self.layout
+            .scroll
             .scroll_by_delta(delta_y, ScrollOrigin::UserWheel)
             .map(|_| ())
             .map_err(|error| error.to_string())?;
         Ok(())
+    }
+
+    pub fn apply_scroll_accumulator_frame(
+        &mut self,
+        accumulator: &mut ScrollAccumulator,
+    ) -> Result<bool, String> {
+        accumulator
+            .apply_frame(&mut self.layout.scroll)
+            .map(|target| target.is_some())
+            .map_err(|error| error.to_string())
     }
 
     pub fn scroll_focused_block_into_view(&mut self) -> Result<bool, String> {
@@ -93,18 +108,19 @@ impl DocumentRuntime {
         let Some(visible_index) = self.document.visible_index.visible_index_of(block_id) else {
             return Ok(false);
         };
-        let Some(block_top) = self.height_index.offset_of_block(visible_index) else {
+        let Some(block_top) = self.layout.height_index.offset_of_block(visible_index) else {
             return Ok(false);
         };
         let block_height = self
+            .layout
             .height_index
             .heights
             .get(visible_index)
             .copied()
             .unwrap_or(0.0);
         let block_bottom = block_top + block_height;
-        let viewport_top = self.scroll.global_scroll_top;
-        let viewport_height = self.scroll.viewport_height.max(1.0);
+        let viewport_top = self.layout.scroll.global_scroll_top;
+        let viewport_height = self.layout.scroll.viewport_height.max(1.0);
         let viewport_bottom = viewport_top + viewport_height;
         let top_margin =
             48.0_f64.min((viewport_height / 4.0).max(FOCUSED_BLOCK_MIN_EDGE_MARGIN_PX));
@@ -118,11 +134,12 @@ impl DocumentRuntime {
         } else {
             return Ok(false);
         };
-        let before = self.scroll.global_scroll_top;
-        self.scroll
+        let before = self.layout.scroll.global_scroll_top;
+        self.layout
+            .scroll
             .scroll_to_global_offset(next_scroll_top, ScrollOrigin::ProgrammaticVirtualScroll)
             .map_err(|error| error.to_string())?;
-        Ok((self.scroll.global_scroll_top - before).abs() > 0.5)
+        Ok((self.layout.scroll.global_scroll_top - before).abs() > 0.5)
     }
 
     /// Scrolls through the virtual height model; `alignment` is 0.0 for start,
@@ -138,17 +155,19 @@ impl DocumentRuntime {
             .resolve_scroll_target(&self.document.index, block_id)
             .ok_or_else(|| format!("block {block_id} is missing from the document"))?;
         let block_top = self
+            .layout
             .height_index
             .offset_of_block(target.visible_index)
             .ok_or_else(|| format!("block {block_id} has no layout offset"))?;
         let block_height = self
+            .layout
             .height_index
             .heights
             .get(target.visible_index)
             .copied()
             .unwrap_or_default();
-        let viewport_top = self.scroll.global_scroll_top;
-        let viewport_height = self.scroll.viewport_height.max(1.0);
+        let viewport_top = self.layout.scroll.global_scroll_top;
+        let viewport_height = self.layout.scroll.viewport_height.max(1.0);
         let viewport_bottom = viewport_top + viewport_height;
         let next_scroll_top = match alignment {
             Some(alignment) => {
@@ -160,21 +179,23 @@ impl DocumentRuntime {
             }
             None => return Ok(false),
         };
-        let before = self.scroll.global_scroll_top;
-        self.scroll
+        let before = self.layout.scroll.global_scroll_top;
+        self.layout
+            .scroll
             .scroll_to_global_offset(next_scroll_top, ScrollOrigin::ProgrammaticVirtualScroll)
             .map_err(|error| error.to_string())?;
-        Ok((self.scroll.global_scroll_top - before).abs() > 0.5)
+        Ok((self.layout.scroll.global_scroll_top - before).abs() > 0.5)
     }
 
     pub fn scrollbar_visual_state(&self, policy: ScrollbarPolicy) -> ScrollbarVisualState {
-        ScrollbarVisualState::from_virtual_scroll(&self.scroll, policy)
+        ScrollbarVisualState::from_virtual_scroll(&self.layout.scroll, policy)
     }
 
     pub fn begin_scrollbar_drag(&mut self, policy: ScrollbarPolicy) -> ScrollbarVisualState {
         let visual = self.scrollbar_visual_state(policy);
         if visual.enabled {
-            self.scrollbar_drag = Some(ScrollbarDragSession::begin(&mut self.scroll, visual));
+            self.layout.scrollbar_drag =
+                Some(ScrollbarDragSession::begin(&mut self.layout.scroll, visual));
         }
         visual
     }
@@ -184,35 +205,37 @@ impl DocumentRuntime {
         policy: ScrollbarPolicy,
         thumb_top: f64,
     ) -> Result<Option<ScrollbarDragUpdate>, String> {
-        let Some(session) = &self.scrollbar_drag else {
+        let Some(session) = &self.layout.scrollbar_drag else {
             return Ok(None);
         };
         session
-            .drag_to_thumb_top(&mut self.scroll, policy, thumb_top)
+            .drag_to_thumb_top(&mut self.layout.scroll, policy, thumb_top)
             .map(Some)
             .map_err(|error| error.to_string())
     }
 
     pub fn finish_scrollbar_drag(&mut self) -> Result<Option<ScrollbarDragEnd>, String> {
-        let Some(session) = self.scrollbar_drag.take() else {
+        let Some(session) = self.layout.scrollbar_drag.take() else {
             return Ok(None);
         };
-        let end = session.finish(&mut self.scroll);
-        self.scroll
-            .set_displayed_total_height(self.scroll.model_total_height)
+        let end = session.finish(&mut self.layout.scroll);
+        self.layout
+            .scroll
+            .set_displayed_total_height(self.layout.scroll.model_total_height)
             .map_err(|error| error.to_string())?;
         Ok(Some(end))
     }
 
     pub fn target_for_global_offset(&self, global_y: f64) -> Option<GlobalScrollTarget> {
-        let clamped = self.scroll.clamp_global_scroll_top(global_y);
-        let block_hit = self.height_index.block_at_offset(clamped)?;
+        let clamped = self.layout.scroll.clamp_global_scroll_top(global_y);
+        let block_hit = self.layout.height_index.block_at_offset(clamped)?;
         let block_id = self
             .document
             .visible_index
             .id_at_visible_index(block_hit.index)?;
-        let page_hit = self.page_layout.page_at_offset(clamped)?;
+        let page_hit = self.layout.page_layout.page_at_offset(clamped)?;
         let confidence = self
+            .layout
             .height_index
             .confidence
             .get(block_hit.index)
@@ -220,6 +243,7 @@ impl DocumentRuntime {
             .unwrap_or(HeightConfidence::Default);
         let precision = if confidence == HeightConfidence::Exact
             && self
+                .layout
                 .page_layout
                 .pages
                 .get(page_hit.page_index)
@@ -245,13 +269,13 @@ impl DocumentRuntime {
     }
 
     pub fn current_page_window(&self) -> Range<usize> {
-        let page_count = self.page_layout.page_count();
+        let page_count = self.layout.page_layout.page_count();
         if page_count == 0 {
             return 0..0;
         }
 
         let current_page = self
-            .target_for_global_offset(self.scroll.global_scroll_top)
+            .target_for_global_offset(self.layout.scroll.global_scroll_top)
             .map(|target| target.page_index)
             .unwrap_or(0)
             .min(page_count - 1);
@@ -259,35 +283,38 @@ impl DocumentRuntime {
     }
 
     pub fn current_page_window_planned(&mut self) -> Range<usize> {
-        let page_count = self.page_layout.page_count();
+        let page_count = self.layout.page_layout.page_count();
         if page_count == 0 {
             return 0..0;
         }
-        let Some(target) = self.target_for_global_offset(self.scroll.global_scroll_top) else {
+        let Some(target) = self.target_for_global_offset(self.layout.scroll.global_scroll_top)
+        else {
             return 0..0;
         };
-        let viewport_height = self.scroll.viewport_height.max(1.0);
+        let viewport_height = self.layout.scroll.viewport_height.max(1.0);
         let position_in_page_viewports = (target.offset_in_page / viewport_height).clamp(0.0, 1.0);
-        let direction = if self.scroll.global_scroll_top > self.last_planned_scroll_top {
-            ScrollDirection::Down
-        } else if self.scroll.global_scroll_top < self.last_planned_scroll_top {
-            ScrollDirection::Up
-        } else {
-            ScrollDirection::Still
-        };
-        let scroll_delta = self.scroll.global_scroll_top - self.last_planned_scroll_top;
+        let direction =
+            if self.layout.scroll.global_scroll_top > self.layout.last_planned_scroll_top {
+                ScrollDirection::Down
+            } else if self.layout.scroll.global_scroll_top < self.layout.last_planned_scroll_top {
+                ScrollDirection::Up
+            } else {
+                ScrollDirection::Still
+            };
+        let scroll_delta =
+            self.layout.scroll.global_scroll_top - self.layout.last_planned_scroll_top;
         let velocity_viewports_per_second = scroll_delta / viewport_height / 0.016;
-        self.last_planned_scroll_top = self.scroll.global_scroll_top;
-        self.window_plan_clock_ms = self.window_plan_clock_ms.saturating_add(16);
-        let decision = self.window_planner.plan_commit(WindowPlanRequest {
+        self.layout.last_planned_scroll_top = self.layout.scroll.global_scroll_top;
+        self.layout.window_plan_clock_ms = self.layout.window_plan_clock_ms.saturating_add(16);
+        let decision = self.layout.window_planner.plan_commit(WindowPlanRequest {
             target_page: target.page_index,
             page_count,
             scroll_direction: direction,
             velocity_viewports_per_second,
-            memory_pressure: self.window_memory_pressure,
+            memory_pressure: self.layout.window_memory_pressure,
             position_in_page_viewports,
             pinned_pages: self.pinned_pages_for_window_plan(),
-            now_ms: self.window_plan_clock_ms,
+            now_ms: self.layout.window_plan_clock_ms,
         });
         match decision {
             WindowPlanDecision::Keep { page_range, .. }
@@ -296,20 +323,20 @@ impl DocumentRuntime {
     }
 
     pub fn set_window_memory_pressure(&mut self, pressure: WindowMemoryPressure) {
-        self.window_memory_pressure = pressure;
+        self.layout.window_memory_pressure = pressure;
     }
 
     fn pinned_pages_for_window_plan(&self) -> BTreeSet<usize> {
         let mut pages = BTreeSet::new();
         if let Some(block_id) = self.focused_block_id()
             && let Some(visible_index) = self.document.visible_index.visible_index_of(block_id)
-            && let Some(page) = self.page_layout.page_for_block_index(visible_index)
+            && let Some(page) = self.layout.page_layout.page_for_block_index(visible_index)
         {
             pages.insert(page);
         }
         for block_id in &self.selection.selected_block_ids {
             if let Some(visible_index) = self.document.visible_index.visible_index_of(*block_id)
-                && let Some(page) = self.page_layout.page_for_block_index(visible_index)
+                && let Some(page) = self.layout.page_layout.page_for_block_index(visible_index)
             {
                 pages.insert(page);
             }
@@ -338,9 +365,9 @@ mod tests {
         let mut runtime = DocumentRuntime::from_payloads(1, payloads, 100.0);
         runtime.focus_block_at_offset(10, 0).unwrap();
 
-        assert_eq!(runtime.scroll.global_scroll_top, 0.0);
+        assert_eq!(runtime.layout.scroll.global_scroll_top, 0.0);
         assert!(runtime.scroll_focused_block_into_view().unwrap());
-        assert!(runtime.scroll.global_scroll_top > 0.0);
+        assert!(runtime.layout.scroll.global_scroll_top > 0.0);
     }
 
     #[test]
@@ -354,24 +381,32 @@ mod tests {
         runtime.sync_viewport_height(241.0).unwrap();
         runtime.focus_block_at_offset(8, 0).unwrap();
         let visible_index = runtime.document.visible_index.visible_index_of(8).unwrap();
-        let block_bottom = runtime.height_index.offset_of_block(visible_index).unwrap()
-            + runtime.height_index.heights[visible_index];
+        let block_bottom = runtime
+            .layout
+            .height_index
+            .offset_of_block(visible_index)
+            .unwrap()
+            + runtime.layout.height_index.heights[visible_index];
         runtime
+            .layout
             .scroll
             .scroll_to_global_offset(
-                block_bottom - runtime.scroll.viewport_height + 12.0,
+                block_bottom - runtime.layout.scroll.viewport_height + 12.0,
                 ScrollOrigin::ProgrammaticVirtualScroll,
             )
             .unwrap();
         let reserve = focused_block_bottom_reserve_px(
             &RichBlockKind::Paragraph,
-            runtime.scroll.viewport_height,
+            runtime.layout.scroll.viewport_height,
         );
 
-        assert!(block_bottom < runtime.scroll.global_scroll_top + runtime.scroll.viewport_height);
+        assert!(
+            block_bottom
+                < runtime.layout.scroll.global_scroll_top + runtime.layout.scroll.viewport_height
+        );
         assert!(runtime.scroll_focused_block_into_view().unwrap());
         assert!(
-            runtime.scroll.global_scroll_top + runtime.scroll.viewport_height
+            runtime.layout.scroll.global_scroll_top + runtime.layout.scroll.viewport_height
                 >= block_bottom + reserve - 0.5
         );
     }
@@ -381,8 +416,10 @@ mod tests {
         let mut runtime = DocumentRuntime::demo();
 
         assert!(runtime.sync_viewport_height(480.0).unwrap());
-        assert_eq!(runtime.scroll.viewport_height, 480.0);
-        assert!(runtime.scroll.model_total_height > runtime.height_index.total_height());
+        assert_eq!(runtime.layout.scroll.viewport_height, 480.0);
+        assert!(
+            runtime.layout.scroll.model_total_height > runtime.layout.height_index.total_height()
+        );
         assert!(!runtime.sync_viewport_height(480.25).unwrap());
     }
 
@@ -430,9 +467,10 @@ mod tests {
             .collect::<Vec<_>>();
         let mut runtime = DocumentRuntime::from_payloads(1, payloads, 240.0);
         runtime
+            .layout
             .scroll
             .scroll_to_global_offset(
-                runtime.height_index.offset_of_block(2_000).unwrap(),
+                runtime.layout.height_index.offset_of_block(2_000).unwrap(),
                 ScrollOrigin::UserWheel,
             )
             .unwrap();
@@ -441,6 +479,7 @@ mod tests {
         assert!(normal.len() > 1);
         assert!(
             runtime
+                .layout
                 .window_planner
                 .debug_overlay()
                 .last_velocity_viewports_per_second
@@ -451,7 +490,11 @@ mod tests {
         let critical = runtime.current_page_window_planned();
         assert_eq!(critical.len(), 1);
         assert_eq!(
-            runtime.window_planner.debug_overlay().last_memory_pressure,
+            runtime
+                .layout
+                .window_planner
+                .debug_overlay()
+                .last_memory_pressure,
             WindowMemoryPressure::Critical
         );
     }

@@ -7,7 +7,7 @@ fn backspace_at_start_merges_non_empty_paragraph_into_previous() {
         (RichBlockKind::Paragraph, 0, None, "world"),
     ]);
     runtime.focus_block_at_offset(2, 0).unwrap();
-    let before_scroll_top = runtime.scroll.global_scroll_top;
+    let before_scroll_top = runtime.layout.scroll.global_scroll_top;
 
     assert!(runtime.delete_backward().unwrap());
 
@@ -15,7 +15,7 @@ fn backspace_at_start_merges_non_empty_paragraph_into_previous() {
     assert_eq!(runtime.focused_block_id(), Some(1));
     assert_eq!(runtime.focused_text(), Some("hello world"));
     assert_eq!(runtime.selected_focused_text(), Some("world".to_owned()));
-    assert_eq!(runtime.scroll.global_scroll_top, before_scroll_top);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, before_scroll_top);
     let transaction = runtime.drain_pending_structure_transactions().remove(0);
     assert!(matches!(
         transaction.ops.as_slice(),
@@ -352,29 +352,31 @@ fn backspace_at_start_keeps_plain_paragraph_unchanged() {
 fn measured_height_above_viewport_restores_viewport_top_anchor() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
-    let before = runtime.scroll.global_scroll_top;
+    let before = runtime.layout.scroll.global_scroll_top;
 
     assert!(runtime.apply_measured_height(1, 1, 64.0).unwrap());
 
     assert_eq!(before, 3_200.0);
-    assert_eq!(runtime.scroll.global_scroll_top, before + 32.0);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, before + 32.0);
 }
 
 #[test]
 fn measured_height_below_viewport_does_not_move_scroll_top() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
-    let before = runtime.scroll.global_scroll_top;
+    let before = runtime.layout.scroll.global_scroll_top;
 
     assert!(runtime.apply_measured_height(900, 1, 64.0).unwrap());
 
-    assert_eq!(runtime.scroll.global_scroll_top, before);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, before);
 }
 
 #[test]

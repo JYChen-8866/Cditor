@@ -168,18 +168,20 @@ impl DocumentRuntime {
     }
 
     pub fn apply_cached_page_layout(&mut self, page_layout: PageLayoutIndex) -> Result<(), String> {
-        if page_layout.policy != self.page_layout.policy {
+        if page_layout.policy != self.layout.page_layout.policy {
             return Err("cached page layout policy does not match the runtime policy".to_owned());
         }
         page_layout
             .validate_covers_blocks(self.document.visible_index.total_visible_count())
             .map_err(|error| error.to_string())?;
         let total_height = self.scroll_extent_height(page_layout.total_height());
-        self.page_layout = page_layout;
-        self.scroll
+        self.layout.page_layout = page_layout;
+        self.layout
+            .scroll
             .set_model_total_height(total_height)
             .map_err(|error| error.to_string())?;
-        self.scroll
+        self.layout
+            .scroll
             .set_displayed_total_height(total_height)
             .map_err(|error| error.to_string())?;
         Ok(())

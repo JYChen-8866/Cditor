@@ -183,7 +183,7 @@ fn table_cell_enter_updates_block_height_and_pushes_following_blocks_down() {
     let paragraph = BlockPayloadRecord::rich_text(11, RichBlockKind::Paragraph, "below");
     let mut runtime = DocumentRuntime::from_payloads(1, vec![table, paragraph], 720.0);
     let before_table_height = runtime.document.index.layout_meta[0].effective_height();
-    let before_second_offset = runtime.height_index.offset_of_block(1).unwrap();
+    let before_second_offset = runtime.layout.height_index.offset_of_block(1).unwrap();
 
     runtime.focus_table_cell_at_offset(10, 0, 0, 1).unwrap();
     for _ in 0..6 {
@@ -198,7 +198,7 @@ fn table_cell_enter_updates_block_height_and_pushes_following_blocks_down() {
         .expect("table block");
     let table_view = table_block.table_view.as_ref().expect("table projection");
     let after_table_height = table_block.layout.effective_height();
-    let after_second_offset = runtime.height_index.offset_of_block(1).unwrap();
+    let after_second_offset = runtime.layout.height_index.offset_of_block(1).unwrap();
 
     assert!(table_view.height_px > before_table_height as f32);
     assert!(after_table_height > before_table_height);
@@ -215,22 +215,23 @@ fn table_height_change_above_viewport_restores_viewport_anchor() {
     }));
     let mut runtime = DocumentRuntime::from_payloads(1, payloads, 720.0);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(1_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
-    let before_scroll_top = runtime.scroll.global_scroll_top;
-    let before_table_height = runtime.height_index.heights[0];
+    let before_scroll_top = runtime.layout.scroll.global_scroll_top;
+    let before_table_height = runtime.layout.height_index.heights[0];
 
     runtime.focus_table_cell_at_offset(10, 0, 0, 1).unwrap();
     for _ in 0..6 {
         runtime.handle_enter().unwrap();
     }
 
-    let after_table_height = runtime.height_index.heights[0];
+    let after_table_height = runtime.layout.height_index.heights[0];
     let height_delta = after_table_height - before_table_height;
     assert!(height_delta > 0.0);
     assert_eq!(
-        runtime.scroll.global_scroll_top,
+        runtime.layout.scroll.global_scroll_top,
         before_scroll_top + height_delta
     );
 }
@@ -247,8 +248,8 @@ fn table_height_change_during_scrollbar_drag_defers_displayed_total_update() {
         track_height: 720.0,
         ..ScrollbarPolicy::default()
     };
-    let before_displayed_total = runtime.scroll.displayed_total_height;
-    let before_model_total = runtime.scroll.model_total_height;
+    let before_displayed_total = runtime.layout.scroll.displayed_total_height;
+    let before_model_total = runtime.layout.scroll.model_total_height;
 
     let visual = runtime.begin_scrollbar_drag(policy);
     assert!(visual.enabled);
@@ -257,16 +258,16 @@ fn table_height_change_during_scrollbar_drag_defers_displayed_total_update() {
         runtime.handle_enter().unwrap();
     }
 
-    assert!(runtime.scroll.model_total_height > before_model_total);
+    assert!(runtime.layout.scroll.model_total_height > before_model_total);
     assert_eq!(
-        runtime.scroll.displayed_total_height,
+        runtime.layout.scroll.displayed_total_height,
         before_displayed_total
     );
     let end = runtime.finish_scrollbar_drag().unwrap().unwrap();
     assert!(end.pending_layout_corrections > 0);
     assert_eq!(
-        runtime.scroll.displayed_total_height,
-        runtime.scroll.model_total_height
+        runtime.layout.scroll.displayed_total_height,
+        runtime.layout.scroll.model_total_height
     );
 }
 

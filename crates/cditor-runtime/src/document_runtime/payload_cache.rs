@@ -90,8 +90,10 @@ impl DocumentRuntime {
             let block_id = evicted.block_id;
             self.document.text_models.remove(&block_id);
             self.document.table_runtimes.remove(&block_id);
-            self.table_horizontal_scroll_offsets.remove(&block_id);
-            self.pending_measured_heights.remove(&block_id);
+            self.layout
+                .table_horizontal_scroll_offsets
+                .remove(&block_id);
+            self.layout.pending_measured_heights.remove(&block_id);
             evicted_block_ids.push(block_id);
         }
 

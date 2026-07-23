@@ -21,6 +21,7 @@ fn planned_payload_window_without_records_does_not_render_per_block_placeholders
         DocumentRuntime::from_index_records_with_window(1, records, payloads, 1, 720.0, 0..64);
     runtime.plan_payload_window_load(400..430);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(
             400.0 * 32.0,
@@ -372,6 +373,7 @@ fn planned_window_load_replaces_bounded_placeholder_without_full_hydration() {
         0..64,
     );
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(160_000.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
@@ -424,6 +426,7 @@ fn rapid_remote_scroll_accepts_out_of_order_windows_without_blank_lockup() {
         DocumentRuntime::from_index_records_with_window(1, records, Vec::new(), 1, 720.0, 0..0);
 
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(80_000.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
@@ -434,6 +437,7 @@ fn rapid_remote_scroll_accepts_out_of_order_windows_without_blank_lockup() {
         .unwrap();
 
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(240_000.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
@@ -478,6 +482,7 @@ fn rapid_remote_scroll_accepts_out_of_order_windows_without_blank_lockup() {
     );
 
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(80_000.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
@@ -517,6 +522,7 @@ fn incremental_scroll_keeps_resident_blocks_and_only_placeholds_missing_edges() 
         DocumentRuntime::from_index_records_with_window(1, records, payloads, 1, 720.0, 0..80);
 
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(1_280.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();

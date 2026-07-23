@@ -79,7 +79,7 @@ impl DocumentRuntime {
             structure_version: self.structure_version(),
             selection,
             block_ids: missing,
-            payload_window_generation: self.payload_window_generation,
+            payload_window_generation: self.layout.payload_window_generation,
         })
     }
 
@@ -118,7 +118,7 @@ impl DocumentRuntime {
     pub fn selection_request_is_current(&self, request: &SelectionMaterializationRequest) -> bool {
         request.document_id == self.document_id
             && request.structure_version == self.structure_version()
-            && request.payload_window_generation == self.payload_window_generation
+            && request.payload_window_generation == self.layout.payload_window_generation
             && self.unified_document_selection_snapshot() == Some(request.selection.clone())
     }
 

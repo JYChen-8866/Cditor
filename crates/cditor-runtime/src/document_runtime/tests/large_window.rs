@@ -156,17 +156,18 @@ fn enter_on_empty_list_does_not_create_block_or_move_scroll_top() {
     }
     let mut runtime = runtime_with_kind_depths_and_text(blocks);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(320.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     runtime.focus_block(21);
-    let before_scroll_top = runtime.scroll.global_scroll_top;
+    let before_scroll_top = runtime.layout.scroll.global_scroll_top;
     let before_count = runtime.document.index.total_count();
 
     runtime.handle_enter().unwrap();
 
     assert_eq!(runtime.document.index.total_count(), before_count);
-    assert_eq!(runtime.scroll.global_scroll_top, before_scroll_top);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, before_scroll_top);
     assert!(matches!(
         runtime
             .document
@@ -214,8 +215,8 @@ fn runtime_with_100k_blocks_fixture_builds_without_large_strings() {
         100_000
     );
     assert_eq!(runtime.document.payload_window.payloads.len(), 100_000);
-    assert_eq!(runtime.height_index.total_height(), 3_200_000.0);
-    assert!(runtime.page_layout.page_count() >= 100);
+    assert_eq!(runtime.layout.height_index.total_height(), 3_200_000.0);
+    assert!(runtime.layout.page_layout.page_count() >= 100);
 }
 
 #[test]
@@ -230,6 +231,7 @@ fn large_mixed_demo_keeps_payloads_windowed() {
     assert!(runtime.document.payload_window.block_range.start == 0);
 
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(
             1_000_000.0,
@@ -248,6 +250,7 @@ fn large_mixed_demo_keeps_payloads_windowed() {
 fn planned_projection_uses_the_same_bounded_viewport_for_resident_100k_document() {
     let mut runtime = runtime_with_paragraph_blocks(100_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(
             1_000_000.0,
@@ -279,7 +282,10 @@ fn target_for_global_offset_maps_100k_document_precisely() {
         assert!(target.offset_in_block >= 0.0);
         assert!(target.offset_in_block <= 32.0);
         assert_eq!(
-            runtime.page_layout.page_for_block_index(target.block_index),
+            runtime
+                .layout
+                .page_layout
+                .page_for_block_index(target.block_index),
             Some(target.page_index)
         );
     }

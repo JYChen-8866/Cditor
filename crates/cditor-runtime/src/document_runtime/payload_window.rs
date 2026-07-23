@@ -57,8 +57,9 @@ impl DocumentRuntime {
             return None;
         }
 
-        self.payload_window_generation = self.payload_window_generation.saturating_add(1);
-        let generation = self.payload_window_generation;
+        self.layout.payload_window_generation =
+            self.layout.payload_window_generation.saturating_add(1);
+        let generation = self.layout.payload_window_generation;
         self.document.payload_window.block_range = bounded_range.clone();
         for &block_id in &block_ids {
             if self
@@ -87,8 +88,9 @@ impl DocumentRuntime {
         &mut self,
         block_range: Range<usize>,
     ) -> PayloadWindowLoadRequest {
-        self.payload_window_generation = self.payload_window_generation.saturating_add(1);
-        let generation = self.payload_window_generation;
+        self.layout.payload_window_generation =
+            self.layout.payload_window_generation.saturating_add(1);
+        let generation = self.layout.payload_window_generation;
         let bounded_range = self.bounded_payload_window_range(block_range);
         self.document.payload_window.block_range = bounded_range.clone();
         let block_ids = self.payload_window_block_ids(&bounded_range);
@@ -114,7 +116,7 @@ impl DocumentRuntime {
         &mut self,
         result: PayloadWindowLoadResult,
     ) -> PayloadWindowApplyDecision {
-        let expected_generation = self.payload_window_generation;
+        let expected_generation = self.layout.payload_window_generation;
         let result_generation = result.request.generation;
         let is_current = result_generation == expected_generation;
         if is_current {
@@ -157,7 +159,7 @@ impl DocumentRuntime {
     }
 
     pub fn payload_window_generation(&self) -> u64 {
-        self.payload_window_generation
+        self.layout.payload_window_generation
     }
 
     pub fn apply_payload_window_load_error(
@@ -165,7 +167,7 @@ impl DocumentRuntime {
         request: PayloadWindowLoadRequest,
         message: impl Into<String>,
     ) -> PayloadWindowApplyDecision {
-        let expected_generation = self.payload_window_generation;
+        let expected_generation = self.layout.payload_window_generation;
         let request_generation = request.generation;
         let message = message.into();
         for block_id in request.block_ids {

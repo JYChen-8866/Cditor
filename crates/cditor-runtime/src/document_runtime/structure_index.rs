@@ -115,19 +115,23 @@ impl DocumentRuntime {
     }
 
     pub(super) fn rebuild_height_indexes_from_layout_meta(&mut self) -> Result<(), String> {
-        self.height_index = BlockHeightIndex::from_visible_document(
+        self.layout.height_index = BlockHeightIndex::from_visible_document(
             &self.document.index,
             &self.document.visible_index,
         )
         .map_err(|error| error.to_string())?;
-        self.page_layout =
-            PageLayoutIndex::from_block_height_index(&self.height_index, PagePolicy::default())
-                .map_err(|error| error.to_string())?;
-        let total_height = self.scroll_extent_height(self.page_layout.total_height());
-        self.scroll
+        self.layout.page_layout = PageLayoutIndex::from_block_height_index(
+            &self.layout.height_index,
+            PagePolicy::default(),
+        )
+        .map_err(|error| error.to_string())?;
+        let total_height = self.scroll_extent_height(self.layout.page_layout.total_height());
+        self.layout
+            .scroll
             .set_model_total_height(total_height)
             .map_err(|error| error.to_string())?;
-        self.scroll
+        self.layout
+            .scroll
             .set_displayed_total_height(total_height)
             .map_err(|error| error.to_string())?;
         Ok(())

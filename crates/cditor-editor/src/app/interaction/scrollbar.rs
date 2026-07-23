@@ -20,7 +20,7 @@ pub(in crate::app) struct GuiScrollbarDrag {
 
 pub(in crate::app) fn scrollbar_policy(runtime: &DocumentRuntime) -> ScrollbarPolicy {
     ScrollbarPolicy {
-        track_height: runtime.scroll.viewport_height.max(1.0),
+        track_height: runtime.viewport_height().max(1.0),
         min_thumb_height: 24.0,
         local_list_state_scrollbar_enabled: false,
     }

@@ -466,7 +466,7 @@ impl DocumentRuntime {
             transaction.before_anchor
         };
         if anchor.is_some() {
-            self.restore_scroll_anchor(anchor, self.scroll.global_scroll_top)?;
+            self.restore_scroll_anchor(anchor, self.layout.scroll.global_scroll_top)?;
         }
         Ok(())
     }

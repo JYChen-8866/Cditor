@@ -15,7 +15,7 @@ impl DocumentRuntime {
             return Ok(false);
         }
 
-        let scroll_anchor = self.target_for_global_offset(self.scroll.global_scroll_top);
+        let scroll_anchor = self.target_for_global_offset(self.layout.scroll.global_scroll_top);
         let update = self
             .document
             .visible_index
@@ -42,7 +42,7 @@ impl DocumentRuntime {
         self.document.payload_window.block_range =
             0..self.document.visible_index.total_visible_count();
         self.restore_scroll_anchor_after_visibility_change(scroll_anchor)?;
-        self.layout_dirty = true;
+        self.layout.dirty = true;
         Ok(true)
     }
 
@@ -65,11 +65,13 @@ impl DocumentRuntime {
             return Ok(());
         };
         let block_top = self
+            .layout
             .height_index
             .offset_of_block(target.visible_index)
             .unwrap_or_default();
         let offset_in_block = if target.target_block_id == anchor.block_id {
-            self.height_index
+            self.layout
+                .height_index
                 .heights
                 .get(target.visible_index)
                 .copied()
@@ -78,7 +80,8 @@ impl DocumentRuntime {
         } else {
             0.0
         };
-        self.scroll
+        self.layout
+            .scroll
             .scroll_to_global_offset(
                 block_top + offset_in_block,
                 ScrollOrigin::ProgrammaticVirtualScroll,
@@ -112,7 +115,7 @@ mod tests {
     #[test]
     fn h1_fold_updates_visible_projection_and_total_height_in_one_batch() {
         let mut runtime = section_runtime();
-        let expanded_height = runtime.height_index.total_height();
+        let expanded_height = runtime.layout.height_index.total_height();
 
         assert!(runtime.toggle_block_fold(1).unwrap());
 
@@ -121,8 +124,8 @@ mod tests {
             runtime.document.visible_index.visible_block_ids,
             vec![1, 7, 8]
         );
-        assert_eq!(runtime.height_index.len(), 3);
-        assert!(runtime.height_index.total_height() < expanded_height);
+        assert_eq!(runtime.layout.height_index.len(), 3);
+        assert!(runtime.layout.height_index.total_height() < expanded_height);
         assert_eq!(runtime.full_projection_for_tests().total_visible_blocks, 3);
         let heading = &runtime.full_projection_for_tests().blocks[0];
         assert!(heading.chrome.collapsed);
@@ -140,14 +143,14 @@ mod tests {
     #[test]
     fn expanding_heading_restores_cached_block_heights() {
         let mut runtime = section_runtime();
-        let expanded_height = runtime.height_index.total_height();
+        let expanded_height = runtime.layout.height_index.total_height();
         runtime.toggle_block_fold(1).unwrap();
 
         assert!(runtime.toggle_block_fold(1).unwrap());
 
         assert!(!runtime.is_block_folded(1));
         assert_eq!(runtime.document.visible_index.total_visible_count(), 8);
-        assert_eq!(runtime.height_index.total_height(), expanded_height);
+        assert_eq!(runtime.layout.height_index.total_height(), expanded_height);
     }
 
     #[test]
@@ -270,14 +273,15 @@ mod tests {
             ],
             48.0,
         );
-        let hidden_anchor_top = runtime.height_index.offset_of_block(3).unwrap();
+        let hidden_anchor_top = runtime.layout.height_index.offset_of_block(3).unwrap();
         runtime
+            .layout
             .scroll
             .scroll_to_global_offset(hidden_anchor_top, ScrollOrigin::ProgrammaticVirtualScroll)
             .unwrap();
 
         runtime.toggle_block_fold(1).unwrap();
 
-        assert_eq!(runtime.scroll.global_scroll_top, 0.0);
+        assert_eq!(runtime.layout.scroll.global_scroll_top, 0.0);
     }
 }

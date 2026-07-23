@@ -2,7 +2,8 @@ use super::*;
 
 impl DocumentRuntime {
     pub fn table_horizontal_scroll_offset_px(&self, block_id: BlockId) -> f32 {
-        self.table_horizontal_scroll_offsets
+        self.layout
+            .table_horizontal_scroll_offsets
             .get(&block_id)
             .copied()
             .unwrap_or(0.0)
@@ -20,7 +21,8 @@ impl DocumentRuntime {
         if self.table_horizontal_scroll_offset_px(block_id) == offset_px {
             return Ok(false);
         }
-        self.table_horizontal_scroll_offsets
+        self.layout
+            .table_horizontal_scroll_offsets
             .insert(block_id, offset_px);
         Ok(true)
     }

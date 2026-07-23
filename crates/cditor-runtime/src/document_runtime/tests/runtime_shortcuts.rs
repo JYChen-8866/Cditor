@@ -3,15 +3,20 @@ use super::*;
 #[test]
 fn current_page_window_clamps_first_middle_and_last_pages() {
     let mut runtime = runtime_with_paragraph_blocks(3_000);
-    let page_count = runtime.page_layout.page_count();
+    let page_count = runtime.layout.page_layout.page_count();
     assert!(page_count >= 4);
 
     assert_eq!(runtime.current_page_window().start, 0);
     assert!(runtime.current_page_window().contains(&0));
 
     let middle_page = page_count / 2;
-    let middle_offset = runtime.page_layout.offset_of_page(middle_page).unwrap();
+    let middle_offset = runtime
+        .layout
+        .page_layout
+        .offset_of_page(middle_page)
+        .unwrap();
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(
             middle_offset,
@@ -24,9 +29,10 @@ fn current_page_window_clamps_first_middle_and_last_pages() {
     assert!(middle_window.end <= page_count);
 
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(
-            runtime.scroll.model_total_height,
+            runtime.layout.scroll.model_total_height,
             cditor_viewport::scroll::ScrollOrigin::ProgrammaticVirtualScroll,
         )
         .unwrap();
@@ -315,7 +321,7 @@ fn gutter_add_inserts_after_the_entire_target_subtree() {
     );
     assert_eq!(runtime.document.index.depths, vec![0, 1, 0, 0]);
     assert_eq!(runtime.focused_block_id(), Some(4));
-    assert_eq!(runtime.height_index.heights.len(), 4);
+    assert_eq!(runtime.layout.height_index.heights.len(), 4);
 }
 
 #[test]
@@ -333,7 +339,7 @@ fn shift_enter_inserts_soft_line_break_in_focused_block() {
     let before_height = runtime.full_projection_for_tests().blocks[0]
         .layout
         .effective_height();
-    let before_total_height = runtime.height_index.total_height();
+    let before_total_height = runtime.layout.height_index.total_height();
 
     runtime.insert_soft_line_break().unwrap();
 
@@ -348,14 +354,14 @@ fn shift_enter_inserts_soft_line_break_in_focused_block() {
         "soft line break should grow block height: {} <= {before_height}",
         block.layout.effective_height()
     );
-    assert!(runtime.height_index.total_height() > before_total_height);
+    assert!(runtime.layout.height_index.total_height() > before_total_height);
     assert_eq!(
-        runtime.page_layout.total_height(),
-        runtime.height_index.total_height()
+        runtime.layout.page_layout.total_height(),
+        runtime.layout.height_index.total_height()
     );
     assert_eq!(
-        runtime.scroll.model_total_height,
-        runtime.scroll_extent_height(runtime.height_index.total_height())
+        runtime.layout.scroll.model_total_height,
+        runtime.scroll_extent_height(runtime.layout.height_index.total_height())
     );
 }
 

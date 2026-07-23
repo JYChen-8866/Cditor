@@ -356,7 +356,7 @@ impl DocumentRuntime {
             }
             layout.dirty = true;
         }
-        self.layout_dirty = true;
+        self.layout.dirty = true;
     }
 }
 

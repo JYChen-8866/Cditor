@@ -22,9 +22,9 @@ impl CditorV2View {
                     device: ScrollDevice::Trackpad,
                     timestamp: std::time::Instant::now(),
                 },
-                runtime.scroll.viewport_height,
+                runtime.viewport_height(),
             );
-            let _ = self.scroll_accumulator.apply_frame(&mut runtime.scroll);
+            let _ = runtime.apply_scroll_accumulator_frame(&mut self.scroll_accumulator);
         }
         cx.stop_propagation();
         cx.notify();

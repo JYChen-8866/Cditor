@@ -207,7 +207,7 @@ impl CditorV2View {
         };
         let Some(scroll_top) = self
             .ready_runtime_ref()
-            .map(|runtime| runtime.scroll.global_scroll_top)
+            .map(|runtime| runtime.global_scroll_top())
         else {
             return (120.0, 120.0);
         };
@@ -231,7 +231,7 @@ impl CditorV2View {
         };
         let Some(scroll_top) = self
             .ready_runtime_ref()
-            .map(|runtime| runtime.scroll.global_scroll_top)
+            .map(|runtime| runtime.global_scroll_top())
         else {
             return (120.0, 120.0);
         };

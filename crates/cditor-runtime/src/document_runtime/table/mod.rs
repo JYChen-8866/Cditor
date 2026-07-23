@@ -86,7 +86,8 @@ impl DocumentRuntime {
     pub(super) fn sync_table_runtime_for_payload(&mut self, record: &mut BlockPayloadRecord) {
         if !matches!(record.kind, RichBlockKind::Table) {
             self.document.table_runtimes.remove(&record.block_id);
-            self.table_horizontal_scroll_offsets
+            self.layout
+                .table_horizontal_scroll_offsets
                 .remove(&record.block_id);
             return;
         }

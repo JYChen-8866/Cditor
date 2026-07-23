@@ -196,12 +196,16 @@ impl DocumentRuntime {
         let start = Instant::now();
         let height_index = BlockHeightIndex::from_visible_document(&index, &visible_index)
             .expect("demo heights are valid");
-        log_runtime_timing("runtime.height_index", start, Some(record_count));
+        log_runtime_timing("runtime.layout.height_index", start, Some(record_count));
 
         let start = Instant::now();
         let page_layout = PageLayoutIndex::from_block_height_index(&height_index, page_policy)
             .expect("demo pages are valid");
-        log_runtime_timing("runtime.page_layout", start, Some(page_layout.page_count()));
+        log_runtime_timing(
+            "runtime.layout.page_layout",
+            start,
+            Some(page_layout.page_count()),
+        );
         let scroll = VirtualScrollState::new(viewport_height, height_index.total_height())
             .expect("demo scroll state is valid");
         let payload_window_range = payload_window_range
@@ -243,14 +247,24 @@ impl DocumentRuntime {
                 list_projection_cache,
                 demo_payload_count: None,
             },
-            height_index,
-            page_layout,
-            scroll,
+            layout: LayoutState {
+                height_index,
+                page_layout,
+                scroll,
+                table_horizontal_scroll_offsets: HashMap::new(),
+                payload_window_generation: 0,
+                window_planner: WindowPlanner::new(1, 2, WindowPlannerPolicy::default()),
+                last_planned_scroll_top: 0.0,
+                window_plan_clock_ms: 0,
+                window_memory_pressure: WindowMemoryPressure::Normal,
+                pending_measured_heights: HashMap::new(),
+                dirty: false,
+                scrollbar_drag: None,
+            },
             editing: EditingState {
                 next_input_session_id: 1,
                 ..EditingState::default()
             },
-            table_horizontal_scroll_offsets: HashMap::new(),
             selection: SelectionState::default(),
             ai_session: None,
             next_ai_request_id: 1,
@@ -258,14 +272,6 @@ impl DocumentRuntime {
             pending_structure_transactions: Vec::new(),
             last_committed_transaction_id: None,
             next_transaction_id: 1,
-            payload_window_generation: 0,
-            window_planner: WindowPlanner::new(1, 2, WindowPlannerPolicy::default()),
-            last_planned_scroll_top: 0.0,
-            window_plan_clock_ms: 0,
-            window_memory_pressure: WindowMemoryPressure::Normal,
-            pending_measured_heights: HashMap::new(),
-            layout_dirty: false,
-            scrollbar_drag: None,
         }
     }
 }

@@ -418,22 +418,22 @@ mod tests {
 
         let (mut runtime, report) = runtime_from_loaded(loaded.clone(), 720, &options).unwrap();
         assert!(report.page_layout_cache_hit);
-        assert_eq!(runtime.page_layout.total_height(), 321.0);
+        assert_eq!(runtime.page_layout_total_height(), 321.0);
         assert_eq!(
-            runtime.scroll.model_total_height,
-            runtime.page_layout.total_height() + runtime.down_placer_height()
+            runtime.model_total_height(),
+            runtime.page_layout_total_height() + runtime.down_placer_height()
         );
         runtime.sync_viewport_height(800.0).unwrap();
         assert_eq!(
-            runtime.scroll.model_total_height,
-            runtime.page_layout.total_height() + runtime.down_placer_height()
+            runtime.model_total_height(),
+            runtime.page_layout_total_height() + runtime.down_placer_height()
         );
 
         let mut invalid = loaded;
         invalid.page_layout_snapshot.as_mut().unwrap().pages[0].last_block_id = 999;
         let (runtime, report) = runtime_from_loaded(invalid, 720, &options).unwrap();
         assert!(!report.page_layout_cache_hit);
-        assert_ne!(runtime.page_layout.total_height(), 321.0);
+        assert_ne!(runtime.page_layout_total_height(), 321.0);
     }
 
     #[tokio::test]

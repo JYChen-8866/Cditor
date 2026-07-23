@@ -549,11 +549,11 @@ fn external_transaction_undo_redo_restore_selection_and_scroll_anchors() {
         runtime.document_selection_snapshot(),
         Some(before_selection)
     );
-    assert_eq!(runtime.scroll.global_scroll_top, 3_200.0);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, 3_200.0);
 
     assert!(runtime.redo_focused_block().unwrap());
     assert_eq!(runtime.document_selection_snapshot(), Some(after_selection));
-    assert_eq!(runtime.scroll.global_scroll_top, 6_400.0);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, 6_400.0);
 }
 
 #[test]

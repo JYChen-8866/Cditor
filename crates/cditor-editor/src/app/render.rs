@@ -93,7 +93,7 @@ impl Render for CditorV2View {
             self.last_color_action,
             &self.projected_block_rects,
             self.ready_runtime_ref()
-                .map(|runtime| runtime.scroll.global_scroll_top)
+                .map(|runtime| runtime.global_scroll_top())
                 .unwrap_or(0.0),
         );
         if formatting_toolbar.as_ref().is_some_and(|toolbar| {

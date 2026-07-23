@@ -211,17 +211,19 @@ fn typing_time_gap_starts_a_new_undo_step() {
 fn text_undo_redo_restore_semantic_viewport_anchors() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let anchor_block = runtime
-        .target_for_global_offset(runtime.scroll.global_scroll_top)
+        .target_for_global_offset(runtime.layout.scroll.global_scroll_top)
         .unwrap()
         .block_id;
     runtime.focus_block_at_offset(500, 0).unwrap();
     type_text(&mut runtime, "undo");
 
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(6_400.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
@@ -232,23 +234,28 @@ fn text_undo_redo_restore_semantic_viewport_anchors() {
         .visible_index_of(anchor_block)
         .unwrap();
     assert_eq!(
-        runtime.scroll.global_scroll_top,
-        runtime.height_index.offset_of_block(anchor_index).unwrap()
+        runtime.layout.scroll.global_scroll_top,
+        runtime
+            .layout
+            .height_index
+            .offset_of_block(anchor_index)
+            .unwrap()
     );
 
     assert!(runtime.redo_focused_block().unwrap());
-    assert_eq!(runtime.scroll.global_scroll_top, 6_400.0);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, 6_400.0);
 }
 
 #[test]
 fn text_undo_anchor_survives_height_changes_above_the_viewport() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let anchor = runtime
-        .target_for_global_offset(runtime.scroll.global_scroll_top)
+        .target_for_global_offset(runtime.layout.scroll.global_scroll_top)
         .unwrap();
     runtime.focus_block_at_offset(500, 0).unwrap();
     type_text(&mut runtime, "x");
@@ -256,6 +263,7 @@ fn text_undo_anchor_survives_height_changes_above_the_viewport() {
     assert!(runtime.queue_measured_height(1, 1, 64.0).unwrap());
     assert!(runtime.flush_pending_height_corrections().unwrap());
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(100.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
@@ -267,8 +275,13 @@ fn text_undo_anchor_survives_height_changes_above_the_viewport() {
         .visible_index_of(anchor.block_id)
         .unwrap();
     assert_eq!(
-        runtime.scroll.global_scroll_top,
-        runtime.height_index.offset_of_block(anchor_index).unwrap() + anchor.offset_in_block
+        runtime.layout.scroll.global_scroll_top,
+        runtime
+            .layout
+            .height_index
+            .offset_of_block(anchor_index)
+            .unwrap()
+            + anchor.offset_in_block
     );
 }
 
@@ -277,19 +290,21 @@ fn structure_undo_redo_restore_their_semantic_viewport_anchors() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime.focus_block_at_offset(500, 0).unwrap();
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     let before_anchor = runtime
-        .target_for_global_offset(runtime.scroll.global_scroll_top)
+        .target_for_global_offset(runtime.layout.scroll.global_scroll_top)
         .unwrap();
 
     runtime.insert_paragraph_after_block(1).unwrap();
     let after_anchor = runtime
-        .target_for_global_offset(runtime.scroll.global_scroll_top)
+        .target_for_global_offset(runtime.layout.scroll.global_scroll_top)
         .unwrap();
     assert_ne!(before_anchor.block_id, after_anchor.block_id);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(6_400.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
@@ -301,8 +316,13 @@ fn structure_undo_redo_restore_their_semantic_viewport_anchors() {
         .visible_index_of(before_anchor.block_id)
         .unwrap();
     assert_eq!(
-        runtime.scroll.global_scroll_top,
-        runtime.height_index.offset_of_block(before_index).unwrap() + before_anchor.offset_in_block
+        runtime.layout.scroll.global_scroll_top,
+        runtime
+            .layout
+            .height_index
+            .offset_of_block(before_index)
+            .unwrap()
+            + before_anchor.offset_in_block
     );
 
     assert!(runtime.redo_focused_block().unwrap());
@@ -312,8 +332,13 @@ fn structure_undo_redo_restore_their_semantic_viewport_anchors() {
         .visible_index_of(after_anchor.block_id)
         .unwrap();
     assert_eq!(
-        runtime.scroll.global_scroll_top,
-        runtime.height_index.offset_of_block(after_index).unwrap() + after_anchor.offset_in_block
+        runtime.layout.scroll.global_scroll_top,
+        runtime
+            .layout
+            .height_index
+            .offset_of_block(after_index)
+            .unwrap()
+            + after_anchor.offset_in_block
     );
 }
 

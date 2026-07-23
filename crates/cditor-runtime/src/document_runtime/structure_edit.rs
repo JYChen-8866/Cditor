@@ -361,8 +361,8 @@ impl DocumentRuntime {
                         .layout_version
                         .saturating_add(1);
             }
-            self.pending_measured_heights.remove(&block_id);
-            self.layout_dirty = true;
+            self.layout.pending_measured_heights.remove(&block_id);
+            self.layout.dirty = true;
             self.document.visible_index =
                 VisibleDocumentIndex::from_document_index(&self.document.index);
             self.rebuild_height_indexes_from_layout_meta()?;

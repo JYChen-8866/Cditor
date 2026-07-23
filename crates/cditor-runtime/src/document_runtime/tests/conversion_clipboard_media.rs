@@ -77,7 +77,7 @@ fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
     runtime.focus_block(1);
     let document_index = runtime.document.index.index_of(1).unwrap();
     runtime.document.index.layout_meta[document_index].update_height(36.0);
-    runtime.height_index.update_height(0, 36.0).unwrap();
+    runtime.layout.height_index.update_height(0, 36.0).unwrap();
     runtime.queue_measured_height(1, 1, 48.0).unwrap();
 
     assert!(
@@ -112,7 +112,7 @@ fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
         runtime.document.index.layout_meta[document_index].measured_height,
         None
     );
-    assert!(!runtime.pending_measured_heights.contains_key(&1));
+    assert!(!runtime.layout.pending_measured_heights.contains_key(&1));
     assert!(
         projection.blocks[0].layout.effective_height() >= 120.0,
         "converted table should not keep paragraph height: {}",

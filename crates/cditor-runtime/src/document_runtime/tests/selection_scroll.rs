@@ -408,21 +408,28 @@ fn inline_mark_rejects_code_payload_without_mutation_or_undo() {
 fn queued_measured_heights_do_not_apply_until_flush() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
-    let before_scroll_top = runtime.scroll.global_scroll_top;
-    let before_total_height = runtime.height_index.total_height();
+    let before_scroll_top = runtime.layout.scroll.global_scroll_top;
+    let before_total_height = runtime.layout.height_index.total_height();
 
     assert!(runtime.queue_measured_height(1, 1, 64.0).unwrap());
 
-    assert_eq!(runtime.scroll.global_scroll_top, before_scroll_top);
-    assert_eq!(runtime.height_index.total_height(), before_total_height);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, before_scroll_top);
+    assert_eq!(
+        runtime.layout.height_index.total_height(),
+        before_total_height
+    );
 
     assert!(runtime.flush_pending_height_corrections().unwrap());
-    assert_eq!(runtime.scroll.global_scroll_top, before_scroll_top + 32.0);
     assert_eq!(
-        runtime.height_index.total_height(),
+        runtime.layout.scroll.global_scroll_top,
+        before_scroll_top + 32.0
+    );
+    assert_eq!(
+        runtime.layout.height_index.total_height(),
         before_total_height + 32.0
     );
 }
@@ -431,10 +438,11 @@ fn queued_measured_heights_do_not_apply_until_flush() {
 fn flush_measured_heights_restores_anchor_once_for_batched_changes() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
-    let before = runtime.scroll.global_scroll_top;
+    let before = runtime.layout.scroll.global_scroll_top;
 
     assert!(runtime.queue_measured_height(1, 1, 64.0).unwrap());
     assert!(runtime.queue_measured_height(2, 1, 72.0).unwrap());
@@ -442,7 +450,7 @@ fn flush_measured_heights_restores_anchor_once_for_batched_changes() {
     assert!(runtime.flush_pending_height_corrections().unwrap());
 
     assert_eq!(
-        runtime.scroll.global_scroll_top,
+        runtime.layout.scroll.global_scroll_top,
         before + 32.0 + 40.0 + 48.0
     );
 }
@@ -467,28 +475,30 @@ fn flush_discards_stale_measured_height_versions() {
 fn flush_below_viewport_heights_does_not_move_scroll_top() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
-    let before = runtime.scroll.global_scroll_top;
+    let before = runtime.layout.scroll.global_scroll_top;
 
     assert!(runtime.queue_measured_height(900, 1, 64.0).unwrap());
     assert!(runtime.queue_measured_height(901, 1, 72.0).unwrap());
     assert!(runtime.flush_pending_height_corrections().unwrap());
 
-    assert_eq!(runtime.scroll.global_scroll_top, before);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, before);
 }
 
 #[test]
 fn wheel_scroll_height_flush_preserves_user_scroll_top_without_bounce() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
     runtime.scroll_by_delta(-64.0).unwrap();
-    let before_scroll_top = runtime.scroll.global_scroll_top;
-    let before_total_height = runtime.height_index.total_height();
+    let before_scroll_top = runtime.layout.scroll.global_scroll_top;
+    let before_total_height = runtime.layout.height_index.total_height();
 
     assert!(runtime.queue_measured_height(1, 1, 64.0).unwrap());
     assert!(
@@ -497,22 +507,23 @@ fn wheel_scroll_height_flush_preserves_user_scroll_top_without_bounce() {
             .unwrap()
     );
 
-    assert_eq!(runtime.scroll.global_scroll_top, before_scroll_top);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, before_scroll_top);
     assert_eq!(
-        runtime.height_index.total_height(),
+        runtime.layout.height_index.total_height(),
         before_total_height + 32.0
     );
     assert_eq!(
-        runtime.scroll.model_total_height,
+        runtime.layout.scroll.model_total_height,
         runtime.scroll_extent_height(before_total_height + 32.0)
     );
-    assert!(runtime.pending_measured_heights.is_empty());
+    assert!(runtime.layout.pending_measured_heights.is_empty());
 }
 
 #[test]
 fn scrollbar_drag_freezes_displayed_total_and_defers_anchor_restore() {
     let mut runtime = runtime_with_paragraph_blocks(1_000);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(3_200.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
@@ -520,26 +531,29 @@ fn scrollbar_drag_freezes_displayed_total_and_defers_anchor_restore() {
         track_height: 720.0,
         ..ScrollbarPolicy::default()
     };
-    let before_scroll_top = runtime.scroll.global_scroll_top;
-    let before_total_height = runtime.scroll.displayed_total_height;
+    let before_scroll_top = runtime.layout.scroll.global_scroll_top;
+    let before_total_height = runtime.layout.scroll.displayed_total_height;
 
     let visual = runtime.begin_scrollbar_drag(policy);
     assert!(visual.enabled);
     assert!(runtime.queue_measured_height(1, 1, 64.0).unwrap());
     assert!(runtime.flush_pending_height_corrections().unwrap());
 
-    assert_eq!(runtime.scroll.global_scroll_top, before_scroll_top);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, before_scroll_top);
     assert_eq!(
-        runtime.scroll.model_total_height,
+        runtime.layout.scroll.model_total_height,
         runtime.scroll_extent_height(before_total_height + 32.0)
     );
-    assert_eq!(runtime.scroll.displayed_total_height, before_total_height);
+    assert_eq!(
+        runtime.layout.scroll.displayed_total_height,
+        before_total_height
+    );
 
     let end = runtime.finish_scrollbar_drag().unwrap().unwrap();
     assert_eq!(end.pending_layout_corrections, 1);
     assert_eq!(
-        runtime.scroll.displayed_total_height,
-        runtime.scroll.model_total_height
+        runtime.layout.scroll.displayed_total_height,
+        runtime.layout.scroll.model_total_height
     );
 }
 
@@ -560,8 +574,8 @@ fn scrollbar_drag_uses_frozen_total_height_for_thumb_mapping() {
 
     assert_eq!(update.drag_ratio, 1.0);
     assert_eq!(
-        runtime.scroll.global_scroll_top,
-        runtime.scroll.max_scroll_top()
+        runtime.layout.scroll.global_scroll_top,
+        runtime.layout.scroll.max_scroll_top()
     );
     assert!(runtime.finish_scrollbar_drag().unwrap().is_some());
 }
@@ -592,8 +606,8 @@ fn rich_text_height_updates_after_wrap() {
         updated.blocks[0].layout.measured_height,
         Some(measured_height)
     );
-    assert_eq!(runtime.height_index.total_height(), measured_height);
-    assert_eq!(runtime.page_layout.total_height(), measured_height);
+    assert_eq!(runtime.layout.height_index.total_height(), measured_height);
+    assert_eq!(runtime.layout.page_layout.total_height(), measured_height);
 }
 
 #[test]
@@ -603,25 +617,30 @@ fn document_runtime_scroll_by_delta_clamps_and_updates_page_window() {
 
     runtime.scroll_by_delta(50_000.0).unwrap();
 
-    assert_eq!(runtime.scroll.global_scroll_top, 50_000.0);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, 50_000.0);
     assert_ne!(runtime.current_page_window(), initial_window);
 
     runtime.scroll_by_delta(-100_000.0).unwrap();
-    assert_eq!(runtime.scroll.global_scroll_top, 0.0);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, 0.0);
 
     runtime.scroll_by_delta(10_000_000.0).unwrap();
     assert_eq!(
-        runtime.scroll.global_scroll_top,
-        runtime.scroll.max_scroll_top()
+        runtime.layout.scroll.global_scroll_top,
+        runtime.layout.scroll.max_scroll_top()
     );
 }
 
 #[test]
 fn projection_window_spacer_heights_sum_to_total() {
     let mut runtime = runtime_with_paragraph_blocks(100_000);
-    let middle_page = runtime.page_layout.page_count() / 2;
-    let middle_offset = runtime.page_layout.offset_of_page(middle_page).unwrap();
+    let middle_page = runtime.layout.page_layout.page_count() / 2;
+    let middle_offset = runtime
+        .layout
+        .page_layout
+        .offset_of_page(middle_page)
+        .unwrap();
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(
             middle_offset,
@@ -636,7 +655,8 @@ fn projection_window_spacer_heights_sum_to_total() {
 
     assert!(projection.before_window_height > 0.0);
     assert!(
-        (projected_total - runtime.scroll_extent_height(runtime.page_layout.total_height())).abs()
+        (projected_total - runtime.scroll_extent_height(runtime.layout.page_layout.total_height()))
+            .abs()
             < 0.001
     );
 }

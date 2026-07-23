@@ -8,7 +8,7 @@ fn move_block_subtree_before_moves_children_and_preserves_total_height() {
         (RichBlockKind::NumberedList, 0, None),
         (RichBlockKind::NumberedList, 0, None),
     ]);
-    let total_height = runtime.height_index.total_height();
+    let total_height = runtime.layout.height_index.total_height();
     let before_version = runtime.document.index.structure_version;
 
     assert!(runtime.move_block_subtree_before(1, Some(4)).unwrap());
@@ -19,7 +19,7 @@ fn move_block_subtree_before_moves_children_and_preserves_total_height() {
     assert_eq!(runtime.document.index.parent_ids[2], Some(1));
     assert_eq!(runtime.document.index.depths[1], 0);
     assert_eq!(runtime.document.index.depths[2], 1);
-    assert_eq!(runtime.height_index.total_height(), total_height);
+    assert_eq!(runtime.layout.height_index.total_height(), total_height);
     let projection = runtime.full_projection_for_tests();
     assert_eq!(
         projection.blocks[0].chrome.prefix,
@@ -45,22 +45,26 @@ fn move_block_subtree_commit_preserves_scroll_top_and_total_height() {
         (RichBlockKind::BulletedList, 0, None),
     ]);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(96.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
-    let before_scroll_top = runtime.scroll.global_scroll_top;
-    let before_total_height = runtime.height_index.total_height();
+    let before_scroll_top = runtime.layout.scroll.global_scroll_top;
+    let before_total_height = runtime.layout.height_index.total_height();
 
     assert!(runtime.move_block_subtree_before(1, Some(4)).unwrap());
 
-    assert_eq!(runtime.scroll.global_scroll_top, before_scroll_top);
-    assert_eq!(runtime.height_index.total_height(), before_total_height);
+    assert_eq!(runtime.layout.scroll.global_scroll_top, before_scroll_top);
     assert_eq!(
-        runtime.scroll.model_total_height,
+        runtime.layout.height_index.total_height(),
+        before_total_height
+    );
+    assert_eq!(
+        runtime.layout.scroll.model_total_height,
         runtime.scroll_extent_height(before_total_height)
     );
     assert_eq!(
-        runtime.scroll.displayed_total_height,
+        runtime.layout.scroll.displayed_total_height,
         runtime.scroll_extent_height(before_total_height)
     );
 }
@@ -72,7 +76,7 @@ fn move_block_subtree_to_parent_reparents_and_updates_depth_delta() {
         (RichBlockKind::Paragraph, 0, None),
         (RichBlockKind::Todo { checked: false }, 1, Some(2)),
     ]);
-    let total_height = runtime.height_index.total_height();
+    let total_height = runtime.layout.height_index.total_height();
 
     assert!(runtime.move_block_subtree_to_parent(2, Some(1), 0).unwrap());
 
@@ -81,7 +85,7 @@ fn move_block_subtree_to_parent_reparents_and_updates_depth_delta() {
     assert_eq!(runtime.document.index.depths[1], 1);
     assert_eq!(runtime.document.index.parent_ids[2], Some(2));
     assert_eq!(runtime.document.index.depths[2], 2);
-    assert_eq!(runtime.height_index.total_height(), total_height);
+    assert_eq!(runtime.layout.height_index.total_height(), total_height);
     let projection = runtime.full_projection_for_tests();
     assert!(projection.blocks[0].chrome.has_children);
     assert_eq!(projection.blocks[1].chrome.list_info.depth, 1);

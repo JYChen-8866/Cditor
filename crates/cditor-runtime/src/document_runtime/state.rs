@@ -2,6 +2,7 @@ use super::ai::RuntimeAiSession;
 use super::document_state::DocumentState;
 use super::editing_state::EditingState;
 use super::history_state::HistoryState;
+use super::layout_state::LayoutState;
 use super::selection_state::SelectionState;
 use super::*;
 
@@ -9,11 +10,8 @@ use super::*;
 pub struct DocumentRuntime {
     pub document_id: DocumentId,
     pub(super) document: DocumentState,
-    pub height_index: BlockHeightIndex,
-    pub page_layout: PageLayoutIndex,
-    pub scroll: VirtualScrollState,
+    pub(super) layout: LayoutState,
     pub(super) editing: EditingState,
-    pub(super) table_horizontal_scroll_offsets: HashMap<BlockId, f32>,
     pub(super) selection: SelectionState,
     pub(super) ai_session: Option<RuntimeAiSession>,
     pub(super) next_ai_request_id: u64,
@@ -21,20 +19,6 @@ pub struct DocumentRuntime {
     pub(super) pending_structure_transactions: Vec<EditTransaction>,
     pub(super) last_committed_transaction_id: Option<u64>,
     pub(super) next_transaction_id: u64,
-    pub(super) payload_window_generation: u64,
-    pub(super) window_planner: WindowPlanner,
-    pub(super) last_planned_scroll_top: f64,
-    pub(super) window_plan_clock_ms: u64,
-    pub(super) window_memory_pressure: WindowMemoryPressure,
-    pub(super) pending_measured_heights: HashMap<BlockId, PendingMeasuredHeight>,
-    pub(super) layout_dirty: bool,
-    pub(super) scrollbar_drag: Option<ScrollbarDragSession>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct PendingMeasuredHeight {
-    pub(super) content_version: u64,
-    pub(super) height: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

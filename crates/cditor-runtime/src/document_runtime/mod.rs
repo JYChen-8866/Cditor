@@ -25,6 +25,7 @@ mod history_state;
 mod inline_color;
 mod inline_format;
 mod layout_heights;
+mod layout_state;
 mod local_transaction;
 mod markdown_paste;
 mod markdown_transaction;
@@ -93,6 +94,7 @@ use self::{
         HistoryState, RuntimeUndoEvent, TextSnapshot, TypingUndoGroup, TypingUndoRequest,
         UndoScrollSnapshot,
     },
+    layout_state::{LayoutState, PendingMeasuredHeight},
     selection::FocusedTextSelection,
     table::TableRuntime,
 };
@@ -146,9 +148,9 @@ use cditor_import_export::markdown::{
 };
 use cditor_viewport::debug_overlay::DebugOverlaySnapshot;
 use cditor_viewport::scroll::{
-    CaretAnchor, HeightCorrectionPriority, PendingHeightCorrection, ScrollOrigin, ScrollbarDragEnd,
-    ScrollbarDragSession, ScrollbarDragUpdate, ScrollbarPolicy, ScrollbarVisualState,
-    VirtualScrollState,
+    CaretAnchor, HeightCorrectionPriority, PendingHeightCorrection, ScrollAccumulator,
+    ScrollOrigin, ScrollbarDragEnd, ScrollbarDragSession, ScrollbarDragUpdate, ScrollbarPolicy,
+    ScrollbarVisualState, VirtualScrollState,
 };
 use cditor_viewport::window::{
     PlaceholderWindow, RenderWindow, ScrollDirection, WindowPlanDecision, WindowPlanRequest,
@@ -203,8 +205,8 @@ fn trace_block_color(event: &str, details: impl std::fmt::Display) {
 pub use selection::RichTextSelectionSnapshot;
 pub use state::{DocumentRuntime, GlobalScrollTarget};
 use state::{
-    EnterSplitMode, FocusedInnerSelection, FocusedTableCell, PendingMeasuredHeight,
-    TypingMarkOverride, VisualCaretPosition,
+    EnterSplitMode, FocusedInnerSelection, FocusedTableCell, TypingMarkOverride,
+    VisualCaretPosition,
 };
 pub use table::TableClipboardSnapshot;
 

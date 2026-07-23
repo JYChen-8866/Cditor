@@ -25,8 +25,8 @@ impl CditorV2View {
         let block_id = self
             .infer_document_viewport_origin()
             .and_then(|viewport_origin| {
-                let document_y = f32::from(position.y) as f64 - viewport_origin.y
-                    + runtime.scroll.global_scroll_top;
+                let document_y =
+                    f32::from(position.y) as f64 - viewport_origin.y + runtime.global_scroll_top();
                 projected_block_at_document_y(&self.projected_block_rects, document_y)
             })
             .or_else(|| {
@@ -99,7 +99,7 @@ impl CditorV2View {
             .unwrap_or(f64::NAN);
         let delta = crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
             pointer_y,
-            runtime.scroll.viewport_height,
+            runtime.viewport_height(),
         );
         if delta.abs() < f64::EPSILON {
             return;
@@ -138,7 +138,7 @@ impl CditorV2View {
         };
         let delta = crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
             pointer_y,
-            runtime.scroll.viewport_height,
+            runtime.viewport_height(),
         );
         if delta.abs() < f64::EPSILON || runtime.scroll_by_delta(delta).is_err() {
             return false;

@@ -57,7 +57,27 @@ impl DocumentRuntime {
     }
 
     pub fn pending_layout_task_count(&self) -> usize {
-        self.pending_measured_heights.len()
+        self.layout.pending_measured_heights.len()
+    }
+
+    pub fn global_scroll_top(&self) -> f64 {
+        self.layout.scroll.global_scroll_top
+    }
+
+    pub fn viewport_height(&self) -> f64 {
+        self.layout.scroll.viewport_height
+    }
+
+    pub fn model_total_height(&self) -> f64 {
+        self.layout.scroll.model_total_height
+    }
+
+    pub fn page_layout_total_height(&self) -> f64 {
+        self.layout.page_layout.total_height()
+    }
+
+    pub fn page_layout_snapshot(&self) -> PageLayoutIndex {
+        self.layout.page_layout.clone()
     }
 
     pub fn block_layout_version(&self, block_id: BlockId) -> Option<u64> {
@@ -66,7 +86,7 @@ impl DocumentRuntime {
     }
 
     pub fn estimated_document_height(&self) -> f64 {
-        self.height_index.total_height()
+        self.layout.height_index.total_height()
     }
 
     pub fn estimated_payload_memory_bytes(&self) -> usize {

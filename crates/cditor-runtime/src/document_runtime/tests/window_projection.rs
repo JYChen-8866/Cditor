@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn planned_window_hysteresis_keeps_boundary_window_stable() {
     let mut runtime = runtime_with_paragraph_blocks(3_000);
-    runtime.window_planner = WindowPlanner::new(
+    runtime.layout.window_planner = WindowPlanner::new(
         0,
         0,
         WindowPlannerPolicy {
@@ -13,8 +13,9 @@ fn planned_window_hysteresis_keeps_boundary_window_stable() {
             ..WindowPlannerPolicy::default()
         },
     );
-    let first_page_height = runtime.page_layout.pages[0].height;
+    let first_page_height = runtime.layout.page_layout.pages[0].height;
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(
             first_page_height - 10.0,
@@ -23,6 +24,7 @@ fn planned_window_hysteresis_keeps_boundary_window_stable() {
         .unwrap();
     let initial = runtime.current_page_window_planned();
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(
             first_page_height + 10.0,
@@ -37,17 +39,22 @@ fn planned_window_hysteresis_keeps_boundary_window_stable() {
 #[test]
 fn planned_window_keeps_focused_page_pinned() {
     let mut runtime = runtime_with_paragraph_blocks(10_000);
-    runtime.window_planner = WindowPlanner::new(0, 0, WindowPlannerPolicy::default());
+    runtime.layout.window_planner = WindowPlanner::new(0, 0, WindowPlannerPolicy::default());
     runtime.focus_block(1);
-    let target_page = runtime.page_layout.page_count() - 1;
-    let offset = runtime.page_layout.offset_of_page(target_page).unwrap();
+    let target_page = runtime.layout.page_layout.page_count() - 1;
+    let offset = runtime
+        .layout
+        .page_layout
+        .offset_of_page(target_page)
+        .unwrap();
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(offset, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
 
     let planned = runtime.current_page_window_planned();
-    let focused_page = runtime.page_layout.page_for_block_index(0).unwrap();
+    let focused_page = runtime.layout.page_layout.page_for_block_index(0).unwrap();
     assert!(planned.contains(&focused_page));
     assert!(planned.contains(&target_page));
 }
@@ -56,9 +63,10 @@ fn planned_window_keeps_focused_page_pinned() {
 fn planned_projection_separates_render_payload_and_layout_prefetch_ranges() {
     let mut runtime = runtime_with_paragraph_blocks(3_500);
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(
-            runtime.height_index.offset_of_block(2_000).unwrap(),
+            runtime.layout.height_index.offset_of_block(2_000).unwrap(),
             cditor_viewport::scroll::ScrollOrigin::UserWheel,
         )
         .unwrap();
@@ -147,6 +155,7 @@ fn scrollbar_drag_projects_the_target_placeholder_for_live_loading() {
         .retain(|block_id, _| *block_id <= 64);
 
     runtime
+        .layout
         .scroll
         .scroll_to_global_offset(20_000.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
@@ -193,7 +202,7 @@ fn projection_uses_placeholder_window_when_payload_window_is_not_loaded() {
         projection.before_window_height
             + projection.placeholder_window_height.unwrap_or_default()
             + projection.after_window_height,
-        runtime.scroll_extent_height(runtime.page_layout.total_height())
+        runtime.scroll_extent_height(runtime.layout.page_layout.total_height())
     );
 }
 

@@ -151,7 +151,7 @@ impl CditorV2View {
             rect.document_top,
             rect.text_origin_x_in_block_px,
             rect.text_origin_y_in_block_px,
-            runtime.scroll.global_scroll_top,
+            runtime.global_scroll_top(),
         );
         let input = RichTextLayoutInput {
             block_id,
@@ -207,8 +207,7 @@ fn viewport_origin_for_block(
     }
     Some(FallbackViewportOrigin {
         x: f32::from(cache.bounds.left()) as f64 - rect.text_origin_x_in_block_px,
-        y: f32::from(cache.bounds.top()) as f64 - rect.document_top
-            + runtime.scroll.global_scroll_top
+        y: f32::from(cache.bounds.top()) as f64 - rect.document_top + runtime.global_scroll_top()
             - rect.text_origin_y_in_block_px,
     })
 }

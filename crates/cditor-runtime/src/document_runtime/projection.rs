@@ -67,11 +67,12 @@ impl DocumentRuntime {
             return render_range.clone();
         }
         let velocity = self
+            .layout
             .window_planner
             .debug_overlay()
             .last_velocity_viewports_per_second;
         let velocity_steps = ((velocity.abs() / 3.0).floor() as usize).min(4);
-        let (base, velocity_step) = match self.window_memory_pressure {
+        let (base, velocity_step) = match self.layout.window_memory_pressure {
             WindowMemoryPressure::Normal => (128usize, 64usize),
             WindowMemoryPressure::Warning => (48usize, 32usize),
             WindowMemoryPressure::Critical => (0usize, 0usize),
@@ -102,7 +103,7 @@ impl DocumentRuntime {
     #[cfg(test)]
     pub(crate) fn full_projection_for_tests(&self) -> EditorViewProjection {
         self.projection_for_ranges(
-            0..self.page_layout.page_count(),
+            0..self.layout.page_layout.page_count(),
             0..self.document.visible_index.total_visible_count(),
         )
     }
@@ -113,13 +114,16 @@ impl DocumentRuntime {
             return (0..0, 0..0);
         }
         let current = self
-            .target_for_global_offset(self.scroll.global_scroll_top)
+            .target_for_global_offset(self.layout.scroll.global_scroll_top)
             .map(|target| target.block_index)
             .unwrap_or(0)
             .min(total_visible - 1);
         let viewport_end = self
+            .layout
             .height_index
-            .block_at_offset(self.scroll.global_scroll_top + self.scroll.viewport_height)
+            .block_at_offset(
+                self.layout.scroll.global_scroll_top + self.layout.scroll.viewport_height,
+            )
             .map(|hit| hit.index)
             .unwrap_or(current)
             .min(total_visible - 1);
@@ -131,16 +135,18 @@ impl DocumentRuntime {
             .min(start.saturating_add(max_blocks))
             .max(start + 1);
         let start_page = self
+            .layout
             .page_layout
             .page_for_block_index(start)
             .unwrap_or(0)
-            .min(self.page_layout.page_count().saturating_sub(1));
+            .min(self.layout.page_layout.page_count().saturating_sub(1));
         let end_page = self
+            .layout
             .page_layout
             .page_for_block_index(end.saturating_sub(1))
             .unwrap_or(start_page)
             .saturating_add(1)
-            .min(self.page_layout.page_count());
+            .min(self.layout.page_layout.page_count());
         (
             start_page..end_page.max(start_page.saturating_add(1)),
             start..end,
@@ -185,7 +191,7 @@ impl DocumentRuntime {
 
     fn block_range_for_page_window(&self, page_range: &Range<usize>) -> Range<usize> {
         let total_visible = self.document.visible_index.total_visible_count();
-        let page_count = self.page_layout.page_count();
+        let page_count = self.layout.page_layout.page_count();
         if page_range.is_empty() || page_count == 0 || total_visible == 0 {
             return 0..0;
         }
@@ -196,10 +202,10 @@ impl DocumentRuntime {
             return 0..0;
         }
 
-        let start = self.page_layout.pages[start_page]
+        let start = self.layout.page_layout.pages[start_page]
             .block_start
             .min(total_visible);
-        let end = self.page_layout.pages[end_page - 1]
+        let end = self.layout.page_layout.pages[end_page - 1]
             .block_end()
             .min(total_visible);
         start..end.max(start)
@@ -410,17 +416,19 @@ impl DocumentRuntime {
             })
             .collect::<Vec<_>>();
         let before_window_height = self
+            .layout
             .height_index
             .offset_of_block(render_window.block_range.start)
             .unwrap_or(0.0);
         let window_height = render_window.height();
         let down_placer_height = self.down_placer_height();
-        let after_window_height = (self.scroll_extent_height(self.page_layout.total_height())
+        let after_window_height = (self
+            .scroll_extent_height(self.layout.page_layout.total_height())
             - before_window_height
             - window_height)
             .max(0.0);
         let debug = DebugOverlaySnapshot::from_scroll_state(
-            &self.scroll,
+            &self.layout.scroll,
             0,
             render_window.page_range.clone(),
         )
@@ -431,7 +439,7 @@ impl DocumentRuntime {
         EditorViewProjection {
             document_id: self.document_id,
             viewport_revision: 0,
-            scroll: self.scroll,
+            scroll: self.layout.scroll,
             render_window,
             payload_prefetch_block_range: block_range.clone(),
             layout_prefetch_page_range: page_range.clone(),
@@ -491,6 +499,7 @@ impl DocumentRuntime {
     ) -> EditorViewProjection {
         let total_visible_blocks = self.document.visible_index.total_visible_count();
         let before_window_height = self
+            .layout
             .height_index
             .offset_of_block(block_range.start)
             .unwrap_or(0.0);
@@ -523,7 +532,7 @@ impl DocumentRuntime {
             block_range: block_range.clone(),
             height: placeholder_height,
             target_anchor: self
-                .target_for_global_offset(self.scroll.global_scroll_top)
+                .target_for_global_offset(self.layout.scroll.global_scroll_top)
                 .map(|target| cditor_viewport::scroll::ScrollAnchor {
                     block_id: target.block_id,
                     offset_in_block: target.offset_in_block,
@@ -531,12 +540,13 @@ impl DocumentRuntime {
                 }),
         });
         let down_placer_height = self.down_placer_height();
-        let after_window_height = (self.scroll_extent_height(self.page_layout.total_height())
+        let after_window_height = (self
+            .scroll_extent_height(self.layout.page_layout.total_height())
             - before_window_height
             - placeholder_height)
             .max(0.0);
         let debug = DebugOverlaySnapshot::from_scroll_state(
-            &self.scroll,
+            &self.layout.scroll,
             0,
             render_window.page_range.clone(),
         )
@@ -544,7 +554,7 @@ impl DocumentRuntime {
         EditorViewProjection {
             document_id: self.document_id,
             viewport_revision: 0,
-            scroll: self.scroll,
+            scroll: self.layout.scroll,
             render_window,
             payload_prefetch_block_range: block_range.clone(),
             layout_prefetch_page_range: page_range.clone(),
@@ -562,10 +572,18 @@ impl DocumentRuntime {
     }
 
     fn height_for_block_range(&self, block_range: &Range<usize>) -> f64 {
-        let start = block_range.start.min(self.height_index.len());
-        let end = block_range.end.min(self.height_index.len()).max(start);
-        let start_offset = self.height_index.offset_of_block(start).unwrap_or(0.0);
+        let start = block_range.start.min(self.layout.height_index.len());
+        let end = block_range
+            .end
+            .min(self.layout.height_index.len())
+            .max(start);
+        let start_offset = self
+            .layout
+            .height_index
+            .offset_of_block(start)
+            .unwrap_or(0.0);
         let end_offset = self
+            .layout
             .height_index
             .offset_of_block(end)
             .unwrap_or(start_offset);

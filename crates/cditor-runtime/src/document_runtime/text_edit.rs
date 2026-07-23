@@ -299,20 +299,25 @@ impl DocumentRuntime {
 
         self.document.index.layout_meta[document_index].update_height(next_height);
         let height_change = self
+            .layout
             .height_index
             .update_height(visible_index, next_height)
             .map_err(|error| error.to_string())?;
-        if let Some(page_index) = self.page_layout.page_for_block_index(visible_index) {
-            let next_page_height = self.page_layout.pages[page_index].height + height_change.delta;
-            self.page_layout
+        if let Some(page_index) = self.layout.page_layout.page_for_block_index(visible_index) {
+            let next_page_height =
+                self.layout.page_layout.pages[page_index].height + height_change.delta;
+            self.layout
+                .page_layout
                 .update_page_height(page_index, next_page_height)
                 .map_err(|error| error.to_string())?;
         }
-        let total_height = self.scroll_extent_height(self.page_layout.total_height());
-        self.scroll
+        let total_height = self.scroll_extent_height(self.layout.page_layout.total_height());
+        self.layout
+            .scroll
             .set_model_total_height(total_height)
             .map_err(|error| error.to_string())?;
-        self.scroll
+        self.layout
+            .scroll
             .set_displayed_total_height(total_height)
             .map_err(|error| error.to_string())?;
         Ok(true)
