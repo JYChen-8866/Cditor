@@ -1068,6 +1068,7 @@ dependencies = [
  "cditor-core",
  "cditor-editor-protocol",
  "cditor-runtime",
+ "cditor-viewport",
 ]
 
 [[package]]

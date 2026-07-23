@@ -4,8 +4,10 @@
 //! it through a cloneable, same-thread handle that exposes typed protocol
 //! operations without returning runtime borrows.
 
+mod render_port;
 mod session;
 
+pub use render_port::{RenderFrameRequest, RenderFrameSnapshot};
 pub use session::{
     EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError, SessionSnapshot,
 };

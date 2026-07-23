@@ -61,9 +61,9 @@ impl std::error::Error for SessionRealtimeError {}
 /// synchronously on its UI thread; future hosts can bind the same request
 /// boundary to a different session runner.
 pub struct EditorSession {
-    id: SessionId,
-    runtime: DocumentRuntime,
-    readonly: bool,
+    pub(crate) id: SessionId,
+    pub(crate) runtime: DocumentRuntime,
+    pub(crate) readonly: bool,
 }
 
 impl EditorSession {
@@ -129,7 +129,7 @@ fn command_mutability(envelope: &CommandEnvelope) -> Option<CommandMutability> {
 
 #[derive(Clone)]
 pub struct EditorSessionHandle {
-    inner: Rc<RefCell<EditorSession>>,
+    pub(crate) inner: Rc<RefCell<EditorSession>>,
 }
 
 impl EditorSessionHandle {
@@ -178,7 +178,7 @@ impl EditorSessionHandle {
         Ok(session.snapshot())
     }
 
-    fn try_session_mut(&self) -> Result<RefMut<'_, EditorSession>, ProtocolError> {
+    pub(crate) fn try_session_mut(&self) -> Result<RefMut<'_, EditorSession>, ProtocolError> {
         self.inner.try_borrow_mut().map_err(|_| busy_error())
     }
 }
