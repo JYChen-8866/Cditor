@@ -49,10 +49,14 @@ impl CditorV2View {
             command,
             GuiInputCommand::UndoFocusedBlock | GuiInputCommand::RedoFocusedBlock
         ) {
-            let redo = matches!(command, GuiInputCommand::RedoFocusedBlock);
-            let _ = self.execute_history_action(
+            let editor_command = if matches!(command, GuiInputCommand::RedoFocusedBlock) {
+                cditor_editor_protocol::command::CditorCommand::Redo
+            } else {
+                cditor_editor_protocol::command::CditorCommand::Undo
+            };
+            let _ = self.dispatch_command(
+                editor_command,
                 cditor_editor_protocol::command::CommandSource::Keyboard,
-                redo,
                 cx,
             );
             return;

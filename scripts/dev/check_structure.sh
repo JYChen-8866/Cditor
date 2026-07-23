@@ -210,6 +210,18 @@ if [ -n "$direct_caret_navigation_violations" ]; then
   exit 1
 fi
 
+direct_history_router_violations=$(
+  grep -R -n -E '\.execute_history_action\(' \
+    --include='*.rs' crates/cditor-editor/src/app \
+    --exclude='command_router.rs' \
+    --exclude='persistence_bridge.rs' || true
+)
+if [ -n "$direct_history_router_violations" ]; then
+  echo 'error: Editor history commands must enter through dispatch_command:' >&2
+  echo "$direct_history_router_violations" >&2
+  exit 1
+fi
+
 printable_keydown_violations=$(
   grep -R -n -E 'InsertChar|InsertSpaceOrMarkdownShortcut' --include='*.rs' crates/cditor-editor/src || true
 )

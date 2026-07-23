@@ -201,11 +201,13 @@ impl CditorV2View {
     }
 
     pub fn sdk_undo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
-        self.execute_history_action(CommandSource::Sdk, false, cx)
+        self.dispatch_command(CditorCommand::Undo, CommandSource::Sdk, cx)
+            .map(|outcome| outcome.changed())
     }
 
     pub fn sdk_redo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError> {
-        self.execute_history_action(CommandSource::Sdk, true, cx)
+        self.dispatch_command(CditorCommand::Redo, CommandSource::Sdk, cx)
+            .map(|outcome| outcome.changed())
     }
 
     pub fn sdk_document_info(&self) -> Option<DocumentInfo> {
