@@ -4,11 +4,16 @@
 //! it through a cloneable, same-thread handle that exposes typed protocol
 //! operations without returning runtime borrows.
 
+mod history_port;
 mod render_port;
 mod session;
 mod toolbar_snapshot;
 mod ui_snapshot;
 
+pub use history_port::{
+    HistoryActionSnapshot, HistoryDirection, project_history_action,
+    project_hydrated_history_action,
+};
 pub use render_port::{
     RenderFrameRequest, RenderFrameSnapshot, RenderFrameWarnings, activate_resident_payload_window,
     apply_table_horizontal_scroll_offset, plan_payload_window_load, project_render_frame,

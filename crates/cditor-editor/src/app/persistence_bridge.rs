@@ -2,6 +2,10 @@ use gpui::{AppContext, Context};
 
 use cditor_runtime::content::payload_window::{PayloadWindowLoadRequest, PayloadWindowLoadResult};
 use cditor_runtime::{SelectionMaterializationApplyDecision, SelectionMaterializationRequest};
+use cditor_session::{
+    HistoryActionSnapshot, HistoryDirection, project_history_action,
+    project_hydrated_history_action,
+};
 use cditor_storage::{StorageError, StorageSession, block_on_storage};
 
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
@@ -13,7 +17,9 @@ use crate::persistence::{
 use cditor_api::CditorError;
 use cditor_api::event::CditorEvent;
 use cditor_core::edit::ChangeOrigin;
-use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
+use cditor_editor_protocol::command::CommandSource;
+#[cfg(test)]
+use cditor_editor_protocol::command::{CommandEnvelope, EditorCommand};
 
 impl CditorV2View {
     pub(crate) fn schedule_selection_materialization(
@@ -101,47 +107,35 @@ impl CditorV2View {
         if self.readonly {
             return Err(CditorError::Readonly);
         }
-        let runtime = self.ready_runtime().ok_or(CditorError::NotReady)?;
-        let command = if redo {
-            EditorCommand::Redo
+        let direction = if redo {
+            HistoryDirection::Redo
         } else {
-            EditorCommand::Undo
+            HistoryDirection::Undo
         };
-        let result = runtime
-            .dispatch(CommandEnvelope::new(command, source))
-            .map(|outcome| outcome.changed())
-            .map_err(|error| error.message);
+        let result = project_history_action(
+            self.ready_runtime().ok_or(CditorError::NotReady)?,
+            source,
+            direction,
+        );
         let origin = if redo {
             ChangeOrigin::Redo
         } else {
             ChangeOrigin::Undo
         };
         match result {
-            Ok(changed) => {
+            Ok(HistoryActionSnapshot::Applied(snapshot)) => {
+                let changed = snapshot.outcome.changed();
                 if changed {
-                    let revision = self
-                        .ready_runtime_ref()
-                        .map(cditor_runtime::DocumentRuntime::revision)
-                        .ok_or(CditorError::NotReady)?;
-                    self.mark_dirty_at_revision(origin, revision, cx);
+                    self.mark_dirty_at_revision(origin, snapshot.revision, cx);
                     cx.notify();
                 }
                 Ok(changed)
             }
-            Err(error) => {
-                let reference = self.ready_runtime_ref().and_then(|runtime| {
-                    if redo {
-                        runtime.pending_redo_hydration()
-                    } else {
-                        runtime.pending_undo_hydration()
-                    }
-                });
-                let Some(reference) = reference else {
-                    return Err(CditorError::Internal(error));
-                };
+            Ok(HistoryActionSnapshot::HydrationRequired { reference, .. }) => {
                 self.schedule_history_hydration(reference, source, redo, cx)?;
                 Ok(false)
             }
+            Err(error) => Err(CditorError::Internal(error.message)),
         }
     }
 
@@ -183,43 +177,39 @@ impl CditorV2View {
                 let replay = match result {
                     Ok(transaction) => match view.ready_runtime() {
                         Some(runtime) => {
-                            if !runtime.hydrate_external_undo(reference.snapshot_id, transaction) {
-                                Err("undo reference changed while hydrating".to_owned())
+                            let direction = if redo {
+                                HistoryDirection::Redo
                             } else {
-                                let command = if redo {
-                                    EditorCommand::Redo
-                                } else {
-                                    EditorCommand::Undo
-                                };
-                                runtime
-                                    .dispatch(CommandEnvelope::new(command, source))
-                                    .map(|outcome| outcome.changed())
-                                    .map_err(|error| error.message)
-                            }
+                                HistoryDirection::Undo
+                            };
+                            project_hydrated_history_action(
+                                runtime,
+                                &reference,
+                                transaction,
+                                source,
+                                direction,
+                            )
+                            .map(|snapshot| (snapshot.outcome.changed(), snapshot.revision))
+                            .map_err(|error| error.message)
                         }
                         None => Err("editor runtime is no longer ready".to_owned()),
                     },
                     Err(error) => Err(error),
                 };
                 match replay {
-                    Ok(true) => {
+                    Ok((true, revision)) => {
                         let origin = if redo {
                             ChangeOrigin::Redo
                         } else {
                             ChangeOrigin::Undo
                         };
-                        if let Some(revision) = view
-                            .ready_runtime_ref()
-                            .map(cditor_runtime::DocumentRuntime::revision)
-                        {
-                            view.mark_dirty_at_revision(origin, revision, cx);
-                        }
+                        view.mark_dirty_at_revision(origin, revision, cx);
                         cx.emit(CditorEvent::HistoryHydrationSucceeded {
                             snapshot_id: reference.snapshot_id,
                             redo,
                         });
                     }
-                    Ok(false) => cx.emit(CditorEvent::HistoryHydrationFailed {
+                    Ok((false, _)) => cx.emit(CditorEvent::HistoryHydrationFailed {
                         snapshot_id: reference.snapshot_id,
                         redo,
                         error: CditorError::Internal(
