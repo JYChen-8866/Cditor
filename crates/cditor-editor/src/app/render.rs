@@ -36,7 +36,10 @@ use crate::persistence::{EditorLoadStateLabel, render_load_state, render_readonl
 use crate::scroll::HeightCorrectionPriority;
 use crate::theme::GuiTheme;
 use cditor_runtime::AiRequestPresentation;
-use cditor_session::{RenderFrameRequest, project_render_frame};
+use cditor_session::{
+    RenderFrameRequest, activate_resident_payload_window, apply_table_horizontal_scroll_offset,
+    plan_payload_window_load, project_render_frame,
+};
 
 impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -568,14 +571,14 @@ impl Render for CditorV2View {
             && let Some(runtime) = self.ready_runtime()
         {
             for (block_id, offset_x) in pending_table_scroll_offsets {
-                let _ = runtime.set_table_horizontal_scroll_offset_px(block_id, offset_x);
+                let _ = apply_table_horizontal_scroll_offset(runtime, block_id, offset_x);
             }
         }
         if let (Some(session), Some(block_range)) =
             (payload_storage_session, pending_payload_window_range)
         {
             let activated_resident_window = self.ready_runtime().is_some_and(|runtime| {
-                runtime.activate_payload_window_if_resident(block_range.clone())
+                activate_resident_payload_window(runtime, block_range.clone())
             });
             if activated_resident_window {
                 // This frame was projected before the cached range became active.
@@ -587,9 +590,9 @@ impl Render for CditorV2View {
                     .request(std::time::Instant::now())
                 {
                     crate::persistence::PayloadWindowLoadSchedule::DispatchNow => {
-                        pending_payload_window_load = self.ready_runtime().and_then(|runtime| {
-                            runtime.plan_payload_window_load_if_needed(block_range)
-                        });
+                        pending_payload_window_load = self
+                            .ready_runtime()
+                            .and_then(|runtime| plan_payload_window_load(runtime, block_range));
                     }
                     crate::persistence::PayloadWindowLoadSchedule::WakeAfter(delay) => {
                         self.schedule_storage_payload_window_wake(delay, cx);

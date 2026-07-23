@@ -82,30 +82,31 @@ impl EditorSessionHandle {
         block_id: cditor_core::ids::BlockId,
         offset_x: f32,
     ) -> Result<bool, ProtocolError> {
-        self.try_session_mut()?
-            .runtime
-            .set_table_horizontal_scroll_offset_px(block_id, offset_x)
-            .map_err(render_error)
+        apply_table_horizontal_scroll_offset(
+            &mut self.try_session_mut()?.runtime,
+            block_id,
+            offset_x,
+        )
     }
 
     pub fn activate_resident_payload_window(
         &self,
         block_range: Range<usize>,
     ) -> Result<bool, ProtocolError> {
-        Ok(self
-            .try_session_mut()?
-            .runtime
-            .activate_payload_window_if_resident(block_range))
+        Ok(activate_resident_payload_window(
+            &mut self.try_session_mut()?.runtime,
+            block_range,
+        ))
     }
 
     pub fn plan_payload_window_load(
         &self,
         block_range: Range<usize>,
     ) -> Result<Option<PayloadWindowLoadRequest>, ProtocolError> {
-        Ok(self
-            .try_session_mut()?
-            .runtime
-            .plan_payload_window_load_if_needed(block_range))
+        Ok(plan_payload_window_load(
+            &mut self.try_session_mut()?.runtime,
+            block_range,
+        ))
     }
 
     pub fn loaded_payload_record(
@@ -115,6 +116,30 @@ impl EditorSessionHandle {
         let session = self.inner.try_borrow().map_err(|_| session_busy())?;
         Ok(session.runtime.block_payload_record(block_id))
     }
+}
+
+pub fn apply_table_horizontal_scroll_offset(
+    runtime: &mut cditor_runtime::DocumentRuntime,
+    block_id: cditor_core::ids::BlockId,
+    offset_x: f32,
+) -> Result<bool, ProtocolError> {
+    runtime
+        .set_table_horizontal_scroll_offset_px(block_id, offset_x)
+        .map_err(render_error)
+}
+
+pub fn activate_resident_payload_window(
+    runtime: &mut cditor_runtime::DocumentRuntime,
+    block_range: Range<usize>,
+) -> bool {
+    runtime.activate_payload_window_if_resident(block_range)
+}
+
+pub fn plan_payload_window_load(
+    runtime: &mut cditor_runtime::DocumentRuntime,
+    block_range: Range<usize>,
+) -> Option<PayloadWindowLoadRequest> {
+    runtime.plan_payload_window_load_if_needed(block_range)
 }
 
 fn render_error(message: String) -> ProtocolError {
@@ -155,5 +180,28 @@ mod tests {
         assert_eq!(frame.scrollbar_visual.track_height, 720.0);
         assert_eq!(frame.projection.scroll.viewport_height, 720.0);
         assert_eq!(frame.warnings, RenderFrameWarnings::default());
+    }
+
+    #[test]
+    fn table_scroll_mutation_stays_behind_the_session_port() {
+        let runtime = DocumentRuntime::large_mixed_demo();
+        let table_id = runtime
+            .visible_block_ids()
+            .iter()
+            .copied()
+            .find(|block_id| {
+                matches!(
+                    runtime.block_kind(*block_id),
+                    Some(cditor_core::rich_text::RichBlockKind::Table)
+                )
+            })
+            .expect("demo fixture contains a table");
+        let handle = EditorSession::new(runtime, false).into_handle();
+
+        assert!(
+            handle
+                .set_table_horizontal_scroll_offset(table_id, -24.0)
+                .unwrap()
+        );
     }
 }
