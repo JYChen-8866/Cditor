@@ -236,6 +236,7 @@ impl DocumentRuntime {
             self.document.payload_window.insert(record);
             if let Some(editing) = self
                 .editing
+                .session
                 .as_mut()
                 .filter(|editing| editing.block_id == *block_id)
             {
@@ -290,10 +291,10 @@ impl DocumentRuntime {
         self.remap_focused_table_cell_after_table_operations(&transaction.ops);
 
         // focus/selection 指向已删除块时清理（不变量：selection 指向存在的块）。
-        if let Some(editing) = &self.editing
+        if let Some(editing) = &self.editing.session
             && self.document.index.index_of(editing.block_id).is_none()
         {
-            self.editing = None;
+            self.editing.session = None;
             self.selection.focused_text_selection = None;
         }
         if let Some(cell) = self.selection.focused_table_cell

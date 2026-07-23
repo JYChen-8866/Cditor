@@ -41,7 +41,7 @@ impl DocumentRuntime {
     }
 
     pub(super) fn input_session_is_current(&self) -> bool {
-        let Some(editing) = self.editing.as_ref() else {
+        let Some(editing) = self.editing.session.as_ref() else {
             return false;
         };
         self.block_content_version(editing.block_id)
@@ -50,7 +50,12 @@ impl DocumentRuntime {
 
     pub fn input_session_target(&self) -> Option<InputTarget> {
         self.input_session_is_current()
-            .then(|| self.editing.as_ref().map(|editing| editing.input_target))
+            .then(|| {
+                self.editing
+                    .session
+                    .as_ref()
+                    .map(|editing| editing.input_target)
+            })
             .flatten()
     }
 
@@ -58,6 +63,7 @@ impl DocumentRuntime {
         self.input_session_is_current()
             .then(|| {
                 self.editing
+                    .session
                     .as_ref()
                     .map(EditingSession::input_session_identity)
             })
@@ -68,6 +74,7 @@ impl DocumentRuntime {
         self.input_session_is_current()
             .then(|| {
                 self.editing
+                    .session
                     .as_ref()
                     .map(|editing| editing.selected_range.clone())
             })
@@ -78,6 +85,7 @@ impl DocumentRuntime {
         self.input_session_is_current()
             && self
                 .editing
+                .session
                 .as_ref()
                 .is_some_and(|editing| editing.selection_reversed)
     }
@@ -86,6 +94,7 @@ impl DocumentRuntime {
         self.input_session_is_current()
             .then(|| {
                 self.editing
+                    .session
                     .as_ref()
                     .and_then(|editing| editing.marked_range.clone())
             })
@@ -134,7 +143,7 @@ impl DocumentRuntime {
         if self.focused_block_id() != Some(focus_block_id) {
             self.focus_block(focus_block_id);
         }
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::BlockText {
                 block_id: focus_block_id,
             });
@@ -155,7 +164,7 @@ impl DocumentRuntime {
         } else {
             None
         };
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             if anchor_block_id == focus_block_id {
                 let range = anchor_offset.min(focus_offset)..anchor_offset.max(focus_offset);
                 if range.is_empty() {
@@ -174,7 +183,7 @@ impl DocumentRuntime {
         {
             self.selection.document_selection = None;
             self.selection.focused_text_selection = None;
-            if let Some(editing) = self.editing.as_mut() {
+            if let Some(editing) = self.editing.session.as_mut() {
                 editing.set_collapsed_selection(focus_offset);
             }
         }
@@ -236,7 +245,7 @@ impl DocumentRuntime {
             self.selection.document_selection = None;
             self.selection.focused_text_selection = None;
             self.selection.selected_block_ids.insert(block_id);
-            if let Some(editing) = self.editing.as_mut() {
+            if let Some(editing) = self.editing.session.as_mut() {
                 editing.set_input_target(InputTarget::BlockText { block_id });
                 editing.set_collapsed_selection(0);
             }
@@ -250,7 +259,7 @@ impl DocumentRuntime {
             anchor: TextPosition::downstream(block_id, 0),
             focus: TextPosition::downstream(block_id, len),
         });
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::BlockText { block_id });
             editing.set_selected_range(0..len, false);
         }
@@ -324,7 +333,7 @@ impl DocumentRuntime {
             anchor: TextPosition::downstream(first_block_id, 0),
             focus: TextPosition::downstream(last_block_id, last_offset),
         });
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             let caret = editing.focus_offset();
             editing.set_collapsed_selection(caret);
         }
@@ -348,7 +357,7 @@ impl DocumentRuntime {
         self.selection.focused_table_cell = None;
         self.selection.focused_text_selection = None;
         self.selection.document_selection = None;
-        let editing = self.editing.as_mut()?;
+        let editing = self.editing.session.as_mut()?;
         let target = editing.input_target;
         editing.set_input_target(target);
         if len == 0 {

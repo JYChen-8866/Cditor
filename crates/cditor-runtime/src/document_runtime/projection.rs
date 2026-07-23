@@ -389,8 +389,8 @@ impl DocumentRuntime {
                     selection_range,
                     selection_overlay: selection_overlay_blocks.contains(block_id),
                     focused: self.focused_block_id() == Some(*block_id),
-                    caret_offset: self
-                        .editing
+                    caret_offset: self.editing
+                        .session
                         .as_ref()
                         .filter(|editing| editing.block_id == *block_id)
                         .map(EditingSession::focus_offset),
@@ -401,8 +401,8 @@ impl DocumentRuntime {
                     table_view,
                     focused_table_cell,
                     focused_table_cell_offset,
-                    pinned: self
-                        .editing
+                    pinned: self.editing
+                        .session
                         .as_ref()
                         .is_some_and(|editing| editing.is_pinned(*block_id)),
                     placeholder,

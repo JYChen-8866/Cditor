@@ -83,7 +83,7 @@ impl DocumentRuntime {
 
     pub fn document_selection_snapshot(&self) -> Option<DocumentSelection> {
         self.selection.document_selection.or_else(|| {
-            let editing = self.editing.as_ref()?;
+            let editing = self.editing.session.as_ref()?;
             let InputTarget::BlockText { block_id } = editing.input_target else {
                 return None;
             };

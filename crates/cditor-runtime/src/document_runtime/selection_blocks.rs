@@ -40,7 +40,7 @@ impl DocumentRuntime {
                 self.selection.selected_block_ids.insert(block_id);
             }
         }
-        self.editing = None;
+        self.editing.session = None;
         true
     }
 }

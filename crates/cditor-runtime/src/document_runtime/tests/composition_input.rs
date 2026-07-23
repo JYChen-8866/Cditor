@@ -15,7 +15,7 @@ fn document_text_selection_updates_input_session_selection_truth() {
 
     runtime.set_document_text_selection(1, 5, 1, 2).unwrap();
 
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(editing.input_target, InputTarget::BlockText { block_id: 1 });
     assert_eq!(editing.selected_range, 2..5);
     assert!(editing.selection_reversed);
@@ -37,13 +37,13 @@ fn caret_movement_updates_input_session_selection_truth() {
 
     runtime.move_caret_right(true).unwrap();
 
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(editing.selected_range, 3..4);
     assert!(!editing.selection_reversed);
 
     runtime.move_caret_left(false).unwrap();
 
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(editing.selected_range, 3..3);
     assert!(!editing.selection_reversed);
 }
@@ -157,13 +157,14 @@ fn composition_preview_does_not_commit_until_commit() {
         runtime.active_composition_marked_range(),
         Some(1.."a中".len())
     );
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(editing.input_target, InputTarget::BlockText { block_id: 1 });
     assert_eq!(editing.selected_range, "a中".len().."a中".len());
     assert_eq!(editing.marked_range, Some(1.."a中".len()));
     assert_eq!(
         runtime
             .editing
+            .session
             .as_ref()
             .unwrap()
             .composition
@@ -180,7 +181,15 @@ fn composition_preview_does_not_commit_until_commit() {
         panic!("payload should be loaded");
     };
     assert_eq!(payload.plain_text(), "a中b");
-    assert!(runtime.editing.as_ref().unwrap().composition.is_none());
+    assert!(
+        runtime
+            .editing
+            .session
+            .as_ref()
+            .unwrap()
+            .composition
+            .is_none()
+    );
     assert_eq!(
         runtime.input_session_selected_range(),
         Some("a中".len().."a中".len())
@@ -370,7 +379,7 @@ fn table_cell_composition_preview_and_commit_stay_inside_cell() {
         projection.blocks[0].focused_table_cell_offset,
         Some("a中".len())
     );
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(
         editing.input_target,
         InputTarget::TableCell {
@@ -616,7 +625,7 @@ fn table_cell_replace_text_prioritizes_active_composition() {
         runtime.focused_table_cell_offset(),
         Some((1, 0, 0, "a文".len()))
     );
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(
         editing.input_target,
         InputTarget::TableCell {

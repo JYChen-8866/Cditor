@@ -46,6 +46,7 @@ impl DocumentRuntime {
                         .unwrap_or(text.len()),
                     InputTarget::ImageCaption { .. } | InputTarget::CollectionTitle { .. } => self
                         .editing
+                        .session
                         .as_ref()
                         .map(EditingSession::focus_offset)
                         .unwrap_or(text.len()),

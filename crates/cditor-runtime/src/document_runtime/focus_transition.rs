@@ -12,7 +12,7 @@ impl DocumentRuntime {
         &mut self,
         next_target: InputTarget,
     ) -> Result<CompositionFocusTransition, String> {
-        let Some(editing) = self.editing.as_ref() else {
+        let Some(editing) = self.editing.session.as_ref() else {
             return Ok(CompositionFocusTransition::NoComposition);
         };
         if editing.composition.is_none() {
@@ -55,6 +55,7 @@ impl DocumentRuntime {
     pub(crate) fn commit_composition_before_external_focus(&mut self) -> Result<bool, String> {
         if self
             .editing
+            .session
             .as_ref()
             .is_none_or(|editing| editing.composition.is_none())
         {

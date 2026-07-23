@@ -16,6 +16,7 @@ mod composition;
 mod constructors;
 mod document_state;
 mod domain_state;
+mod editing_state;
 mod focus;
 mod focus_transition;
 mod folding;

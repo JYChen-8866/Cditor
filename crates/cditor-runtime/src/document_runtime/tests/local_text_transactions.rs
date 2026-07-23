@@ -171,10 +171,10 @@ fn forbidden_hot_path_work_fails_before_undo_typing_or_document_mutation() {
     let mut runtime = paragraph_runtime("hello");
     runtime.focus_block_at_offset(1, 2).unwrap();
     runtime.selection.selected_block_ids.insert(1);
-    runtime.hot_path.forbidden_sync_work.sqlite_write = true;
+    runtime.editing.hot_path.forbidden_sync_work.sqlite_write = true;
     let before_payload = runtime.block_payload_record(1).unwrap();
     let before_model = runtime.document.text_models.get(&1).unwrap().clone();
-    let before_editing = runtime.editing.clone();
+    let before_editing = runtime.editing.session.clone();
     let before_undo_stacks = runtime.undo_stacks.clone();
     let before_redo_stacks = runtime.redo_stacks.clone();
     let before_undo_events = runtime.undo_events.clone();
@@ -190,7 +190,7 @@ fn forbidden_hot_path_work_fails_before_undo_typing_or_document_mutation() {
     assert!(error.contains("ForbiddenSyncWork(\"sqlite_write\")"));
     assert_eq!(runtime.block_payload_record(1).unwrap(), before_payload);
     assert_eq!(runtime.document.text_models.get(&1), Some(&before_model));
-    assert_eq!(runtime.editing, before_editing);
+    assert_eq!(runtime.editing.session, before_editing);
     assert_eq!(runtime.undo_stacks, before_undo_stacks);
     assert_eq!(runtime.redo_stacks, before_redo_stacks);
     assert_eq!(runtime.undo_events, before_undo_events);

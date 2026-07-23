@@ -368,7 +368,7 @@ fn select_all_copy_cut_paste_and_inline_mark_work_on_focused_text() {
         }
         _ => panic!("expected rich text payload"),
     }
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(editing.input_target, InputTarget::BlockText { block_id: 3 });
     assert_eq!(editing.selected_range, 0..selected.len());
 

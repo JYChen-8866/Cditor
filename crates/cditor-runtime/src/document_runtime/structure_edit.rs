@@ -386,6 +386,7 @@ impl DocumentRuntime {
         }
         if let Some(editing) = self
             .editing
+            .session
             .as_mut()
             .filter(|editing| editing.block_id == block_id)
         {

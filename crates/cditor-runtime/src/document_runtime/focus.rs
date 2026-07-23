@@ -103,12 +103,15 @@ impl DocumentRuntime {
             editing.set_collapsed_selection(0);
         }
 
-        self.editing = Some(editing);
+        self.editing.session = Some(editing);
         Ok(())
     }
 
     pub fn focused_block_id(&self) -> Option<BlockId> {
-        self.editing.as_ref().map(|editing| editing.block_id)
+        self.editing
+            .session
+            .as_ref()
+            .map(|editing| editing.block_id)
     }
 
     pub fn first_visible_block_id(&self) -> Option<BlockId> {
@@ -131,6 +134,7 @@ impl DocumentRuntime {
 
     pub fn caret_offset_for_block(&self, block_id: BlockId) -> Option<usize> {
         self.editing
+            .session
             .as_ref()
             .filter(|editing| editing.block_id == block_id)
             .map(EditingSession::focus_offset)
@@ -238,7 +242,7 @@ impl DocumentRuntime {
         );
         editing.set_input_target(input_target);
         editing.set_collapsed_selection(text_len);
-        self.editing = Some(editing);
+        self.editing.session = Some(editing);
         Ok(())
     }
 
@@ -251,8 +255,8 @@ impl DocumentRuntime {
     }
 
     pub(super) fn allocate_input_session_id(&mut self) -> u64 {
-        let session_id = self.next_input_session_id;
-        self.next_input_session_id = self.next_input_session_id.saturating_add(1);
+        let session_id = self.editing.next_input_session_id;
+        self.editing.next_input_session_id = self.editing.next_input_session_id.saturating_add(1);
         session_id
     }
 
@@ -312,7 +316,7 @@ impl DocumentRuntime {
         let Some(focused) = self.selection.focused_table_cell.take() else {
             return Ok(false);
         };
-        if let Some(editing) = self.editing.as_mut()
+        if let Some(editing) = self.editing.session.as_mut()
             && editing.block_id == focused.block_id
         {
             editing.set_input_target(next_target);
@@ -350,7 +354,7 @@ impl DocumentRuntime {
                 .with_selected_range(offset..offset, false)
                 .with_marked_range(None);
         }
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::TableCell { block_id, row, col });
             editing.set_collapsed_selection(offset);
         }
@@ -391,7 +395,7 @@ impl DocumentRuntime {
                 .with_selected_range(selected_range.clone(), selection_reversed)
                 .with_marked_range(None);
         }
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::TableCell {
                 block_id: focused.block_id,
                 row: focused.row,
@@ -428,6 +432,7 @@ impl DocumentRuntime {
         let input_target = InputTarget::BlockText { block_id };
         if self
             .editing
+            .session
             .as_ref()
             .is_some_and(|editing| editing.input_target == input_target)
             && self.prepare_input_focus_transition(input_target)?
@@ -438,6 +443,7 @@ impl DocumentRuntime {
         self.break_typing_coalescing();
         if self
             .editing
+            .session
             .as_ref()
             .is_none_or(|editing| editing.input_target != input_target)
         {
@@ -455,7 +461,11 @@ impl DocumentRuntime {
             )
         };
         let previous_caret = self.caret_offset_for_block(block_id);
-        let editing = self.editing.as_mut().expect("editing session exists");
+        let editing = self
+            .editing
+            .session
+            .as_mut()
+            .expect("editing session exists");
         editing.set_input_target(InputTarget::BlockText { block_id });
         editing.set_collapsed_selection(offset);
         self.selection.document_selection = None;

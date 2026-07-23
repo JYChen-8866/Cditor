@@ -154,7 +154,7 @@ fn undo_and_redo_restore_block_kind_style_snapshot() {
         panic!("payload should be loaded");
     };
     assert_eq!(payload.plain_text(), "");
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(editing.input_target, InputTarget::BlockText { block_id: 1 });
     assert_eq!(editing.selected_range, 0..0);
 }

@@ -166,16 +166,19 @@ impl DocumentRuntime {
                 .filter(|focused| focused.block_id == block_id),
             input_target: self
                 .editing
+                .session
                 .as_ref()
                 .filter(|editing| editing.block_id == block_id)
                 .map(|editing| editing.input_target),
             selected_range: self
                 .editing
+                .session
                 .as_ref()
                 .filter(|editing| editing.block_id == block_id)
                 .map(|editing| editing.selected_range.clone()),
             selection_reversed: self
                 .editing
+                .session
                 .as_ref()
                 .filter(|editing| editing.block_id == block_id)
                 .is_some_and(|editing| editing.selection_reversed),
@@ -312,7 +315,7 @@ impl DocumentRuntime {
     pub(crate) fn break_typing_coalescing(&mut self) {
         self.pending_typing_undo = None;
         self.typing_undo_group = None;
-        self.typing_mark_override = None;
+        self.editing.typing_mark_override = None;
     }
 
     pub(super) fn restore_snapshot(
@@ -380,7 +383,7 @@ impl DocumentRuntime {
                 }
             }
         }
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.content_version = snapshot.content_version;
             if let Some(range) = selected_range {
                 editing.set_selected_range(range, selection_reversed);
@@ -445,7 +448,7 @@ impl DocumentRuntime {
             self.selection.document_selection = None;
             self.selection.focused_text_selection = None;
             self.selection.focused_table_cell = None;
-            self.editing = None;
+            self.editing.session = None;
         }
     }
 
@@ -484,7 +487,7 @@ impl DocumentRuntime {
             focused.marked_range_end = None;
         }
         self.selection.focused_table_cell = Some(focused);
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::TableCell {
                 block_id,
                 row: focused.row,

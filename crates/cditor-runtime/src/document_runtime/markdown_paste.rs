@@ -137,6 +137,7 @@ impl DocumentRuntime {
 
         let caret = self
             .editing
+            .session
             .as_ref()
             .map(EditingSession::focus_offset)
             .unwrap_or(text.len());
@@ -238,7 +239,7 @@ impl DocumentRuntime {
         );
 
         // Update editing session
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_collapsed_selection(inserted.end);
         }
 
@@ -246,6 +247,7 @@ impl DocumentRuntime {
         if let Some(payload) = self.document.payload_window.payloads.get_mut(&block_id) {
             payload.content_version = self
                 .editing
+                .session
                 .as_ref()
                 .map(|e| e.content_version)
                 .unwrap_or(payload.content_version + 1);

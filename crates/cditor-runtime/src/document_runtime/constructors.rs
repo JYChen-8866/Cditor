@@ -1,4 +1,5 @@
 use super::document_state::DocumentState;
+use super::editing_state::EditingState;
 use super::selection_state::SelectionState;
 use super::*;
 
@@ -245,7 +246,10 @@ impl DocumentRuntime {
             height_index,
             page_layout,
             scroll,
-            editing: None,
+            editing: EditingState {
+                next_input_session_id: 1,
+                ..EditingState::default()
+            },
             table_horizontal_scroll_offsets: HashMap::new(),
             selection: SelectionState::default(),
             ai_session: None,
@@ -255,14 +259,11 @@ impl DocumentRuntime {
             external_undo_stack: UndoStack::default(),
             typing_undo_group: None,
             pending_typing_undo: None,
-            typing_mark_override: None,
             undo_events: Vec::new(),
             redo_events: Vec::new(),
             pending_structure_transactions: Vec::new(),
             last_committed_transaction_id: None,
             next_transaction_id: 1,
-            next_input_session_id: 1,
-            hot_path: SingleCharInputHotPath::default(),
             payload_window_generation: 0,
             window_planner: WindowPlanner::new(1, 2, WindowPlannerPolicy::default()),
             last_planned_scroll_top: 0.0,

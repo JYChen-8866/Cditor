@@ -236,7 +236,7 @@ fn delete_backward_uses_caret_offset() {
     };
     assert_eq!(payload.plain_text(), "ab");
     assert_eq!(projection.blocks[0].caret_offset, Some(1));
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(editing.input_target, InputTarget::BlockText { block_id: 1 });
     assert_eq!(editing.selected_range, 1..1);
     assert_eq!(runtime.input_session_selected_range(), Some(1..1));

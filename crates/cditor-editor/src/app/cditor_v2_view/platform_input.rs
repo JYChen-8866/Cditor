@@ -288,12 +288,10 @@ mod tests {
             view.platform_input_session_identity = view
                 .ready_runtime_ref()
                 .and_then(DocumentRuntime::input_session_identity);
-            view.ready_runtime()
-                .unwrap()
-                .editing
+            view.platform_input_session_identity
                 .as_mut()
                 .unwrap()
-                .content_version += 1;
+                .target_generation += 1;
 
             assert!(!view.commit_document_composition_before_external_focus(cx));
             assert!(!view.dirty);
@@ -302,8 +300,13 @@ mod tests {
                 crate::persistence::EditorSaveStatus::Failed(_)
             ));
             let runtime = view.ready_runtime_ref().unwrap();
-            assert!(runtime.editing.as_ref().unwrap().composition.is_some());
-            assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "ab");
+            assert!(runtime.active_composition().is_some());
+            let committed = runtime
+                .loaded_payload_records_snapshot()
+                .into_iter()
+                .find(|record| record.block_id == 1)
+                .unwrap();
+            assert_eq!(committed.plain_text(), "ab");
         });
     }
 }

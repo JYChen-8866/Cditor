@@ -287,7 +287,11 @@ impl DocumentRuntime {
             let inserted = model
                 .replace_range(range, text)
                 .map_err(|error| format!("{error:?}"))?;
-            let editing = self.editing.as_mut().expect("editing session exists");
+            let editing = self
+                .editing
+                .session
+                .as_mut()
+                .expect("editing session exists");
             editing.content_version += 1;
             editing.set_input_target(InputTarget::BlockText { block_id });
             editing.set_collapsed_selection(inserted.end);

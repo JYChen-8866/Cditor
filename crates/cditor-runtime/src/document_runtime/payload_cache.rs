@@ -37,7 +37,7 @@ impl DocumentRuntime {
             self.document.payload_window.touch(block_id);
         }
 
-        if let Some(editing) = self.editing.as_ref() {
+        if let Some(editing) = self.editing.session.as_ref() {
             protected.extend(editing.pinned_blocks().iter().copied());
         }
         if let Some(first) = self

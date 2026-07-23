@@ -34,7 +34,11 @@ fn test_whiteboard_focus_creates_complex_input_target() {
     runtime.focus_block(wb_id);
 
     // Check that input target is ComplexBlock, not BlockText
-    let input_target = runtime.editing.as_ref().map(|editing| editing.input_target);
+    let input_target = runtime
+        .editing
+        .session
+        .as_ref()
+        .map(|editing| editing.input_target);
     assert!(
         matches!(
             input_target,
@@ -134,7 +138,11 @@ fn test_mermaid_source_focuses_as_text_and_enter_inserts_newline() {
         .focus_block_at_offset(1, source.len())
         .expect("mermaid source should accept a caret");
     assert!(matches!(
-        runtime.editing.as_ref().map(|editing| editing.input_target),
+        runtime
+            .editing
+            .session
+            .as_ref()
+            .map(|editing| editing.input_target),
         Some(crate::editing::session::InputTarget::BlockText { block_id: 1 })
     ));
 

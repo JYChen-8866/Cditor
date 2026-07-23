@@ -23,6 +23,7 @@ impl DocumentRuntime {
             };
             let caret = self
                 .editing
+                .session
                 .as_ref()
                 .map(EditingSession::focus_offset)
                 .unwrap_or(text.len())

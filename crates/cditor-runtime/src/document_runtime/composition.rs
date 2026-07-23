@@ -3,6 +3,7 @@ use super::*;
 impl DocumentRuntime {
     pub fn has_pending_composition(&self) -> bool {
         self.editing
+            .session
             .as_ref()
             .is_some_and(|editing| editing.composition.is_some())
     }
@@ -11,7 +12,7 @@ impl DocumentRuntime {
         if !self.input_session_is_current() {
             return None;
         }
-        self.editing.as_ref()?.composition.as_ref()
+        self.editing.session.as_ref()?.composition.as_ref()
     }
 
     pub fn composition_preview_text(&self) -> Option<String> {
@@ -133,10 +134,15 @@ impl DocumentRuntime {
         self.selection.focused_text_selection = None;
         let previous_target = self
             .editing
+            .session
             .as_ref()
             .map(|editing| editing.input_target)
             .expect("editing session exists");
-        let editing = self.editing.as_mut().expect("editing session exists");
+        let editing = self
+            .editing
+            .session
+            .as_mut()
+            .expect("editing session exists");
         if let Some(focused) = self
             .selection
             .focused_table_cell
@@ -183,13 +189,13 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn cancel_composition(&mut self) {
-        let restore = self.editing.as_ref().and_then(|editing| {
+        let restore = self.editing.session.as_ref().and_then(|editing| {
             editing
                 .composition
                 .as_ref()
                 .map(|composition| (editing.input_target, composition.base_selection))
         });
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.clear_composition();
         }
         let Some((target, base_selection)) = restore else {
@@ -224,6 +230,7 @@ impl DocumentRuntime {
     pub(crate) fn commit_composition(&mut self) -> Result<bool, String> {
         let Some(composition) = self
             .editing
+            .session
             .as_ref()
             .and_then(|editing| editing.composition.clone())
         else {
@@ -246,6 +253,7 @@ impl DocumentRuntime {
     ) -> Result<(), String> {
         let editing = self
             .editing
+            .session
             .as_ref()
             .ok_or_else(|| "active composition has no editing session".to_owned())?;
         if editing.block_id != composition.block_id {
@@ -349,7 +357,7 @@ impl DocumentRuntime {
     }
 
     fn capture_composition_base_selection(&self, block_id: BlockId) -> CompositionBaseSelection {
-        let Some(editing) = self.editing.as_ref() else {
+        let Some(editing) = self.editing.session.as_ref() else {
             return CompositionBaseSelection::default();
         };
         if let Some(cell) = self
@@ -398,7 +406,7 @@ impl DocumentRuntime {
         } else {
             selected.end
         };
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::BlockText { block_id });
             if selected.is_empty() {
                 editing.set_collapsed_selection(focus_offset);
@@ -438,6 +446,7 @@ impl DocumentRuntime {
             });
         let content_version = self
             .editing
+            .session
             .as_ref()
             .map(|editing| editing.content_version)
             .unwrap_or_default();
@@ -465,7 +474,7 @@ impl DocumentRuntime {
                 .with_affinity(base.affinity)
                 .with_marked_range(None);
         }
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::TableCell { block_id, row, col });
             if selected.is_empty() {
                 editing.set_collapsed_selection(selected.start);
@@ -484,7 +493,7 @@ impl DocumentRuntime {
         base: CompositionBaseSelection,
     ) {
         let selected = base.selected_range();
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(target);
             if selected.is_empty() {
                 editing.set_collapsed_selection(selected.start);

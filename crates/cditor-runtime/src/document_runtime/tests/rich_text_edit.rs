@@ -311,7 +311,7 @@ fn reversed_selection_projects_its_focus_endpoint_as_the_caret() {
 
     assert!(runtime.move_focused_caret_to_offset(1, 2, true).unwrap());
 
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(editing.selected_range, 2..5);
     assert!(editing.selection_reversed);
     assert_eq!(editing.focus_offset(), 2);

@@ -199,6 +199,7 @@ impl DocumentRuntime {
         };
         let caret = self
             .editing
+            .session
             .as_ref()
             .map(EditingSession::focus_offset)
             .unwrap_or_else(|| self.focused_text().map(str::len).unwrap_or(0));

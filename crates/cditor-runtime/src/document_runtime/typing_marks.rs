@@ -10,7 +10,8 @@ impl DocumentRuntime {
         surface_id: SurfaceId,
         offset: usize,
     ) -> Option<Vec<InlineMark>> {
-        self.typing_mark_override
+        self.editing
+            .typing_mark_override
             .as_ref()
             .filter(|override_| override_.surface_id == surface_id && override_.offset == offset)
             .map(|override_| override_.marks.clone())
@@ -22,7 +23,7 @@ impl DocumentRuntime {
         offset: usize,
         marks: Vec<InlineMark>,
     ) {
-        self.typing_mark_override = Some(TypingMarkOverride {
+        self.editing.typing_mark_override = Some(TypingMarkOverride {
             surface_id,
             offset,
             marks,
@@ -35,7 +36,7 @@ impl DocumentRuntime {
         previous_offset: usize,
         next_offset: usize,
     ) {
-        if let Some(override_) = self.typing_mark_override.as_mut()
+        if let Some(override_) = self.editing.typing_mark_override.as_mut()
             && override_.surface_id == surface_id
             && override_.offset == previous_offset
         {

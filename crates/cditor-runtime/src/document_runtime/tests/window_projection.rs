@@ -215,7 +215,7 @@ fn focus_block_at_offset_sets_caret_without_ui_truth() {
     assert_eq!(runtime.caret_offset_for_block(1), Some(2));
     let projection = runtime.projection_for_window();
     assert_eq!(projection.blocks[0].caret_offset, Some(2));
-    let editing = runtime.editing.as_ref().unwrap();
+    let editing = runtime.editing.session.as_ref().unwrap();
     assert_eq!(editing.input_target, InputTarget::BlockText { block_id: 1 });
     assert_eq!(editing.selected_range, 2..2);
     assert_eq!(editing.marked_range, None);

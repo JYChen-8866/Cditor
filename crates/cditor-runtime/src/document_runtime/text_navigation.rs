@@ -123,7 +123,7 @@ impl DocumentRuntime {
                     .with_selected_range(selection.clone(), reversed)
                     .with_marked_range(None);
             }
-            if let Some(editing) = self.editing.as_mut() {
+            if let Some(editing) = self.editing.session.as_mut() {
                 editing.set_input_target(InputTarget::TableCell {
                     block_id,
                     row: focused.row,
@@ -189,6 +189,7 @@ impl DocumentRuntime {
             .ok_or_else(|| format!("missing text model for block {block_id}"))?;
         let previous = self
             .editing
+            .session
             .as_ref()
             .map(EditingSession::focus_offset)
             .unwrap_or_else(|| model.len())
@@ -221,7 +222,7 @@ impl DocumentRuntime {
             self.selection.focused_text_selection = None;
             self.selection.document_selection = None;
         }
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::BlockText { block_id });
             if extend_selection {
                 if let Some(selection) = self.selection.focused_text_selection {
@@ -277,6 +278,7 @@ impl DocumentRuntime {
             .ok_or_else(|| format!("missing text model for block {block_id}"))?;
         let caret = self
             .editing
+            .session
             .as_ref()
             .map(EditingSession::focus_offset)
             .unwrap_or_else(|| model.len())
@@ -324,7 +326,7 @@ impl DocumentRuntime {
             self.selection.focused_text_selection = None;
             self.selection.document_selection = None;
         }
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::BlockText { block_id });
             if extend_selection {
                 if let Some(selection) = self.selection.focused_text_selection {

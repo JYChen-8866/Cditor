@@ -12,7 +12,7 @@ impl DocumentRuntime {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
-        if self.editing.is_none() {
+        if self.editing.session.is_none() {
             self.focus_block(block_id);
         }
         let Some(edit) = self.resolve_focused_text_edit(None) else {
@@ -54,7 +54,7 @@ impl DocumentRuntime {
         }
         self.selection.document_selection = None;
         self.selection.focused_text_selection = None;
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::BlockText { block_id });
             editing.set_collapsed_selection(next_offset);
         }
@@ -85,7 +85,7 @@ impl DocumentRuntime {
             return Ok(());
         }
         let block_id = self.focused_block_id().unwrap_or(1);
-        if self.editing.is_none() {
+        if self.editing.session.is_none() {
             self.focus_block(block_id);
         }
         if self.selection.focused_table_cell.is_none() && self.focused_block_is_table() {
@@ -99,6 +99,7 @@ impl DocumentRuntime {
                 .ok_or_else(|| format!("missing text model for block {block_id}"))?;
             let offset = self
                 .editing
+                .session
                 .as_ref()
                 .map(EditingSession::focus_offset)
                 .unwrap_or_else(|| model.len());
@@ -106,7 +107,8 @@ impl DocumentRuntime {
         };
         let surface_id = SurfaceId::Block(block_id);
         let typing_marks = self.typing_marks_for(surface_id, offset);
-        self.hot_path
+        self.editing
+            .hot_path
             .preflight_insert_char(
                 self.document
                     .text_models
@@ -157,8 +159,13 @@ impl DocumentRuntime {
                 .text_models
                 .get_mut(&block_id)
                 .ok_or_else(|| format!("missing text model for block {block_id}"))?;
-            let editing = self.editing.as_mut().expect("editing session exists");
+            let editing = self
+                .editing
+                .session
+                .as_mut()
+                .expect("editing session exists");
             let result = self
+                .editing
                 .hot_path
                 .handle_insert_char_with_transaction(
                     editing,
@@ -317,6 +324,7 @@ impl DocumentRuntime {
         };
         let caret = self
             .editing
+            .session
             .as_ref()
             .map(EditingSession::focus_offset)
             .unwrap_or_else(|| self.focused_text().map(str::len).unwrap_or(0));
@@ -337,6 +345,7 @@ impl DocumentRuntime {
         };
         let caret = self
             .editing
+            .session
             .as_ref()
             .map(EditingSession::focus_offset)
             .unwrap_or(text.len())
@@ -387,6 +396,7 @@ impl DocumentRuntime {
         let text = text_model.text().to_owned();
         let caret = self
             .editing
+            .session
             .as_ref()
             .map(EditingSession::focus_offset)
             .unwrap_or_else(|| text.len());
@@ -463,6 +473,7 @@ impl DocumentRuntime {
         };
         let caret = self
             .editing
+            .session
             .as_ref()
             .map(EditingSession::focus_offset)
             .unwrap_or_else(|| model.len());

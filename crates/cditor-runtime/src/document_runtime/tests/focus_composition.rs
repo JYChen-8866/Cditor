@@ -17,14 +17,32 @@ fn same_text_surface_focus_preserves_active_composition_and_session() {
     runtime.focus_block_at_offset(1, 1).unwrap();
     runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
     let identity = runtime.input_session_identity().unwrap();
-    let selection = runtime.editing.as_ref().unwrap().selected_range.clone();
-    let marked = runtime.editing.as_ref().unwrap().marked_range.clone();
+    let selection = runtime
+        .editing
+        .session
+        .as_ref()
+        .unwrap()
+        .selected_range
+        .clone();
+    let marked = runtime
+        .editing
+        .session
+        .as_ref()
+        .unwrap()
+        .marked_range
+        .clone();
 
     runtime.focus_block_at_offset(1, 0).unwrap();
 
     assert_eq!(runtime.input_session_identity(), Some(identity));
-    assert_eq!(runtime.editing.as_ref().unwrap().selected_range, selection);
-    assert_eq!(runtime.editing.as_ref().unwrap().marked_range, marked);
+    assert_eq!(
+        runtime.editing.session.as_ref().unwrap().selected_range,
+        selection
+    );
+    assert_eq!(
+        runtime.editing.session.as_ref().unwrap().marked_range,
+        marked
+    );
     assert!(runtime.active_composition().is_some());
     assert_eq!(
         runtime.document.payload_window.get(1).unwrap().plain_text(),
@@ -59,7 +77,13 @@ fn failed_cross_surface_commit_preserves_original_focus_and_composition() {
     let mut runtime = two_paragraph_runtime();
     runtime.focus_block_at_offset(1, 1).unwrap();
     runtime.begin_or_update_composition(1, 1..1, "中").unwrap();
-    let selected_range = runtime.editing.as_ref().unwrap().selected_range.clone();
+    let selected_range = runtime
+        .editing
+        .session
+        .as_ref()
+        .unwrap()
+        .selected_range
+        .clone();
     runtime
         .document
         .payload_window
@@ -73,17 +97,33 @@ fn failed_cross_surface_commit_preserves_original_focus_and_composition() {
     assert!(error.contains("stale composition content version"));
     assert_eq!(runtime.focused_block_id(), Some(1));
     assert_eq!(
-        runtime.editing.as_ref().unwrap().selected_range,
+        runtime.editing.session.as_ref().unwrap().selected_range,
         selected_range
     );
-    assert!(runtime.editing.as_ref().unwrap().composition.is_some());
+    assert!(
+        runtime
+            .editing
+            .session
+            .as_ref()
+            .unwrap()
+            .composition
+            .is_some()
+    );
     assert_eq!(
         runtime.document.payload_window.get(1).unwrap().plain_text(),
         "ab"
     );
     assert!(runtime.undo_stacks.get(&1).is_none_or(Vec::is_empty));
     assert!(runtime.commit_composition_before_external_focus().is_err());
-    assert!(runtime.editing.as_ref().unwrap().composition.is_some());
+    assert!(
+        runtime
+            .editing
+            .session
+            .as_ref()
+            .unwrap()
+            .composition
+            .is_some()
+    );
 }
 
 #[test]

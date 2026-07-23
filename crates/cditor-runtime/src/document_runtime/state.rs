@@ -1,5 +1,6 @@
 use super::ai::RuntimeAiSession;
 use super::document_state::DocumentState;
+use super::editing_state::EditingState;
 use super::selection_state::SelectionState;
 use super::*;
 
@@ -10,7 +11,7 @@ pub struct DocumentRuntime {
     pub height_index: BlockHeightIndex,
     pub page_layout: PageLayoutIndex,
     pub scroll: VirtualScrollState,
-    pub editing: Option<EditingSession>,
+    pub(super) editing: EditingState,
     pub(super) table_horizontal_scroll_offsets: HashMap<BlockId, f32>,
     pub(super) selection: SelectionState,
     pub(super) ai_session: Option<RuntimeAiSession>,
@@ -20,14 +21,11 @@ pub struct DocumentRuntime {
     pub(super) external_undo_stack: UndoStack,
     pub(super) typing_undo_group: Option<TypingUndoGroup>,
     pub(super) pending_typing_undo: Option<TypingUndoRequest>,
-    pub(super) typing_mark_override: Option<TypingMarkOverride>,
     pub(super) undo_events: Vec<RuntimeUndoEvent>,
     pub(super) redo_events: Vec<RuntimeUndoEvent>,
     pub(super) pending_structure_transactions: Vec<EditTransaction>,
     pub(super) last_committed_transaction_id: Option<u64>,
     pub(super) next_transaction_id: u64,
-    pub(super) next_input_session_id: u64,
-    pub(super) hot_path: SingleCharInputHotPath,
     pub(super) payload_window_generation: u64,
     pub(super) window_planner: WindowPlanner,
     pub(super) last_planned_scroll_top: f64,

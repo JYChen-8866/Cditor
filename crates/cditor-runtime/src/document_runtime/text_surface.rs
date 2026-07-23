@@ -310,7 +310,7 @@ impl DocumentRuntime {
         );
         editing.set_input_target(target);
         editing.set_collapsed_selection(offset);
-        self.editing = Some(editing);
+        self.editing.session = Some(editing);
         Ok(())
     }
 
@@ -322,6 +322,7 @@ impl DocumentRuntime {
         (self.focused_text_surface_id() == Some(surface_id))
             .then(|| {
                 self.editing
+                    .session
                     .as_ref()
                     .map(crate::EditingSession::focus_offset)
             })
@@ -332,6 +333,7 @@ impl DocumentRuntime {
         (self.focused_text_surface_id() == Some(surface_id))
             .then(|| {
                 self.editing
+                    .session
                     .as_ref()
                     .map(|editing| editing.selected_range.clone())
             })
@@ -342,6 +344,7 @@ impl DocumentRuntime {
         (self.focused_text_surface_id() == Some(surface_id))
             .then(|| {
                 self.editing
+                    .session
                     .as_ref()
                     .and_then(|editing| editing.marked_range.clone())
             })
@@ -396,6 +399,7 @@ impl DocumentRuntime {
         let offset = super::normalized_grapheme_offset(&text, offset.min(text.len()));
         let editing = self
             .editing
+            .session
             .as_mut()
             .ok_or_else(|| "missing editing session".to_owned())?;
         let previous = editing.focus_offset();
@@ -430,6 +434,7 @@ impl DocumentRuntime {
         let text = snapshot.plain_text();
         let selection = self
             .editing
+            .session
             .as_ref()
             .map(|editing| editing.selected_range.clone())
             .unwrap_or_default();
@@ -440,6 +445,7 @@ impl DocumentRuntime {
         }
         let caret = self
             .editing
+            .session
             .as_ref()
             .map(crate::EditingSession::focus_offset)
             .unwrap_or(text.len());
@@ -534,7 +540,7 @@ impl DocumentRuntime {
         let rich_delta =
             delta.spans.len() > 1 || delta.spans.iter().any(|span| !span.marks.is_empty());
         let changed = if rich_delta {
-            if let Some(editing) = self.editing.as_mut() {
+            if let Some(editing) = self.editing.session.as_mut() {
                 editing.set_selected_range(normalized.clone(), false);
             }
             self.paste_clipboard_selection(
@@ -623,7 +629,7 @@ impl DocumentRuntime {
             record.content_version = record.content_version.saturating_add(1);
             record.content_version
         };
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.content_version = next_content_version;
             editing.set_input_target(target);
             editing.set_collapsed_selection(next_offset);
@@ -648,10 +654,11 @@ impl DocumentRuntime {
         }
         let selection = self
             .editing
+            .session
             .as_ref()
             .map(|editing| (editing.selected_range.clone(), editing.selection_reversed));
         self.apply_text_surface_format_transaction(surface_id, snapshot.spans, spans)?;
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(target);
             if let Some((range, reversed)) = selection {
                 editing.set_selected_range(range, reversed);

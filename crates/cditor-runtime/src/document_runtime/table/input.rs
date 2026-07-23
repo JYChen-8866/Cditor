@@ -71,7 +71,7 @@ impl DocumentRuntime {
         };
 
         self.document.text_models.remove(&focused.block_id);
-        if let Some(editing) = self.editing.as_mut()
+        if let Some(editing) = self.editing.session.as_mut()
             && editing.block_id == focused.block_id
         {
             editing.content_version = next_content_version;

@@ -102,7 +102,7 @@ impl DocumentRuntime {
             focused.col,
             0,
         ));
-        if let Some(editing) = self.editing.as_mut() {
+        if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::TableCell {
                 block_id: focused.block_id,
                 row: focused.row,

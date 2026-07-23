@@ -345,6 +345,7 @@ fn table_composition_preview_without_cell_focus_keeps_projection_payload_table()
     runtime.focus_block(10);
     runtime
         .editing
+        .session
         .as_mut()
         .unwrap()
         .update_composition(CompositionState {

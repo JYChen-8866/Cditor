@@ -61,6 +61,7 @@ impl DocumentRuntime {
         });
         if let Some(editing) = self
             .editing
+            .session
             .as_mut()
             .filter(|editing| editing.block_id == block_id)
         {
@@ -111,6 +112,7 @@ impl DocumentRuntime {
         }));
         if let Some(editing) = self
             .editing
+            .session
             .as_mut()
             .filter(|editing| editing.block_id == block_id)
         {
@@ -154,6 +156,7 @@ impl DocumentRuntime {
         let focused_selection = self.selection.focused_text_selection;
         let editing_selection = self
             .editing
+            .session
             .as_ref()
             .filter(|editing| editing.block_id == block_id)
             .map(|editing| (editing.selected_range.clone(), editing.selection_reversed));
@@ -165,6 +168,7 @@ impl DocumentRuntime {
         self.selection.focused_text_selection = focused_selection;
         if let (Some(editing), Some((selected_range, selection_reversed))) = (
             self.editing
+                .session
                 .as_mut()
                 .filter(|editing| editing.block_id == block_id),
             editing_selection,
