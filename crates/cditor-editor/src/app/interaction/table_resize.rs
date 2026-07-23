@@ -60,10 +60,13 @@ impl CditorV2View {
             current_size_px: current_size_px.max(TABLE_RESIZE_MIN_SIZE_PX),
         });
         if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
-                cditor_editor_protocol::command::CditorCommand::FocusBlock { block_id },
-                cditor_editor_protocol::command::CommandSource::Toolbar,
-            ));
+            let _ = cditor_session::project_command_dispatch(
+                runtime,
+                cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::CditorCommand::FocusBlock { block_id },
+                    cditor_editor_protocol::command::CommandSource::Toolbar,
+                ),
+            );
         }
         cx.notify();
     }

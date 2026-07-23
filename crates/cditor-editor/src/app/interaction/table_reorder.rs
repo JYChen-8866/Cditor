@@ -65,10 +65,13 @@ impl CditorV2View {
             exceeded_threshold: false,
         });
         if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
-                cditor_editor_protocol::command::CditorCommand::FocusBlock { block_id },
-                cditor_editor_protocol::command::CommandSource::Toolbar,
-            ));
+            let _ = cditor_session::project_command_dispatch(
+                runtime,
+                cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::CditorCommand::FocusBlock { block_id },
+                    cditor_editor_protocol::command::CommandSource::Toolbar,
+                ),
+            );
         }
         cx.notify();
     }

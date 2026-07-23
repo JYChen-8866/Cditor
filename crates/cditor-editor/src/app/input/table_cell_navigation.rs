@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use cditor_runtime::DocumentRuntime;
+use cditor_editor_protocol::command::{CditorCommand, TableCellNavigationDirection};
+use cditor_session::TableInteractionSnapshot;
 
 use crate::app::cditor_v2_view::TableCellLayoutKey;
 
@@ -8,7 +9,7 @@ use super::actions::BoundInputAction;
 
 pub(super) fn table_cell_parley_target(
     layouts: &HashMap<TableCellLayoutKey, crate::text::RichTextPlatformLayout>,
-    runtime: Option<&DocumentRuntime>,
+    context: Option<&TableInteractionSnapshot>,
     action: BoundInputAction,
     preferred_x: Option<(cditor_core::ids::SurfaceId, f32)>,
 ) -> (
@@ -47,13 +48,16 @@ pub(super) fn table_cell_parley_target(
         }
         _ => return (None, None),
     };
-    let Some(runtime) = runtime else {
+    let Some(focused) = context.and_then(|context| context.focused_cell.as_ref()) else {
         return (None, None);
     };
-    let Some((block_id, row, col, offset, affinity)) = runtime.focused_table_cell_text_position()
-    else {
-        return (None, None);
-    };
+    let (block_id, row, col, offset, affinity) = (
+        focused.block_id,
+        focused.row,
+        focused.col,
+        focused.offset,
+        focused.affinity,
+    );
     let surface_id = cditor_core::ids::SurfaceId::TableCell {
         block_id,
         row,
@@ -66,7 +70,7 @@ pub(super) fn table_cell_parley_target(
             preferred_x.filter(|(surface, _)| *surface == surface_id),
         );
     };
-    if Some(cache.content_version) != runtime.block_content_version(block_id) {
+    if cache.content_version != focused.block_content_version {
         record_unavailable_geometry();
         return (
             None,
@@ -75,21 +79,13 @@ pub(super) fn table_cell_parley_target(
     }
     let layout = &cache.snapshot;
     record_snapshot_geometry(TextGeometryOperation::Navigation);
-    let anchor_offset = runtime
-        .focused_table_cell_selection_state()
-        .filter(|(id, focused_row, focused_col, _, _, _)| {
-            (*id, *focused_row, *focused_col) == (block_id, row, col)
-        })
-        .map(|(_, _, _, range, reversed, _)| {
-            if range.is_empty() {
-                offset
-            } else if reversed {
-                range.end
-            } else {
-                range.start
-            }
-        })
-        .unwrap_or(offset);
+    let anchor_offset = if focused.selected_range.is_empty() {
+        offset
+    } else if focused.selection_reversed {
+        focused.selected_range.end
+    } else {
+        focused.selected_range.start
+    };
     let selection = ParleySelection {
         anchor: ParleyTextPosition::downstream(anchor_offset),
         focus: ParleyTextPosition { offset, affinity },
@@ -107,13 +103,13 @@ pub(super) fn table_cell_parley_target(
 
 pub(super) fn table_cell_vertical_selection_target(
     layouts: &HashMap<TableCellLayoutKey, crate::text::RichTextPlatformLayout>,
-    runtime: Option<&DocumentRuntime>,
+    context: Option<&TableInteractionSnapshot>,
     direction: i32,
 ) -> Option<usize> {
-    let runtime = runtime?;
-    let (block_id, row, col, caret) = runtime.focused_table_cell_offset()?;
+    let focused = context?.focused_cell.as_ref()?;
+    let (block_id, row, col, caret) = (focused.block_id, focused.row, focused.col, focused.offset);
     let cache = layouts.get(&TableCellLayoutKey { block_id, row, col })?;
-    if cache.content_version != runtime.block_content_version(block_id)? {
+    if cache.content_version != focused.block_content_version {
         return None;
     }
     let bounds = crate::text::platform_range_bounds(cache, caret..caret);
@@ -133,70 +129,54 @@ pub(super) fn table_cell_vertical_selection_target(
     })
 }
 
-pub(super) fn dispatch_table_cell_parley_selection(
-    runtime: &mut DocumentRuntime,
+pub(super) fn table_cell_parley_selection_command(
+    context: &TableInteractionSnapshot,
     position: crate::text::ParleyTextPosition,
     extend_selection: bool,
-) -> Option<bool> {
-    dispatch_table_cell_offset_selection(
-        runtime,
+) -> Option<CditorCommand> {
+    table_cell_offset_selection_command(
+        context,
         position.offset,
         position.affinity,
         extend_selection,
     )
 }
 
-pub(super) fn dispatch_table_cell_offset_selection(
-    runtime: &mut DocumentRuntime,
+pub(super) fn table_cell_offset_selection_command(
+    context: &TableInteractionSnapshot,
     focus_offset: usize,
     focus_affinity: cditor_core::edit::TextAffinity,
     extend_selection: bool,
-) -> Option<bool> {
-    let (block_id, row, col, caret, _) = runtime.focused_table_cell_text_position()?;
+) -> Option<CditorCommand> {
+    let focused = context.focused_cell.as_ref()?;
+    let (block_id, row, col, caret) = (focused.block_id, focused.row, focused.col, focused.offset);
     let anchor_offset = if extend_selection {
-        runtime
-            .focused_table_cell_selection_state()
-            .map(|(_, _, _, range, reversed, _)| {
-                if range.is_empty() {
-                    caret
-                } else if reversed {
-                    range.end
-                } else {
-                    range.start
-                }
-            })
-            .unwrap_or(caret)
+        if focused.selected_range.is_empty() {
+            caret
+        } else if focused.selection_reversed {
+            focused.selected_range.end
+        } else {
+            focused.selected_range.start
+        }
     } else {
         focus_offset
     };
-    runtime
-        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
-            cditor_editor_protocol::command::CditorCommand::SetTableCellSelection {
-                block_id,
-                row,
-                col,
-                anchor_offset,
-                focus_offset,
-                focus_affinity,
-            },
-            cditor_editor_protocol::command::CommandSource::Keyboard,
-        ))
-        .ok()
-        .map(|outcome| outcome.changed())
+    Some(CditorCommand::SetTableCellSelection {
+        block_id,
+        row,
+        col,
+        anchor_offset,
+        focus_offset,
+        focus_affinity,
+    })
 }
 
-pub(super) fn dispatch_table_cell_navigation(
-    runtime: &mut DocumentRuntime,
-    direction: cditor_editor_protocol::command::TableCellNavigationDirection,
+pub(super) const fn table_cell_navigation_command(
+    direction: TableCellNavigationDirection,
     extend_selection: bool,
-) -> bool {
-    runtime
-        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
-            cditor_editor_protocol::command::CditorCommand::NavigateTableCell {
-                direction,
-                extend_selection,
-            },
-            cditor_editor_protocol::command::CommandSource::Keyboard,
-        ))
-        .is_ok_and(|outcome| outcome.changed())
+) -> CditorCommand {
+    CditorCommand::NavigateTableCell {
+        direction,
+        extend_selection,
+    }
 }

@@ -107,7 +107,9 @@ impl CditorV2View {
             start_pointer_x: f32::from(pointer.x),
             start_offset_x: self
                 .ready_runtime_ref()
-                .map(|runtime| runtime.table_horizontal_scroll_offset_px(block_id))
+                .map(|runtime| {
+                    cditor_session::project_table_horizontal_scroll_offset(runtime, block_id)
+                })
                 .unwrap_or(0.0),
             max_offset_x,
             thumb_travel_px,

@@ -13,6 +13,7 @@ mod layout_port;
 mod render_port;
 mod selection_materialization_port;
 mod session;
+mod table_port;
 mod toolbar_snapshot;
 mod ui_snapshot;
 
@@ -47,6 +48,10 @@ pub use session::{
     CommandDispatchSnapshot, EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError,
     SessionSnapshot, project_block_plain_text, project_command_dispatch, project_command_query,
     project_end_input_batch, project_realtime_input,
+};
+pub use table_port::{
+    FocusedTableCellSnapshot, TableInteractionSnapshot, TablePayloadSummary, TableRangeRequest,
+    project_table_horizontal_scroll_offset, project_table_interaction, project_table_range,
 };
 pub use toolbar_snapshot::{
     GutterToolbarSnapshot, ToolbarContextRequest, ToolbarContextSnapshot,

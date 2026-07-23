@@ -1,6 +1,6 @@
 use gpui::Context;
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::app::cditor_v2_view::CditorV2View;
 use crate::app::input_trace::trace_input;
 use crate::image_preview::close_active_preview_if_escape_enabled;
 use crate::input::{AiPromptEditAction, CodeLanguageEditAction, GuiInputCommand};
@@ -9,8 +9,8 @@ use cditor_runtime::DocumentRuntime;
 
 use super::keyboard::mermaid_preview_blocks_command;
 use super::table_cell_navigation::{
-    dispatch_table_cell_navigation, dispatch_table_cell_offset_selection,
-    dispatch_table_cell_parley_selection, table_cell_parley_target,
+    table_cell_navigation_command, table_cell_offset_selection_command,
+    table_cell_parley_selection_command, table_cell_parley_target,
     table_cell_vertical_selection_target,
 };
 
@@ -279,11 +279,14 @@ impl CditorV2View {
     fn handle_bound_table_cell_action(
         &mut self,
         action: BoundInputAction,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> bool {
+        let table_context = self
+            .ready_runtime_ref()
+            .map(|runtime| cditor_session::project_table_interaction(runtime, None));
         let (parley_target, next_preferred_x) = table_cell_parley_target(
             &self.table_cell_layouts,
-            self.ready_runtime_ref(),
+            table_context.as_ref(),
             action,
             self.preferred_text_navigation_x,
         );
@@ -293,84 +296,96 @@ impl CditorV2View {
                 extend_selection: true,
             } => table_cell_vertical_selection_target(
                 &self.table_cell_layouts,
-                self.ready_runtime_ref(),
+                table_context.as_ref(),
                 -1,
             ),
             BoundInputAction::MoveDown {
                 extend_selection: true,
             } => table_cell_vertical_selection_target(
                 &self.table_cell_layouts,
-                self.ready_runtime_ref(),
+                table_context.as_ref(),
                 1,
             ),
             _ => None,
         };
-        let CditorViewState::Ready(runtime) = &mut self.state else {
+        let Some(table_context) = table_context else {
             return false;
         };
-        if runtime.focused_table_cell_offset().is_none() {
+        if table_context.focused_cell.is_none() {
             return false;
         }
+        let mut dispatch = |command| {
+            self.dispatch_command(
+                command,
+                cditor_editor_protocol::command::CommandSource::Keyboard,
+                cx,
+            )
+            .is_ok_and(|outcome| outcome.changed())
+        };
         match action {
             BoundInputAction::Cancel => {
-                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
-                    cditor_editor_protocol::command::CditorCommand::BlurTableCell,
-                    cditor_editor_protocol::command::CommandSource::Keyboard,
-                ));
+                let _ = dispatch(cditor_editor_protocol::command::CditorCommand::BlurTableCell);
                 false
             }
-            BoundInputAction::Tab { backwards } => dispatch_table_cell_navigation(
-                runtime,
+            BoundInputAction::Tab { backwards } => dispatch(table_cell_navigation_command(
                 if backwards {
                     cditor_editor_protocol::command::TableCellNavigationDirection::TabBackward
                 } else {
                     cditor_editor_protocol::command::TableCellNavigationDirection::TabForward
                 },
                 false,
-            ),
+            )),
             BoundInputAction::MoveLeft {
                 extend_selection: true,
             } => parley_target
-                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, true))
+                .and_then(|position| {
+                    table_cell_parley_selection_command(&table_context, position, true)
+                })
+                .map(&mut dispatch)
                 .unwrap_or_else(|| {
-                    dispatch_table_cell_navigation(
-                        runtime,
+                    dispatch(table_cell_navigation_command(
                         cditor_editor_protocol::command::TableCellNavigationDirection::Left,
                         true,
-                    )
+                    ))
                 }),
             BoundInputAction::MoveLeft {
                 extend_selection: false,
             } => parley_target
-                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
+                .and_then(|position| {
+                    table_cell_parley_selection_command(&table_context, position, false)
+                })
+                .map(&mut dispatch)
                 .unwrap_or_else(|| {
-                    dispatch_table_cell_navigation(
-                        runtime,
+                    dispatch(table_cell_navigation_command(
                         cditor_editor_protocol::command::TableCellNavigationDirection::Left,
                         false,
-                    )
+                    ))
                 }),
             BoundInputAction::MoveRight {
                 extend_selection: true,
             } => parley_target
-                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, true))
+                .and_then(|position| {
+                    table_cell_parley_selection_command(&table_context, position, true)
+                })
+                .map(&mut dispatch)
                 .unwrap_or_else(|| {
-                    dispatch_table_cell_navigation(
-                        runtime,
+                    dispatch(table_cell_navigation_command(
                         cditor_editor_protocol::command::TableCellNavigationDirection::Right,
                         true,
-                    )
+                    ))
                 }),
             BoundInputAction::MoveRight {
                 extend_selection: false,
             } => parley_target
-                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
+                .and_then(|position| {
+                    table_cell_parley_selection_command(&table_context, position, false)
+                })
+                .map(&mut dispatch)
                 .unwrap_or_else(|| {
-                    dispatch_table_cell_navigation(
-                        runtime,
+                    dispatch(table_cell_navigation_command(
                         cditor_editor_protocol::command::TableCellNavigationDirection::Right,
                         false,
-                    )
+                    ))
                 }),
             BoundInputAction::MoveUp {
                 extend_selection: true,
@@ -378,47 +393,56 @@ impl CditorV2View {
             | BoundInputAction::MoveDown {
                 extend_selection: true,
             } => parley_target
-                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, true))
+                .and_then(|position| {
+                    table_cell_parley_selection_command(&table_context, position, true)
+                })
+                .map(&mut dispatch)
                 .or_else(|| {
                     vertical_selection_target.and_then(|target| {
-                        dispatch_table_cell_offset_selection(
-                            runtime,
+                        table_cell_offset_selection_command(
+                            &table_context,
                             target,
                             cditor_core::edit::TextAffinity::Downstream,
                             true,
                         )
+                        .map(&mut dispatch)
                     })
                 })
                 .unwrap_or(false),
             BoundInputAction::MoveUp {
                 extend_selection: false,
             } => parley_target
-                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
+                .and_then(|position| {
+                    table_cell_parley_selection_command(&table_context, position, false)
+                })
+                .map(&mut dispatch)
                 .unwrap_or_else(|| {
-                    dispatch_table_cell_navigation(
-                        runtime,
+                    dispatch(table_cell_navigation_command(
                         cditor_editor_protocol::command::TableCellNavigationDirection::Up,
                         false,
-                    )
+                    ))
                 }),
             BoundInputAction::MoveDown {
                 extend_selection: false,
             } => parley_target
-                .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
+                .and_then(|position| {
+                    table_cell_parley_selection_command(&table_context, position, false)
+                })
+                .map(&mut dispatch)
                 .unwrap_or_else(|| {
-                    dispatch_table_cell_navigation(
-                        runtime,
+                    dispatch(table_cell_navigation_command(
                         cditor_editor_protocol::command::TableCellNavigationDirection::Down,
                         false,
-                    )
+                    ))
                 }),
             BoundInputAction::MoveToLineStart { extend_selection }
             | BoundInputAction::MoveToLineEnd { extend_selection }
             | BoundInputAction::MoveToPreviousWord { extend_selection }
             | BoundInputAction::MoveToNextWord { extend_selection } => parley_target
                 .and_then(|position| {
-                    dispatch_table_cell_parley_selection(runtime, position, extend_selection)
+                    table_cell_parley_selection_command(&table_context, position, extend_selection)
                 })
+                .map(&mut dispatch)
                 .unwrap_or(false),
             _ => return false,
         };
