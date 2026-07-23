@@ -33,7 +33,9 @@ pub use layout_port::{
 };
 pub use render_port::{
     RenderFrameRequest, RenderFrameSnapshot, RenderFrameWarnings, activate_resident_payload_window,
-    apply_table_horizontal_scroll_offset, plan_payload_window_load, project_render_frame,
+    apply_payload_window_error, apply_payload_window_result, apply_table_horizontal_scroll_offset,
+    plan_payload_window_load, project_render_frame, retry_failed_payload_window,
+    trim_payload_cache,
 };
 pub use selection_materialization_port::{
     SelectionMaterializationSnapshot, project_selection_materialization_result,

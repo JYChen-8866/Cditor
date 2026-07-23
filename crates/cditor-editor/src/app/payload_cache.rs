@@ -3,6 +3,7 @@ use std::ops::Range;
 
 use cditor_core::ids::BlockId;
 use cditor_runtime::PayloadCachePolicy;
+use cditor_session::{retry_failed_payload_window, trim_payload_cache};
 use gpui::Context;
 
 use super::cditor_v2_view::{CditorV2View, CditorViewState};
@@ -16,7 +17,7 @@ impl CditorV2View {
         let CditorViewState::Ready(runtime) = &mut self.state else {
             return;
         };
-        if runtime.retry_failed_payload_window(block_range) == 0 {
+        if retry_failed_payload_window(runtime, block_range) == 0 {
             return;
         }
         self.payload_window_load_scheduler.reset();
@@ -31,7 +32,7 @@ impl CditorV2View {
         let CditorViewState::Ready(runtime) = &mut self.state else {
             return;
         };
-        let report = runtime.trim_payload_cache(PayloadCachePolicy::persistent_default(), pins);
+        let report = trim_payload_cache(runtime, PayloadCachePolicy::persistent_default(), pins);
         for block_id in report.evicted_block_ids {
             self.text_layouts.remove(&block_id);
             self.table_cell_layouts

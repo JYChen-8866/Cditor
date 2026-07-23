@@ -3,8 +3,9 @@ use gpui::{AppContext, Context};
 use cditor_runtime::SelectionMaterializationRequest;
 use cditor_runtime::content::payload_window::{PayloadWindowLoadRequest, PayloadWindowLoadResult};
 use cditor_session::{
-    HistoryActionSnapshot, HistoryDirection, project_history_action,
-    project_hydrated_history_action, project_selection_materialization_result,
+    HistoryActionSnapshot, HistoryDirection, apply_payload_window_error,
+    apply_payload_window_result, project_history_action, project_hydrated_history_action,
+    project_selection_materialization_result,
 };
 use cditor_storage::{StorageError, StorageSession, block_on_storage};
 
@@ -507,7 +508,7 @@ impl CditorV2View {
             Ok(result) => {
                 let _ = view.update(cx, |view, cx| {
                     if let Some(runtime) = view.ready_runtime() {
-                        runtime.apply_payload_window_result(result);
+                        apply_payload_window_result(runtime, result);
                     }
                     view.trim_persistent_payload_cache();
                     cx.notify();
@@ -516,7 +517,7 @@ impl CditorV2View {
             Err(message) => {
                 let _ = view.update(cx, |view, cx| {
                     if let Some(runtime) = view.ready_runtime() {
-                        runtime.apply_payload_window_load_error(failed_request, message);
+                        apply_payload_window_error(runtime, failed_request, message);
                     }
                     cx.notify();
                 });
