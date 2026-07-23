@@ -415,9 +415,9 @@ impl DocumentRuntime {
         {
             let mut persistent = transaction.clone();
             persistent.origin = origin;
-            self.pending_structure_transactions.push(persistent);
+            self.transactions.pending.push(persistent);
         }
-        self.last_committed_transaction_id = Some(transaction.id);
+        self.transactions.last_committed_id = Some(transaction.id);
 
         Ok(AppliedTransaction {
             transaction_id: transaction.id,

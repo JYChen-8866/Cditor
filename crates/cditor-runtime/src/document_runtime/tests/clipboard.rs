@@ -456,7 +456,7 @@ fn large_whole_block_clipboard_paste_rebuilds_structure_once_and_hydrates_a_wind
     assert!(projection.blocks.len() <= 320);
     assert!(target.document.text_models.len() <= 322);
     let undo = target.history.external_undo_stack.last().unwrap();
-    let persistent = target.pending_structure_transactions.last().unwrap();
+    let persistent = target.transactions.pending.last().unwrap();
     assert!(std::sync::Arc::ptr_eq(&undo.ops, &persistent.ops));
     assert!(std::sync::Arc::ptr_eq(
         &undo.inverse_ops,

@@ -152,7 +152,7 @@ impl DocumentRuntime {
             self.break_typing_coalescing();
         }
         self.push_undo_snapshot(block_id)?;
-        let transaction_id = self.next_transaction_id;
+        let transaction_id = self.transactions.next_id;
         let hot_path_result = {
             let model = self
                 .document
@@ -187,7 +187,7 @@ impl DocumentRuntime {
             );
             result
         };
-        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
+        self.transactions.next_id = self.transactions.next_id.saturating_add(1);
         if coalesces_typing {
             let next_offset = self.text_surface_caret_offset(surface_id);
             self.finish_typing_undo(surface_id, next_offset, true);

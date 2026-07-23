@@ -10,7 +10,7 @@ impl DocumentRuntime {
     }
 
     pub fn last_committed_transaction_id(&self) -> Option<u64> {
-        self.last_committed_transaction_id
+        self.transactions.last_committed_id
     }
 
     /// Records a committed content change at the document-kernel boundary.

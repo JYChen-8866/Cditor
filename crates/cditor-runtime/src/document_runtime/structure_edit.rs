@@ -187,7 +187,7 @@ impl DocumentRuntime {
     }
 
     pub fn pending_structure_transaction_count(&self) -> usize {
-        self.pending_structure_transactions.len()
+        self.transactions.pending.len()
     }
 
     pub fn structure_version(&self) -> u64 {
@@ -209,7 +209,7 @@ impl DocumentRuntime {
     }
 
     pub fn drain_pending_structure_transactions(&mut self) -> Vec<EditTransaction> {
-        self.pending_structure_transactions.drain(..).collect()
+        self.transactions.pending.drain(..).collect()
     }
 
     pub fn restore_pending_structure_transactions(
@@ -219,8 +219,8 @@ impl DocumentRuntime {
         if transactions.is_empty() {
             return;
         }
-        transactions.append(&mut self.pending_structure_transactions);
-        self.pending_structure_transactions = transactions;
+        transactions.append(&mut self.transactions.pending);
+        self.transactions.pending = transactions;
     }
 
     pub(crate) fn move_block_subtree_before(

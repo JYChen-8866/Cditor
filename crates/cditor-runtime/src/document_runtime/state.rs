@@ -4,6 +4,7 @@ use super::editing_state::EditingState;
 use super::history_state::HistoryState;
 use super::layout_state::LayoutState;
 use super::selection_state::SelectionState;
+use super::transaction_state::TransactionState;
 use super::*;
 
 #[derive(Debug)]
@@ -16,9 +17,7 @@ pub struct DocumentRuntime {
     pub(super) ai_session: Option<RuntimeAiSession>,
     pub(super) next_ai_request_id: u64,
     pub(super) history: HistoryState,
-    pub(super) pending_structure_transactions: Vec<EditTransaction>,
-    pub(super) last_committed_transaction_id: Option<u64>,
-    pub(super) next_transaction_id: u64,
+    pub(super) transactions: TransactionState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

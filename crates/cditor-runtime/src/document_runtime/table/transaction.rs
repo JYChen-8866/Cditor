@@ -27,8 +27,8 @@ impl DocumentRuntime {
         // hydrate a text model for the table block.
         let selection = None;
         let anchor = self.capture_undo_scroll_snapshot().anchor;
-        let transaction_id = self.next_transaction_id;
-        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
+        let transaction_id = self.transactions.next_id;
+        self.transactions.next_id = self.transactions.next_id.saturating_add(1);
         let transaction = EditTransaction::new(
             transaction_id,
             kind,

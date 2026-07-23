@@ -269,9 +269,7 @@ impl DocumentRuntime {
             ai_session: None,
             next_ai_request_id: 1,
             history: HistoryState::default(),
-            pending_structure_transactions: Vec::new(),
-            last_committed_transaction_id: None,
-            next_transaction_id: 1,
+            transactions: TransactionState::default(),
         }
     }
 }

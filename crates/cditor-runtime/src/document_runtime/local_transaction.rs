@@ -63,8 +63,8 @@ impl DocumentRuntime {
         }
         self.break_typing_coalescing();
         let before_anchor = self.capture_undo_scroll_snapshot().anchor;
-        let transaction_id = self.next_transaction_id;
-        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
+        let transaction_id = self.transactions.next_id;
+        self.transactions.next_id = self.transactions.next_id.saturating_add(1);
         let mut transaction =
             EditTransaction::new(transaction_id, kind, transaction_id, ops, inverse_ops)
                 .with_origin(origin)
@@ -86,7 +86,8 @@ impl DocumentRuntime {
             recorded.after_anchor = after_anchor;
         }
         if let Some(persistent) = self
-            .pending_structure_transactions
+            .transactions
+            .pending
             .last_mut()
             .filter(|persistent| persistent.id == transaction_id)
         {
@@ -169,8 +170,8 @@ impl DocumentRuntime {
             .ok_or_else(|| format!("missing content version for block {block_id}"))?;
         self.break_typing_coalescing();
         let anchor = self.capture_undo_scroll_snapshot().anchor;
-        let transaction_id = self.next_transaction_id;
-        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
+        let transaction_id = self.transactions.next_id;
+        self.transactions.next_id = self.transactions.next_id.saturating_add(1);
         let transaction =
             EditTransaction::new(transaction_id, kind, transaction_id, ops, inverse_ops)
                 .with_origin(origin)
@@ -347,8 +348,8 @@ impl DocumentRuntime {
         before_layout_version: u64,
     ) {
         let transaction_id = transaction.id;
-        self.pending_structure_transactions.push(transaction);
-        self.last_committed_transaction_id = Some(transaction_id);
+        self.transactions.pending.push(transaction);
+        self.transactions.last_committed_id = Some(transaction_id);
         if let Some(position) = self.document.index.index_of(block_id) {
             let layout = &mut self.document.index.layout_meta[position];
             if layout.layout_version == before_layout_version {

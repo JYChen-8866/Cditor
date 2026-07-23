@@ -64,6 +64,7 @@ mod transaction_apply_domain_validation;
 mod transaction_apply_payload;
 mod transaction_apply_structure;
 mod transaction_apply_structure_text;
+mod transaction_state;
 mod typing_marks;
 mod undo_redo;
 mod whiteboard;
@@ -97,6 +98,7 @@ use self::{
     layout_state::{LayoutState, PendingMeasuredHeight},
     selection::FocusedTextSelection,
     table::TableRuntime,
+    transaction_state::TransactionState,
 };
 
 use std::{

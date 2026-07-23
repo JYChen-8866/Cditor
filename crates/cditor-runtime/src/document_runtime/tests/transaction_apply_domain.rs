@@ -161,7 +161,7 @@ fn inline_format_entrypoint_records_one_typed_transaction() {
     );
     assert_eq!(runtime.history.external_undo_stack.len(), 1);
     let transaction = runtime.history.external_undo_stack.last().unwrap();
-    let persistent = runtime.pending_structure_transactions.last().unwrap();
+    let persistent = runtime.transactions.pending.last().unwrap();
     assert!(std::sync::Arc::ptr_eq(&transaction.ops, &persistent.ops));
     assert!(std::sync::Arc::ptr_eq(
         &transaction.inverse_ops,

@@ -154,8 +154,8 @@ impl DocumentRuntime {
         if !self.apply_resolved_focused_text_edit(edit, text, explicit_range)? {
             return Ok(false);
         }
-        let transaction_id = self.next_transaction_id;
-        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
+        let transaction_id = self.transactions.next_id;
+        self.transactions.next_id = self.transactions.next_id.saturating_add(1);
 
         let after_record = self
             .document

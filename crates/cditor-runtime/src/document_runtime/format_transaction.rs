@@ -82,8 +82,8 @@ impl DocumentRuntime {
             _ => None,
         };
         let anchor = self.capture_undo_scroll_snapshot().anchor;
-        let transaction_id = self.next_transaction_id;
-        self.next_transaction_id = self.next_transaction_id.saturating_add(1);
+        let transaction_id = self.transactions.next_id;
+        self.transactions.next_id = self.transactions.next_id.saturating_add(1);
         let before_operation_spans = if before_text.is_empty() {
             Vec::new()
         } else {
