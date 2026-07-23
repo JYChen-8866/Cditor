@@ -61,6 +61,16 @@ impl DocumentRuntime {
                     affected_blocks,
                 )
             }
+            EditorCommand::MoveCaret {
+                direction,
+                extend_selection,
+            } => {
+                let affected_blocks = self.focused_block_id().into_iter().collect();
+                (
+                    self.move_caret_command(*direction, *extend_selection)?,
+                    affected_blocks,
+                )
+            }
             EditorCommand::SetTextSurfaceSelection {
                 surface_id,
                 anchor_offset,
@@ -182,6 +192,31 @@ impl DocumentRuntime {
             (Direction::TabBackward, false) => self.move_focused_table_cell_tab(true),
             (Direction::Up | Direction::Down, true)
             | (Direction::TabForward | Direction::TabBackward, true) => Ok(false),
+        }
+    }
+
+    fn move_caret_command(
+        &mut self,
+        direction: cditor_editor_protocol::command::CaretDirection,
+        extend_selection: bool,
+    ) -> Result<bool, String> {
+        use cditor_editor_protocol::command::CaretDirection as Direction;
+
+        match direction {
+            Direction::PreviousVisual => self.move_caret_left(extend_selection),
+            Direction::NextVisual => self.move_caret_right(extend_selection),
+            Direction::PreviousWord => self.move_focused_caret_by_word(false, extend_selection),
+            Direction::NextWord => self.move_focused_caret_by_word(true, extend_selection),
+            Direction::PreviousLine => self.move_caret_up(extend_selection),
+            Direction::NextLine => self.move_caret_down(extend_selection),
+            Direction::LineStart => {
+                self.move_focused_caret_to_line_boundary(false, extend_selection)
+            }
+            Direction::LineEnd => self.move_focused_caret_to_line_boundary(true, extend_selection),
+            Direction::DocumentStart => {
+                self.move_caret_to_document_boundary(false, extend_selection)
+            }
+            Direction::DocumentEnd => self.move_caret_to_document_boundary(true, extend_selection),
         }
     }
 }

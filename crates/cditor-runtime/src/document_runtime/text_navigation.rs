@@ -1,7 +1,7 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn move_focused_caret_by_word(
+    pub(crate) fn move_focused_caret_by_word(
         &mut self,
         forward: bool,
         extend_selection: bool,
@@ -25,7 +25,7 @@ impl DocumentRuntime {
         )
     }
 
-    pub fn move_caret_to_document_boundary(
+    pub(crate) fn move_caret_to_document_boundary(
         &mut self,
         to_end: bool,
         extend_selection: bool,
@@ -77,7 +77,7 @@ impl DocumentRuntime {
     /// Move the caret to the logical line boundary used by native Home/End.
     /// This works for rich-text blocks, code/quote soft lines, and table cells,
     /// and preserves Shift-selection semantics on every platform.
-    pub fn move_focused_caret_to_line_boundary(
+    pub(crate) fn move_focused_caret_to_line_boundary(
         &mut self,
         to_end: bool,
         extend_selection: bool,
@@ -137,15 +137,15 @@ impl DocumentRuntime {
         self.move_focused_caret_to_offset(block_id, target, extend_selection)
     }
 
-    pub fn move_caret_left(&mut self, extend_selection: bool) -> Result<bool, String> {
+    pub(crate) fn move_caret_left(&mut self, extend_selection: bool) -> Result<bool, String> {
         self.move_caret_horizontally(false, extend_selection)
     }
 
-    pub fn move_caret_right(&mut self, extend_selection: bool) -> Result<bool, String> {
+    pub(crate) fn move_caret_right(&mut self, extend_selection: bool) -> Result<bool, String> {
         self.move_caret_horizontally(true, extend_selection)
     }
 
-    pub fn move_caret_up(&mut self, extend_selection: bool) -> Result<bool, String> {
+    pub(crate) fn move_caret_up(&mut self, extend_selection: bool) -> Result<bool, String> {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -156,7 +156,7 @@ impl DocumentRuntime {
         }
     }
 
-    pub fn move_caret_down(&mut self, extend_selection: bool) -> Result<bool, String> {
+    pub(crate) fn move_caret_down(&mut self, extend_selection: bool) -> Result<bool, String> {
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -167,7 +167,7 @@ impl DocumentRuntime {
         }
     }
 
-    pub fn move_focused_caret_to_offset(
+    pub(crate) fn move_focused_caret_to_offset(
         &mut self,
         block_id: BlockId,
         offset: usize,
@@ -228,7 +228,7 @@ impl DocumentRuntime {
         Ok(previous != offset || extend_selection)
     }
 
-    pub fn move_focused_caret_to_text_position(
+    pub(crate) fn move_focused_caret_to_text_position(
         &mut self,
         position: TextPosition,
         extend_selection: bool,

@@ -346,7 +346,7 @@ impl DocumentRuntime {
             .flatten()
     }
 
-    pub fn move_focused_text_surface_to_offset(
+    pub(crate) fn move_focused_text_surface_to_offset(
         &mut self,
         surface_id: SurfaceId,
         offset: usize,

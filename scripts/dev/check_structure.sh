@@ -200,6 +200,16 @@ if [ -n "$direct_auxiliary_surface_focus_violations" ]; then
   exit 1
 fi
 
+direct_caret_navigation_violations=$(
+  grep -n -E '\.(move_caret_(left|right|up|down|to_document_boundary)|move_focused_caret_(by_word|to_line_boundary|to_offset|to_text_position)|move_focused_text_surface_to_offset)\(' \
+    crates/cditor-editor/src/app/input/keyboard.rs || true
+)
+if [ -n "$direct_caret_navigation_violations" ]; then
+  echo 'error: caret navigation must route semantic fallback and Parley targets through Runtime dispatch:' >&2
+  echo "$direct_caret_navigation_violations" >&2
+  exit 1
+fi
+
 printable_keydown_violations=$(
   grep -R -n -E 'InsertChar|InsertSpaceOrMarkdownShortcut' --include='*.rs' crates/cditor-editor/src || true
 )

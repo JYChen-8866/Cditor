@@ -390,6 +390,78 @@ fn table_cell_navigation_dispatch_preserves_unicode_tabs_and_stale_safety() {
 }
 
 #[test]
+fn caret_navigation_dispatch_owns_semantic_fallbacks_without_document_changes() {
+    let mut runtime = runtime_with_kind_depths_and_text(vec![
+        (RichBlockKind::Paragraph, 0, None, "ab\ncd"),
+        (RichBlockKind::Paragraph, 0, None, "xy"),
+    ]);
+    let before_revision = runtime.revision();
+
+    runtime.focus_block_at_offset(1, 5).unwrap();
+    let line_start = dispatch(
+        &mut runtime,
+        EditorCommand::MoveCaret {
+            direction: cditor_editor_protocol::command::CaretDirection::LineStart,
+            extend_selection: false,
+        },
+    );
+    assert!(line_start.changed());
+    assert_eq!(line_start.affected_blocks, vec![1]);
+    assert!(line_start.transaction_ids.is_empty());
+    assert_eq!(runtime.caret_offset_for_block(1), Some(3));
+
+    let extended = dispatch(
+        &mut runtime,
+        EditorCommand::MoveCaret {
+            direction: cditor_editor_protocol::command::CaretDirection::PreviousVisual,
+            extend_selection: true,
+        },
+    );
+    assert!(extended.changed());
+    assert_eq!(
+        runtime.document_selection_snapshot(),
+        Some(DocumentSelection {
+            anchor: TextPosition::downstream(1, 3),
+            focus: TextPosition::downstream(1, 2),
+        })
+    );
+
+    let document_end = dispatch(
+        &mut runtime,
+        EditorCommand::MoveCaret {
+            direction: cditor_editor_protocol::command::CaretDirection::DocumentEnd,
+            extend_selection: false,
+        },
+    );
+    assert!(document_end.changed());
+    assert_eq!(runtime.focused_block_id(), Some(2));
+    assert_eq!(runtime.caret_offset_for_block(2), Some(2));
+    assert_eq!(runtime.revision(), before_revision);
+
+    let before_stale = runtime.document_selection_snapshot();
+    let error = runtime
+        .dispatch(
+            CommandEnvelope::new(
+                EditorCommand::MoveCaret {
+                    direction: cditor_editor_protocol::command::CaretDirection::PreviousLine,
+                    extend_selection: false,
+                },
+                CommandSource::Keyboard,
+            )
+            .expecting_revision(before_revision + 1),
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        cditor_editor_protocol::ProtocolErrorCode::StalePrecondition
+    );
+    assert_eq!(runtime.focused_block_id(), Some(2));
+    assert_eq!(runtime.caret_offset_for_block(2), Some(2));
+    assert_eq!(runtime.document_selection_snapshot(), before_stale);
+    assert_eq!(runtime.revision(), before_revision);
+}
+
+#[test]
 fn structure_input_commands_dispatch_without_false_document_changes() {
     let mut runtime = runtime_with_kind_depths(vec![
         (RichBlockKind::BulletedList, 0, None),

@@ -12,6 +12,7 @@ use crate::text::{
 };
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::{BlockId, SurfaceId};
+use cditor_editor_protocol::command::CaretDirection;
 use cditor_import_export::clipboard::ClipboardSelection;
 use cditor_runtime::DocumentRuntime;
 
@@ -195,7 +196,11 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved {
-                        let _ = runtime.move_caret_left(extend_selection);
+                        let _ = dispatch_caret_navigation(
+                            runtime,
+                            CaretDirection::PreviousVisual,
+                            extend_selection,
+                        );
                     }
                 }
                 GuiInputCommand::MoveCaretRight { extend_selection } => {
@@ -209,7 +214,11 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved {
-                        let _ = runtime.move_caret_right(extend_selection);
+                        let _ = dispatch_caret_navigation(
+                            runtime,
+                            CaretDirection::NextVisual,
+                            extend_selection,
+                        );
                     }
                 }
                 GuiInputCommand::MoveCaretToPreviousWord { extend_selection } => {
@@ -223,7 +232,11 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved {
-                        let _ = runtime.move_focused_caret_by_word(false, extend_selection);
+                        let _ = dispatch_caret_navigation(
+                            runtime,
+                            CaretDirection::PreviousWord,
+                            extend_selection,
+                        );
                     }
                 }
                 GuiInputCommand::MoveCaretToNextWord { extend_selection } => {
@@ -237,14 +250,26 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved {
-                        let _ = runtime.move_focused_caret_by_word(true, extend_selection);
+                        let _ = dispatch_caret_navigation(
+                            runtime,
+                            CaretDirection::NextWord,
+                            extend_selection,
+                        );
                     }
                 }
                 GuiInputCommand::MoveCaretToDocumentStart { extend_selection } => {
-                    let _ = runtime.move_caret_to_document_boundary(false, extend_selection);
+                    let _ = dispatch_caret_navigation(
+                        runtime,
+                        CaretDirection::DocumentStart,
+                        extend_selection,
+                    );
                 }
                 GuiInputCommand::MoveCaretToDocumentEnd { extend_selection } => {
-                    let _ = runtime.move_caret_to_document_boundary(true, extend_selection);
+                    let _ = dispatch_caret_navigation(
+                        runtime,
+                        CaretDirection::DocumentEnd,
+                        extend_selection,
+                    );
                 }
                 GuiInputCommand::MoveCaretUp { extend_selection } => {
                     let moved_in_block = move_caret_with_parley(
@@ -257,7 +282,11 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved_in_block {
-                        let _ = runtime.move_caret_up(extend_selection);
+                        let _ = dispatch_caret_navigation(
+                            runtime,
+                            CaretDirection::PreviousLine,
+                            extend_selection,
+                        );
                     }
                 }
                 GuiInputCommand::MoveCaretDown { extend_selection } => {
@@ -271,7 +300,11 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved_in_block {
-                        let _ = runtime.move_caret_down(extend_selection);
+                        let _ = dispatch_caret_navigation(
+                            runtime,
+                            CaretDirection::NextLine,
+                            extend_selection,
+                        );
                     }
                 }
                 GuiInputCommand::MoveCaretToLineStart { extend_selection } => {
@@ -285,8 +318,11 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved {
-                        let _ =
-                            runtime.move_focused_caret_to_line_boundary(false, extend_selection);
+                        let _ = dispatch_caret_navigation(
+                            runtime,
+                            CaretDirection::LineStart,
+                            extend_selection,
+                        );
                     }
                 }
                 GuiInputCommand::MoveCaretToLineEnd { extend_selection } => {
@@ -300,7 +336,11 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved {
-                        let _ = runtime.move_focused_caret_to_line_boundary(true, extend_selection);
+                        let _ = dispatch_caret_navigation(
+                            runtime,
+                            CaretDirection::LineEnd,
+                            extend_selection,
+                        );
                     }
                 }
                 GuiInputCommand::ToggleBold
@@ -453,15 +493,49 @@ fn move_caret_with_parley(
                 cditor_editor_protocol::command::CommandSource::Keyboard,
             ))
             .map_err(|error| error.to_string())?;
-    } else {
-        runtime.move_focused_text_surface_to_offset(
-            surface_id,
-            moved.focus.offset,
-            moved.focus.affinity,
-            extend_selection,
-        )?;
+    } else if let SurfaceId::Block(block_id) = surface_id {
+        let focus = cditor_core::edit::TextPosition {
+            block_id,
+            offset: moved.focus.offset,
+            affinity: moved.focus.affinity,
+        };
+        let anchor = if extend_selection {
+            runtime
+                .document_selection_snapshot()
+                .map(|selection| selection.anchor)
+                .unwrap_or_else(|| {
+                    cditor_core::edit::TextPosition::downstream(block_id, anchor_offset)
+                })
+        } else {
+            focus
+        };
+        runtime
+            .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
+                    selection: cditor_core::edit::DocumentSelection { anchor, focus },
+                },
+                cditor_editor_protocol::command::CommandSource::Keyboard,
+            ))
+            .map_err(|error| error.to_string())?;
     }
     Ok(true)
+}
+
+fn dispatch_caret_navigation(
+    runtime: &mut DocumentRuntime,
+    direction: CaretDirection,
+    extend_selection: bool,
+) -> Result<bool, String> {
+    runtime
+        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+            cditor_editor_protocol::command::CditorCommand::MoveCaret {
+                direction,
+                extend_selection,
+            },
+            cditor_editor_protocol::command::CommandSource::Keyboard,
+        ))
+        .map(|outcome| outcome.changed())
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
