@@ -232,6 +232,20 @@ pub enum EditorCommand {
         range: cditor_core::rich_text::TableRange,
         color: Option<String>,
     },
+    TableMergeCells {
+        block_id: cditor_core::ids::BlockId,
+        range: cditor_core::rich_text::TableRange,
+    },
+    TableSplitCell {
+        block_id: cditor_core::ids::BlockId,
+        row: usize,
+        col: usize,
+    },
+    TableSetRangeAlign {
+        block_id: cditor_core::ids::BlockId,
+        range: cditor_core::rich_text::TableRange,
+        align: cditor_core::rich_text::TableCellAlign,
+    },
     #[doc(hidden)]
     SetMediaWidthRatio {
         block_id: cditor_core::ids::BlockId,
@@ -319,6 +333,9 @@ impl EditorCommand {
             Self::TableDuplicateAxis { .. } => builtin::TABLE_DUPLICATE_AXIS,
             Self::TableClearRange { .. } => builtin::TABLE_CLEAR_RANGE,
             Self::TableSetRangeBackground { .. } => builtin::TABLE_SET_RANGE_COLOR,
+            Self::TableMergeCells { .. } => builtin::TABLE_MERGE_CELLS,
+            Self::TableSplitCell { .. } => builtin::TABLE_SPLIT_CELL,
+            Self::TableSetRangeAlign { .. } => builtin::TABLE_SET_ALIGN,
             Self::SetMediaWidthRatio { .. } => builtin::MEDIA_SET_WIDTH_RATIO,
             Self::UpdateWhiteboardScene { .. } => builtin::WHITEBOARD_UPDATE_SCENE,
             Self::TableResizeAxis { .. } => builtin::TABLE_RESIZE_AXIS,
@@ -518,6 +535,23 @@ impl EditorCommand {
                 block_id: *block_id,
                 range: *range,
                 color: color.clone(),
+            },
+            Self::TableMergeCells { block_id, range } => CommandArgs::TableRangeTarget {
+                block_id: *block_id,
+                range: *range,
+            },
+            Self::TableSplitCell { block_id, row, col } => CommandArgs::TableRangeTarget {
+                block_id: *block_id,
+                range: cditor_core::rich_text::TableRange::normalized(*row, *col, *row, *col),
+            },
+            Self::TableSetRangeAlign {
+                block_id,
+                range,
+                align,
+            } => CommandArgs::TableRangeAlign {
+                block_id: *block_id,
+                range: *range,
+                align: *align,
             },
             Self::SetMediaWidthRatio {
                 block_id,

@@ -269,6 +269,25 @@ impl DocumentRuntime {
                     self.set_table_cell_background_color(block_id, range, color)
                         .map_err(apply_error)?
                 }
+                EditorCommand::TableMergeCells { block_id, range } => {
+                    affected_blocks.push(block_id);
+                    self.merge_table_cells(block_id, range)
+                        .map_err(apply_error)?
+                }
+                EditorCommand::TableSplitCell { block_id, row, col } => {
+                    affected_blocks.push(block_id);
+                    self.split_table_cell(block_id, row, col)
+                        .map_err(apply_error)?
+                }
+                EditorCommand::TableSetRangeAlign {
+                    block_id,
+                    range,
+                    align,
+                } => {
+                    affected_blocks.push(block_id);
+                    self.set_table_cell_align(block_id, range, align)
+                        .map_err(apply_error)?
+                }
                 EditorCommand::SetMediaWidthRatio {
                     block_id,
                     ratio_milli,

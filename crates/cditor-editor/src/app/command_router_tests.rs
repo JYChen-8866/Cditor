@@ -162,6 +162,20 @@ fn representative_commands() -> Vec<CditorCommand> {
             range: TableRange::normalized(0, 0, 0, 0),
             color: Some("#fff8c5".to_owned()),
         },
+        CditorCommand::TableMergeCells {
+            block_id: 3,
+            range: TableRange::normalized(0, 0, 0, 1),
+        },
+        CditorCommand::TableSplitCell {
+            block_id: 3,
+            row: 0,
+            col: 0,
+        },
+        CditorCommand::TableSetRangeAlign {
+            block_id: 3,
+            range: TableRange::normalized(0, 0, 0, 0),
+            align: cditor_core::rich_text::TableCellAlign::Center,
+        },
         CditorCommand::SetMediaWidthRatio {
             block_id: 1,
             ratio_milli: 800,

@@ -3,7 +3,7 @@ use cditor_core::{
     ids::BlockId,
     rich_text::{
         BlockAttrs, BlockPayload, ImagePayload, InlineColorTarget, InlineMark, RichBlockKind,
-        TableRange,
+        TableCellAlign, TableRange,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -199,6 +199,11 @@ pub enum CommandArgs {
         range: TableRange,
         color: Option<String>,
     },
+    TableRangeAlign {
+        block_id: BlockId,
+        range: TableRange,
+        align: TableCellAlign,
+    },
     Extension {
         schema: String,
         payload: serde_json::Value,
@@ -240,6 +245,7 @@ impl CommandArgs {
             Self::TableAxisMove { .. } => CommandArgumentKind::TableAxisMove,
             Self::TableRangeTarget { .. } => CommandArgumentKind::TableRangeTarget,
             Self::TableRangeColor { .. } => CommandArgumentKind::TableRangeColor,
+            Self::TableRangeAlign { .. } => CommandArgumentKind::TableRangeAlign,
             Self::Extension { .. } => CommandArgumentKind::Extension,
         }
     }
@@ -280,5 +286,6 @@ pub enum CommandArgumentKind {
     TableAxisMove,
     TableRangeTarget,
     TableRangeColor,
+    TableRangeAlign,
     Extension,
 }

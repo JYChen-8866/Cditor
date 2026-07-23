@@ -1,7 +1,6 @@
 use super::*;
 
 impl DocumentRuntime {
-    #[cfg(test)]
     pub(crate) fn merge_table_cells(
         &mut self,
         block_id: BlockId,
@@ -36,7 +35,6 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    #[cfg(test)]
     pub(crate) fn split_table_cell(
         &mut self,
         block_id: BlockId,
@@ -72,7 +70,6 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    #[cfg(test)]
     pub(crate) fn set_table_cell_align(
         &mut self,
         block_id: BlockId,
@@ -493,7 +490,6 @@ impl DocumentRuntime {
     }
 }
 
-#[cfg(test)]
 fn merged_range_at(
     table: &cditor_core::rich_text::TablePayload,
     row: usize,

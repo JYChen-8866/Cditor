@@ -172,6 +172,8 @@ mod runtime_shortcuts;
 mod selection_scroll;
 #[path = "tests/table_clipboard_resize.rs"]
 mod table_clipboard_resize;
+#[path = "tests/table_command_mutations.rs"]
+mod table_command_mutations;
 #[path = "tests/table_core.rs"]
 mod table_core;
 #[path = "tests/table_structure_layout.rs"]

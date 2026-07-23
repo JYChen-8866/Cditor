@@ -266,3 +266,40 @@ fn table_cell_navigation_has_a_read_only_typed_contract() {
         Ok(())
     );
 }
+
+#[test]
+fn table_merge_split_and_align_commands_match_the_catalog() {
+    let range = cditor_core::rich_text::TableRange::normalized(1, 2, 3, 4);
+    let commands = [
+        EditorCommand::TableMergeCells { block_id: 8, range },
+        EditorCommand::TableSplitCell {
+            block_id: 8,
+            row: 1,
+            col: 2,
+        },
+        EditorCommand::TableSetRangeAlign {
+            block_id: 8,
+            range,
+            align: cditor_core::rich_text::TableCellAlign::Right,
+        },
+    ];
+    let catalog = CommandCatalog::builtin();
+
+    assert_eq!(commands[0].stable_id(), builtin::TABLE_MERGE_CELLS);
+    assert_eq!(commands[1].stable_id(), builtin::TABLE_SPLIT_CELL);
+    assert_eq!(commands[2].stable_id(), builtin::TABLE_SET_ALIGN);
+    assert!(matches!(
+        commands[2].arguments(),
+        CommandArgs::TableRangeAlign {
+            block_id: 8,
+            align: cditor_core::rich_text::TableCellAlign::Right,
+            ..
+        }
+    ));
+    for command in commands {
+        assert_eq!(
+            catalog.validate_invocation(&command.invocation(CommandSource::Sdk)),
+            Ok(())
+        );
+    }
+}

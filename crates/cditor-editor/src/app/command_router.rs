@@ -266,7 +266,16 @@ impl CditorV2View {
             CditorCommand::TableClearRange { block_id, range }
             | CditorCommand::TableSetRangeBackground {
                 block_id, range, ..
+            }
+            | CditorCommand::TableMergeCells { block_id, range }
+            | CditorCommand::TableSetRangeAlign {
+                block_id, range, ..
             } => table_range_is_valid(runtime, *block_id, *range),
+            CditorCommand::TableSplitCell { block_id, row, col } => table_range_is_valid(
+                runtime,
+                *block_id,
+                cditor_core::rich_text::TableRange::normalized(*row, *col, *row, *col),
+            ),
             CditorCommand::SetMediaWidthRatio { block_id, .. } => matches!(
                 runtime.block_kind(*block_id),
                 Some(cditor_core::rich_text::RichBlockKind::Image)
@@ -354,6 +363,9 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::TableDuplicateAxis { .. }
             | CditorCommand::TableClearRange { .. }
             | CditorCommand::TableSetRangeBackground { .. }
+            | CditorCommand::TableMergeCells { .. }
+            | CditorCommand::TableSplitCell { .. }
+            | CditorCommand::TableSetRangeAlign { .. }
             | CditorCommand::SetMediaWidthRatio { .. }
             | CditorCommand::UpdateWhiteboardScene { .. }
             | CditorCommand::TableResizeAxis { .. }

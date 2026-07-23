@@ -409,6 +409,7 @@ pub mod builtin {
     pub const TABLE_SET_RANGE_COLOR: &str = "table.set_range_color";
     pub const TABLE_MERGE_CELLS: &str = "table.merge_cells";
     pub const TABLE_SPLIT_CELL: &str = "table.split_cell";
+    pub const TABLE_SET_ALIGN: &str = "table.set_align";
     pub const TABLE_RESIZE_AXIS: &str = "table.resize_axis";
     pub const TABLE_MOVE_AXIS: &str = "table.move_axis";
     pub const COLLECTION_INSERT_RECORD: &str = "collection.insert_record";

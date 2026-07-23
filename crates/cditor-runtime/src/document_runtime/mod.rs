@@ -115,7 +115,6 @@ use cditor_core::layout::{
     IMAGE_BLOCK_ESTIMATED_HEIGHT_PX, PageLayoutIndex, PagePolicy, estimate_block_height,
     estimate_text_payload_height, text_line_height_for_kind,
 };
-#[cfg(test)]
 use cditor_core::rich_text::TableCellAlign;
 use cditor_core::rich_text::{
     BlockAttrs, BlockPayload, BlockPayloadRecord, BlockPayloadView, ImagePayload,
