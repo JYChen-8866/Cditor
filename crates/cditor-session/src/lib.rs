@@ -10,6 +10,7 @@ mod document_snapshot;
 mod history_port;
 mod layout_port;
 mod render_port;
+mod selection_materialization_port;
 mod session;
 mod toolbar_snapshot;
 mod ui_snapshot;
@@ -33,6 +34,9 @@ pub use layout_port::{
 pub use render_port::{
     RenderFrameRequest, RenderFrameSnapshot, RenderFrameWarnings, activate_resident_payload_window,
     apply_table_horizontal_scroll_offset, plan_payload_window_load, project_render_frame,
+};
+pub use selection_materialization_port::{
+    SelectionMaterializationSnapshot, project_selection_materialization_result,
 };
 pub use session::{
     CommandDispatchSnapshot, EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError,

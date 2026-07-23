@@ -1,10 +1,10 @@
 use gpui::{AppContext, Context};
 
+use cditor_runtime::SelectionMaterializationRequest;
 use cditor_runtime::content::payload_window::{PayloadWindowLoadRequest, PayloadWindowLoadResult};
-use cditor_runtime::{SelectionMaterializationApplyDecision, SelectionMaterializationRequest};
 use cditor_session::{
     HistoryActionSnapshot, HistoryDirection, project_history_action,
-    project_hydrated_history_action,
+    project_hydrated_history_action, project_selection_materialization_result,
 };
 use cditor_storage::{StorageError, StorageSession, block_on_storage};
 
@@ -67,17 +67,19 @@ impl CditorV2View {
                 let should_replay = match result {
                     Ok((records, missing_block_ids)) if missing_block_ids.is_empty() => {
                         view.ready_runtime().is_some_and(|runtime| {
-                            runtime.apply_selection_materialization_result(
+                            project_selection_materialization_result(
+                                runtime,
                                 &request,
                                 records,
                                 &missing_block_ids,
-                            ) == SelectionMaterializationApplyDecision::Applied
-                                && runtime.selection_materialization_request().is_none()
+                            )
+                            .replay_ready
                         })
                     }
                     Ok((records, missing_block_ids)) => {
                         if let Some(runtime) = view.ready_runtime() {
-                            runtime.apply_selection_materialization_result(
+                            project_selection_materialization_result(
+                                runtime,
                                 &request,
                                 records,
                                 &missing_block_ids,
