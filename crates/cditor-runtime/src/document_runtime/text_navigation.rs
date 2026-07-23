@@ -328,7 +328,7 @@ impl DocumentRuntime {
         Ok(caret != next)
     }
 
-    pub fn focus_adjacent_visible_block(
+    pub(crate) fn focus_adjacent_visible_block(
         &mut self,
         block_id: BlockId,
         direction: i32,

@@ -1,7 +1,8 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn resize_columns_boundary(
+    #[cfg(test)]
+    pub(crate) fn resize_columns_boundary(
         &mut self,
         group_id: BlockId,
         boundary: usize,
@@ -34,7 +35,8 @@ impl DocumentRuntime {
         )
     }
 
-    pub fn columns_layout_snapshot(
+    #[cfg(test)]
+    pub(crate) fn columns_layout_snapshot(
         &self,
         group_id: BlockId,
         available_width: f64,

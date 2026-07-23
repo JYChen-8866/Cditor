@@ -33,10 +33,10 @@ pub use document_runtime::{
     AiSessionSnapshot, AiSessionStatus, AiStreamApplyResult, CompositionFocusTransition,
     DocumentRuntime, DocumentTextSelectionFragment, RealtimeInput, RealtimeInputError,
     RealtimeInputOutcome, RealtimeInputRequest, RichTextDelta, RichTextSelectionSnapshot,
-    RuntimeAiTarget, RuntimeTextSurface, SelectionMaterializationApplyDecision,
-    SelectionMaterializationRequest, TableClipboardSnapshot, TextSurface, TextSurfaceCapabilities,
-    TextSurfaceEditResult, TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot,
-    TextSurfaceSnapshotIdentity, TransactionApplyError,
+    RuntimeAiTarget, SelectionMaterializationApplyDecision, SelectionMaterializationRequest,
+    TableClipboardSnapshot, TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult,
+    TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot, TextSurfaceSnapshotIdentity,
+    TransactionApplyError,
 };
 pub use editing::composition::{
     CompositionCancelResult, CompositionCommitResult, CompositionController, CompositionError,

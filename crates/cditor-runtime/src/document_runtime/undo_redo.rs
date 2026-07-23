@@ -7,6 +7,12 @@ const TEXT_UNDO_MAX_STEPS_PER_BLOCK: usize = 100;
 pub(crate) const TEXT_UNDO_MAX_ESTIMATED_BYTES: usize = 32 * 1024 * 1024;
 
 impl DocumentRuntime {
+    /// Ends the current realtime typing batch before a non-text command or an
+    /// external driver yields control. This does not mutate document content.
+    pub fn end_input_batch(&mut self) {
+        self.break_typing_coalescing();
+    }
+
     /// Moves one large undo transaction out of the Runtime so an async
     /// persistence worker can spill it without holding a Runtime borrow.
     pub fn begin_external_undo_spill(&mut self) -> Option<UndoExternalizationJob> {
@@ -301,7 +307,7 @@ impl DocumentRuntime {
         }
     }
 
-    pub fn break_typing_coalescing(&mut self) {
+    pub(crate) fn break_typing_coalescing(&mut self) {
         self.pending_typing_undo = None;
         self.typing_undo_group = None;
         self.typing_mark_override = None;

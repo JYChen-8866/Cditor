@@ -131,7 +131,7 @@ pub fn run_mixed_acceptance(
                     },
                 })
                 .map_err(|error| error.to_string())?;
-            runtime.break_typing_coalescing();
+            runtime.end_input_batch();
             let version = runtime
                 .block_content_version(target_id)
                 .ok_or_else(|| format!("edited block {target_id} lost its payload"))?;

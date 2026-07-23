@@ -61,7 +61,7 @@ impl CditorV2View {
         }
 
         if let Some(runtime) = self.ready_runtime() {
-            runtime.break_typing_coalescing();
+            runtime.end_input_batch();
         }
 
         if let CditorCommand::CopyBlockText { block_id } = command {

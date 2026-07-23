@@ -5,7 +5,7 @@ use cditor_core::ids::SurfaceId;
 use super::{RichTextDelta, TextSurface, TextSurfaceEditResult, TextSurfaceSnapshot};
 use crate::DocumentRuntime;
 
-pub struct RuntimeTextSurface<'a> {
+pub(crate) struct RuntimeTextSurface<'a> {
     runtime: &'a mut DocumentRuntime,
     surface_id: SurfaceId,
 }

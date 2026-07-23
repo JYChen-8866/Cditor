@@ -9,9 +9,11 @@ use cditor_viewport::scroll::CaretAnchor;
 
 use super::DocumentRuntime;
 
+#[cfg(test)]
 mod handle;
 mod protocol;
-pub use handle::RuntimeTextSurface;
+#[cfg(test)]
+use handle::RuntimeTextSurface;
 pub use protocol::{RichTextDelta, TextSurface, TextSurfaceEditResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -490,7 +492,8 @@ impl DocumentRuntime {
         TextSurfaceRegistry.surface_ids(&record)
     }
 
-    pub fn text_surface(&mut self, surface_id: SurfaceId) -> Option<RuntimeTextSurface<'_>> {
+    #[cfg(test)]
+    pub(crate) fn text_surface(&mut self, surface_id: SurfaceId) -> Option<RuntimeTextSurface<'_>> {
         self.text_surface_snapshot(surface_id)?;
         Some(RuntimeTextSurface::new(self, surface_id))
     }
@@ -506,6 +509,7 @@ impl DocumentRuntime {
         TextSurfaceRegistry.validate_identity(&record, identity)
     }
 
+    #[cfg(test)]
     pub(crate) fn replace_text_surface_range(
         &mut self,
         surface_id: SurfaceId,

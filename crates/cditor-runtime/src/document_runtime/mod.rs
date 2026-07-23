@@ -76,7 +76,7 @@ pub use selection_materialization::{
     SelectionMaterializationApplyDecision, SelectionMaterializationRequest,
 };
 pub use text_surface::{
-    RichTextDelta, RuntimeTextSurface, TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult,
+    RichTextDelta, TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult,
     TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot, TextSurfaceSnapshotIdentity,
 };
 pub use transaction_apply::{AppliedTransaction, TransactionApplyError};
