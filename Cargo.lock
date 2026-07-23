@@ -1066,6 +1066,7 @@ dependencies = [
 name = "cditor-session"
 version = "0.2.6"
 dependencies = [
+ "cditor-ai",
  "cditor-core",
  "cditor-editor-protocol",
  "cditor-runtime",

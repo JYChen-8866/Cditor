@@ -4,12 +4,14 @@
 //! it through a cloneable, same-thread handle that exposes typed protocol
 //! operations without returning runtime borrows.
 
+mod ai_port;
 mod history_port;
 mod render_port;
 mod session;
 mod toolbar_snapshot;
 mod ui_snapshot;
 
+pub use ai_port::project_ai_session_request;
 pub use history_port::{
     HistoryActionSnapshot, HistoryDirection, project_history_action,
     project_hydrated_history_action,
