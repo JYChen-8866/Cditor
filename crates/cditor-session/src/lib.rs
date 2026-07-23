@@ -6,4 +6,6 @@
 
 mod session;
 
-pub use session::{EditorSession, EditorSessionHandle, SessionId, SessionSnapshot};
+pub use session::{
+    EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError, SessionSnapshot,
+};

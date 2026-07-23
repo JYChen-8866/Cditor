@@ -9,9 +9,13 @@ use cditor_core::ids::DocumentId;
 use cditor_editor_protocol::{
     ProtocolError, ProtocolErrorCode,
     command::{CommandCatalog, CommandEnvelope, CommandMutability, CommandOutcome},
+    projection::ProjectionRequest,
     query::{CommandQuery, DocumentSummary, QueryResult},
 };
-use cditor_runtime::DocumentRuntime;
+use cditor_runtime::{
+    DocumentRuntime, EditorViewProjection, RealtimeInputError, RealtimeInputOutcome,
+    RealtimeInputRequest,
+};
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -33,6 +37,23 @@ pub struct SessionSnapshot {
     pub readonly: bool,
     pub dirty: bool,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionRealtimeError {
+    Protocol(ProtocolError),
+    Input(RealtimeInputError),
+}
+
+impl fmt::Display for SessionRealtimeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Protocol(error) => error.fmt(formatter),
+            Self::Input(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for SessionRealtimeError {}
 
 /// The sole mutable owner of a document runtime.
 ///
@@ -125,6 +146,33 @@ impl EditorSessionHandle {
         Ok(session.query(query))
     }
 
+    pub fn projection(
+        &self,
+        request: ProjectionRequest,
+    ) -> Result<EditorViewProjection, ProtocolError> {
+        let mut session = self.try_session_mut()?;
+        Ok(session.runtime.projection(request))
+    }
+
+    pub fn apply_realtime_input(
+        &self,
+        request: RealtimeInputRequest<'_>,
+    ) -> Result<RealtimeInputOutcome, SessionRealtimeError> {
+        let mut session = self
+            .try_session_mut()
+            .map_err(SessionRealtimeError::Protocol)?;
+        if session.readonly {
+            return Err(SessionRealtimeError::Protocol(
+                ProtocolError::new(ProtocolErrorCode::Readonly, "document is read-only")
+                    .with_document(session.runtime.document_id()),
+            ));
+        }
+        session
+            .runtime
+            .apply_realtime_input(request)
+            .map_err(SessionRealtimeError::Input)
+    }
+
     pub fn snapshot(&self) -> Result<SessionSnapshot, ProtocolError> {
         let session = self.inner.try_borrow().map_err(|_| busy_error())?;
         Ok(session.snapshot())
@@ -213,5 +261,23 @@ mod tests {
         assert_eq!(snapshot.session_id, handle.id());
         assert_eq!(snapshot.document_id, 1);
         assert!(snapshot.block_count > 0);
+    }
+
+    #[test]
+    fn projection_is_read_through_the_session_owner() {
+        let handle = EditorSession::new(DocumentRuntime::demo(), false).into_handle();
+        let projection = handle
+            .projection(ProjectionRequest {
+                viewport_revision: 7,
+                include_diagnostics: false,
+            })
+            .unwrap();
+
+        assert_eq!(
+            projection.document_id,
+            handle.snapshot().unwrap().document_id
+        );
+        assert_eq!(projection.viewport_revision, 7);
+        assert!(!projection.blocks.is_empty());
     }
 }
