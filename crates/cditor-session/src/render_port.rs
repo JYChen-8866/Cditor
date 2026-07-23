@@ -23,6 +23,13 @@ pub struct RenderFrameSnapshot {
     pub projection: EditorViewProjection,
     pub automatic_text_layout_pins: Vec<SurfaceId>,
     pub scrollbar_visual: ScrollbarVisualState,
+    pub warnings: RenderFrameWarnings,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RenderFrameWarnings {
+    pub viewport_sync_error: Option<String>,
+    pub height_correction_error: Option<String>,
 }
 
 impl EditorSessionHandle {
@@ -31,38 +38,45 @@ impl EditorSessionHandle {
         request: RenderFrameRequest,
     ) -> Result<RenderFrameSnapshot, ProtocolError> {
         let mut session = self.try_session_mut()?;
-        session
-            .runtime
-            .sync_viewport_height(request.viewport_height)
-            .map_err(render_error)?;
-        session
-            .runtime
-            .flush_pending_height_corrections_with_priority(request.height_correction_priority)
-            .map_err(render_error)?;
-
-        let automatic_text_layout_pins = session
-            .runtime
-            .input_session_target()
-            .and_then(|target| target.surface_id())
-            .into_iter()
-            .collect();
-        let revision = session.runtime.revision();
-        let projection = session.runtime.projection(ProjectionRequest {
-            viewport_revision: revision,
-            include_diagnostics: request.include_diagnostics,
-        });
-        let scrollbar_visual = session.runtime.scrollbar_visual_state(ScrollbarPolicy {
-            track_height: request.viewport_height.max(1.0),
-            min_thumb_height: request.min_scrollbar_thumb_height,
-            local_list_state_scrollbar_enabled: false,
-        });
-        Ok(RenderFrameSnapshot {
-            projection,
-            automatic_text_layout_pins,
-            scrollbar_visual,
-        })
+        Ok(project_render_frame(&mut session.runtime, request))
     }
+}
 
+pub fn project_render_frame(
+    runtime: &mut cditor_runtime::DocumentRuntime,
+    request: RenderFrameRequest,
+) -> RenderFrameSnapshot {
+    let viewport_sync_error = runtime.sync_viewport_height(request.viewport_height).err();
+    let height_correction_error = runtime
+        .flush_pending_height_corrections_with_priority(request.height_correction_priority)
+        .err();
+    let automatic_text_layout_pins = runtime
+        .input_session_target()
+        .and_then(|target| target.surface_id())
+        .into_iter()
+        .collect();
+    let revision = runtime.revision();
+    let projection = runtime.projection(ProjectionRequest {
+        viewport_revision: revision,
+        include_diagnostics: request.include_diagnostics,
+    });
+    let scrollbar_visual = runtime.scrollbar_visual_state(ScrollbarPolicy {
+        track_height: request.viewport_height.max(1.0),
+        min_thumb_height: request.min_scrollbar_thumb_height,
+        local_list_state_scrollbar_enabled: false,
+    });
+    RenderFrameSnapshot {
+        projection,
+        automatic_text_layout_pins,
+        scrollbar_visual,
+        warnings: RenderFrameWarnings {
+            viewport_sync_error,
+            height_correction_error,
+        },
+    }
+}
+
+impl EditorSessionHandle {
     pub fn set_table_horizontal_scroll_offset(
         &self,
         block_id: cditor_core::ids::BlockId,
@@ -140,5 +154,6 @@ mod tests {
         );
         assert_eq!(frame.scrollbar_visual.track_height, 720.0);
         assert_eq!(frame.projection.scroll.viewport_height, 720.0);
+        assert_eq!(frame.warnings, RenderFrameWarnings::default());
     }
 }

@@ -9,7 +9,9 @@ mod session;
 mod toolbar_snapshot;
 mod ui_snapshot;
 
-pub use render_port::{RenderFrameRequest, RenderFrameSnapshot};
+pub use render_port::{
+    RenderFrameRequest, RenderFrameSnapshot, RenderFrameWarnings, project_render_frame,
+};
 pub use session::{
     EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError, SessionSnapshot,
 };

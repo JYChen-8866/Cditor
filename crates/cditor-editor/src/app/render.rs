@@ -11,7 +11,7 @@ use crate::app::input::actions::BoundInputAction;
 use crate::app::interaction::geometry::{
     fallback_text_metrics_for_block, projected_block_rects_from_projection,
 };
-use crate::app::interaction::scrollbar::{render_scrollbar, scrollbar_policy};
+use crate::app::interaction::scrollbar::render_scrollbar;
 use crate::app::interaction::table_scroll::TableScrollSnapshot;
 use crate::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX;
 use crate::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
@@ -36,7 +36,7 @@ use crate::persistence::{EditorLoadStateLabel, render_load_state, render_readonl
 use crate::scroll::HeightCorrectionPriority;
 use crate::theme::GuiTheme;
 use cditor_runtime::AiRequestPresentation;
-use cditor_runtime::InputTarget;
+use cditor_session::{RenderFrameRequest, project_render_frame};
 
 impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -381,15 +381,8 @@ impl Render for CditorV2View {
 
         match &mut self.state {
             CditorViewState::Ready(runtime) => {
-                let automatic_text_layout_pins = runtime
-                    .input_session_target()
-                    .and_then(InputTarget::surface_id)
-                    .into_iter()
-                    .collect::<Vec<_>>();
-                crate::text::sync_automatic_text_layout_pins(&automatic_text_layout_pins);
                 let viewport_height =
                     (editor_viewport.height - DEFAULT_DOCUMENT_TOP_INSET_PX).max(1.0) as f64;
-                let _ = runtime.sync_viewport_height(viewport_height);
                 self.scroll_accumulator
                     .maybe_mark_idle(std::time::Instant::now());
                 let height_correction_priority = if self.scrollbar_drag.is_some() {
@@ -397,13 +390,17 @@ impl Render for CditorV2View {
                 } else {
                     self.scroll_accumulator.height_correction_priority()
                 };
-                let _ = runtime
-                    .flush_pending_height_corrections_with_priority(height_correction_priority);
-                let projection =
-                    runtime.projection(cditor_editor_protocol::projection::ProjectionRequest {
-                        viewport_revision: runtime.revision(),
+                let frame = project_render_frame(
+                    runtime,
+                    RenderFrameRequest {
+                        viewport_height,
                         include_diagnostics: self.show_debug,
-                    });
+                        height_correction_priority,
+                        min_scrollbar_thumb_height: 24.0,
+                    },
+                );
+                crate::text::sync_automatic_text_layout_pins(&frame.automatic_text_layout_pins);
+                let projection = frame.projection;
                 let has_missing_payloads = projection.render_window.is_placeholder()
                     || projection.blocks.iter().any(|block| block.placeholder);
                 if payload_storage_session.is_some() && has_missing_payloads {
@@ -419,8 +416,7 @@ impl Render for CditorV2View {
                     .sync_visible_window(&projection, theme, cx);
                 self.whiteboard_thumbnails
                     .sync_visible_window(&projection, theme, cx);
-                let scrollbar_policy = scrollbar_policy(runtime);
-                let scrollbar_visual = runtime.scrollbar_visual_state(scrollbar_policy);
+                let scrollbar_visual = frame.scrollbar_visual;
                 self.projected_block_rects = projected_block_rects_from_projection(&projection);
                 let drag_overlay = self.block_drag_overlay_snapshot();
                 let table_axis_selection = self.projected_table_axis_visual_selection();
