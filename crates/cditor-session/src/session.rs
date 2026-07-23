@@ -39,6 +39,13 @@ pub struct SessionSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandDispatchSnapshot {
+    pub before_revision: u64,
+    pub revision: u64,
+    pub outcome: CommandOutcome,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionRealtimeError {
     Protocol(ProtocolError),
     Input(RealtimeInputError),
@@ -88,7 +95,7 @@ impl EditorSession {
                     .with_document(self.runtime.document_id()),
             );
         }
-        self.runtime.dispatch(envelope)
+        Ok(project_command_dispatch(&mut self.runtime, envelope)?.outcome)
     }
 
     fn query(&self, query: CommandQuery) -> QueryResult {
@@ -120,6 +127,19 @@ impl EditorSession {
     }
 }
 
+pub fn project_command_dispatch(
+    runtime: &mut DocumentRuntime,
+    envelope: CommandEnvelope,
+) -> Result<CommandDispatchSnapshot, ProtocolError> {
+    let before_revision = runtime.revision();
+    let outcome = runtime.dispatch(envelope)?;
+    Ok(CommandDispatchSnapshot {
+        before_revision,
+        revision: runtime.revision(),
+        outcome,
+    })
+}
+
 fn command_mutability(envelope: &CommandEnvelope) -> Option<CommandMutability> {
     let invocation = envelope.invocation();
     CommandCatalog::builtin()
@@ -139,6 +159,20 @@ impl EditorSessionHandle {
 
     pub fn dispatch(&self, envelope: CommandEnvelope) -> Result<CommandOutcome, ProtocolError> {
         self.try_session_mut()?.dispatch(envelope)
+    }
+
+    pub fn dispatch_with_snapshot(
+        &self,
+        envelope: CommandEnvelope,
+    ) -> Result<CommandDispatchSnapshot, ProtocolError> {
+        let mut session = self.try_session_mut()?;
+        if session.readonly && command_mutability(&envelope) == Some(CommandMutability::Document) {
+            return Err(
+                ProtocolError::new(ProtocolErrorCode::Readonly, "document is read-only")
+                    .with_document(session.runtime.document_id()),
+            );
+        }
+        project_command_dispatch(&mut session.runtime, envelope)
     }
 
     pub fn query(&self, query: CommandQuery) -> Result<QueryResult, ProtocolError> {
@@ -223,13 +257,15 @@ mod tests {
                 block_id: first_block,
             }))
             .unwrap();
-        cloned
-            .dispatch(command(EditorCommand::InsertParagraphAfterFocused))
+        let dispatched = cloned
+            .dispatch_with_snapshot(command(EditorCommand::InsertParagraphAfterFocused))
             .unwrap();
         let after = handle.snapshot().unwrap();
 
         assert_eq!(handle.id(), cloned.id());
         assert_eq!(before.session_id, after.session_id);
+        assert_eq!(dispatched.before_revision, before.revision);
+        assert_eq!(dispatched.revision, after.revision);
         assert!(after.revision > before.revision);
     }
 

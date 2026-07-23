@@ -14,7 +14,8 @@ pub use render_port::{
     apply_table_horizontal_scroll_offset, plan_payload_window_load, project_render_frame,
 };
 pub use session::{
-    EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError, SessionSnapshot,
+    CommandDispatchSnapshot, EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError,
+    SessionSnapshot, project_command_dispatch,
 };
 pub use toolbar_snapshot::{
     GutterToolbarSnapshot, ToolbarContextRequest, ToolbarContextSnapshot,

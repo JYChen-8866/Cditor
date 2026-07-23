@@ -9,6 +9,7 @@ use cditor_editor_protocol::command::{
     CaretDirection, CditorCommand, CommandCatalog, CommandCheckState, CommandEnvelope,
     CommandOutcome, CommandQueryState, CommandSource, CommandUnavailableReason, TableAxis,
 };
+use cditor_session::project_command_dispatch;
 
 impl CditorV2View {
     pub(in crate::app) fn apply_input_command(
@@ -76,22 +77,19 @@ impl CditorV2View {
 
         if runtime_dispatches(&command) {
             let mutates_document = command_mutates_document(&command);
-            let before_revision = self
-                .ready_runtime_ref()
-                .map(cditor_runtime::DocumentRuntime::revision)
-                .ok_or(CditorError::NotReady)?;
-            let outcome = self
-                .ready_runtime()
-                .ok_or(CditorError::NotReady)?
-                .dispatch(CommandEnvelope::new(command.clone(), source))
-                .map_err(protocol_command_error)?;
-            let revision = self
-                .ready_runtime_ref()
-                .map(cditor_runtime::DocumentRuntime::revision)
-                .ok_or(CditorError::NotReady)?;
-            if revision != before_revision && mutates_document {
-                self.mark_dirty_at_revision(change_origin_for_source(source), revision, cx);
+            let dispatched = project_command_dispatch(
+                self.ready_runtime().ok_or(CditorError::NotReady)?,
+                CommandEnvelope::new(command.clone(), source),
+            )
+            .map_err(protocol_command_error)?;
+            if dispatched.revision != dispatched.before_revision && mutates_document {
+                self.mark_dirty_at_revision(
+                    change_origin_for_source(source),
+                    dispatched.revision,
+                    cx,
+                );
             }
+            let outcome = dispatched.outcome;
             if outcome.selection_changed
                 && let Some(selection) = self.sdk_selection()
             {
