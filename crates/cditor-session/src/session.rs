@@ -65,6 +65,22 @@ impl fmt::Display for SessionRealtimeError {
 
 impl std::error::Error for SessionRealtimeError {}
 
+pub fn project_realtime_input(
+    runtime: &mut DocumentRuntime,
+    request: RealtimeInputRequest<'_>,
+    readonly: bool,
+) -> Result<RealtimeInputOutcome, SessionRealtimeError> {
+    if readonly {
+        return Err(SessionRealtimeError::Protocol(
+            ProtocolError::new(ProtocolErrorCode::Readonly, "document is read-only")
+                .with_document(runtime.document_id()),
+        ));
+    }
+    runtime
+        .apply_realtime_input(request)
+        .map_err(SessionRealtimeError::Input)
+}
+
 /// The sole mutable owner of a document runtime.
 ///
 /// It is deliberately not shared by a mutex. The desktop host runs requests
@@ -249,16 +265,8 @@ impl EditorSessionHandle {
         let mut session = self
             .try_session_mut()
             .map_err(SessionRealtimeError::Protocol)?;
-        if session.readonly {
-            return Err(SessionRealtimeError::Protocol(
-                ProtocolError::new(ProtocolErrorCode::Readonly, "document is read-only")
-                    .with_document(session.runtime.document_id()),
-            ));
-        }
-        session
-            .runtime
-            .apply_realtime_input(request)
-            .map_err(SessionRealtimeError::Input)
+        let readonly = session.readonly;
+        project_realtime_input(&mut session.runtime, request, readonly)
     }
 
     pub fn snapshot(&self) -> Result<SessionSnapshot, ProtocolError> {

@@ -4,9 +4,10 @@ use gpui::UTF16Selection;
 
 use cditor_core::ids::BlockId;
 use cditor_runtime::{
-    DocumentRuntime, InputSessionIdentity, RealtimeInput, RealtimeInputError, RealtimeInputOutcome,
+    DocumentRuntime, InputSessionIdentity, RealtimeInput, RealtimeInputOutcome,
     RealtimeInputRequest,
 };
+use cditor_session::{SessionRealtimeError, project_realtime_input};
 
 use crate::app::cditor_v2_view::GuiPlatformInputTarget;
 use crate::app::input_trace::trace_input;
@@ -21,7 +22,7 @@ pub(super) fn apply_platform_text_replacement(
     expected: InputSessionIdentity,
     range: Option<Range<usize>>,
     text: &str,
-) -> Result<RealtimeInputOutcome, RealtimeInputError> {
+) -> Result<RealtimeInputOutcome, SessionRealtimeError> {
     let has_active_selection = runtime.has_active_selection();
     let route = if text.is_empty() && has_active_selection {
         "delete_active_selection"
@@ -39,10 +40,14 @@ pub(super) fn apply_platform_text_replacement(
             runtime.input_session_selected_range(),
         ),
     );
-    let result = runtime.apply_realtime_input(RealtimeInputRequest {
-        expected,
-        input: RealtimeInput::ReplaceText { range, text },
-    });
+    let result = project_realtime_input(
+        runtime,
+        RealtimeInputRequest {
+            expected,
+            input: RealtimeInput::ReplaceText { range, text },
+        },
+        false,
+    );
     trace_input(
         "platform_text_replacement.end",
         format_args!("route={route} result={result:?}"),
@@ -53,11 +58,15 @@ pub(super) fn apply_platform_text_replacement(
 pub(super) fn apply_platform_unmark(
     runtime: &mut DocumentRuntime,
     expected: InputSessionIdentity,
-) -> Result<RealtimeInputOutcome, RealtimeInputError> {
-    runtime.apply_realtime_input(RealtimeInputRequest {
-        expected,
-        input: RealtimeInput::UnmarkComposition,
-    })
+) -> Result<RealtimeInputOutcome, SessionRealtimeError> {
+    project_realtime_input(
+        runtime,
+        RealtimeInputRequest {
+            expected,
+            input: RealtimeInput::UnmarkComposition,
+        },
+        false,
+    )
 }
 
 pub(in crate::app) fn platform_input_target_allows(

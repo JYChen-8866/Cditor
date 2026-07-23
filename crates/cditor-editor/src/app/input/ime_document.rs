@@ -139,14 +139,18 @@ impl CditorV2View {
                 new_text.len()
             ),
         );
-        let result = runtime.apply_realtime_input(cditor_runtime::RealtimeInputRequest {
-            expected: registered_identity.expect("validated platform input identity"),
-            input: cditor_runtime::RealtimeInput::UpdateComposition {
-                range,
-                text: new_text,
-                selected_range,
+        let result = cditor_session::project_realtime_input(
+            runtime,
+            cditor_runtime::RealtimeInputRequest {
+                expected: registered_identity.expect("validated platform input identity"),
+                input: cditor_runtime::RealtimeInput::UpdateComposition {
+                    range,
+                    text: new_text,
+                    selected_range,
+                },
             },
-        });
+            false,
+        );
         match result {
             Ok(outcome) => {
                 self.platform_input_session_identity = outcome.input_identity;

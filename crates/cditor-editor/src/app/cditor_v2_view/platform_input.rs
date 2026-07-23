@@ -118,13 +118,16 @@ impl CditorV2View {
             }
             let expected = expected
                 .ok_or_else(|| "active composition has no registered input identity".to_owned())?;
-            runtime
-                .apply_realtime_input(cditor_runtime::RealtimeInputRequest {
+            cditor_session::project_realtime_input(
+                runtime,
+                cditor_runtime::RealtimeInputRequest {
                     expected,
                     input: cditor_runtime::RealtimeInput::CommitBeforeExternalFocus,
-                })
-                .map(Some)
-                .map_err(|error| error.to_string())
+                },
+                false,
+            )
+            .map(Some)
+            .map_err(|error| error.to_string())
         });
         match result {
             Some(Ok(Some(outcome))) if outcome.document_changed => {
