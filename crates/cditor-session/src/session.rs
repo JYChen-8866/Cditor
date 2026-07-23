@@ -5,7 +5,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use cditor_core::ids::DocumentId;
+use cditor_core::ids::{BlockId, DocumentId};
 use cditor_editor_protocol::{
     ProtocolError, ProtocolErrorCode,
     command::{CommandCatalog, CommandEnvelope, CommandMutability, CommandOutcome},
@@ -140,6 +140,16 @@ pub fn project_command_dispatch(
     })
 }
 
+pub fn project_end_input_batch(runtime: &mut DocumentRuntime) {
+    runtime.end_input_batch();
+}
+
+pub fn project_block_plain_text(runtime: &DocumentRuntime, block_id: BlockId) -> Option<String> {
+    runtime
+        .block_payload_record(block_id)
+        .map(|payload| payload.plain_text())
+}
+
 fn command_mutability(envelope: &CommandEnvelope) -> Option<CommandMutability> {
     let invocation = envelope.invocation();
     CommandCatalog::builtin()
@@ -173,6 +183,16 @@ impl EditorSessionHandle {
             );
         }
         project_command_dispatch(&mut session.runtime, envelope)
+    }
+
+    pub fn end_input_batch(&self) -> Result<(), ProtocolError> {
+        project_end_input_batch(&mut self.try_session_mut()?.runtime);
+        Ok(())
+    }
+
+    pub fn block_plain_text(&self, block_id: BlockId) -> Result<Option<String>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| busy_error())?;
+        Ok(project_block_plain_text(&session.runtime, block_id))
     }
 
     pub fn query(&self, query: CommandQuery) -> Result<QueryResult, ProtocolError> {
@@ -315,5 +335,17 @@ mod tests {
         );
         assert_eq!(projection.viewport_revision, 7);
         assert!(!projection.blocks.is_empty());
+    }
+
+    #[test]
+    fn block_text_query_returns_owned_content() {
+        let runtime = DocumentRuntime::demo();
+        let block_id = runtime.visible_block_ids()[0];
+        let expected = project_block_plain_text(&runtime, block_id).unwrap();
+        let handle = EditorSession::new(runtime, false).into_handle();
+
+        let actual = handle.block_plain_text(block_id).unwrap().unwrap();
+        drop(handle);
+        assert_eq!(actual, expected);
     }
 }

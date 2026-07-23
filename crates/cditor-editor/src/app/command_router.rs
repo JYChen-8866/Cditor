@@ -9,7 +9,7 @@ use cditor_editor_protocol::command::{
     CaretDirection, CditorCommand, CommandCatalog, CommandCheckState, CommandEnvelope,
     CommandOutcome, CommandQueryState, CommandSource, CommandUnavailableReason, TableAxis,
 };
-use cditor_session::project_command_dispatch;
+use cditor_session::{project_block_plain_text, project_command_dispatch, project_end_input_batch};
 
 impl CditorV2View {
     pub(in crate::app) fn apply_input_command(
@@ -62,14 +62,13 @@ impl CditorV2View {
         }
 
         if let Some(runtime) = self.ready_runtime() {
-            runtime.end_input_batch();
+            project_end_input_batch(runtime);
         }
 
         if let CditorCommand::CopyBlockText { block_id } = command {
             let text = self
                 .ready_runtime_ref()
-                .and_then(|runtime| runtime.block_payload_record(block_id))
-                .map(|payload| payload.plain_text())
+                .and_then(|runtime| project_block_plain_text(runtime, block_id))
                 .ok_or(CditorError::BlockNotFound(block_id))?;
             cx.write_to_clipboard(ClipboardItem::new_string(text));
             return Ok(CommandOutcome::applied_side_effect(false));

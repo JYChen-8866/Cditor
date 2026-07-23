@@ -15,7 +15,7 @@ pub use render_port::{
 };
 pub use session::{
     CommandDispatchSnapshot, EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError,
-    SessionSnapshot, project_command_dispatch,
+    SessionSnapshot, project_block_plain_text, project_command_dispatch, project_end_input_batch,
 };
 pub use toolbar_snapshot::{
     GutterToolbarSnapshot, ToolbarContextRequest, ToolbarContextSnapshot,
