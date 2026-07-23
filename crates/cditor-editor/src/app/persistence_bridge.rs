@@ -7,8 +7,8 @@ use cditor_session::{
     apply_payload_window_result, project_apply_undo_blob_write_result,
     project_begin_undo_blob_cleanup, project_begin_undo_blob_spill,
     project_finish_undo_blob_cleanup, project_history_action, project_hydrated_history_action,
-    project_persistence_save_failure, project_persistence_save_success,
-    project_selection_materialization_result,
+    project_note_content_changed, project_persistence_save_failure,
+    project_persistence_save_success, project_selection_materialization_result,
 };
 use cditor_storage::{StorageError, StorageSession, block_on_storage};
 
@@ -242,7 +242,8 @@ impl CditorV2View {
     pub(crate) fn mark_dirty_with_origin(&mut self, origin: ChangeOrigin, cx: &mut Context<Self>) {
         let revision = self
             .ready_runtime()
-            .map(|runtime| runtime.note_content_changed())
+            .map(project_note_content_changed)
+            .map(|snapshot| snapshot.revision)
             .unwrap_or_default();
         self.mark_dirty_at_revision(origin, revision, cx);
     }

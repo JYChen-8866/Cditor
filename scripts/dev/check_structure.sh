@@ -265,7 +265,7 @@ if [ -n "$direct_external_undo_blob_violations" ]; then
 fi
 
 direct_persistence_capture_violations=$(
-  grep -R -n -E '\.(drain_pending_structure_transactions|loaded_payload_records_snapshot|block_attrs_snapshot|index_records_snapshot|page_layout_snapshot|mark_payload_versions_persisted|mark_layout_saved|restore_pending_structure_transactions)\(' \
+  grep -R -n -E '\.(note_content_changed|structure_version|drain_pending_structure_transactions|loaded_payload_records_snapshot|block_attrs_snapshot|index_records_snapshot|page_layout_snapshot|mark_payload_versions_persisted|mark_layout_saved|restore_pending_structure_transactions)\(' \
     --include='*.rs' --exclude='test_support.rs' crates/cditor-editor/src || true
 )
 if [ -n "$direct_persistence_capture_violations" ]; then

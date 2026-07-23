@@ -417,7 +417,9 @@ mod tests {
     async fn save_barrier_waits_for_its_generation_but_not_newer_edits() {
         let mut runtime = DocumentRuntime::empty();
         let mut persistence = persistence();
-        persistence.mark_loaded_structure_version(runtime.structure_version());
+        persistence.mark_loaded_structure_version(
+            cditor_session::project_persistence_runtime_snapshot(&runtime).structure_version,
+        );
         persistence.mark_dirty();
         let receiver = persistence.request_barrier(PersistenceBarrierKind::Save, 7);
         let request = persistence.begin_batch(&mut runtime).unwrap();
@@ -505,7 +507,10 @@ mod tests {
 
         let request = persistence.begin_batch(&mut runtime).unwrap();
         let snapshot = request.batch.page_layout_snapshot.as_ref().unwrap();
-        assert_eq!(snapshot.structure_version, runtime.structure_version());
+        assert_eq!(
+            snapshot.structure_version,
+            cditor_session::project_persistence_runtime_snapshot(&runtime).structure_version
+        );
         assert_eq!(snapshot.pages[0].first_block_id, 1);
         assert_eq!(snapshot.pages.last().unwrap().last_block_id, 3);
     }
@@ -514,7 +519,9 @@ mod tests {
     async fn clean_flush_barrier_is_ready_without_creating_a_save_batch() {
         let mut runtime = DocumentRuntime::empty();
         let mut persistence = persistence();
-        persistence.mark_loaded_structure_version(runtime.structure_version());
+        persistence.mark_loaded_structure_version(
+            cditor_session::project_persistence_runtime_snapshot(&runtime).structure_version,
+        );
         let receiver = persistence.request_barrier(PersistenceBarrierKind::Flush, 1);
 
         assert!(persistence.begin_batch(&mut runtime).is_none());

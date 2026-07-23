@@ -22,10 +22,30 @@ pub struct PersistenceSaveCapture {
     pub batch: StorageSaveBatch,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PersistenceRuntimeSnapshot {
+    pub revision: u64,
+    pub structure_version: u64,
+}
+
 impl PersistenceSaveCapture {
     pub fn includes_structure(&self) -> bool {
         !self.batch.index_records.is_empty()
     }
+}
+
+pub fn project_persistence_runtime_snapshot(
+    runtime: &DocumentRuntime,
+) -> PersistenceRuntimeSnapshot {
+    PersistenceRuntimeSnapshot {
+        revision: runtime.revision(),
+        structure_version: runtime.structure_version(),
+    }
+}
+
+pub fn project_note_content_changed(runtime: &mut DocumentRuntime) -> PersistenceRuntimeSnapshot {
+    runtime.note_content_changed();
+    project_persistence_runtime_snapshot(runtime)
 }
 
 pub fn project_persistence_save_capture(
@@ -101,6 +121,25 @@ pub fn project_persistence_save_failure(
 }
 
 impl EditorSessionHandle {
+    pub fn persistence_runtime_snapshot(
+        &self,
+    ) -> Result<PersistenceRuntimeSnapshot, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                cditor_editor_protocol::ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_persistence_runtime_snapshot(&session.runtime))
+    }
+
+    pub fn note_content_changed(&self) -> Result<PersistenceRuntimeSnapshot, ProtocolError> {
+        Ok(project_note_content_changed(
+            &mut self.try_session_mut()?.runtime,
+        ))
+    }
+
     pub fn capture_persistence_save(
         &self,
         request: PersistenceCaptureRequest,
@@ -212,5 +251,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(retry.batch.transactions, capture.batch.transactions);
+    }
+
+    #[test]
+    fn dirty_notification_returns_monotonic_runtime_identity() {
+        let mut runtime = DocumentRuntime::empty();
+        let before = project_persistence_runtime_snapshot(&runtime);
+
+        let after = project_note_content_changed(&mut runtime);
+
+        assert!(after.revision > before.revision);
+        assert_eq!(after.structure_version, before.structure_version);
     }
 }

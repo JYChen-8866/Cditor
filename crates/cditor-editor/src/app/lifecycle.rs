@@ -353,8 +353,9 @@ impl CditorV2View {
         self.storage_persistence
             .set_session(storage_session, self.autosave_interval);
         if let CditorViewState::Ready(runtime) = &self.state {
-            self.storage_persistence
-                .mark_loaded_structure_version(runtime.structure_version());
+            self.storage_persistence.mark_loaded_structure_version(
+                cditor_session::project_persistence_runtime_snapshot(runtime).structure_version,
+            );
         }
         self.save_status = save_status_for_mode(self.readonly);
     }
