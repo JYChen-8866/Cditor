@@ -22,8 +22,10 @@ fn gutter_toolbar_opens_left_of_the_actual_gutter_and_aligns_its_top() {
     let gutter_top =
         (rect.document_top - 80.0) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX + block_gutter_top_px();
 
+    let mut context = formatting_toolbar_context(Some(&runtime), Some(1)).unwrap();
+    context.global_scroll_top = 80.0;
     let state = formatting_toolbar_state(
-        Some(&runtime),
+        Some(&context),
         &HashMap::new(),
         false,
         false,
@@ -33,7 +35,6 @@ fn gutter_toolbar_opens_left_of_the_actual_gutter_and_aligns_its_top() {
         false,
         None,
         &[rect],
-        80.0,
     )
     .unwrap();
 

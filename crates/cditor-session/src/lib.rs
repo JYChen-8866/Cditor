@@ -6,10 +6,15 @@
 
 mod render_port;
 mod session;
+mod toolbar_snapshot;
 mod ui_snapshot;
 
 pub use render_port::{RenderFrameRequest, RenderFrameSnapshot};
 pub use session::{
     EditorSession, EditorSessionHandle, SessionId, SessionRealtimeError, SessionSnapshot,
+};
+pub use toolbar_snapshot::{
+    GutterToolbarSnapshot, ToolbarContextRequest, ToolbarContextSnapshot,
+    VersionedSelectionFragment, project_toolbar_context,
 };
 pub use ui_snapshot::SessionUiSnapshot;

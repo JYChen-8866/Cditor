@@ -27,8 +27,9 @@ fn complex_block_gutter_menu_disables_unsupported_text_and_ai_actions() {
         supports_children: false,
     };
 
+    let context = formatting_toolbar_context(Some(&runtime), Some(1)).unwrap();
     let state = formatting_toolbar_state(
-        Some(&runtime),
+        Some(&context),
         &HashMap::new(),
         false,
         false,
@@ -38,7 +39,6 @@ fn complex_block_gutter_menu_disables_unsupported_text_and_ai_actions() {
         false,
         None,
         &[rect],
-        0.0,
     )
     .unwrap();
 

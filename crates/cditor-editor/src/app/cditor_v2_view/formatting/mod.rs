@@ -8,4 +8,4 @@ mod toolbar;
 pub(in crate::app) use selection_delay::{
     SelectionToolbarDelay, floating_toolbar_passes_selection_delay,
 };
-pub(in crate::app) use toolbar::formatting_toolbar_state;
+pub(in crate::app) use toolbar::{formatting_toolbar_context, formatting_toolbar_state};

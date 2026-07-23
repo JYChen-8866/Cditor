@@ -16,6 +16,10 @@ use crate::text::{RichTextPlatformLayout, platform_range_bounds};
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayload, InlineColorTarget, InlineMark, InlineSpan};
 use cditor_runtime::DocumentRuntime;
+use cditor_session::{
+    ToolbarContextRequest, ToolbarContextSnapshot, VersionedSelectionFragment,
+    project_toolbar_context,
+};
 
 #[cfg(test)]
 use super::actions::inline_mark_for_toolbar_action;
@@ -23,7 +27,7 @@ use super::color::selected_spans_color;
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(in crate::app) fn formatting_toolbar_state(
-    runtime: Option<&DocumentRuntime>,
+    context: Option<&ToolbarContextSnapshot>,
     text_layouts: &HashMap<cditor_core::ids::BlockId, RichTextPlatformLayout>,
     readonly: bool,
     conflicting_overlay_open: bool,
@@ -33,16 +37,15 @@ pub(in crate::app) fn formatting_toolbar_state(
     color_menu_open: bool,
     last_color_action: Option<ColorMenuAction>,
     projected_block_rects: &[ProjectedBlockRect],
-    scroll_top: f64,
 ) -> Option<FloatingToolbarState> {
     if readonly || conflicting_overlay_open {
         return None;
     }
-    let runtime = runtime?;
-    if runtime.ai_session_snapshot().is_some() {
+    let context = context?;
+    if context.ai_session_active {
         return None;
     }
-    if runtime.has_entire_document_text_selection() {
+    if context.has_entire_document_text_selection {
         return None;
     }
     if let Some(block_id) = gutter_toolbar_block_id {
@@ -51,7 +54,7 @@ pub(in crate::app) fn formatting_toolbar_state(
             .find(|rect| rect.block_id == block_id)?;
         let page_left = ((viewport.width - DEFAULT_DOCUMENT_PAGE_WIDTH_PX) / 2.0).max(0.0);
         let gutter_left = page_left + block_gutter_left_px(rect.indent_px);
-        let gutter_top = (rect.document_top - scroll_top) as f32
+        let gutter_top = (rect.document_top - context.global_scroll_top) as f32
             + DEFAULT_DOCUMENT_TOP_INSET_PX
             + block_gutter_top_px();
         let (x, y) = gutter_floating_toolbar_position(
@@ -62,8 +65,10 @@ pub(in crate::app) fn formatting_toolbar_state(
         );
         let color_geometry = color_menu_geometry(x, y, viewport.width, viewport.height);
         let (bold, italic, underline, strike, code, text_color, background_color, block_transform) =
-            runtime
-                .block_payload_record(block_id)
+            context
+                .gutter
+                .as_ref()
+                .and_then(|gutter| gutter.payload.as_ref())
                 .map(|payload| {
                     let rich_spans = toolbar_spans_for_payload(&payload.payload);
                     let marks = rich_spans
@@ -97,12 +102,12 @@ pub(in crate::app) fn formatting_toolbar_state(
                                 ),
                                 active_block_color(
                                     payload.block_id,
-                                    runtime,
+                                    context,
                                     InlineColorTarget::Text,
                                 ),
                                 active_block_color(
                                     payload.block_id,
-                                    runtime,
+                                    context,
                                     InlineColorTarget::Background,
                                 ),
                             )
@@ -140,10 +145,16 @@ pub(in crate::app) fn formatting_toolbar_state(
         let block_transform_availability = BlockTransformAvailability::from_enabled(
             BlockTransformAction::all().into_iter().filter(|action| {
                 block_transform == Some(*action)
-                    || runtime.can_convert_block_kind(block_id, &action.kind())
+                    || context
+                        .gutter
+                        .as_ref()
+                        .is_some_and(|gutter| gutter.convertible_kinds.contains(&action.kind()))
             }),
         );
-        let rich_text_actions_enabled = runtime.supports_block_rich_text_actions(block_id);
+        let rich_text_actions_enabled = context
+            .gutter
+            .as_ref()
+            .is_some_and(|gutter| gutter.rich_text_actions_enabled);
         return Some(FloatingToolbarState {
             x,
             y,
@@ -154,8 +165,11 @@ pub(in crate::app) fn formatting_toolbar_state(
             show_delete: true,
             inline_format_enabled: rich_text_actions_enabled,
             color_enabled: rich_text_actions_enabled,
-            ai_enabled: runtime.can_begin_ai_request(),
-            delete_enabled: runtime.can_delete_block(block_id),
+            ai_enabled: context.can_begin_ai_request,
+            delete_enabled: context
+                .gutter
+                .as_ref()
+                .is_some_and(|gutter| gutter.delete_enabled),
             bold,
             italic,
             underline,
@@ -175,16 +189,13 @@ pub(in crate::app) fn formatting_toolbar_state(
             last_color_action,
         });
     }
-    if runtime.focused_table_cell_offset().is_some() {
+    if context.focused_table_cell {
         return None;
     }
-    if runtime.has_cross_block_text_selection() {
-        let fragments = runtime.document_text_selection_fragments()?;
-        let bounds = viewport.window_bounds_to_local(cross_block_selection_bounds(
-            runtime,
-            text_layouts,
-            &fragments,
-        )?);
+    if !context.cross_block_fragments.is_empty() {
+        let fragments = &context.cross_block_fragments;
+        let bounds =
+            viewport.window_bounds_to_local(cross_block_selection_bounds(text_layouts, fragments)?);
         let (x, y) = floating_toolbar_position(
             f32::from(bounds.left()),
             f32::from(bounds.top()),
@@ -196,14 +207,14 @@ pub(in crate::app) fn formatting_toolbar_state(
         return Some(FloatingToolbarState {
             x,
             y,
-            block_id: runtime.focused_block_id(),
+            block_id: context.focused_block_id,
             has_text_selection: true,
             show_inline_format: true,
             show_color: true,
             show_delete: false,
             inline_format_enabled: false,
             color_enabled: false,
-            ai_enabled: runtime.can_begin_ai_request(),
+            ai_enabled: context.can_begin_ai_request,
             delete_enabled: false,
             bold: false,
             italic: false,
@@ -224,15 +235,15 @@ pub(in crate::app) fn formatting_toolbar_state(
             last_color_action,
         });
     }
-    let block_id = runtime.focused_block_id()?;
-    let range = runtime.input_session_selected_range()?;
+    let block_id = context.focused_block_id?;
+    let range = context.selected_range.clone()?;
     if range.is_empty() {
         return None;
     }
-    let payload = runtime.block_payload_record(block_id)?;
+    let payload = context.focused_payload.as_ref()?;
     let spans = toolbar_spans_for_payload(&payload.payload)?;
     let layout = text_layouts.get(&block_id)?;
-    if runtime.block_content_version(block_id)? != layout.content_version {
+    if payload.content_version != layout.content_version {
         return None;
     }
     let bounds = viewport.window_bounds_to_local(platform_range_bounds(layout, range.clone()));
@@ -255,7 +266,7 @@ pub(in crate::app) fn formatting_toolbar_state(
         show_delete: false,
         inline_format_enabled: true,
         color_enabled: true,
-        ai_enabled: runtime.can_begin_ai_request(),
+        ai_enabled: context.can_begin_ai_request,
         delete_enabled: false,
         bold: selected_spans_have_mark(spans, range.clone(), InlineFormatAction::Bold),
         italic: selected_spans_have_mark(spans, range.clone(), InlineFormatAction::Italic),
@@ -278,14 +289,13 @@ pub(in crate::app) fn formatting_toolbar_state(
 }
 
 fn cross_block_selection_bounds(
-    runtime: &DocumentRuntime,
     text_layouts: &HashMap<BlockId, RichTextPlatformLayout>,
-    fragments: &[cditor_runtime::DocumentTextSelectionFragment],
+    fragments: &[VersionedSelectionFragment],
 ) -> Option<Bounds<Pixels>> {
     let mut fragment_bounds = fragments.iter().filter_map(|fragment| {
-        let layout = text_layouts.get(&fragment.block_id)?;
-        (runtime.block_content_version(fragment.block_id)? == layout.content_version)
-            .then(|| platform_range_bounds(layout, fragment.range.clone()))
+        let layout = text_layouts.get(&fragment.fragment.block_id)?;
+        (fragment.content_version == layout.content_version)
+            .then(|| platform_range_bounds(layout, fragment.fragment.range.clone()))
     });
     let first = fragment_bounds.next()?;
     Some(fragment_bounds.fold(first, |combined, bounds| {
@@ -310,11 +320,16 @@ fn toolbar_spans_for_payload(payload: &BlockPayload) -> Option<&[InlineSpan]> {
 }
 
 fn active_block_color(
-    block_id: BlockId,
-    runtime: &DocumentRuntime,
+    _block_id: BlockId,
+    context: &ToolbarContextSnapshot,
     target: InlineColorTarget,
 ) -> ActiveColor {
-    let attrs = runtime.block_attrs(block_id);
+    let attrs = context
+        .gutter
+        .as_ref()
+        .map(|gutter| &gutter.attrs)
+        .cloned()
+        .unwrap_or_default();
     let value = match target {
         InlineColorTarget::Text => attrs.color.as_deref(),
         InlineColorTarget::Background => attrs.background_color.as_deref(),
@@ -325,6 +340,23 @@ fn active_block_color(
             .map(ActiveColor::Palette)
             .unwrap_or(ActiveColor::Mixed),
     }
+}
+
+pub(in crate::app) fn formatting_toolbar_context(
+    runtime: Option<&DocumentRuntime>,
+    gutter_block_id: Option<BlockId>,
+) -> Option<ToolbarContextSnapshot> {
+    let runtime = runtime?;
+    Some(project_toolbar_context(
+        runtime,
+        ToolbarContextRequest {
+            gutter_block_id,
+            transform_targets: BlockTransformAction::all()
+                .into_iter()
+                .map(|action| action.kind())
+                .collect(),
+        },
+    ))
 }
 
 fn selected_spans_have_mark(
@@ -371,7 +403,7 @@ mod tests {
         EmbedPayload, FilePayload, ImagePayload, RichBlockKind, TablePayload, WhiteboardPayload,
     };
     use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
-    use gpui::{point, size};
+    use gpui::size;
     fn dispatch(runtime: &mut DocumentRuntime, command: EditorCommand) -> bool {
         runtime
             .dispatch(CommandEnvelope::new(command, CommandSource::Sdk))
@@ -388,78 +420,6 @@ mod tests {
                 color: Some(color.to_owned()),
             },
         );
-    }
-
-    #[test]
-    fn cross_block_text_selection_keeps_unsupported_actions_visible_but_disabled() {
-        let mut runtime = DocumentRuntime::from_payloads(
-            1,
-            vec![
-                cditor_core::rich_text::BlockPayloadRecord::rich_text(
-                    1,
-                    RichBlockKind::Paragraph,
-                    "first",
-                ),
-                cditor_core::rich_text::BlockPayloadRecord::rich_text(
-                    2,
-                    RichBlockKind::Paragraph,
-                    "second",
-                ),
-            ],
-            720.0,
-        );
-        crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 2, 2);
-        let mut layouts = HashMap::new();
-        let viewport = EditorViewport {
-            window_left: 240.0,
-            window_top: 80.0,
-            width: 900.0,
-            height: 700.0,
-        };
-        for (block_id, text, top) in [(1, "first", 100.0), (2, "second", 124.0)] {
-            layouts.insert(
-                block_id,
-                crate::text::test_platform_layout(
-                    block_id,
-                    runtime.block_content_version(block_id).unwrap(),
-                    text,
-                    Bounds::new(
-                        point(
-                            px(viewport.window_left + 120.0),
-                            px(viewport.window_top + top),
-                        ),
-                        size(px(500.0), px(24.0)),
-                    ),
-                    None,
-                ),
-            );
-        }
-
-        let state = formatting_toolbar_state(
-            Some(&runtime),
-            &layouts,
-            false,
-            false,
-            viewport,
-            None,
-            false,
-            false,
-            None,
-            &[],
-            0.0,
-        )
-        .expect("cross-block selection should show a toolbar");
-
-        assert!(state.has_text_selection);
-        assert!(state.show_inline_format);
-        assert!(state.show_color);
-        assert!(!state.inline_format_enabled);
-        assert!(!state.color_enabled);
-        assert!(state.ai_enabled);
-        assert!(!state.show_delete);
-        assert_eq!(state.block_id, Some(2));
-        assert_eq!(state.y, 156.0);
-        assert!((0.0..viewport.width).contains(&state.x));
     }
 
     #[test]
@@ -484,9 +444,10 @@ mod tests {
         assert!(dispatch(&mut runtime, EditorCommand::SelectAll));
         assert!(dispatch(&mut runtime, EditorCommand::SelectAll));
 
+        let context = formatting_toolbar_context(Some(&runtime), Some(2)).unwrap();
         assert!(
             formatting_toolbar_state(
-                Some(&runtime),
+                Some(&context),
                 &HashMap::new(),
                 false,
                 false,
@@ -496,7 +457,6 @@ mod tests {
                 true,
                 None,
                 &[],
-                0.0,
             )
             .is_none()
         );
@@ -518,8 +478,9 @@ mod tests {
             supports_children: false,
         };
 
+        let context = formatting_toolbar_context(Some(&runtime), Some(1)).unwrap();
         let state = formatting_toolbar_state(
-            Some(&runtime),
+            Some(&context),
             &HashMap::new(),
             false,
             false,
@@ -529,7 +490,6 @@ mod tests {
             false,
             None,
             &[rect],
-            0.0,
         )
         .unwrap();
 
@@ -560,12 +520,13 @@ mod tests {
         );
         set_block_color(&mut runtime, InlineColorTarget::Text, "#d44c47");
         set_block_color(&mut runtime, InlineColorTarget::Background, "#fdebec");
+        let context = formatting_toolbar_context(Some(&runtime), Some(2)).unwrap();
         assert_eq!(
-            active_block_color(2, &runtime, InlineColorTarget::Text),
+            active_block_color(2, &context, InlineColorTarget::Text),
             ActiveColor::Palette(PaletteColor::Red)
         );
         assert_eq!(
-            active_block_color(2, &runtime, InlineColorTarget::Background),
+            active_block_color(2, &context, InlineColorTarget::Background),
             ActiveColor::Palette(PaletteColor::Red)
         );
     }
@@ -698,3 +659,6 @@ mod capability_tests;
 #[cfg(test)]
 #[path = "toolbar_position_tests.rs"]
 mod position_tests;
+#[cfg(test)]
+#[path = "toolbar_selection_tests.rs"]
+mod selection_tests;

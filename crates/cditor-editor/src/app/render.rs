@@ -5,7 +5,7 @@ use gpui::{
 
 use crate::app::cditor_v2_view::{
     CditorV2View, CditorViewState, floating_toolbar_passes_selection_delay,
-    formatting_toolbar_state,
+    formatting_toolbar_context, formatting_toolbar_state,
 };
 use crate::app::input::actions::BoundInputAction;
 use crate::app::interaction::geometry::{
@@ -67,16 +67,18 @@ impl Render for CditorV2View {
         let code_theme_menu_block_id = self.code_theme_menu_block_id;
         let code_highlight_theme = self.code_highlight_theme;
         let mermaid_source_blocks = self.mermaid_source_blocks.clone();
+        let formatting_context =
+            formatting_toolbar_context(self.ready_runtime_ref(), self.gutter_toolbar_block_id);
         let embedded_ai_prompt = self.ai_prompt.as_ref().is_some_and(|prompt| {
             self.gutter_toolbar_block_id == Some(prompt.block_id)
                 || (prompt.presentation == AiRequestPresentation::Automatic
-                    && self
-                        .ready_runtime_ref()
-                        .is_some_and(|runtime| runtime.has_document_text_selection()))
+                    && formatting_context
+                        .as_ref()
+                        .is_some_and(|context| context.has_active_document_text_selection()))
         });
         let selection_toolbar_ready = self.sync_selection_toolbar_delay(cx);
         let mut formatting_toolbar = formatting_toolbar_state(
-            self.ready_runtime_ref(),
+            formatting_context.as_ref(),
             &self.text_layouts,
             self.readonly,
             self.slash_menu.is_some()
@@ -92,9 +94,6 @@ impl Render for CditorV2View {
             self.color_menu_open,
             self.last_color_action,
             &self.projected_block_rects,
-            self.ready_runtime_ref()
-                .map(|runtime| runtime.global_scroll_top())
-                .unwrap_or(0.0),
         );
         if formatting_toolbar.as_ref().is_some_and(|toolbar| {
             !floating_toolbar_passes_selection_delay(

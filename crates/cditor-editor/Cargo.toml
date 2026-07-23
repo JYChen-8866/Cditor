@@ -23,6 +23,7 @@ cditor-import-export = { path = "../cditor-import-export" }
 cditor-text = { path = "../cditor-text" }
 cditor-viewport = { path = "../cditor-viewport" }
 cditor-runtime = { path = "../cditor-runtime" }
+cditor-session = { path = "../cditor-session" }
 cditor-storage = { path = "../cditor-storage" }
 cditor-theme = { path = "../cditor-theme" }
 cditor-whiteboard = { path = "../../components/cditor-whiteboard" }

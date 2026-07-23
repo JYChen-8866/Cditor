@@ -48,7 +48,8 @@ pub use super::state::{CditorViewState, EditorReadonlyReason};
 pub(crate) use crate::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::app) use block_actions::block_focus_offset_after_missed_hit_test;
 pub(in crate::app) use formatting::{
-    SelectionToolbarDelay, floating_toolbar_passes_selection_delay, formatting_toolbar_state,
+    SelectionToolbarDelay, floating_toolbar_passes_selection_delay, formatting_toolbar_context,
+    formatting_toolbar_state,
 };
 pub(crate) use platform_input::GuiPlatformInputTarget;
 #[cfg(test)]

@@ -1010,6 +1010,7 @@ dependencies = [
  "cditor-editor-protocol",
  "cditor-import-export",
  "cditor-runtime",
+ "cditor-session",
  "cditor-storage",
  "cditor-text",
  "cditor-theme",
