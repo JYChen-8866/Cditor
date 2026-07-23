@@ -8,7 +8,6 @@ use crate::block::whiteboard_style_fn;
 use crate::overlay::WhiteboardEditorSession;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::BlockPayload;
 use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 
 impl CditorV2View {
@@ -17,14 +16,10 @@ impl CditorV2View {
         block_id: BlockId,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(scene_json) = self.ready_runtime_ref().and_then(|runtime| {
-            runtime.block_payload_record(block_id).and_then(|payload| {
-                let BlockPayload::Whiteboard(whiteboard) = &payload.payload else {
-                    return None;
-                };
-                Some(whiteboard.scene_json.clone())
-            })
-        }) else {
+        let Some(scene_json) = self
+            .ready_runtime_ref()
+            .and_then(|runtime| cditor_session::project_whiteboard_scene(runtime, block_id))
+        else {
             return false;
         };
         let readonly = self.readonly;
@@ -42,16 +37,18 @@ impl CditorV2View {
                     let _ = host.update(app, |view, cx| {
                         let result = match &mut view.state {
                             CditorViewState::Ready(runtime) => {
-                                let changed = runtime
-                                    .dispatch(CommandEnvelope::new(
+                                cditor_session::project_command_dispatch(
+                                    runtime,
+                                    CommandEnvelope::new(
                                         EditorCommand::UpdateWhiteboardScene {
                                             block_id,
                                             scene_json,
                                         },
                                         CommandSource::Toolbar,
-                                    ))
-                                    .is_ok_and(|outcome| outcome.changed());
-                                (changed, runtime.revision())
+                                    ),
+                                )
+                                .map(|snapshot| (snapshot.outcome.changed(), snapshot.revision))
+                                .unwrap_or((false, 0))
                             }
                             _ => (false, 0),
                         };
@@ -84,19 +81,25 @@ impl CditorV2View {
         // are not lost.
         let scene_json = session.board.read(cx).scene().to_json();
         if let Some(runtime) = self.ready_runtime() {
-            let changed = runtime
-                .dispatch(CommandEnvelope::new(
+            let result = cditor_session::project_command_dispatch(
+                runtime,
+                CommandEnvelope::new(
                     EditorCommand::UpdateWhiteboardScene {
                         block_id: session.block_id,
                         scene_json,
                     },
                     CommandSource::Toolbar,
-                ))
-                .is_ok_and(|outcome| outcome.changed());
-            let revision = runtime.revision();
-            if changed {
+                ),
+            );
+            if let Ok(snapshot) = result
+                && snapshot.outcome.changed()
+            {
                 self.whiteboard_thumbnails.invalidate(session.block_id);
-                self.mark_dirty_at_revision(cditor_core::edit::ChangeOrigin::User, revision, cx);
+                self.mark_dirty_at_revision(
+                    cditor_core::edit::ChangeOrigin::User,
+                    snapshot.revision,
+                    cx,
+                );
             }
         }
         cx.notify();

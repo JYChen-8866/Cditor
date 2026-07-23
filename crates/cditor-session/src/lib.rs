@@ -22,7 +22,7 @@ pub use diagnostics_snapshot::{SessionDiagnosticsSnapshot, project_diagnostics_s
 pub use document_snapshot::{
     SessionDocumentSnapshot, TextBlockContextSnapshot, project_block_attrs,
     project_document_snapshot, project_focused_text_block_context, project_selected_text,
-    project_text_block_context, project_visible_block_subset,
+    project_text_block_context, project_visible_block_subset, project_whiteboard_scene,
 };
 pub use history_port::{
     HistoryActionSnapshot, HistoryDirection, project_history_action,

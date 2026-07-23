@@ -63,6 +63,14 @@ pub fn project_block_attrs(runtime: &DocumentRuntime, block_id: BlockId) -> Opti
         .map(|_| runtime.block_attrs(block_id))
 }
 
+pub fn project_whiteboard_scene(runtime: &DocumentRuntime, block_id: BlockId) -> Option<String> {
+    let payload = runtime.block_payload_record(block_id)?;
+    let cditor_core::rich_text::BlockPayload::Whiteboard(whiteboard) = &payload.payload else {
+        return None;
+    };
+    Some(whiteboard.scene_json.clone())
+}
+
 pub fn project_text_block_context(
     runtime: &DocumentRuntime,
     block_id: BlockId,
@@ -148,6 +156,17 @@ impl EditorSessionHandle {
         Ok(project_block_attrs(&session.runtime, block_id))
     }
 
+    pub fn whiteboard_scene(&self, block_id: BlockId) -> Result<Option<String>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_whiteboard_scene(&session.runtime, block_id))
+    }
+
     pub fn focused_text_block_context(
         &self,
     ) -> Result<Option<TextBlockContextSnapshot>, ProtocolError> {
@@ -181,6 +200,7 @@ impl EditorSessionHandle {
 
 #[cfg(test)]
 mod tests {
+    use cditor_core::rich_text::BlockPayloadRecord;
     use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 
     use super::*;
@@ -243,5 +263,33 @@ mod tests {
             .visible_block_subset(&[visible[0], u64::MAX])
             .unwrap();
         assert_eq!(subset, HashSet::from([visible[0]]));
+    }
+
+    #[test]
+    fn whiteboard_scene_query_returns_owned_scene_only_for_whiteboards() {
+        let whiteboard_id = 1;
+        let paragraph_id = 2;
+        let runtime = DocumentRuntime::from_payloads(
+            9,
+            vec![
+                BlockPayloadRecord {
+                    block_id: whiteboard_id,
+                    content_version: 1,
+                    kind: RichBlockKind::Whiteboard,
+                    payload: cditor_core::rich_text::BlockPayload::Whiteboard(
+                        cditor_core::rich_text::WhiteboardPayload {
+                            scene_json: "{}".to_owned(),
+                        },
+                    ),
+                },
+                BlockPayloadRecord::rich_text(paragraph_id, RichBlockKind::Paragraph, "paragraph"),
+            ],
+            720.0,
+        );
+        let handle = EditorSession::new(runtime, false).into_handle();
+
+        let scene = handle.whiteboard_scene(whiteboard_id).unwrap().unwrap();
+        assert!(!scene.is_empty());
+        assert!(handle.whiteboard_scene(paragraph_id).unwrap().is_none());
     }
 }
