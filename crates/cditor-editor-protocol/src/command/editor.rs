@@ -172,6 +172,11 @@ pub enum EditorCommand {
         focus_affinity: cditor_core::edit::TextAffinity,
     },
     #[doc(hidden)]
+    NavigateTableCell {
+        direction: TableCellNavigationDirection,
+        extend_selection: bool,
+    },
+    #[doc(hidden)]
     SetTextSurfaceSelection {
         surface_id: cditor_core::ids::SurfaceId,
         anchor_offset: usize,
@@ -293,6 +298,7 @@ impl EditorCommand {
             Self::FocusTableCell { .. } => builtin::SELECTION_FOCUS_TABLE_CELL,
             Self::BlurTableCell => builtin::SELECTION_BLUR_TABLE_CELL,
             Self::SetTableCellSelection { .. } => builtin::SELECTION_SET_TABLE_CELL,
+            Self::NavigateTableCell { .. } => builtin::SELECTION_NAVIGATE_TABLE_CELL,
             Self::SetTextSurfaceSelection { .. } => builtin::SELECTION_SET_TEXT_SURFACE,
             Self::MoveCaret { .. } => builtin::TEXT_MOVE_CARET,
             Self::ApplySlashBlock { .. } => builtin::BLOCK_APPLY_SLASH,
@@ -435,6 +441,13 @@ impl EditorCommand {
                 anchor_offset: *anchor_offset,
                 focus_offset: *focus_offset,
                 focus_affinity: *focus_affinity,
+            },
+            Self::NavigateTableCell {
+                direction,
+                extend_selection,
+            } => CommandArgs::TableCellNavigation {
+                direction: *direction,
+                extend_selection: *extend_selection,
             },
             Self::ApplySlashBlock {
                 block_id,

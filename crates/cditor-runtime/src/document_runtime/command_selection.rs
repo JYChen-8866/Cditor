@@ -51,6 +51,16 @@ impl DocumentRuntime {
                 )?,
                 vec![*block_id],
             ),
+            EditorCommand::NavigateTableCell {
+                direction,
+                extend_selection,
+            } => {
+                let affected_blocks = self.focused_block_id().into_iter().collect();
+                (
+                    self.navigate_table_cell_command(*direction, *extend_selection)?,
+                    affected_blocks,
+                )
+            }
             EditorCommand::SetTextSurfaceSelection {
                 surface_id,
                 anchor_offset,
@@ -152,5 +162,26 @@ impl DocumentRuntime {
             focus_offset,
             focus_affinity,
         )
+    }
+
+    fn navigate_table_cell_command(
+        &mut self,
+        direction: cditor_editor_protocol::command::TableCellNavigationDirection,
+        extend_selection: bool,
+    ) -> Result<bool, String> {
+        use cditor_editor_protocol::command::TableCellNavigationDirection as Direction;
+
+        match (direction, extend_selection) {
+            (Direction::Left, false) => self.move_focused_table_cell_left(),
+            (Direction::Left, true) => self.extend_focused_table_cell_selection_left(),
+            (Direction::Right, false) => self.move_focused_table_cell_right(),
+            (Direction::Right, true) => self.extend_focused_table_cell_selection_right(),
+            (Direction::Up, false) => self.move_focused_table_cell_up(),
+            (Direction::Down, false) => self.move_focused_table_cell_down(),
+            (Direction::TabForward, false) => self.move_focused_table_cell_tab(false),
+            (Direction::TabBackward, false) => self.move_focused_table_cell_tab(true),
+            (Direction::Up | Direction::Down, true)
+            | (Direction::TabForward | Direction::TabBackward, true) => Ok(false),
+        }
     }
 }

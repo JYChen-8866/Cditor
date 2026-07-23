@@ -1,6 +1,6 @@
 use gpui::Context;
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState, TableCellLayoutKey};
+use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::app::input_trace::trace_input;
 use crate::image_preview::close_active_preview_if_escape_enabled;
 use crate::input::{AiPromptEditAction, CodeLanguageEditAction, GuiInputCommand};
@@ -8,6 +8,11 @@ use crate::platform::normalize_external_line_endings;
 use cditor_runtime::DocumentRuntime;
 
 use super::keyboard::mermaid_preview_blocks_command;
+use super::table_cell_navigation::{
+    dispatch_table_cell_navigation, dispatch_table_cell_offset_selection,
+    dispatch_table_cell_parley_selection, table_cell_parley_target,
+    table_cell_vertical_selection_target,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::app) enum BoundInputAction {
@@ -314,37 +319,59 @@ impl CditorV2View {
                 ));
                 false
             }
-            BoundInputAction::Tab { backwards } => runtime
-                .move_focused_table_cell_tab(backwards)
-                .unwrap_or(false),
+            BoundInputAction::Tab { backwards } => dispatch_table_cell_navigation(
+                runtime,
+                if backwards {
+                    cditor_editor_protocol::command::TableCellNavigationDirection::TabBackward
+                } else {
+                    cditor_editor_protocol::command::TableCellNavigationDirection::TabForward
+                },
+                false,
+            ),
             BoundInputAction::MoveLeft {
                 extend_selection: true,
             } => parley_target
                 .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, true))
                 .unwrap_or_else(|| {
-                    runtime
-                        .extend_focused_table_cell_selection_left()
-                        .unwrap_or(false)
+                    dispatch_table_cell_navigation(
+                        runtime,
+                        cditor_editor_protocol::command::TableCellNavigationDirection::Left,
+                        true,
+                    )
                 }),
             BoundInputAction::MoveLeft {
                 extend_selection: false,
             } => parley_target
                 .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
-                .unwrap_or_else(|| runtime.move_focused_table_cell_left().unwrap_or(false)),
+                .unwrap_or_else(|| {
+                    dispatch_table_cell_navigation(
+                        runtime,
+                        cditor_editor_protocol::command::TableCellNavigationDirection::Left,
+                        false,
+                    )
+                }),
             BoundInputAction::MoveRight {
                 extend_selection: true,
             } => parley_target
                 .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, true))
                 .unwrap_or_else(|| {
-                    runtime
-                        .extend_focused_table_cell_selection_right()
-                        .unwrap_or(false)
+                    dispatch_table_cell_navigation(
+                        runtime,
+                        cditor_editor_protocol::command::TableCellNavigationDirection::Right,
+                        true,
+                    )
                 }),
             BoundInputAction::MoveRight {
                 extend_selection: false,
             } => parley_target
                 .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
-                .unwrap_or_else(|| runtime.move_focused_table_cell_right().unwrap_or(false)),
+                .unwrap_or_else(|| {
+                    dispatch_table_cell_navigation(
+                        runtime,
+                        cditor_editor_protocol::command::TableCellNavigationDirection::Right,
+                        false,
+                    )
+                }),
             BoundInputAction::MoveUp {
                 extend_selection: true,
             }
@@ -354,9 +381,12 @@ impl CditorV2View {
                 .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, true))
                 .or_else(|| {
                     vertical_selection_target.and_then(|target| {
-                        runtime
-                            .extend_focused_table_cell_selection_to_offset(target)
-                            .ok()
+                        dispatch_table_cell_offset_selection(
+                            runtime,
+                            target,
+                            cditor_core::edit::TextAffinity::Downstream,
+                            true,
+                        )
                     })
                 })
                 .unwrap_or(false),
@@ -364,12 +394,24 @@ impl CditorV2View {
                 extend_selection: false,
             } => parley_target
                 .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
-                .unwrap_or_else(|| runtime.move_focused_table_cell_up().unwrap_or(false)),
+                .unwrap_or_else(|| {
+                    dispatch_table_cell_navigation(
+                        runtime,
+                        cditor_editor_protocol::command::TableCellNavigationDirection::Up,
+                        false,
+                    )
+                }),
             BoundInputAction::MoveDown {
                 extend_selection: false,
             } => parley_target
                 .and_then(|position| dispatch_table_cell_parley_selection(runtime, position, false))
-                .unwrap_or_else(|| runtime.move_focused_table_cell_down().unwrap_or(false)),
+                .unwrap_or_else(|| {
+                    dispatch_table_cell_navigation(
+                        runtime,
+                        cditor_editor_protocol::command::TableCellNavigationDirection::Down,
+                        false,
+                    )
+                }),
             BoundInputAction::MoveToLineStart { extend_selection }
             | BoundInputAction::MoveToLineEnd { extend_selection }
             | BoundInputAction::MoveToPreviousWord { extend_selection }
@@ -398,171 +440,6 @@ impl CditorV2View {
                     matches!(payload.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
                 })
     }
-}
-
-fn table_cell_parley_target(
-    layouts: &std::collections::HashMap<TableCellLayoutKey, crate::text::RichTextPlatformLayout>,
-    runtime: Option<&DocumentRuntime>,
-    action: BoundInputAction,
-    preferred_x: Option<(cditor_core::ids::SurfaceId, f32)>,
-) -> (
-    Option<crate::text::ParleyTextPosition>,
-    Option<(cditor_core::ids::SurfaceId, f32)>,
-) {
-    use crate::text::{
-        ParleyMoveCommand, ParleySelection, ParleyTextPosition, TextGeometryOperation,
-        record_snapshot_geometry, record_unavailable_geometry,
-    };
-
-    let (command, extend) = match action {
-        BoundInputAction::MoveLeft { extend_selection } => {
-            (ParleyMoveCommand::PreviousVisual, extend_selection)
-        }
-        BoundInputAction::MoveRight { extend_selection } => {
-            (ParleyMoveCommand::NextVisual, extend_selection)
-        }
-        BoundInputAction::MoveUp { extend_selection } => {
-            (ParleyMoveCommand::PreviousLine, extend_selection)
-        }
-        BoundInputAction::MoveDown { extend_selection } => {
-            (ParleyMoveCommand::NextLine, extend_selection)
-        }
-        BoundInputAction::MoveToLineStart { extend_selection } => {
-            (ParleyMoveCommand::LineStart, extend_selection)
-        }
-        BoundInputAction::MoveToLineEnd { extend_selection } => {
-            (ParleyMoveCommand::LineEnd, extend_selection)
-        }
-        BoundInputAction::MoveToPreviousWord { extend_selection } => {
-            (ParleyMoveCommand::PreviousVisualWord, extend_selection)
-        }
-        BoundInputAction::MoveToNextWord { extend_selection } => {
-            (ParleyMoveCommand::NextVisualWord, extend_selection)
-        }
-        _ => return (None, None),
-    };
-    let Some(runtime) = runtime else {
-        return (None, None);
-    };
-    let Some((block_id, row, col, offset, affinity)) = runtime.focused_table_cell_text_position()
-    else {
-        return (None, None);
-    };
-    let surface_id = cditor_core::ids::SurfaceId::TableCell {
-        block_id,
-        row,
-        column: col,
-    };
-    let Some(cache) = layouts.get(&TableCellLayoutKey { block_id, row, col }) else {
-        record_unavailable_geometry();
-        return (
-            None,
-            preferred_x.filter(|(surface, _)| *surface == surface_id),
-        );
-    };
-    if Some(cache.content_version) != runtime.block_content_version(block_id) {
-        record_unavailable_geometry();
-        return (
-            None,
-            preferred_x.filter(|(surface, _)| *surface == surface_id),
-        );
-    }
-    let layout = &cache.snapshot;
-    record_snapshot_geometry(TextGeometryOperation::Navigation);
-    let anchor_offset = runtime
-        .focused_table_cell_selection_state()
-        .filter(|(id, focused_row, focused_col, _, _, _)| {
-            (*id, *focused_row, *focused_col) == (block_id, row, col)
-        })
-        .map(|(_, _, _, range, reversed, _)| {
-            if range.is_empty() {
-                offset
-            } else if reversed {
-                range.end
-            } else {
-                range.start
-            }
-        })
-        .unwrap_or(offset);
-    let selection = ParleySelection {
-        anchor: ParleyTextPosition::downstream(anchor_offset),
-        focus: ParleyTextPosition { offset, affinity },
-    };
-    let current_preferred_x = preferred_x
-        .filter(|(surface, _)| *surface == surface_id)
-        .map(|(_, x)| x);
-    let (moved, next_preferred_x) =
-        layout.move_selection_with_preferred_x(selection, command, extend, current_preferred_x);
-    (
-        (moved.focus != (ParleyTextPosition { offset, affinity })).then_some(moved.focus),
-        next_preferred_x.map(|x| (surface_id, x)),
-    )
-}
-
-fn table_cell_vertical_selection_target(
-    layouts: &std::collections::HashMap<TableCellLayoutKey, crate::text::RichTextPlatformLayout>,
-    runtime: Option<&DocumentRuntime>,
-    direction: i32,
-) -> Option<usize> {
-    let runtime = runtime?;
-    let (block_id, row, col, caret) = runtime.focused_table_cell_offset()?;
-    let cache = layouts.get(&TableCellLayoutKey { block_id, row, col })?;
-    if cache.content_version != runtime.block_content_version(block_id)? {
-        return None;
-    }
-    let bounds = crate::text::platform_range_bounds(cache, caret..caret);
-    let target = gpui::point(
-        bounds.left() + bounds.size.width / 2.0,
-        bounds.top() + bounds.size.height * direction as f32,
-    );
-    let next = crate::text::platform_index_for_point(cache, target);
-    Some(if next == caret {
-        if direction < 0 {
-            0
-        } else {
-            cache.snapshot.text().len()
-        }
-    } else {
-        next
-    })
-}
-
-fn dispatch_table_cell_parley_selection(
-    runtime: &mut DocumentRuntime,
-    position: crate::text::ParleyTextPosition,
-    extend_selection: bool,
-) -> Option<bool> {
-    let (block_id, row, col, caret, _) = runtime.focused_table_cell_text_position()?;
-    let anchor_offset = if extend_selection {
-        runtime
-            .focused_table_cell_selection_state()
-            .map(|(_, _, _, range, reversed, _)| {
-                if range.is_empty() {
-                    caret
-                } else if reversed {
-                    range.end
-                } else {
-                    range.start
-                }
-            })
-            .unwrap_or(caret)
-    } else {
-        position.offset
-    };
-    runtime
-        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
-            cditor_editor_protocol::command::CditorCommand::SetTableCellSelection {
-                block_id,
-                row,
-                col,
-                anchor_offset,
-                focus_offset: position.offset,
-                focus_affinity: position.affinity,
-            },
-            cditor_editor_protocol::command::CommandSource::Keyboard,
-        ))
-        .ok()
-        .map(|outcome| outcome.changed())
 }
 
 fn command_for_bound_action(action: BoundInputAction) -> GuiInputCommand {

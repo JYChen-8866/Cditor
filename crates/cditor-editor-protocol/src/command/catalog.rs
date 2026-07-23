@@ -139,6 +139,11 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
             ReadOnly,
         ),
         definition(SELECTION_SET_TABLE_CELL, Args::TableCellSelection, ReadOnly),
+        definition(
+            SELECTION_NAVIGATE_TABLE_CELL,
+            Args::TableCellNavigation,
+            ReadOnly,
+        ),
         definition(TEXT_INSERT_SOFT_BREAK, Args::None, Document),
         definition(FORMAT_TOGGLE_MARK, Args::InlineMark, Document),
         definition(FORMAT_TOGGLE_BOLD, Args::InlineMark, Document),

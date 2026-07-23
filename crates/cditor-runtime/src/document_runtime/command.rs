@@ -50,6 +50,7 @@ impl DocumentRuntime {
                 | EditorCommand::FocusTableCell { .. }
                 | EditorCommand::BlurTableCell
                 | EditorCommand::SetTableCellSelection { .. }
+                | EditorCommand::NavigateTableCell { .. }
                 | EditorCommand::SetTextSurfaceSelection { .. } => {
                     unreachable!("selection commands are dispatched before document commands")
                 }

@@ -1,23 +1,23 @@
 use super::*;
 
 impl DocumentRuntime {
-    pub fn move_focused_table_cell_left(&mut self) -> Result<bool, String> {
+    pub(crate) fn move_focused_table_cell_left(&mut self) -> Result<bool, String> {
         self.move_focused_table_cell_horizontally(false, false)
     }
 
-    pub fn move_focused_table_cell_right(&mut self) -> Result<bool, String> {
+    pub(crate) fn move_focused_table_cell_right(&mut self) -> Result<bool, String> {
         self.move_focused_table_cell_horizontally(true, false)
     }
 
-    pub fn extend_focused_table_cell_selection_left(&mut self) -> Result<bool, String> {
+    pub(crate) fn extend_focused_table_cell_selection_left(&mut self) -> Result<bool, String> {
         self.move_focused_table_cell_horizontally(false, true)
     }
 
-    pub fn extend_focused_table_cell_selection_right(&mut self) -> Result<bool, String> {
+    pub(crate) fn extend_focused_table_cell_selection_right(&mut self) -> Result<bool, String> {
         self.move_focused_table_cell_horizontally(true, true)
     }
 
-    pub fn extend_focused_table_cell_selection_to_offset(
+    pub(crate) fn extend_focused_table_cell_selection_to_offset(
         &mut self,
         focus_offset: usize,
     ) -> Result<bool, String> {
@@ -35,7 +35,7 @@ impl DocumentRuntime {
         self.set_focused_table_cell_text_selection(anchor, focus_offset)
     }
 
-    pub fn move_focused_table_cell_to_text_position(
+    pub(crate) fn move_focused_table_cell_to_text_position(
         &mut self,
         offset: usize,
         affinity: TextAffinity,
@@ -56,15 +56,15 @@ impl DocumentRuntime {
         Ok(changed)
     }
 
-    pub fn move_focused_table_cell_up(&mut self) -> Result<bool, String> {
+    pub(crate) fn move_focused_table_cell_up(&mut self) -> Result<bool, String> {
         self.move_focused_table_cell_vertically(-1)
     }
 
-    pub fn move_focused_table_cell_down(&mut self) -> Result<bool, String> {
+    pub(crate) fn move_focused_table_cell_down(&mut self) -> Result<bool, String> {
         self.move_focused_table_cell_vertically(1)
     }
 
-    pub fn move_focused_table_cell_tab(&mut self, backwards: bool) -> Result<bool, String> {
+    pub(crate) fn move_focused_table_cell_tab(&mut self, backwards: bool) -> Result<bool, String> {
         let Some(focused) = self.focused_table_cell else {
             return Ok(false);
         };

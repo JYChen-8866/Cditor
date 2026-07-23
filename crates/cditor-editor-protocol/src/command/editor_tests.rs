@@ -189,3 +189,33 @@ fn table_cell_selection_keeps_direction_and_geometry_affinity() {
         Ok(())
     );
 }
+
+#[test]
+fn table_cell_navigation_has_a_read_only_typed_contract() {
+    let invocation = EditorCommand::NavigateTableCell {
+        direction: TableCellNavigationDirection::TabBackward,
+        extend_selection: false,
+    }
+    .invocation(CommandSource::Keyboard);
+
+    assert_eq!(
+        invocation.id.as_str(),
+        builtin::SELECTION_NAVIGATE_TABLE_CELL
+    );
+    assert_eq!(
+        invocation.args,
+        CommandArgs::TableCellNavigation {
+            direction: TableCellNavigationDirection::TabBackward,
+            extend_selection: false,
+        }
+    );
+    let catalog = CommandCatalog::builtin();
+    let definition = catalog
+        .definition(&invocation.id)
+        .expect("table navigation must be registered");
+    assert_eq!(definition.mutability, CommandMutability::ReadOnly);
+    assert_eq!(
+        CommandCatalog::builtin().validate_invocation(&invocation),
+        Ok(())
+    );
+}

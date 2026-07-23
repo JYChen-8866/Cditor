@@ -1,5 +1,6 @@
 use cditor_editor_protocol::command::{
-    CommandEnvelope, CommandId, CommandOutcome, CommandSource, EditorCommand, builtin,
+    CommandEnvelope, CommandId, CommandOutcome, CommandSource, EditorCommand,
+    TableCellNavigationDirection, builtin,
 };
 use cditor_editor_protocol::query::{CommandQuery, QueryResult};
 
@@ -301,6 +302,90 @@ fn table_cell_selection_dispatch_preserves_direction_without_document_change() {
         runtime.focused_table_cell_selection_state(),
         before_selection
     );
+    assert_eq!(runtime.revision(), before_revision);
+}
+
+#[test]
+fn table_cell_navigation_dispatch_preserves_unicode_tabs_and_stale_safety() {
+    let mut payload = sample_table_payload();
+    let BlockPayload::Table(table) = &mut payload.payload else {
+        unreachable!();
+    };
+    table.rows[0].cells[1] = cditor_core::rich_text::TableCellPayload::plain("中文");
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![payload], 720.0);
+    let before_revision = runtime.revision();
+
+    runtime.focus_table_cell_at_offset(10, 0, 1, 0).unwrap();
+    let extended = dispatch(
+        &mut runtime,
+        EditorCommand::NavigateTableCell {
+            direction: TableCellNavigationDirection::Right,
+            extend_selection: true,
+        },
+    );
+    assert!(extended.changed());
+    assert_eq!(extended.affected_blocks, vec![10]);
+    assert!(extended.transaction_ids.is_empty());
+    assert_eq!(runtime.revision(), before_revision);
+    assert_eq!(
+        runtime.focused_table_cell_selection_state(),
+        Some((10, 0, 1, 0..3, false, None))
+    );
+
+    runtime.focus_table_cell_at_offset(10, 0, 0, 1).unwrap();
+    assert!(
+        dispatch(
+            &mut runtime,
+            EditorCommand::NavigateTableCell {
+                direction: TableCellNavigationDirection::Right,
+                extend_selection: false,
+            },
+        )
+        .changed()
+    );
+    assert_eq!(runtime.focused_table_cell_offset(), Some((10, 0, 1, 0)));
+
+    assert!(
+        dispatch(
+            &mut runtime,
+            EditorCommand::NavigateTableCell {
+                direction: TableCellNavigationDirection::TabForward,
+                extend_selection: false,
+            },
+        )
+        .changed()
+    );
+    assert_eq!(runtime.focused_table_cell_offset(), Some((10, 1, 0, 0)));
+    assert!(
+        dispatch(
+            &mut runtime,
+            EditorCommand::NavigateTableCell {
+                direction: TableCellNavigationDirection::TabBackward,
+                extend_selection: false,
+            },
+        )
+        .changed()
+    );
+    assert_eq!(runtime.focused_table_cell_offset(), Some((10, 0, 1, 6)));
+
+    let before_stale = runtime.focused_table_cell_selection_state();
+    let error = runtime
+        .dispatch(
+            CommandEnvelope::new(
+                EditorCommand::NavigateTableCell {
+                    direction: TableCellNavigationDirection::Down,
+                    extend_selection: false,
+                },
+                CommandSource::Keyboard,
+            )
+            .expecting_revision(before_revision + 1),
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        cditor_editor_protocol::ProtocolErrorCode::StalePrecondition
+    );
+    assert_eq!(runtime.focused_table_cell_selection_state(), before_stale);
     assert_eq!(runtime.revision(), before_revision);
 }
 

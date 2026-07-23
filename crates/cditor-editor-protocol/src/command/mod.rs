@@ -151,6 +151,17 @@ pub enum CaretDirection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum TableCellNavigationDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+    TabForward,
+    TabBackward,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TableAxis {
     Row,
     Column,
@@ -200,6 +211,10 @@ pub enum CommandArgs {
         anchor_offset: usize,
         focus_offset: usize,
         focus_affinity: cditor_core::edit::TextAffinity,
+    },
+    TableCellNavigation {
+        direction: TableCellNavigationDirection,
+        extend_selection: bool,
     },
     TextSurfaceSelection {
         surface_id: cditor_core::ids::SurfaceId,
@@ -305,6 +320,7 @@ impl CommandArgs {
             Self::DocumentSelection(_) => CommandArgumentKind::DocumentSelection,
             Self::TableCellFocus { .. } => CommandArgumentKind::TableCellFocus,
             Self::TableCellSelection { .. } => CommandArgumentKind::TableCellSelection,
+            Self::TableCellNavigation { .. } => CommandArgumentKind::TableCellNavigation,
             Self::TextSurfaceSelection { .. } => CommandArgumentKind::TextSurfaceSelection,
             Self::InlineMark(_) => CommandArgumentKind::InlineMark,
             Self::InlineColor { .. } => CommandArgumentKind::InlineColor,
@@ -342,6 +358,7 @@ pub enum CommandArgumentKind {
     DocumentSelection,
     TableCellFocus,
     TableCellSelection,
+    TableCellNavigation,
     TextSurfaceSelection,
     InlineMark,
     InlineColor,
@@ -612,6 +629,7 @@ pub mod builtin {
     pub const SELECTION_BLUR_TABLE_CELL: &str = "selection.blur_table_cell";
     pub const SELECTION_SET_TEXT_SURFACE: &str = "selection.set_text_surface";
     pub const SELECTION_SET_TABLE_CELL: &str = "selection.set_table_cell";
+    pub const SELECTION_NAVIGATE_TABLE_CELL: &str = "selection.navigate_table_cell";
     pub const TEXT_INSERT_SOFT_BREAK: &str = "text.insert_soft_break";
     pub const FORMAT_TOGGLE_MARK: &str = "format.toggle_mark";
     pub const FORMAT_TOGGLE_BOLD: &str = "format.toggle_bold";
