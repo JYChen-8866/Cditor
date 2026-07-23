@@ -56,18 +56,20 @@ impl CditorV2View {
         let hit = self
             .text_position_for_surface_at_position(surface_id, position)
             .map(|position| position.offset);
-        let click_selection =
-            if let Some(kind) = crate::app::text_hit::selection_kind_for_click_count(click_count) {
-                self.ready_runtime_ref()
-                    .and_then(|runtime| self.current_text_surface_layout_cache(runtime, surface_id))
-                    .map(|cache| {
-                        let local_x = f32::from(position.x - cache.bounds.left());
-                        let local_y = f32::from(position.y - cache.bounds.top());
-                        cache.snapshot.selection_at_point(local_x, local_y, kind)
-                    })
-            } else {
-                None
-            };
+        let click_selection = if let Some(kind) =
+            crate::app::text_hit::selection_kind_for_click_count(click_count)
+        {
+            self.ready_runtime_ref()
+                .and_then(|runtime| cditor_session::project_surface_version(runtime, surface_id))
+                .and_then(|current| self.current_text_surface_layout_cache(current))
+                .map(|cache| {
+                    let local_x = f32::from(position.x - cache.bounds.left());
+                    let local_y = f32::from(position.y - cache.bounds.top());
+                    cache.snapshot.selection_at_point(local_x, local_y, kind)
+                })
+        } else {
+            None
+        };
         let fallback = self
             .ready_runtime_ref()
             .and_then(|runtime| runtime.text_surface_snapshot(surface_id))

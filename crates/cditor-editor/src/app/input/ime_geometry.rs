@@ -25,7 +25,8 @@ impl CditorV2View {
         text: &str,
     ) -> Option<usize> {
         let input_context = cditor_session::project_input_context(runtime);
-        let Some(cache) = self.current_text_surface_layout_cache(runtime, surface_id) else {
+        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        let Some(cache) = self.current_text_surface_layout_cache(current) else {
             record_unavailable_geometry();
             return None;
         };
@@ -149,13 +150,16 @@ impl CditorV2View {
         let focused = input_context.focused_text.as_ref()?;
         let (block_id, text) = (focused.block_id, &focused.text);
         let range = utf16_range_to_utf8_range(text, &range_utf16);
-        match input_context.target? {
+        let target = input_context.target?;
+        let surface_id = target.surface_id()?;
+        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        match target {
             InputTarget::TableCell {
                 block_id: target_block_id,
                 row,
                 col,
             } if target_block_id == block_id => {
-                let Some(cache) = self.current_table_cell_layout_cache(runtime, block_id, row, col)
+                let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col)
                 else {
                     record_unavailable_geometry();
                     return None;
@@ -175,7 +179,7 @@ impl CditorV2View {
             InputTarget::BlockText {
                 block_id: target_block_id,
             } if target_block_id == block_id => {
-                let Some(cache) = self.current_text_layout_cache(runtime, block_id) else {
+                let Some(cache) = self.current_text_layout_cache(current, block_id) else {
                     record_unavailable_geometry();
                     return None;
                 };
@@ -191,15 +195,13 @@ impl CditorV2View {
                 }
                 Some(platform_range_bounds(cache, range))
             }
-            target @ (InputTarget::ImageCaption {
+            InputTarget::ImageCaption {
                 block_id: target_block_id,
             }
             | InputTarget::CollectionTitle {
                 block_id: target_block_id,
-            }) if target_block_id == block_id => {
-                let surface_id = target.surface_id()?;
-                let Some(cache) = self.current_text_surface_layout_cache(runtime, surface_id)
-                else {
+            } if target_block_id == block_id => {
+                let Some(cache) = self.current_text_surface_layout_cache(current) else {
                     record_unavailable_geometry();
                     return None;
                 };

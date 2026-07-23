@@ -2,6 +2,7 @@ use gpui::{Pixels, Point};
 
 use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_runtime::DocumentRuntime;
+use cditor_session::SurfaceVersionSnapshot;
 
 use crate::app::cditor_v2_view::CditorV2View;
 use crate::app::cditor_v2_view::TableCellLayoutKey;
@@ -26,17 +27,16 @@ pub(in crate::app) fn selection_kind_for_click_count(
 impl CditorV2View {
     pub(in crate::app) fn current_text_layout_cache(
         &self,
-        runtime: &DocumentRuntime,
+        current: SurfaceVersionSnapshot,
         block_id: BlockId,
     ) -> Option<&RichTextPlatformLayout> {
         let cache = self.text_layouts.get(&block_id)?;
-        let current_content_version = runtime.block_content_version(block_id)?;
-        (cache.content_version == current_content_version).then_some(cache)
+        layout_cache_is_current(cache, current).then_some(cache)
     }
 
     pub(in crate::app) fn current_table_cell_layout_cache(
         &self,
-        runtime: &DocumentRuntime,
+        current: SurfaceVersionSnapshot,
         block_id: BlockId,
         row: usize,
         col: usize,
@@ -44,25 +44,23 @@ impl CditorV2View {
         let cache = self
             .table_cell_layouts
             .get(&TableCellLayoutKey { block_id, row, col })?;
-        table_cell_layout_cache_is_current(runtime, cache, block_id).then_some(cache)
+        layout_cache_is_current(cache, current).then_some(cache)
     }
 
     pub(in crate::app) fn current_text_surface_layout_cache(
         &self,
-        runtime: &DocumentRuntime,
-        surface_id: SurfaceId,
+        current: SurfaceVersionSnapshot,
     ) -> Option<&RichTextPlatformLayout> {
-        match surface_id {
-            SurfaceId::Block(block_id) => self.current_text_layout_cache(runtime, block_id),
+        match current.surface_id {
+            SurfaceId::Block(block_id) => self.current_text_layout_cache(current, block_id),
             SurfaceId::TableCell {
                 block_id,
                 row,
                 column,
-            } => self.current_table_cell_layout_cache(runtime, block_id, row, column),
+            } => self.current_table_cell_layout_cache(current, block_id, row, column),
             SurfaceId::ImageCaption { .. } | SurfaceId::CollectionTitle { .. } => {
-                let cache = self.text_surface_layouts.get(&surface_id)?;
-                let current = runtime.text_surface_snapshot(surface_id)?;
-                (cache.content_version == current.identity.content_version).then_some(cache)
+                let cache = self.text_surface_layouts.get(&current.surface_id)?;
+                layout_cache_is_current(cache, current).then_some(cache)
             }
             SurfaceId::Ephemeral { .. } => None,
         }
@@ -74,7 +72,8 @@ impl CditorV2View {
         position: Point<Pixels>,
     ) -> Option<ParleyTextPosition> {
         let runtime = self.ready_runtime_ref()?;
-        let cache = self.current_text_surface_layout_cache(runtime, surface_id)?;
+        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        let cache = self.current_text_surface_layout_cache(current)?;
         Some(platform_text_position_for_point(cache, position))
     }
 
@@ -84,7 +83,8 @@ impl CditorV2View {
         position: Point<Pixels>,
     ) -> Option<ParleyTextPosition> {
         let runtime = self.ready_runtime_ref()?;
-        if let Some(cache) = self.current_text_layout_cache(runtime, block_id) {
+        let current = cditor_session::project_surface_version(runtime, SurfaceId::Block(block_id))?;
+        if let Some(cache) = self.current_text_layout_cache(current, block_id) {
             return Some(platform_text_position_for_point(cache, position));
         }
         record_synchronous_geometry_fallback();
@@ -112,7 +112,13 @@ impl CditorV2View {
         position: Point<Pixels>,
     ) -> Option<ParleyTextPosition> {
         let runtime = self.ready_runtime_ref()?;
-        let Some(cache) = self.current_table_cell_layout_cache(runtime, block_id, row, col) else {
+        let surface_id = SurfaceId::TableCell {
+            block_id,
+            row,
+            column: col,
+        };
+        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col) else {
             record_unavailable_geometry();
             return None;
         };
@@ -213,14 +219,13 @@ fn viewport_origin_for_block(
     })
 }
 
-pub(in crate::app) fn table_cell_layout_cache_is_current(
-    runtime: &DocumentRuntime,
+pub(in crate::app) fn layout_cache_is_current(
     cache: &RichTextPlatformLayout,
-    block_id: BlockId,
+    current: SurfaceVersionSnapshot,
 ) -> bool {
-    runtime
-        .block_content_version(block_id)
-        .is_some_and(|current_content_version| cache.content_version == current_content_version)
+    cache.surface_id == current.surface_id
+        && cache.content_version == current.content_version
+        && cache.layout_version == current.layout_version
 }
 
 pub(in crate::app) fn fallback_text_hit_point(
@@ -264,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn table_cell_layout_cache_rejects_stale_content_version_for_candidate_bounds() {
+    fn layout_cache_rejects_stale_surface_content_and_layout_identity() {
         let mut runtime = DocumentRuntime::from_payloads(
             1,
             vec![BlockPayloadRecord {
@@ -300,12 +305,14 @@ mod tests {
             },
             Some(TableCellPosition { row: 0, col: 0 }),
         );
-        assert!(!table_cell_layout_cache_is_current(
-            &runtime,
-            &stale_cache,
-            1
-        ));
-        let current_cache = crate::text::test_platform_layout(
+        let surface_id = SurfaceId::TableCell {
+            block_id: 1,
+            row: 0,
+            column: 0,
+        };
+        let current = cditor_session::project_surface_version(&runtime, surface_id).unwrap();
+        assert!(!layout_cache_is_current(&stale_cache, current));
+        let mut current_cache = crate::text::test_platform_layout(
             1,
             current_version,
             "cell\nmore",
@@ -318,11 +325,22 @@ mod tests {
             },
             Some(TableCellPosition { row: 0, col: 0 }),
         );
+        current_cache.layout_version = current.layout_version;
 
-        assert!(table_cell_layout_cache_is_current(
-            &runtime,
+        assert!(layout_cache_is_current(&current_cache, current));
+        assert!(!layout_cache_is_current(
             &current_cache,
-            1
+            SurfaceVersionSnapshot {
+                layout_version: current.layout_version.saturating_add(1),
+                ..current
+            }
+        ));
+        assert!(!layout_cache_is_current(
+            &current_cache,
+            SurfaceVersionSnapshot {
+                surface_id: SurfaceId::Block(1),
+                ..current
+            }
         ));
     }
 

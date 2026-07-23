@@ -14,6 +14,7 @@ mod layout_port;
 mod render_port;
 mod selection_materialization_port;
 mod session;
+mod surface_port;
 mod table_port;
 mod toolbar_snapshot;
 mod ui_snapshot;
@@ -54,6 +55,7 @@ pub use session::{
     SessionSnapshot, project_block_plain_text, project_command_dispatch, project_command_query,
     project_end_input_batch, project_realtime_input,
 };
+pub use surface_port::{SurfaceVersionSnapshot, project_surface_version};
 pub use table_port::{
     FocusedTableCellSnapshot, TableInteractionSnapshot, TablePayloadSummary, TableRangeRequest,
     project_table_horizontal_scroll_offset, project_table_interaction, project_table_range,

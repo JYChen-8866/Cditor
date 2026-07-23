@@ -1,4 +1,4 @@
-use cditor_core::ids::BlockId;
+use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_core::rich_text::TableRange;
 use gpui::{Context, Pixels, Point, Window};
 
@@ -14,7 +14,9 @@ use cditor_editor_protocol::command::{
     CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
     TableAxis as CommandTableAxis,
 };
-use cditor_session::{TableRangeRequest, project_table_interaction, project_table_range};
+use cditor_session::{
+    TableRangeRequest, project_surface_version, project_table_interaction, project_table_range,
+};
 
 impl CditorV2View {
     pub(crate) fn dismiss_table_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
@@ -173,14 +175,20 @@ impl CditorV2View {
         let position = pointer.map(|(position, _)| position);
         let click_count = pointer.map(|(_, click_count)| click_count).unwrap_or(1);
         self.focus_table_cell_from_gui(block_id, row, col, position, window, cx);
+        let surface_version = self.ready_runtime_ref().and_then(|runtime| {
+            project_surface_version(
+                runtime,
+                SurfaceId::TableCell {
+                    block_id,
+                    row,
+                    column: col,
+                },
+            )
+        });
         if let Some(kind) = crate::app::text_hit::selection_kind_for_click_count(click_count)
             && let Some(position) = position
-            && let Some(cache) = self.current_table_cell_layout_cache(
-                self.ready_runtime_ref().unwrap(),
-                block_id,
-                row,
-                col,
-            )
+            && let Some(current) = surface_version
+            && let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col)
         {
             let local_x = f32::from(position.x - cache.bounds.left());
             let local_y = f32::from(position.y - cache.bounds.top());

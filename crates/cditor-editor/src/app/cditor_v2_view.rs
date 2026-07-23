@@ -316,18 +316,21 @@ impl CditorV2View {
         let position = position.into();
         let text_position = position
             .and_then(|position| self.text_position_for_block_at_position(block_id, position));
-        let click_selection =
-            if let Some(kind) = crate::app::text_hit::selection_kind_for_click_count(click_count) {
-                position.and_then(|position| {
-                    let runtime = self.ready_runtime_ref()?;
-                    let cache = self.current_text_layout_cache(runtime, block_id)?;
-                    let local_x = f32::from(position.x - cache.bounds.left());
-                    let local_y = f32::from(position.y - cache.bounds.top());
-                    Some(cache.snapshot.selection_at_point(local_x, local_y, kind))
-                })
-            } else {
-                None
-            };
+        let click_selection = if let Some(kind) =
+            crate::app::text_hit::selection_kind_for_click_count(click_count)
+        {
+            position.and_then(|position| {
+                let runtime = self.ready_runtime_ref()?;
+                let current =
+                    cditor_session::project_surface_version(runtime, SurfaceId::Block(block_id))?;
+                let cache = self.current_text_layout_cache(current, block_id)?;
+                let local_x = f32::from(position.x - cache.bounds.left());
+                let local_y = f32::from(position.y - cache.bounds.top());
+                Some(cache.snapshot.selection_at_point(local_x, local_y, kind))
+            })
+        } else {
+            None
+        };
         trace_input(
             "focus_block_from_gui_at_position",
             format_args!(

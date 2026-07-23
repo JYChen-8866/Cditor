@@ -516,13 +516,16 @@ impl EntityInputHandler for CditorV2View {
         }
         let focused = context.focused_text.as_ref()?;
         let (block_id, text) = (focused.block_id, &focused.text);
-        match context.target? {
+        let target = context.target?;
+        let surface_id = target.surface_id()?;
+        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        match target {
             InputTarget::TableCell {
                 block_id: target_block_id,
                 row,
                 col,
             } if target_block_id == block_id => {
-                let Some(cache) = self.current_table_cell_layout_cache(runtime, block_id, row, col)
+                let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col)
                 else {
                     record_unavailable_geometry();
                     return None;
@@ -543,7 +546,7 @@ impl EntityInputHandler for CditorV2View {
             InputTarget::BlockText {
                 block_id: target_block_id,
             } if target_block_id == block_id => {
-                let Some(cache) = self.current_text_layout_cache(runtime, block_id) else {
+                let Some(cache) = self.current_text_layout_cache(current, block_id) else {
                     record_unavailable_geometry();
                     return None;
                 };
