@@ -8,20 +8,25 @@ use crate::overlay::{SlashMenuCommand, SlashMenuItem, SlashMenuState};
 use crate::persistence::EditorSaveStatus;
 use crate::text::platform_range_bounds;
 use cditor_runtime::AiRequestPresentation;
+use cditor_session::{project_focused_text_block_context, project_text_block_context};
 
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 impl CditorV2View {
     pub(crate) fn sync_slash_menu_from_runtime(&mut self, cx: &mut Context<Self>) {
-        let Some((block_id, text, caret)) = self.ready_runtime_ref().and_then(|runtime| {
-            let block_id = runtime.focused_block_id()?;
-            let text = runtime.focused_text()?.to_owned();
-            let caret = runtime.caret_offset_for_block(block_id)?;
-            Some((block_id, text, caret))
-        }) else {
+        let Some(context) = self
+            .ready_runtime_ref()
+            .and_then(project_focused_text_block_context)
+        else {
             self.slash_menu = None;
             return;
         };
+        let Some(caret) = context.caret else {
+            self.slash_menu = None;
+            return;
+        };
+        let block_id = context.block_id;
+        let text = context.text;
         let Some((trigger_start, query)) = crate::overlay::slash_query_before_caret(&text, caret)
         else {
             self.slash_menu = None;
@@ -136,12 +141,12 @@ impl CditorV2View {
         }
         if item.command == Some(SlashMenuCommand::AskAi) {
             let command = self.ready_runtime_ref().and_then(|runtime| {
-                let kind = runtime.block_kind(menu.block_id)?;
-                let caret = runtime.caret_offset_for_block(menu.block_id)?;
+                let context = project_text_block_context(runtime, menu.block_id)?;
+                let caret = context.caret?;
                 Some(CditorCommand::ApplySlashBlock {
                     block_id: menu.block_id,
                     trigger_range: menu.trigger_start..caret,
-                    kind,
+                    kind: context.kind,
                 })
             });
             let changed = command.is_some_and(|command| {
@@ -165,7 +170,7 @@ impl CditorV2View {
         let opens_whiteboard = matches!(kind, cditor_core::rich_text::RichBlockKind::Whiteboard);
         let caret = self
             .ready_runtime_ref()
-            .and_then(|runtime| runtime.caret_offset_for_block(menu.block_id))
+            .and_then(|runtime| project_text_block_context(runtime, menu.block_id)?.caret)
             .unwrap_or(menu.trigger_start);
         let result = self.dispatch_command(
             CditorCommand::ApplySlashBlock {

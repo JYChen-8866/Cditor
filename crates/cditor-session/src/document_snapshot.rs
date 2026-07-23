@@ -1,4 +1,4 @@
-use cditor_core::edit::DocumentSelection;
+use cditor_core::{edit::DocumentSelection, ids::BlockId, rich_text::RichBlockKind};
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
 use cditor_runtime::DocumentRuntime;
 
@@ -14,6 +14,15 @@ pub struct SessionDocumentSnapshot {
     pub can_undo: bool,
     pub can_redo: bool,
     pub selection: Option<DocumentSelection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextBlockContextSnapshot {
+    pub block_id: BlockId,
+    pub kind: RichBlockKind,
+    pub text: String,
+    pub caret: Option<usize>,
+    pub content_version: u64,
 }
 
 pub fn project_document_snapshot(
@@ -34,6 +43,27 @@ pub fn project_document_snapshot(
 
 pub fn project_selected_text(runtime: &DocumentRuntime) -> Option<String> {
     runtime.selected_focused_text()
+}
+
+pub fn project_text_block_context(
+    runtime: &DocumentRuntime,
+    block_id: BlockId,
+) -> Option<TextBlockContextSnapshot> {
+    let payload = runtime.block_payload_record(block_id)?;
+    let text = payload.plain_text();
+    Some(TextBlockContextSnapshot {
+        block_id,
+        kind: payload.kind,
+        text,
+        caret: runtime.caret_offset_for_block(block_id),
+        content_version: payload.content_version,
+    })
+}
+
+pub fn project_focused_text_block_context(
+    runtime: &DocumentRuntime,
+) -> Option<TextBlockContextSnapshot> {
+    project_text_block_context(runtime, runtime.focused_block_id()?)
 }
 
 impl EditorSessionHandle {
@@ -60,6 +90,33 @@ impl EditorSessionHandle {
             .retryable()
         })?;
         Ok(project_selected_text(&session.runtime))
+    }
+
+    pub fn text_block_context(
+        &self,
+        block_id: BlockId,
+    ) -> Result<Option<TextBlockContextSnapshot>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_text_block_context(&session.runtime, block_id))
+    }
+
+    pub fn focused_text_block_context(
+        &self,
+    ) -> Result<Option<TextBlockContextSnapshot>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_focused_text_block_context(&session.runtime))
     }
 }
 
@@ -88,5 +145,26 @@ mod tests {
         assert!(!snapshot.can_undo);
         assert!(!snapshot.can_redo);
         assert!(snapshot.selection.is_some());
+    }
+
+    #[test]
+    fn text_block_context_is_owned_and_bounded_to_one_payload() {
+        let runtime = DocumentRuntime::demo();
+        let block_id = runtime.visible_block_ids()[0];
+        let expected = runtime.block_payload_record(block_id).unwrap();
+        let handle = EditorSession::new(runtime, false).into_handle();
+        handle
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::FocusBlock { block_id },
+                CommandSource::Sdk,
+            ))
+            .unwrap();
+
+        let context = handle.focused_text_block_context().unwrap().unwrap();
+        assert_eq!(context.block_id, block_id);
+        assert_eq!(context.kind, expected.kind);
+        assert_eq!(context.text, expected.plain_text());
+        assert_eq!(context.content_version, expected.content_version);
+        assert!(context.caret.is_some());
     }
 }

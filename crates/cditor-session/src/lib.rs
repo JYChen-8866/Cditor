@@ -17,7 +17,8 @@ mod ui_snapshot;
 pub use ai_port::{AiContextSnapshot, project_ai_context, project_ai_session_request};
 pub use diagnostics_snapshot::{SessionDiagnosticsSnapshot, project_diagnostics_snapshot};
 pub use document_snapshot::{
-    SessionDocumentSnapshot, project_document_snapshot, project_selected_text,
+    SessionDocumentSnapshot, TextBlockContextSnapshot, project_document_snapshot,
+    project_focused_text_block_context, project_selected_text, project_text_block_context,
 };
 pub use history_port::{
     HistoryActionSnapshot, HistoryDirection, project_history_action,
