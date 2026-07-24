@@ -23,7 +23,7 @@ impl CditorV2View {
         {
             return;
         }
-        self.payload_window_load_scheduler.reset();
+        let _ = session.reset_payload_window_tasks();
         cx.notify();
     }
 

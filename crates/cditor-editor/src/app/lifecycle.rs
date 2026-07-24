@@ -133,11 +133,6 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            undo_spill_in_flight: false,
-            history_hydration_in_flight: None,
-            selection_materialization_in_flight: None,
-            undo_cleanup_in_flight: false,
-            payload_window_load_scheduler: Default::default(),
             platform_input_target: None,
             platform_input_session_identity: None,
             platform_input_layout_identity: None,
@@ -214,11 +209,6 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            undo_spill_in_flight: false,
-            history_hydration_in_flight: None,
-            selection_materialization_in_flight: None,
-            undo_cleanup_in_flight: false,
-            payload_window_load_scheduler: Default::default(),
             platform_input_target: None,
             platform_input_session_identity: None,
             platform_input_layout_identity: None,
@@ -298,11 +288,6 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            undo_spill_in_flight: false,
-            history_hydration_in_flight: None,
-            selection_materialization_in_flight: None,
-            undo_cleanup_in_flight: false,
-            payload_window_load_scheduler: Default::default(),
             platform_input_target: None,
             platform_input_session_identity: None,
             platform_input_layout_identity: None,
@@ -328,8 +313,6 @@ impl CditorV2View {
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
         self.whiteboard_editor = None;
-        self.payload_window_load_scheduler.reset();
-        self.selection_materialization_in_flight = None;
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;

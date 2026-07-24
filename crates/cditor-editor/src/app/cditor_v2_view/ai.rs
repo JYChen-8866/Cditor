@@ -7,6 +7,7 @@ use cditor_ai::{
 use cditor_runtime::{
     AiApplyMode, AiRequestPresentation, AiSessionOutcome, AiSessionRequest, AiStreamApplyResult,
 };
+use cditor_session::SessionTaskKind;
 use gpui::{AppContext, Context, px};
 
 use crate::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
@@ -148,9 +149,24 @@ impl CditorV2View {
 
         let provider = self.ai_provider.clone();
         let request_id = dispatch.request.request_id;
+        let stream_token = match self.ready_session().and_then(|session| {
+            session
+                .replace_session_task(SessionTaskKind::AiStream, request_id)
+                .ok()
+        }) {
+            Some(token) => token,
+            None => {
+                self.save_status =
+                    EditorSaveStatus::Failed("AI stream task could not be registered".to_owned());
+                cx.notify();
+                return false;
+            }
+        };
         let cancellation = dispatch.cancellation.clone();
+        let timeout_cancellation = cancellation.clone();
         let (sender, receiver) = bounded_ai_stream(cditor_ai::DEFAULT_AI_STREAM_CAPACITY);
         let error_sender = sender.clone();
+        let timeout_sender = sender.clone();
         cx.background_spawn(async move {
             if let Err(error) = provider.stream(dispatch.request, sender, cancellation)
                 && !matches!(
@@ -161,6 +177,26 @@ impl CditorV2View {
                 let _ = error_sender.send_blocking(AiStreamEvent::Error {
                     request_id,
                     message: error.to_string(),
+                });
+            }
+        })
+        .detach();
+
+        let timeout = cx.background_executor().timer(stream_token.timeout());
+        cx.spawn(async move |view, cx| {
+            timeout.await;
+            let should_cancel = view
+                .update(cx, |view, _cx| {
+                    view.ready_session().is_some_and(|session| {
+                        session.complete_session_task(stream_token).unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+            if should_cancel {
+                timeout_cancellation.cancel();
+                let _ = timeout_sender.send_blocking(AiStreamEvent::Error {
+                    request_id,
+                    message: format!("AI stream timed out after {:?}", stream_token.timeout()),
                 });
             }
         })
@@ -192,6 +228,11 @@ impl CditorV2View {
                     break;
                 }
             }
+            let _ = view.update(cx, |view, _cx| {
+                if let Some(session) = view.ready_session() {
+                    let _ = session.complete_session_task(stream_token);
+                }
+            });
         })
         .detach();
         cx.notify();

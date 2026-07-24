@@ -22,6 +22,7 @@ mod session;
 mod storage_io;
 mod surface_port;
 mod table_port;
+mod task_port;
 mod toolbar_snapshot;
 mod ui_snapshot;
 
@@ -100,6 +101,10 @@ pub use surface_port::{
 pub use table_port::{
     FocusedTableCellSnapshot, TableInteractionSnapshot, TablePayloadSummary, TableRangeRequest,
     project_table_horizontal_scroll_offset, project_table_interaction, project_table_range,
+};
+pub use task_port::{
+    PayloadWindowTaskSchedule, SessionTaskAdmission, SessionTaskKind, SessionTaskLane,
+    SessionTaskToken,
 };
 pub use toolbar_snapshot::{
     GutterToolbarSnapshot, ToolbarContextRequest, ToolbarContextSnapshot,

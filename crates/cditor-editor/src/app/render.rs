@@ -36,7 +36,7 @@ use crate::persistence::{EditorLoadStateLabel, render_load_state, render_readonl
 use crate::scroll::HeightCorrectionPriority;
 use crate::theme::GuiTheme;
 use cditor_runtime::AiRequestPresentation;
-use cditor_session::RenderFrameRequest;
+use cditor_session::{PayloadWindowTaskSchedule, RenderFrameRequest};
 
 impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -585,23 +585,24 @@ impl Render for CditorV2View {
                 // Replace the placeholder without issuing another database query.
                 cx.notify();
             } else {
-                match self
-                    .payload_window_load_scheduler
-                    .request(std::time::Instant::now())
-                {
-                    crate::persistence::PayloadWindowLoadSchedule::DispatchNow => {
-                        pending_payload_window_load = self.ready_session().and_then(|session| {
-                            session.plan_payload_window_load(block_range).ok().flatten()
-                        });
+                match self.ready_session().and_then(|session| {
+                    session
+                        .schedule_payload_window_task(block_range, std::time::Instant::now())
+                        .ok()
+                }) {
+                    Some(PayloadWindowTaskSchedule::Dispatch { token, request }) => {
+                        pending_payload_window_load = Some((token, request));
                     }
-                    crate::persistence::PayloadWindowLoadSchedule::WakeAfter(delay) => {
+                    Some(PayloadWindowTaskSchedule::WakeAfter(delay)) => {
                         self.schedule_storage_payload_window_wake(delay, cx);
                     }
-                    crate::persistence::PayloadWindowLoadSchedule::WakeAlreadyScheduled => {}
+                    Some(PayloadWindowTaskSchedule::WakeAlreadyScheduled)
+                    | Some(PayloadWindowTaskSchedule::Idle)
+                    | None => {}
                 }
             }
-            if let Some(request) = pending_payload_window_load {
-                self.load_storage_payload_window(storage_request, request, cx);
+            if let Some((token, request)) = pending_payload_window_load {
+                self.load_storage_payload_window(storage_request, token, request, cx);
             }
         }
         if let Some(toolbar) = formatting_toolbar {

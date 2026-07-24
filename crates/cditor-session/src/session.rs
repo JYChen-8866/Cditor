@@ -91,6 +91,7 @@ pub struct EditorSession {
     pub(crate) runtime: DocumentRuntime,
     pub(crate) readonly: bool,
     pub(crate) persistence: crate::PersistencePipeline,
+    pub(crate) tasks: crate::task_port::SessionTaskCoordinator,
 }
 
 impl EditorSession {
@@ -100,6 +101,7 @@ impl EditorSession {
             runtime,
             readonly,
             persistence: crate::PersistencePipeline::disabled(),
+            tasks: Default::default(),
         }
     }
 
@@ -113,6 +115,7 @@ impl EditorSession {
             runtime,
             readonly,
             persistence,
+            tasks: Default::default(),
         }
     }
 

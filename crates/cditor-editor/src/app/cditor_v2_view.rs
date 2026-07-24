@@ -26,12 +26,11 @@ use crate::overlay::GuiToast;
 use crate::overlay::SlashMenuState;
 use crate::overlay::WhiteboardEditorSession;
 
-use crate::input::GuiInputCommand;
-use crate::persistence::{EditorSaveStatus, PayloadWindowLoadScheduler};
+use crate::persistence::EditorSaveStatus;
 use crate::text::{RichTextPlatformLayout, TextPlatformLayoutIdentity};
 #[cfg(test)]
 use cditor_runtime::DocumentRuntime;
-use cditor_runtime::{InputSessionIdentity, SelectionMaterializationRequest};
+use cditor_runtime::InputSessionIdentity;
 use cditor_session::EditorSessionHandle;
 
 pub(in crate::app) mod ai;
@@ -114,12 +113,6 @@ pub struct CditorV2View {
     pub(in crate::app) table_reorder_drag: Option<GuiTableReorderDrag>,
     pub(in crate::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
     pub(in crate::app) projected_block_rects: Vec<ProjectedBlockRect>,
-    pub(in crate::app) undo_spill_in_flight: bool,
-    pub(in crate::app) history_hydration_in_flight: Option<(u64, bool)>,
-    pub(in crate::app) selection_materialization_in_flight:
-        Option<(SelectionMaterializationRequest, GuiInputCommand)>,
-    pub(in crate::app) undo_cleanup_in_flight: bool,
-    pub(in crate::app) payload_window_load_scheduler: PayloadWindowLoadScheduler,
     pub(in crate::app) platform_input_target: Option<GuiPlatformInputTarget>,
     pub(in crate::app) platform_input_session_identity: Option<InputSessionIdentity>,
     pub(in crate::app) platform_input_layout_identity: Option<TextPlatformLayoutIdentity>,

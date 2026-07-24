@@ -4,7 +4,7 @@ use cditor_runtime::{
     AiApplyMode, AiSessionOutcome, AiSessionRequest, DocumentRuntime, RuntimeAiTarget,
 };
 
-use crate::EditorSessionHandle;
+use crate::{EditorSessionHandle, SessionTaskKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AiContextSnapshot {
@@ -79,8 +79,16 @@ impl EditorSessionHandle {
         request: AiSessionRequest,
     ) -> Result<AiSessionOutcome, ProtocolError> {
         let mut session = self.try_session_mut()?;
+        let cancels_stream = matches!(
+            &request,
+            AiSessionRequest::Cancel | AiSessionRequest::RejectPreview
+        );
         let readonly = session.readonly;
-        project_ai_session_request(&mut session.runtime, request, readonly)
+        let outcome = project_ai_session_request(&mut session.runtime, request, readonly)?;
+        if cancels_stream {
+            session.tasks.cancel_kind(SessionTaskKind::AiStream);
+        }
+        Ok(outcome)
     }
 }
 
@@ -149,10 +157,17 @@ mod tests {
     fn cancel_and_reject_clear_transient_ai_state() {
         let handle = EditorSession::new(focused_runtime(), false).into_handle();
         begin(&handle);
+        let crate::SessionTaskAdmission::Started(stream_task) = handle
+            .begin_session_task(SessionTaskKind::AiStream, 1)
+            .unwrap()
+        else {
+            panic!("AI stream task must start")
+        };
         assert!(matches!(
             handle.request_ai_session(AiSessionRequest::Cancel).unwrap(),
             AiSessionOutcome::Cancelled(true)
         ));
+        assert!(!handle.complete_session_task(stream_task).unwrap());
 
         begin(&handle);
         assert!(matches!(

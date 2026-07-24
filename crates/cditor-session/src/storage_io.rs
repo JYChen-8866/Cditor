@@ -118,12 +118,19 @@ pub async fn execute_undo_blob_write(
 
 pub fn run_undo_blob_write(
     request: UndoBlobWriteRequest,
+    timeout: std::time::Duration,
 ) -> (UndoExternalizationJob, Result<ExternalUndoBlobRef, String>) {
     let UndoBlobWriteRequest { session, job } = request;
     let result = cditor_storage::block_on_storage(async {
-        session
-            .write_undo_blob(job.snapshot_id, job.block_count, &job.transaction)
-            .await
+        tokio::time::timeout(
+            timeout,
+            session.write_undo_blob(job.snapshot_id, job.block_count, &job.transaction),
+        )
+        .await
+        .map_err(|_| StorageError::Timeout {
+            operation: "undo blob write",
+            timeout,
+        })?
     })
     .and_then(|result| result.map_err(|error| error.to_string()));
     (job, result)
@@ -144,9 +151,22 @@ pub async fn execute_undo_blob_delete(request: UndoBlobDeleteRequest) -> Vec<Ext
     failed
 }
 
-pub fn run_undo_blob_delete(request: UndoBlobDeleteRequest) -> Vec<ExternalUndoBlobRef> {
+pub fn run_undo_blob_delete(
+    request: UndoBlobDeleteRequest,
+    timeout: std::time::Duration,
+) -> Vec<ExternalUndoBlobRef> {
     let references = request.references.clone();
-    cditor_storage::block_on_storage(execute_undo_blob_delete(request)).unwrap_or(references)
+    cditor_storage::block_on_storage(async move {
+        tokio::time::timeout(timeout, execute_undo_blob_delete(request))
+            .await
+            .map_err(|_| StorageError::Timeout {
+                operation: "undo blob cleanup",
+                timeout,
+            })
+    })
+    .ok()
+    .and_then(Result::ok)
+    .unwrap_or(references)
 }
 
 #[cfg(test)]

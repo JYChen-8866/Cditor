@@ -72,6 +72,29 @@ if grep -R -n -E 'ready_runtime(_ref)?|\.storage_persistence|storage_persistence
   exit 1
 fi
 
+legacy_editor_task_state_violations=$(
+  grep -R -n -E \
+    'PayloadWindowLoadScheduler|payload_window_load_scheduler|undo_spill_in_flight|history_hydration_in_flight|selection_materialization_in_flight|undo_cleanup_in_flight' \
+    --include='*.rs' crates/cditor-editor/src || true
+)
+if [ -n "$legacy_editor_task_state_violations" ]; then
+  echo 'error: GPUI Editor background task policy must remain owned by cditor-session:' >&2
+  echo "$legacy_editor_task_state_violations" >&2
+  exit 1
+fi
+
+if ! grep -q -E 'tasks:[[:space:]]+crate::task_port::SessionTaskCoordinator' \
+  crates/cditor-session/src/session.rs; then
+  echo 'error: EditorSession must retain the headless background task coordinator' >&2
+  exit 1
+fi
+
+if grep -R -n -E '\.plan_payload_window_load(_if_needed)?\(' \
+  --include='*.rs' crates/cditor-editor/src | grep -q .; then
+  echo 'error: GPUI Editor must schedule payload hydration through the Session task coordinator' >&2
+  exit 1
+fi
+
 if grep -R -n -E 'Ready[[:space:]]*\([[:space:]]*(Box[[:space:]]*<[[:space:]]*)?DocumentRuntime|Ready[[:space:]]*\([[:space:]]*Box::new' \
   --include='*.rs' crates/cditor-editor/src | grep -q .; then
   echo 'error: CditorViewState::Ready must contain EditorSessionHandle, not DocumentRuntime' >&2
