@@ -5,16 +5,16 @@ use gpui::{
 
 use crate::block::block_content::render_block_content;
 use crate::block::block_shell::{BlockActionState, block_shell};
-use crate::block::code::render_code_block;
-use crate::block::heading::render_heading;
-use crate::block::paragraph::render_paragraph;
-use crate::block::table::{
+use crate::editor_view::CditorV2View;
+use crate::features::code::highlight::CodeHighlightCache;
+use crate::features::code::render_code_block;
+use crate::features::mermaid::{MermaidRenderCache, render_mermaid_block};
+use crate::features::table::{
     TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
 };
-use crate::block::{
-    CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache, render_mermaid_block,
-};
-use crate::editor_view::CditorV2View;
+use crate::features::text::heading::render_heading;
+use crate::features::text::paragraph::render_paragraph;
+use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::{
     CodeLanguageEditState, focus_block_from_mouse, gutter_mouse_down_from_mouse,
     hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,

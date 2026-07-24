@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use gpui::{Bounds, Context, EntityInputHandler, Pixels, Point, UTF16Selection, Window, px};
 
-use crate::block::table::menu::TABLE_MENU_SEARCH_FONT_SIZE_PX;
 use crate::editor_view::{CditorV2View, CditorViewState};
+use crate::features::table::menu::TABLE_MENU_SEARCH_FONT_SIZE_PX;
 use crate::input::ime::{
     utf8_range_to_utf16_range, utf8_to_utf16_offset, utf16_range_to_utf8_range,
 };

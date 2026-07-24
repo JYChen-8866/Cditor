@@ -1,7 +1,7 @@
 use gpui::{Context, Pixels, Point, Window};
 
-use crate::block::table::TableAxis;
 use crate::editor_view::{CditorV2View, CditorViewState};
+use crate::features::table::TableAxis;
 use crate::input::BlockDragSelectionController;
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::persistence::EditorSaveStatus;

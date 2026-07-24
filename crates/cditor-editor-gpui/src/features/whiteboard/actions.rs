@@ -3,8 +3,8 @@ use std::rc::Rc;
 use cditor_whiteboard::{Scene, WhiteboardView};
 use gpui::{AppContext, Context};
 
-use crate::block::whiteboard_style_fn;
 use crate::editor_view::{CditorV2View, CditorViewState};
+use crate::features::whiteboard::whiteboard_style_fn;
 use crate::overlay::WhiteboardEditorSession;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;

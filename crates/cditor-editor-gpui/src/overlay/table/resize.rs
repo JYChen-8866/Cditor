@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{AnyElement, IntoElement, Styled, div, px, rgb};
 
-use crate::block::table::{
+use crate::features::table::{
     TABLE_RESIZE_INDICATOR_THICKNESS_PX, TableResizePreview, TableToolbarEditorOrigin,
     table_resize_indicator_edge_px,
 };
@@ -9,7 +9,7 @@ use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::TableViewState;
 
-use crate::block::table::TableAxis;
+use crate::features::table::TableAxis;
 
 pub(crate) fn render_table_resize_preview_overlay(
     block_id: BlockId,

@@ -601,8 +601,8 @@ mod tests {
     #[test]
     fn unknown_code_theme_falls_back_to_default_catppuccin_latte() {
         assert_eq!(
-            crate::block::code::highlight::code_theme_item("missing").id,
-            crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME
+            crate::features::code::highlight::code_theme_item("missing").id,
+            crate::features::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME
         );
     }
 }

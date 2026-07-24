@@ -7,8 +7,9 @@ use cditor_core::block::GutterBlockDragState;
 use cditor_core::ids::BlockId;
 
 use crate::app::platform_layout_cache::PlatformLayoutCache;
-use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
-use crate::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
+use crate::features::code::highlight::{CodeHighlightCache, DEFAULT_CODE_HIGHLIGHT_THEME};
+use crate::features::mermaid::MermaidRenderCache;
+use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::BlockDragSelectionController;
 use crate::input::{AiPromptState, CodeLanguageEditState};
 use crate::interaction::geometry::ProjectedBlockRect;
@@ -105,7 +106,7 @@ pub(crate) struct OverlayUiState {
     pub(crate) code_theme_menu_block_id: Option<BlockId>,
     pub(crate) slash_menu: Option<SlashMenuState>,
     pub(crate) toast: Option<GuiToast>,
-    pub(crate) table_menu_ui: crate::block::table::menu::TableMenuUiState,
+    pub(crate) table_menu_ui: crate::features::table::menu::TableMenuUiState,
     pub(crate) gutter_toolbar_block_id: Option<BlockId>,
     pub(crate) selection_toolbar_delay: SelectionToolbarDelay,
     pub(crate) block_transform_menu_open: bool,

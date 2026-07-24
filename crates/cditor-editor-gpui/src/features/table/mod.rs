@@ -1,3 +1,4 @@
+mod actions;
 mod active_border;
 mod axis_grip;
 mod cell;

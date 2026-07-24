@@ -2,19 +2,19 @@ use gpui::{
     AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div, px,
 };
 
-use crate::block::code::highlight::code_theme_item;
-use crate::block::collection::render_collection_block;
-use crate::block::media::render_image_block;
 use crate::block::placeholder::{
     render_empty_ai_hint, render_error, render_loading, render_placeholder,
 };
-use crate::block::table::render_table_block;
-use crate::block::table::{
-    TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
-};
-use crate::block::{CodeHighlightCache, WhiteboardThumbnailCache, render_whiteboard_thumbnail};
 use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 use crate::editor_view::CditorV2View;
+use crate::features::code::highlight::{CodeHighlightCache, code_theme_item};
+use crate::features::media::render_image_block;
+use crate::features::table::render_table_block;
+use crate::features::table::{
+    TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
+};
+use crate::features::text::collection::render_collection_block;
+use crate::features::whiteboard::{WhiteboardThumbnailCache, render_whiteboard_thumbnail};
 use crate::text::{RichTextElement, RichTextLayoutInput};
 use crate::{rich_text::render_payload_text, theme::GuiTheme};
 use cditor_core::edit::SelectionRange;

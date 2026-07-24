@@ -4,6 +4,7 @@ pub mod clipboard_assets;
 pub mod diagnostics;
 pub mod document;
 pub mod editor_view;
+pub(crate) mod features;
 pub mod image_loader;
 pub mod image_preview;
 pub mod input;

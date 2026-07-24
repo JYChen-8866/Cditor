@@ -1,7 +1,7 @@
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::BlockId;
 
-use crate::block::table::{
+use crate::features::table::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
 };
 

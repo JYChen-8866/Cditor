@@ -1,8 +1,8 @@
 use cditor_core::ids::BlockId;
 use gpui::Context;
 
-use crate::block::code::highlight::CODE_THEME_ITEMS;
 use crate::editor_view::CditorV2View;
+use crate::features::code::highlight::CODE_THEME_ITEMS;
 
 impl CditorV2View {
     pub(crate) fn toggle_code_theme_menu_from_gui(

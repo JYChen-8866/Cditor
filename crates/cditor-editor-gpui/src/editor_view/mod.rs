@@ -19,8 +19,6 @@ use cditor_session::EditorSessionHandle;
 
 pub(crate) mod ai;
 mod block_actions;
-mod code_language;
-mod code_theme;
 mod folding;
 mod formatting;
 mod lifecycle;
@@ -28,8 +26,6 @@ mod platform_input;
 mod render;
 mod slash_menu;
 mod state;
-mod table_actions;
-mod whiteboard;
 
 pub use self::state::{CditorViewState, EditorReadonlyReason};
 use self::state::{
@@ -80,7 +76,7 @@ impl CditorV2View {
         block_id: BlockId,
         cx: &mut Context<Self>,
     ) {
-        crate::block::media::invalidate_rendered_media_height_report(block_id);
+        crate::features::media::invalidate_rendered_media_height_report(block_id);
         if !self.cache.mermaid_source_blocks.remove(&block_id) {
             self.cache.mermaid_source_blocks.insert(block_id);
         }

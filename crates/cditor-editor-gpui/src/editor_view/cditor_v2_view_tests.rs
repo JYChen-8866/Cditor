@@ -1,6 +1,6 @@
 use super::*;
-use crate::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
 use crate::editor_view::GuiPlatformInputTarget;
+use crate::features::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
 use crate::input::ime::adapter::{
     code_language_input_target_allows, platform_input_target_allows, platform_selected_text_range,
 };

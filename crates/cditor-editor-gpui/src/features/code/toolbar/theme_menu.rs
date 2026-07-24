@@ -1,5 +1,5 @@
-use crate::block::code::highlight::{CODE_THEME_ITEMS, CodeThemeItem, code_theme_item};
 use crate::editor_view::CditorV2View;
+use crate::features::code::highlight::{CODE_THEME_ITEMS, CodeThemeItem, code_theme_item};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use gpui::{

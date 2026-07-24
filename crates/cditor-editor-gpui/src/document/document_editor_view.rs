@@ -5,20 +5,24 @@ use gpui::{
     ParentElement, Styled, div, prelude::FluentBuilder, px,
 };
 
-use crate::block::table::menu::TableMenuUiState;
 use crate::block::{
-    BlockActionState, BlockDragOverlaySnapshot, BlockView, CodeHighlightCache, MermaidRenderCache,
-    TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
-    TableChromeOverlays, TableReorderPreview, TableResizePreview, WhiteboardThumbnailCache,
-    render_block_drag_overlay, render_table_axis_overlays, render_table_axis_toolbar,
-    render_table_cell_menu, render_table_chrome_viewport, render_table_resize_overlays,
-    table_axis_track_sizes, table_chrome_viewport_origins, table_content_editor_origin,
-    table_toolbar_editor_origin,
+    BlockActionState, BlockDragOverlaySnapshot, BlockView, render_block_drag_overlay,
 };
 use crate::document::DocumentSurface;
 use crate::document::{DEFAULT_DOCUMENT_CONTENT_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
 use crate::editor_view::CditorV2View;
 use crate::editor_view::TableScrollSnapshot;
+use crate::features::code::highlight::CodeHighlightCache;
+use crate::features::mermaid::MermaidRenderCache;
+use crate::features::table::menu::TableMenuUiState;
+use crate::features::table::{
+    TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
+    TableChromeOverlays, TableReorderPreview, TableResizePreview, render_table_axis_overlays,
+    render_table_axis_toolbar, render_table_cell_menu, render_table_chrome_viewport,
+    render_table_resize_overlays, table_axis_track_sizes, table_chrome_viewport_origins,
+    table_content_editor_origin, table_toolbar_editor_origin,
+};
+use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::CodeLanguageEditState;
 use crate::menu_metrics::MenuViewportBounds;
 use crate::overlay::render_editor_overlays;

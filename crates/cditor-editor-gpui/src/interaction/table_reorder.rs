@@ -1,7 +1,7 @@
 use gpui::{Context, Pixels, Point, Window};
 
-use crate::block::table::TableAxis;
 use crate::editor_view::{CditorV2View, CditorViewState};
+use crate::features::table::TableAxis;
 use crate::input::BlockDragSelectionController;
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::persistence::EditorSaveStatus;
@@ -166,7 +166,7 @@ fn table_reorder_release_mode(drag: &GuiTableReorderDrag) -> GuiTableInteraction
     if drag.exceeded_threshold {
         GuiTableInteractionMode::Idle
     } else {
-        GuiTableInteractionMode::AxisSelected(crate::block::table::TableAxisSelection::new(
+        GuiTableInteractionMode::AxisSelected(crate::features::table::TableAxisSelection::new(
             drag.block_id,
             drag.axis,
             drag.from_index,
@@ -243,7 +243,7 @@ mod tests {
         );
         assert_eq!(
             table_reorder_release_mode(&drag),
-            GuiTableInteractionMode::AxisSelected(crate::block::table::TableAxisSelection::new(
+            GuiTableInteractionMode::AxisSelected(crate::features::table::TableAxisSelection::new(
                 7,
                 TableAxis::Column,
                 1,

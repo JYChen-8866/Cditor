@@ -364,7 +364,7 @@ fi
 
 direct_table_cell_focus_violations=$(
   grep -n -E '\.(focus_table_cell|focus_table_cell_at_offset|blur_table_cell|move_focused_table_cell_(left|right|up|down|tab|to_text_position)|extend_focused_table_cell_selection_(left|right|to_offset))\(' \
-    crates/cditor-editor-gpui/src/editor_view/table_actions.rs \
+    crates/cditor-editor-gpui/src/features/table/actions.rs \
     crates/cditor-editor-gpui/src/input/routing.rs || true
 )
 if [ -n "$direct_table_cell_focus_violations" ]; then
@@ -401,6 +401,30 @@ surface_adapter_location_violations=$(
 if [ -n "$surface_adapter_location_violations" ]; then
   echo 'error: surface layout identity, hit-test, and render projection adapters must live in surfaces/:' >&2
   echo "$surface_adapter_location_violations" >&2
+  exit 1
+fi
+
+if [ ! -f crates/cditor-editor-gpui/src/features/text/mod.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/features/code/mod.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/features/table/mod.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/features/media/mod.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/features/mermaid/mod.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/features/whiteboard/mod.rs ] \
+  || [ -d crates/cditor-editor-gpui/src/block/code ] \
+  || [ -d crates/cditor-editor-gpui/src/block/table ] \
+  || [ -d crates/cditor-editor-gpui/src/block/mermaid ] \
+  || [ -d crates/cditor-editor-gpui/src/block/whiteboard ] \
+  || [ -e crates/cditor-editor-gpui/src/block/media.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/block/collection.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/block/heading.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/block/list.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/block/paragraph.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/block/quote.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/editor_view/code_language.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/editor_view/code_theme.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/editor_view/table_actions.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/editor_view/whiteboard.rs ]; then
+  echo 'error: feature renderers and command adapters must live in features/' >&2
   exit 1
 fi
 
