@@ -135,6 +135,25 @@ if sed -n '/^pub struct CditorV2View {/,/^}/p' \
   exit 1
 fi
 
+if sed -n '/^pub struct CditorV2View {/,/^}/p' \
+  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  | grep -E '^[[:space:]]+pub.*[[:space:]]+[a-zA-Z0-9_]+[[:space:]]*:' \
+  | grep -v -E '^[[:space:]]+pub.*[[:space:]]+(state|focus|input|features|overlay|diagnostics|status|interaction|cache)[[:space:]]*:' \
+  | grep -q .; then
+  echo 'error: CditorV2View top-level fields must remain explicit lifecycle-owned UI substates' >&2
+  exit 1
+fi
+
+for field in state focus input features overlay diagnostics status interaction cache; do
+  if ! sed -n '/^pub struct CditorV2View {/,/^}/p' \
+    crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+    | grep -E "^[[:space:]]+pub.*[[:space:]]+${field}[[:space:]]*:" \
+    | grep -q .; then
+    echo "error: CditorV2View is missing required lifecycle-owned state field: ${field}" >&2
+    exit 1
+  fi
+done
+
 if grep -R -n -E 'Ready[[:space:]]*\([[:space:]]*(Box[[:space:]]*<[[:space:]]*)?DocumentRuntime|Ready[[:space:]]*\([[:space:]]*Box::new' \
   --include='*.rs' crates/cditor-editor-gpui/src | grep -q .; then
   echo 'error: CditorViewState::Ready must contain EditorSessionHandle, not DocumentRuntime' >&2

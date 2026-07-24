@@ -17,6 +17,35 @@ use cditor_runtime::DocumentRuntime;
 use cditor_session::{EditorSession, EditorSessionHandle};
 
 impl CditorV2View {
+    fn compose(
+        state: CditorViewState,
+        show_debug: bool,
+        effective_readonly: bool,
+        requested_readonly: bool,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self {
+            state,
+            focus: FocusUiState::new(cx),
+            input: PlatformInputState::default(),
+            features: FeatureUiState::default(),
+            overlay: OverlayUiState::default(),
+            diagnostics: EditorDiagnosticsState::new(show_debug),
+            status: EditorStatusUiState::new(effective_readonly, requested_readonly),
+            interaction: InteractionUiState::default(),
+            cache: RenderCacheState::default(),
+        }
+    }
+
+    fn reset_document_ui(&mut self) {
+        self.focus.reset_session_projection();
+        self.input.reset();
+        self.interaction.reset();
+        self.features.reset_session();
+        self.overlay.reset();
+        self.cache.reset_session();
+    }
+
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self::from_runtime(DocumentRuntime::demo(), true, cx)
     }
@@ -77,17 +106,13 @@ impl CditorV2View {
         let readonly = session
             .snapshot()
             .map_or(requested_readonly, |snapshot| snapshot.readonly);
-        Self {
-            state: CditorViewState::Ready(session),
-            focus: FocusUiState::new(cx),
-            input: PlatformInputState::default(),
-            features: FeatureUiState::default(),
-            overlay: OverlayUiState::default(),
-            diagnostics: EditorDiagnosticsState::new(show_debug),
-            status: EditorStatusUiState::new(readonly, requested_readonly),
-            interaction: InteractionUiState::default(),
-            cache: RenderCacheState::default(),
-        }
+        Self::compose(
+            CditorViewState::Ready(session),
+            show_debug,
+            readonly,
+            requested_readonly,
+            cx,
+        )
     }
 
     pub fn loading(message: impl Into<String>, show_debug: bool, cx: &mut Context<Self>) -> Self {
@@ -101,19 +126,15 @@ impl CditorV2View {
         _autosave_interval: Option<Duration>,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self {
-            state: CditorViewState::Loading {
+        Self::compose(
+            CditorViewState::Loading {
                 message: message.into(),
             },
-            focus: FocusUiState::new(cx),
-            input: PlatformInputState::default(),
-            features: FeatureUiState::default(),
-            overlay: OverlayUiState::default(),
-            diagnostics: EditorDiagnosticsState::new(show_debug),
-            status: EditorStatusUiState::new(readonly, readonly),
-            interaction: InteractionUiState::default(),
-            cache: RenderCacheState::default(),
-        }
+            show_debug,
+            readonly,
+            readonly,
+            cx,
+        )
     }
 
     pub fn load_failed(
@@ -130,19 +151,15 @@ impl CditorV2View {
         readonly: bool,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self {
-            state: CditorViewState::LoadFailed {
+        Self::compose(
+            CditorViewState::LoadFailed {
                 message: message.into(),
             },
-            focus: FocusUiState::new(cx),
-            input: PlatformInputState::default(),
-            features: FeatureUiState::default(),
-            overlay: OverlayUiState::default(),
-            diagnostics: EditorDiagnosticsState::new(show_debug),
-            status: EditorStatusUiState::new(readonly, readonly),
-            interaction: InteractionUiState::default(),
-            cache: RenderCacheState::default(),
-        }
+            show_debug,
+            readonly,
+            readonly,
+            cx,
+        )
     }
 
     pub fn apply_loaded_session(&mut self, session: EditorSessionHandle) {
@@ -151,12 +168,7 @@ impl CditorV2View {
             .map_or(self.status.requested_readonly, |snapshot| snapshot.readonly);
         self.state.apply_loaded_session(session);
         self.status.reset_for_session(session_readonly);
-        self.focus.reset_session_projection();
-        self.input.reset();
-        self.interaction.reset();
-        self.features.reset_session();
-        self.overlay.reset();
-        self.cache.reset_session();
+        self.reset_document_ui();
     }
 
     pub fn apply_recovered_session(
@@ -177,12 +189,7 @@ impl CditorV2View {
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {
         self.state.apply_load_failed(message);
         self.status.reset_after_load_failure();
-        self.focus.reset_session_projection();
-        self.input.reset();
-        self.interaction.reset();
-        self.features.reset_session();
-        self.overlay.reset();
-        self.cache.reset_session();
+        self.reset_document_ui();
     }
 
     /// Return the persistent horizontal `ScrollHandle` for a table block.
