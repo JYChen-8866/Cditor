@@ -131,7 +131,6 @@ impl CditorV2View {
                 cx.notify();
                 true
             }
-            CodeLanguageEditKeyResult::Ignored => false,
         }
     }
 

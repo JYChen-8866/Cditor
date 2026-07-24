@@ -266,7 +266,6 @@ impl CditorV2View {
                 cx.notify();
                 true
             }
-            AiPromptKeyResult::Ignored => false,
         }
     }
 

@@ -19,21 +19,6 @@ pub fn focus_block_from_mouse(
     });
 }
 
-pub fn focus_table_cell_from_mouse(
-    view: &Entity<CditorV2View>,
-    block_id: BlockId,
-    row: usize,
-    col: usize,
-    event: &MouseDownEvent,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let position = event.position;
-    view.update(cx, |view, cx| {
-        view.focus_table_cell_from_gui(block_id, row, col, Some(position), window, cx);
-    });
-}
-
 pub fn begin_table_cell_text_selection_from_mouse(
     view: &Entity<CditorV2View>,
     block_id: BlockId,

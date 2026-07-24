@@ -2,5 +2,5 @@
 
 pub use cditor_viewport::scroll::{
     HeightCorrectionPriority, ScrollAccumulator, ScrollDeltaMode, ScrollDevice, ScrollInput,
-    ScrollPhase, ScrollbarPolicy, ScrollbarVisualState,
+    ScrollPhase, ScrollbarVisualState,
 };

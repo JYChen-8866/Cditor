@@ -25,6 +25,7 @@ pub struct BlockActionState {
     pub dragging: bool,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BlockShellStyle {
     pub indent_px: f32,
@@ -32,6 +33,7 @@ pub struct BlockShellStyle {
     pub background_color: u32,
 }
 
+#[cfg(test)]
 impl BlockShellStyle {
     pub fn from_snapshot(block: &ViewBlockSnapshot, theme: GuiTheme) -> Self {
         let chrome = BlockChromeStyle::from_snapshot(block, theme);
@@ -194,18 +196,6 @@ pub fn border_for_action(default_border: u32, theme: GuiTheme, action: BlockActi
     } else {
         default_border
     }
-}
-
-pub fn placeholder_shell(theme: GuiTheme, content: AnyElement) -> AnyElement {
-    div()
-        .w_full()
-        .px_2()
-        .py_1()
-        .border_1()
-        .border_color(rgb(theme.page))
-        .bg(rgb(theme.page))
-        .child(content)
-        .into_any_element()
 }
 
 fn render_quote_bar(color: u32) -> AnyElement {

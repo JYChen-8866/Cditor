@@ -16,6 +16,7 @@ pub struct AiPromptState {
 }
 
 impl AiPromptState {
+    #[cfg(test)]
     pub fn new(block_id: BlockId, x: Pixels, y: Pixels) -> Self {
         Self::with_presentation(block_id, x, y, AiRequestPresentation::Automatic)
     }
@@ -79,7 +80,6 @@ pub enum AiPromptKeyResult {
     Submit,
     Cancel,
     Changed,
-    Ignored,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

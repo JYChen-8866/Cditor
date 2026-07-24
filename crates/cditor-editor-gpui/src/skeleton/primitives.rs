@@ -11,7 +11,6 @@ pub enum SkeletonVariant {
     Text,
     Heading,
     Circle,
-    Square,
     Image,
 }
 
@@ -55,12 +54,11 @@ impl SkeletonItem {
             SkeletonVariant::Text => 14.0,
             SkeletonVariant::Heading => 22.0,
             SkeletonVariant::Circle => 20.0,
-            SkeletonVariant::Square => 40.0,
             SkeletonVariant::Image => 180.0,
         });
         let radius = match self.variant {
             SkeletonVariant::Circle => height / 2.0,
-            SkeletonVariant::Image | SkeletonVariant::Square => 8.0,
+            SkeletonVariant::Image => 8.0,
             SkeletonVariant::Heading | SkeletonVariant::Text => 4.0,
         };
 

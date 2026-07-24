@@ -235,20 +235,6 @@ fn paint_single_line_text(
     }
 }
 
-pub fn single_line_visible_x_for_offset(
-    text: &str,
-    offset: usize,
-    caret_offset: usize,
-    font_size: Pixels,
-    bounds: Bounds<Pixels>,
-    window: &Window,
-) -> f32 {
-    (single_line_text_x_for_offset(text, offset, font_size, window)
-        - single_line_scroll_x_for_offset(text, caret_offset, font_size, bounds, window))
-    .max(0.0)
-    .min(single_line_input_max_x(bounds))
-}
-
 pub fn single_line_visible_range_x(
     text: &str,
     range: Range<usize>,
@@ -269,23 +255,7 @@ pub fn single_line_visible_range_x(
     start..end
 }
 
-pub fn single_line_local_x_for_point(
-    point_x: Pixels,
-    text: &str,
-    caret_offset: usize,
-    font_size: Pixels,
-    bounds: Bounds<Pixels>,
-    window: &Window,
-) -> Pixels {
-    let scroll_x = single_line_scroll_x_for_offset(text, caret_offset, font_size, bounds, window);
-    px(single_line_text_x_from_point(
-        f32::from(point_x),
-        f32::from(bounds.left()),
-        scroll_x,
-        single_line_input_max_x(bounds),
-    ))
-}
-
+#[cfg(test)]
 pub fn single_line_text_x_from_point(
     point_x: f32,
     bounds_left: f32,

@@ -68,24 +68,6 @@ pub fn render_load_state(label: &EditorLoadStateLabel, theme: GuiTheme) -> AnyEl
         .into_any_element()
 }
 
-pub fn render_save_indicator(status: &EditorSaveStatus, theme: GuiTheme) -> AnyElement {
-    let color = match status {
-        EditorSaveStatus::Clean => theme.muted,
-        EditorSaveStatus::Dirty => 0xcb912f,
-        EditorSaveStatus::Saving => theme.focused,
-        EditorSaveStatus::Failed(_) => theme.danger,
-        EditorSaveStatus::Readonly => theme.muted,
-    };
-
-    div()
-        .px_1()
-        .py_1()
-        .text_size(px(12.0))
-        .text_color(rgb(color))
-        .child(status.label())
-        .into_any_element()
-}
-
 pub fn render_readonly_notice(reason: &EditorReadonlyReason, theme: GuiTheme) -> AnyElement {
     div()
         .absolute()

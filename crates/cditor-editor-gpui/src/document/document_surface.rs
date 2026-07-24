@@ -22,10 +22,12 @@ pub struct DocumentSurface {
 }
 
 impl DocumentSurface {
+    #[cfg(test)]
     pub fn new(before_window_height: f64, after_window_height: f64) -> Self {
         Self::with_placeholder(before_window_height, None, after_window_height)
     }
 
+    #[cfg(test)]
     pub fn with_placeholder(
         before_window_height: f64,
         placeholder_window_height: Option<f64>,
@@ -37,11 +39,6 @@ impl DocumentSurface {
             after_window_height,
             0.0,
         )
-    }
-
-    pub fn with_placeholder_error(mut self, message: Option<String>) -> Self {
-        self.placeholder_window_error = message;
-        self
     }
 
     pub fn with_scroll(

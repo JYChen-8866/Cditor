@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
+#[cfg(test)]
 const SCHEMA_VERSION: u32 = 1;
 const DEFAULT_FRAME_BUDGET: Duration = Duration::from_micros(16_667);
 const RECENT_FRAME_CAPACITY: usize = 240;
@@ -77,6 +78,7 @@ pub enum LongFrameReason {
     Unattributed,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FrameTelemetrySnapshot {
     pub schema_version: u32,
@@ -156,6 +158,7 @@ pub(crate) fn record_app_frame(input: AppFrameTelemetryInput) {
     }
 }
 
+#[cfg(test)]
 pub fn frame_telemetry_snapshot() -> FrameTelemetrySnapshot {
     let store = telemetry_store()
         .lock()
@@ -171,6 +174,7 @@ pub fn frame_telemetry_snapshot() -> FrameTelemetrySnapshot {
     }
 }
 
+#[cfg(test)]
 pub fn export_frame_telemetry_json() -> Result<String, serde_json::Error> {
     serde_json::to_string_pretty(&frame_telemetry_snapshot())
 }

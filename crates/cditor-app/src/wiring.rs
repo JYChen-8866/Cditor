@@ -57,7 +57,7 @@ pub fn build_component(
 pub fn run_desktop(cditor: Cditor) {
     let app = gpui_platform::application();
     app.run(move |cx: &mut App| {
-        cditor_editor_gpui::input::actions::bind_cditor_keys(cx);
+        cditor_editor_gpui::bind_cditor_keys(cx);
         cx.activate(true);
         let component = build_component(cditor.clone(), cx).expect("build Cditor component");
         let window_options = default_window_options(cx);

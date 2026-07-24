@@ -221,16 +221,6 @@ impl RasterImageElement {
             cover_position_y: None,
         }
     }
-
-    #[must_use]
-    pub fn cover(image: Arc<RenderImage>, radius: Pixels, position_y: f32) -> Self {
-        Self {
-            image,
-            fit: ObjectFit::Cover,
-            radius,
-            cover_position_y: Some(position_y.clamp(0.0, 1.0)),
-        }
-    }
 }
 
 fn positioned_cover_bounds(

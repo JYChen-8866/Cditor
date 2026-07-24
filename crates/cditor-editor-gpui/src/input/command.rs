@@ -1,7 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuiInputCommand {
     Ignore,
-    ToggleDebugOverlay,
     SelectAllFocusedText,
     CopySelection,
     CutSelection,
@@ -32,15 +31,11 @@ pub enum GuiInputCommand {
 }
 
 impl GuiInputCommand {
-    pub fn should_stop_propagation(self) -> bool {
-        !matches!(self, Self::Ignore)
-    }
-
     pub fn cditor_command(self) -> Option<cditor_editor_protocol::command::CditorCommand> {
         use cditor_editor_protocol::command::{CaretDirection, CditorCommand};
 
         Some(match self {
-            Self::Ignore | Self::ToggleDebugOverlay => return None,
+            Self::Ignore => return None,
             Self::SelectAllFocusedText => CditorCommand::SelectAll,
             Self::CopySelection => CditorCommand::CopySelection,
             Self::CutSelection => CditorCommand::CutSelection,
@@ -160,6 +155,5 @@ mod tests {
     #[test]
     fn transient_gui_only_actions_do_not_escape_as_document_commands() {
         assert_eq!(GuiInputCommand::Ignore.cditor_command(), None);
-        assert_eq!(GuiInputCommand::ToggleDebugOverlay.cditor_command(), None);
     }
 }

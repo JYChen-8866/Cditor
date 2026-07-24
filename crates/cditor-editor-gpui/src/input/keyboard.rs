@@ -25,10 +25,6 @@ impl CditorV2View {
         command: GuiInputCommand,
         cx: &mut Context<Self>,
     ) {
-        if matches!(command, GuiInputCommand::ToggleDebugOverlay) {
-            self.diagnostics.show_debug = !self.diagnostics.show_debug;
-            return;
-        }
         if self.status.readonly && !matches!(command, GuiInputCommand::CopySelection) {
             return;
         }
@@ -79,9 +75,7 @@ impl CditorV2View {
         }
         let should_scroll_focus = !matches!(
             command,
-            GuiInputCommand::Ignore
-                | GuiInputCommand::ToggleDebugOverlay
-                | GuiInputCommand::CopySelection
+            GuiInputCommand::Ignore | GuiInputCommand::CopySelection
         );
         let selected_table_axis = self.projected_table_axis_selection();
         let mut deferred_command = None;
@@ -91,7 +85,7 @@ impl CditorV2View {
             };
             let runtime = session;
             match command {
-                GuiInputCommand::Ignore | GuiInputCommand::ToggleDebugOverlay => {}
+                GuiInputCommand::Ignore => {}
                 GuiInputCommand::SelectAllFocusedText => unreachable!(
                     "select-all returns through Runtime dispatch before the GUI handler"
                 ),

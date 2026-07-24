@@ -134,6 +134,7 @@ impl RichTextElement {
         self
     }
 
+    #[cfg(test)]
     pub fn with_inline_boxes(
         mut self,
         inline_boxes: Vec<ParleyInlineBoxSpec>,
@@ -175,6 +176,7 @@ impl RichTextElement {
         self
     }
 
+    #[cfg(test)]
     pub fn hit_test(&self, point: TextHitPoint) -> usize {
         self.hit_test_position(point).offset
     }
@@ -184,6 +186,7 @@ impl RichTextElement {
             .position_for_point(point.x as f32, point.y as f32)
     }
 
+    #[cfg(test)]
     pub fn candidate_rect_for_offset(&self, offset: usize) -> super::TextCaretRect {
         let rect = self
             .default_parley_layout()
@@ -196,11 +199,13 @@ impl RichTextElement {
         }
     }
 
+    #[cfg(test)]
     pub fn candidate_rect_for_caret(&self) -> Option<super::TextCaretRect> {
         self.caret_offset
             .map(|offset| self.candidate_rect_for_offset(offset))
     }
 
+    #[cfg(test)]
     pub fn positioned_inline_boxes(&self) -> Vec<ParleyPositionedInlineBox> {
         self.default_parley_layout().inline_boxes()
     }

@@ -4,6 +4,7 @@ pub struct TextHitPoint {
     pub y: f64,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct TextCaretRect {
     pub x: f64,

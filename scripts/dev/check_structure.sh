@@ -423,6 +423,26 @@ if [ ! -f crates/cditor-editor-gpui/src/cache/platform_layout.rs ] \
   exit 1
 fi
 
+editor_public_module_violations=$(
+  grep -n -E '^pub mod ' crates/cditor-editor-gpui/src/lib.rs || true
+)
+if [ -n "$editor_public_module_violations" ]; then
+  echo 'error: cditor-editor-gpui must expose explicit root API items, not compatibility modules:' >&2
+  echo "$editor_public_module_violations" >&2
+  exit 1
+fi
+
+for legacy_editor_path in \
+  crates/cditor-editor-gpui/src/block/code_toolbar \
+  crates/cditor-editor-gpui/src/native_menu \
+  crates/cditor-editor-gpui/src/text/parley_adapter/exact_raster/fixtures
+do
+  if [ -e "$legacy_editor_path" ]; then
+    echo "error: removed GPUI Editor path must not return: $legacy_editor_path" >&2
+    exit 1
+  fi
+done
+
 presentation_registry_violations=$(
   grep -R -n -E 'builtin_block_registry|SlashMenuMetadata|TransformMenuMetadata' \
     --include='*.rs' crates/cditor-editor-gpui/src \

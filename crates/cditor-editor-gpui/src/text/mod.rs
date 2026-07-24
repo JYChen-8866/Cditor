@@ -13,19 +13,21 @@ pub(crate) use diagnostics::{
     TextGeometryOperation, record_snapshot_geometry, record_synchronous_geometry_fallback,
     record_unavailable_geometry, text_geometry_telemetry,
 };
-pub use element::{ParleyInlineBoxRenderer, RichTextElement, RichTextTypography};
-pub use geometry::{TextCaretRect, TextHitPoint};
+pub use element::{RichTextElement, RichTextTypography};
+#[cfg(test)]
+pub use geometry::TextCaretRect;
+pub use geometry::TextHitPoint;
 pub use input::RichTextLayoutInput;
 pub use parley_adapter::{
-    CachedParleyLayout, ParleyAccessibilityProjection, ParleyAlignment, ParleyBrush,
-    ParleyFontSlant, ParleyInlineBoxKind, ParleyInlineBoxSpec, ParleyLayoutKey,
-    ParleyLayoutOptions, ParleyLayoutSnapshot, ParleyLineHeight, ParleyLineSnapshot,
+    ParleyAccessibilityProjection, ParleyAlignment, ParleyBrush, ParleyFontSlant,
+    ParleyInlineBoxSpec, ParleyLayoutOptions, ParleyLayoutSnapshot, ParleyLineHeight,
     ParleyMoveCommand, ParleyPositionedInlineBox, ParleyRect, ParleySelection, ParleySelectionKind,
-    ParleyShapeKey, ParleyStyleRun, ParleyTextIndent, ParleyTextPosition, ParleyTextStyleConfig,
-    TextLayoutCacheRequest, TextLayoutSurfaceId, accessibility_node_ids,
-    build_parley_accessibility_projection, build_parley_layout, cached_parley_layout,
-    cached_parley_layout_with_request, parley_style_runs, sync_automatic_text_layout_pins,
+    ParleyTextPosition, ParleyTextStyleConfig, TextLayoutCacheRequest, TextLayoutSurfaceId,
+    accessibility_node_ids, build_parley_accessibility_projection,
+    cached_parley_layout_with_request, sync_automatic_text_layout_pins,
 };
+#[cfg(test)]
+pub use parley_adapter::{ParleyInlineBoxKind, build_parley_layout};
 #[cfg(test)]
 pub(crate) use platform::test_platform_layout;
 pub(crate) use platform::{

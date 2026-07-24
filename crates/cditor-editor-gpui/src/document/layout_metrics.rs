@@ -19,6 +19,7 @@ impl DocumentLayoutMetrics {
         top_inset_px: DEFAULT_DOCUMENT_TOP_INSET_PX,
     };
 
+    #[cfg(test)]
     pub const fn content_inset_x_px(self) -> f32 {
         (self.page_width_px - self.content_width_px) / 2.0
     }

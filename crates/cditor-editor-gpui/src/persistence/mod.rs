@@ -8,6 +8,5 @@ pub use cditor_session::{
 };
 pub use save_indicator::{
     EditorLoadStateLabel, EditorSaveStatus, render_load_state, render_readonly_notice,
-    render_save_indicator,
 };
 pub use storage_saver::schedule_storage_autosave;

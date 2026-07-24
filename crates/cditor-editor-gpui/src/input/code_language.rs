@@ -17,14 +17,6 @@ pub struct CodeLanguageItem {
 }
 
 impl CodeLanguageItem {
-    pub fn new(value: impl Into<String>) -> Self {
-        let value = value.into();
-        Self {
-            label: value.clone(),
-            value,
-        }
-    }
-
     pub fn labeled(value: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             value: value.into(),
@@ -47,6 +39,7 @@ pub struct CodeLanguageEditState {
 }
 
 impl CodeLanguageEditState {
+    #[cfg(test)]
     pub fn new(block_id: BlockId, language: Option<&str>) -> Self {
         Self::new_with_placement(block_id, language, CodeLanguagePopupPlacement::Below)
     }
@@ -213,7 +206,6 @@ pub enum CodeLanguageEditKeyResult {
     Commit,
     Cancel,
     Changed,
-    Ignored,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -368,14 +360,6 @@ pub fn matching_code_language_items(query: &str, max: usize) -> Vec<CodeLanguage
         })
         .take(max.max(1))
         .collect()
-}
-
-pub fn is_code_language_text(text: &str) -> bool {
-    text.chars().all(is_code_language_char)
-}
-
-fn is_code_language_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '+' | '#' | '.')
 }
 
 #[cfg(test)]
