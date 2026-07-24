@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::storage_host::{CditorColdStartPlan, DocumentSchemaAccess, load_session_from_options};
 use cditor_api::event::CditorEvent;
 use cditor_api::{Cditor, CditorComponent, CditorError, CditorOptions, CditorViewFactory};
-use cditor_editor_gpui::app::CditorV2View;
+use cditor_editor_gpui::CditorV2View;
 use cditor_storage::{StorageError, block_on_storage};
 use gpui::{
     App, AppContext, Bounds, Context, IntoElement, Render, TitlebarOptions, Window, WindowBounds,

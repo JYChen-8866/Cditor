@@ -5,7 +5,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_core::layout::TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;

@@ -5,8 +5,6 @@ use gpui::{
     ParentElement, Styled, div, prelude::FluentBuilder, px,
 };
 
-use crate::app::CditorV2View;
-use crate::app::cditor_v2_view::TableScrollSnapshot;
 use crate::block::table::menu::TableMenuUiState;
 use crate::block::{
     BlockActionState, BlockDragOverlaySnapshot, BlockView, CodeHighlightCache, MermaidRenderCache,
@@ -19,6 +17,8 @@ use crate::block::{
 };
 use crate::document::DocumentSurface;
 use crate::document::{DEFAULT_DOCUMENT_CONTENT_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
+use crate::editor_view::CditorV2View;
+use crate::editor_view::TableScrollSnapshot;
 use crate::input::CodeLanguageEditState;
 use crate::menu_metrics::MenuViewportBounds;
 use crate::overlay::render_editor_overlays;

@@ -1,6 +1,6 @@
 use gpui::{Context, MouseMoveEvent, MouseUpEvent, ScrollDelta, ScrollWheelEvent, Window};
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::interaction::scrollbar::scrollbar_local_pointer_y;
 use crate::scroll::{ScrollDeltaMode, ScrollDevice, ScrollInput, ScrollPhase};
 

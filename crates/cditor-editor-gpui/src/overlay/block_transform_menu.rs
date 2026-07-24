@@ -4,7 +4,7 @@ use gpui::{
     Styled, div, px, rgb,
 };
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::menu_metrics::SECONDARY_MENU_WIDTH_PX;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;

@@ -3,13 +3,13 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div, point, px, rgb, size,
 };
 
-use crate::app::cditor_v2_view::{
-    CditorV2View, CditorViewState, floating_toolbar_passes_selection_delay,
-    formatting_toolbar_context, formatting_toolbar_state,
-};
 use crate::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX;
 use crate::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use crate::document::{DocumentBlockActionProjection, DocumentEditorView};
+use crate::editor_view::{
+    CditorV2View, CditorViewState, floating_toolbar_passes_selection_delay,
+    formatting_toolbar_context, formatting_toolbar_state,
+};
 use crate::image_preview::render_image_preview_overlay;
 use crate::input::GuiInputCommand;
 use crate::input::actions::{

@@ -14,7 +14,7 @@ use cditor_runtime::DocumentRuntime;
 #[cfg(test)]
 use cditor_session::project_input_context;
 
-use crate::app::cditor_v2_view::GuiPlatformInputTarget;
+use crate::editor_view::GuiPlatformInputTarget;
 use crate::input::ime::{
     marked_preview_range_to_base_range, utf8_range_to_utf16_range, utf8_to_utf16_offset,
     utf16_range_to_utf8_range,
@@ -253,7 +253,7 @@ mod tests {
     use cditor_runtime::{DocumentRuntime, RealtimeInput, RealtimeInputRequest};
     use gpui::{point, px, size};
 
-    use crate::app::GuiPlatformInputTarget;
+    use crate::editor_view::GuiPlatformInputTarget;
     use crate::text::test_platform_layout;
 
     fn update_composition(runtime: &mut DocumentRuntime, text: &str) {

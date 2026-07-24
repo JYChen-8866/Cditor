@@ -1,7 +1,7 @@
 use gpui::{Context, Pixels, Point, Window};
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::block::media::image_width_ratio_milli_for_width;
+use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::input::BlockDragSelectionController;
 use crate::persistence::EditorSaveStatus;
 use cditor_core::ids::BlockId;

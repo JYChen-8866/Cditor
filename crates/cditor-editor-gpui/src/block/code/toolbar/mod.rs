@@ -1,6 +1,6 @@
 //! Code-block language, copy, and theme controls.
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::input::{
     CODE_LANGUAGE_VISIBLE_SUGGESTIONS, CodeLanguageEditState, CodeLanguageItem,
     CodeLanguagePopupPlacement, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement,

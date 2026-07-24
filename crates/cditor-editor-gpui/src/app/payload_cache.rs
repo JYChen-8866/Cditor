@@ -5,7 +5,7 @@ use cditor_core::ids::BlockId;
 use cditor_runtime::PayloadCachePolicy;
 use gpui::Context;
 
-use super::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::editor_view::{CditorV2View, CditorViewState};
 
 impl CditorV2View {
     pub(crate) fn retry_payload_window(
@@ -27,7 +27,7 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn trim_persistent_payload_cache(&mut self) {
+    pub(crate) fn trim_persistent_payload_cache(&mut self) {
         if !self.ready_session().is_some_and(|session| {
             session
                 .persistence_snapshot()

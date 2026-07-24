@@ -1,6 +1,6 @@
 use gpui::{AnyElement, FontWeight, IntoElement, ParentElement, Styled, div, px, rgb};
 
-use crate::app::EditorReadonlyReason;
+use crate::editor_view::EditorReadonlyReason;
 use crate::theme::GuiTheme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

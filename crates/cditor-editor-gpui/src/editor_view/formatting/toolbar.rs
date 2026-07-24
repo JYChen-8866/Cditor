@@ -25,7 +25,7 @@ use super::actions::inline_mark_for_toolbar_action;
 use super::color::selected_spans_color;
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
-pub(in crate::app) fn formatting_toolbar_state(
+pub(crate) fn formatting_toolbar_state(
     context: Option<&ToolbarContextSnapshot>,
     text_layouts: &HashMap<cditor_core::ids::BlockId, RichTextPlatformLayout>,
     readonly: bool,
@@ -341,7 +341,7 @@ fn active_block_color(
     }
 }
 
-pub(in crate::app) fn formatting_toolbar_context(
+pub(crate) fn formatting_toolbar_context(
     session: Option<&impl ToolbarContextSource>,
     gutter_block_id: Option<BlockId>,
 ) -> Option<ToolbarContextSnapshot> {
@@ -355,7 +355,7 @@ pub(in crate::app) fn formatting_toolbar_context(
     })
 }
 
-pub(in crate::app) trait ToolbarContextSource {
+pub(crate) trait ToolbarContextSource {
     fn project_toolbar_context(
         &self,
         request: ToolbarContextRequest,

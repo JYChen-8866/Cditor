@@ -101,6 +101,15 @@ if [ -d crates/cditor-editor-gpui/src/app/input ] \
   exit 1
 fi
 
+if [ -e crates/cditor-editor-gpui/src/app/cditor_v2_view.rs ] \
+  || [ -d crates/cditor-editor-gpui/src/app/cditor_v2_view ] \
+  || [ -e crates/cditor-editor-gpui/src/app/state.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/app/lifecycle.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/app/render.rs ]; then
+  echo 'error: View composition, state, lifecycle, and render must live in editor_view/' >&2
+  exit 1
+fi
+
 if grep -R -n -E 'crate::app::interaction|pub\(in crate::app\)' \
   --include='*.rs' crates/cditor-editor-gpui/src/interaction | grep -q .; then
   echo 'error: root interaction must not depend on the former app/interaction module boundary' >&2
@@ -114,7 +123,7 @@ if grep -R -n -E '\.plan_payload_window_load(_if_needed)?\(' \
 fi
 
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
-  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  crates/cditor-editor-gpui/src/editor_view/mod.rs \
   | grep -E '^[[:space:]]+pub.*(requested_readonly|readonly_reason|readonly|dirty|save_status)[[:space:]]*:' \
   | grep -q .; then
   echo 'error: readonly, dirty, and save status must remain grouped in EditorStatusUiState' >&2
@@ -122,7 +131,7 @@ if sed -n '/^pub struct CditorV2View {/,/^}/p' \
 fi
 
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
-  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  crates/cditor-editor-gpui/src/editor_view/mod.rs \
   | grep -E '^[[:space:]]+pub.*(last_wheel_delta_y|scroll_accumulator|editor_viewport_handle|table_scroll_state|scrollbar_drag|text_drag_selection|text_drag_auto_scroll_scheduled|block_drag_selection|table_interaction_mode|hovered_block_id|action_block_id|gutter_block_drag|gutter_drag_auto_scroll_scheduled|image_resize_drag|table_resize_drag|table_reorder_drag|table_hscroll_drag|projected_block_rects)[[:space:]]*:' \
   | grep -q .; then
   echo 'error: scroll, hit-test, and drag lifecycle fields must remain grouped in InteractionUiState' >&2
@@ -130,7 +139,7 @@ if sed -n '/^pub struct CditorV2View {/,/^}/p' \
 fi
 
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
-  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  crates/cditor-editor-gpui/src/editor_view/mod.rs \
   | grep -E '^[[:space:]]+pub.*(ai_provider|ai_enabled|ai_prompt|ai_preview_scroll_handle|whiteboard_editor|code_language_edit|code_theme_menu_block_id|code_highlight_theme|slash_menu|toast|table_menu_ui|gutter_toolbar_block_id|selection_toolbar_delay|block_transform_menu_open|color_menu_open|color_menu_hover_generation|color_menu_scroll_handle|last_color_action)[[:space:]]*:' \
   | grep -q .; then
   echo 'error: feature configuration and transient overlays must remain grouped in FeatureUiState and OverlayUiState' >&2
@@ -138,7 +147,7 @@ if sed -n '/^pub struct CditorV2View {/,/^}/p' \
 fi
 
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
-  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  crates/cditor-editor-gpui/src/editor_view/mod.rs \
   | grep -E '^[[:space:]]+pub.*(text_layouts|table_cell_layouts|text_surface_layouts|code_highlights|mermaid_renders|mermaid_source_blocks|whiteboard_thumbnails|show_debug)[[:space:]]*:' \
   | grep -q .; then
   echo 'error: presentation caches and diagnostics must remain grouped in RenderCacheState and EditorDiagnosticsState' >&2
@@ -146,7 +155,7 @@ if sed -n '/^pub struct CditorV2View {/,/^}/p' \
 fi
 
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
-  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  crates/cditor-editor-gpui/src/editor_view/mod.rs \
   | grep -E '^[[:space:]]+pub.*(code_language_focus|ai_prompt_focus|sdk_focus_observers_registered|last_emitted_selection|platform_input_target|platform_input_session_identity|platform_input_layout_identity|preferred_text_navigation_x)[[:space:]]*:' \
   | grep -q .; then
   echo 'error: focus and platform input lifecycle fields must remain grouped UI state' >&2
@@ -154,7 +163,7 @@ if sed -n '/^pub struct CditorV2View {/,/^}/p' \
 fi
 
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
-  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  crates/cditor-editor-gpui/src/editor_view/mod.rs \
   | grep -E '^[[:space:]]+pub.*[[:space:]]+[a-zA-Z0-9_]+[[:space:]]*:' \
   | grep -v -E '^[[:space:]]+pub.*[[:space:]]+(state|focus|input|features|overlay|diagnostics|status|interaction|cache)[[:space:]]*:' \
   | grep -q .; then
@@ -164,7 +173,7 @@ fi
 
 for field in state focus input features overlay diagnostics status interaction cache; do
   if ! sed -n '/^pub struct CditorV2View {/,/^}/p' \
-    crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+    crates/cditor-editor-gpui/src/editor_view/mod.rs \
     | grep -E "^[[:space:]]+pub.*[[:space:]]+${field}[[:space:]]*:" \
     | grep -q .; then
     echo "error: CditorV2View is missing required lifecycle-owned state field: ${field}" >&2
@@ -179,9 +188,9 @@ if grep -R -n -E 'Ready[[:space:]]*\([[:space:]]*(Box[[:space:]]*<[[:space:]]*)?
 fi
 
 if grep -n -E 'StorageSession' \
-  crates/cditor-editor-gpui/src/app/lifecycle.rs \
-  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
-  crates/cditor-editor-gpui/src/app/render.rs \
+  crates/cditor-editor-gpui/src/editor_view/lifecycle.rs \
+  crates/cditor-editor-gpui/src/editor_view/mod.rs \
+  crates/cditor-editor-gpui/src/editor_view/render.rs \
   crates/cditor-editor-gpui/src/app/sdk.rs | grep -q .; then
   echo 'error: GPUI View construction and state must not accept or retain StorageSession' >&2
   exit 1
@@ -194,7 +203,7 @@ if grep -n -E 'CditorRuntimeLoadResult|load_runtime_from_|pub[[:space:]]+(runtim
 fi
 
 if grep -n -E 'apply_(loaded|recovered)_runtime' \
-  crates/cditor-editor-gpui/src/app/lifecycle.rs crates/cditor-app/src/wiring.rs | grep -q .; then
+  crates/cditor-editor-gpui/src/editor_view/lifecycle.rs crates/cditor-app/src/wiring.rs | grep -q .; then
   echo 'error: GPUI Editor loading must adopt EditorSessionHandle instead of DocumentRuntime' >&2
   exit 1
 fi
@@ -355,7 +364,7 @@ fi
 
 direct_table_cell_focus_violations=$(
   grep -n -E '\.(focus_table_cell|focus_table_cell_at_offset|blur_table_cell|move_focused_table_cell_(left|right|up|down|tab|to_text_position)|extend_focused_table_cell_selection_(left|right|to_offset))\(' \
-    crates/cditor-editor-gpui/src/app/cditor_v2_view/table_actions.rs \
+    crates/cditor-editor-gpui/src/editor_view/table_actions.rs \
     crates/cditor-editor-gpui/src/input/routing.rs || true
 )
 if [ -n "$direct_table_cell_focus_violations" ]; then
@@ -366,7 +375,7 @@ fi
 
 direct_auxiliary_surface_focus_violations=$(
   {
-    sed '/^#\[cfg(test)\]/,$d' crates/cditor-editor-gpui/src/app/cditor_v2_view/text_surface.rs
+    sed '/^#\[cfg(test)\]/,$d' crates/cditor-editor-gpui/src/editor_view/text_surface.rs
   } | grep -n -E '\.(focus_text_surface_at_offset|move_focused_text_surface_to_offset)\(' || true
 )
 if [ -n "$direct_auxiliary_surface_focus_violations" ]; then

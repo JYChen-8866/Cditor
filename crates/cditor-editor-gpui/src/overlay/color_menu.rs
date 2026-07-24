@@ -5,8 +5,8 @@ use gpui::{
     ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
-use crate::app::CditorV2View;
 use crate::diagnostics::block_color::trace as trace_block_color;
+use crate::editor_view::CditorV2View;
 use crate::menu_metrics::SECONDARY_MENU_WIDTH_PX;
 use crate::theme::GuiTheme;
 

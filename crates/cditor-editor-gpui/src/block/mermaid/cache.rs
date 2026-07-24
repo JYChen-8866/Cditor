@@ -7,7 +7,7 @@ use cditor_core::rich_text::{BlockPayloadView, RichBlockKind};
 use cditor_runtime::EditorViewProjection;
 use gpui::{AppContext, Context, RenderImage, Task};
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::theme::GuiTheme;
 
 use super::theme::build_mermaid_theme;

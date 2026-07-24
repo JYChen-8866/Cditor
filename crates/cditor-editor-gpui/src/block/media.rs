@@ -7,7 +7,7 @@ use gpui::{
     ParentElement, RenderImage, Styled, div, px, rgb,
 };
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::image_loader::{RasterImageElement, load_render_image};
 use crate::image_preview::open_image_preview;
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
@@ -125,7 +125,7 @@ pub fn render_image_block(
 
 fn render_image_caption(
     surface_id: SurfaceId,
-    state: crate::app::cditor_v2_view::text_surface::TextSurfaceRenderState,
+    state: crate::editor_view::text_surface::TextSurfaceRenderState,
     layout_version: u64,
     width_px: f32,
     theme: GuiTheme,

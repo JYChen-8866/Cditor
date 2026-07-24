@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use gpui::{AnyElement, Entity, FocusHandle, FontWeight, IntoElement};
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography, TextLayoutSurfaceId};
 use crate::theme::GuiTheme;
 use cditor_core::edit::TextAffinity;

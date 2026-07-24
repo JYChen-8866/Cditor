@@ -10,14 +10,14 @@ use cditor_runtime::{
 use cditor_session::SessionTaskKind;
 use gpui::{AppContext, Context, px};
 
-use crate::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
+use crate::editor_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::input::{AiPromptEditAction, AiPromptKeyResult, AiPromptState, apply_ai_prompt_action};
 use crate::persistence::EditorSaveStatus;
 use cditor_editor_protocol::command::{
     AiApplyCommandMode, CditorCommand, CommandOutcomeStatus, CommandSource,
 };
 
-pub(in crate::app) fn default_ai_provider() -> Arc<dyn AiProvider> {
+pub(crate) fn default_ai_provider() -> Arc<dyn AiProvider> {
     OpenAiCompatibleProvider::from_env()
         .map(|provider| Arc::new(provider) as Arc<dyn AiProvider>)
         .unwrap_or_else(|_| Arc::new(MockAiProvider::default()))
@@ -67,7 +67,7 @@ impl CditorV2View {
         self.open_ai_prompt_from_gui_with_presentation(x, y, presentation, cx)
     }
 
-    pub(in crate::app) fn open_ai_prompt_from_gui_with_presentation(
+    pub(crate) fn open_ai_prompt_from_gui_with_presentation(
         &mut self,
         x: f32,
         y: f32,

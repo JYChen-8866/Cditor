@@ -16,27 +16,30 @@ use crate::text::RichTextPlatformLayout;
 use cditor_runtime::DocumentRuntime;
 use cditor_session::EditorSessionHandle;
 
-pub(in crate::app) mod ai;
+pub(crate) mod ai;
 mod block_actions;
 mod code_language;
 mod code_theme;
 mod folding;
 mod formatting;
+mod lifecycle;
 mod platform_input;
+mod render;
 mod slash_menu;
+mod state;
 mod table_actions;
 pub(crate) mod text_surface;
 mod whiteboard;
 
-pub(in crate::app) use super::persistence_bridge::save_status_for_mode;
-pub use super::state::{CditorViewState, EditorReadonlyReason};
-use super::state::{
+pub use self::state::{CditorViewState, EditorReadonlyReason};
+use self::state::{
     EditorDiagnosticsState, EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState,
     OverlayUiState, PlatformInputState, RenderCacheState,
 };
+pub(crate) use crate::app::persistence_bridge::save_status_for_mode;
 pub(crate) use crate::interaction::table_scroll::TableScrollSnapshot;
-pub(in crate::app) use block_actions::block_focus_offset_after_missed_hit_test;
-pub(in crate::app) use formatting::{
+pub(crate) use block_actions::block_focus_offset_after_missed_hit_test;
+pub(crate) use formatting::{
     SelectionToolbarDelay, floating_toolbar_passes_selection_delay, formatting_toolbar_context,
     formatting_toolbar_state,
 };

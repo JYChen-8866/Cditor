@@ -3,7 +3,7 @@ use gpui::{
     px, rgb,
 };
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::TableCellPosition;

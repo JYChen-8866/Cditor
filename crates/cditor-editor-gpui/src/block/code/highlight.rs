@@ -14,7 +14,7 @@ use lumis::highlight::Highlighter;
 use lumis::languages::Language;
 use lumis::themes::{self, UnderlineStyle};
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 
 pub(crate) const DEFAULT_CODE_HIGHLIGHT_THEME: &str = "catppuccin_latte";
 

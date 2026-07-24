@@ -1,6 +1,6 @@
 use gpui::{AppContext, Context, EventEmitter, Task, Window};
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::persistence::{
     EditorSaveStatus, PersistenceBarrierKind, PersistencePipelineError, schedule_storage_autosave,
 };
@@ -171,10 +171,12 @@ impl CditorV2View {
     }
 
     pub fn enforce_newer_schema_readonly(&mut self, written_major: u64, supported_major: u32) {
-        self.status.readonly_reason = Some(crate::app::EditorReadonlyReason::NewerDocumentSchema {
-            written_major,
-            supported_major,
-        });
+        self.status.readonly_reason = Some(
+            crate::editor_view::EditorReadonlyReason::NewerDocumentSchema {
+                written_major,
+                supported_major,
+            },
+        );
         self.status.readonly = true;
         if let Some(session) = self.ready_session() {
             let _ = session.set_readonly(true);
@@ -187,11 +189,12 @@ impl CditorV2View {
         written_major: u32,
         supported_major: u32,
     ) {
-        self.status.readonly_reason =
-            Some(crate::app::EditorReadonlyReason::NewerOperationSchema {
+        self.status.readonly_reason = Some(
+            crate::editor_view::EditorReadonlyReason::NewerOperationSchema {
                 written_major,
                 supported_major,
-            });
+            },
+        );
         self.status.readonly = true;
         if let Some(session) = self.ready_session() {
             let _ = session.set_readonly(true);
@@ -430,7 +433,7 @@ impl CditorV2View {
         )))
     }
 
-    pub(in crate::app) fn sdk_register_focus_observers(
+    pub(crate) fn sdk_register_focus_observers(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -454,7 +457,7 @@ impl CditorV2View {
         }
     }
 
-    pub(in crate::app) fn sdk_emit_selection_if_changed(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn sdk_emit_selection_if_changed(&mut self, cx: &mut Context<Self>) {
         let selection = self.sdk_selection();
         if selection == self.focus.last_emitted_selection {
             return;

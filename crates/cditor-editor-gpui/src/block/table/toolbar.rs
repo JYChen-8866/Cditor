@@ -1,10 +1,10 @@
-use crate::app::CditorV2View;
 #[cfg(test)]
 use crate::block::chrome::BlockHorizontalGeometry;
 use crate::block::chrome::{
     BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_SHELL_BORDER_WIDTH_PX, BLOCK_SHELL_OUTER_PADDING_Y_PX,
     BlockChromeStyle,
 };
+use crate::editor_view::CditorV2View;
 use crate::input::SingleLineTextInputElement;
 use crate::menu_metrics::{MenuViewportBounds, SECONDARY_MENU_WIDTH_PX, secondary_menu_geometry};
 use crate::theme::GuiTheme;

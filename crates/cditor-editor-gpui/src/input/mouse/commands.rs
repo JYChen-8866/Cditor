@@ -1,6 +1,6 @@
 use gpui::{App, Entity, MouseDownEvent, MouseMoveEvent, Window};
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 use cditor_session::EditorSessionHandle;

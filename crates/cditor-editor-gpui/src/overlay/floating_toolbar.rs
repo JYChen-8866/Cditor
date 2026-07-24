@@ -4,7 +4,7 @@ use gpui::{
     ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, deferred, div, px, rgb,
 };
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::input::{AiPromptState, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;

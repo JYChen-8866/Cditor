@@ -3,8 +3,8 @@ use gpui::{
     Styled, Window, div, px, rgb,
 };
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
+use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::scroll::ScrollbarVisualState;
 use crate::theme::GuiTheme;
 

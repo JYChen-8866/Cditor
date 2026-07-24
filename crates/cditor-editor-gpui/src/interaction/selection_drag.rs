@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use gpui::{AppContext, Context, Pixels, Point};
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::text::ParleyTextPosition;
 use cditor_core::edit::{DocumentSelection, TextPosition};
 use cditor_core::ids::BlockId;

@@ -5,7 +5,7 @@ use cditor_core::ids::SurfaceId;
 use cditor_runtime::TextSurfaceSnapshot;
 use gpui::{Context, Pixels, Point, Window};
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::editor_view::{CditorV2View, CditorViewState};
 
 #[derive(Debug, Clone)]
 pub(crate) struct TextSurfaceRenderState {

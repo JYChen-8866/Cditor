@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use gpui::{ClipboardItem, Context};
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::block::table::{TableAxis, TableAxisSelection};
 use crate::clipboard_assets::image_asset_from_clipboard_item;
+use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::input::GuiInputCommand;
 use crate::text::{
     ParleyMoveCommand, ParleySelection, ParleyTextPosition, RichTextPlatformLayout,

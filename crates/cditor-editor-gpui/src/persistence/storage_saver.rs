@@ -1,6 +1,6 @@
 use gpui::Context;
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 
 pub fn schedule_storage_autosave(view: &CditorV2View, cx: &mut Context<CditorV2View>) {
     let Some(delay) = view

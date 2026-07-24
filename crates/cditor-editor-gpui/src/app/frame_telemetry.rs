@@ -1,13 +1,13 @@
 use std::time::Duration;
 
-use super::CditorV2View;
 use crate::diagnostics::frame_telemetry::{
     AppFrameTelemetryInput, FrameCacheSnapshot, FrameEntitySnapshot, FrameQueueSnapshot,
     FrameWindowSnapshot, record_app_frame,
 };
+use crate::editor_view::CditorV2View;
 
 impl CditorV2View {
-    pub(in crate::app) fn record_frame_telemetry(&self, elapsed: Duration) {
+    pub(crate) fn record_frame_telemetry(&self, elapsed: Duration) {
         let diagnostics = self
             .ready_session()
             .and_then(|session| session.diagnostics_snapshot().ok());

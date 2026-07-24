@@ -5,7 +5,7 @@ use gpui::{
     ParentElement, Styled, div, px, rgb,
 };
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
 use crate::theme::GuiTheme;
 

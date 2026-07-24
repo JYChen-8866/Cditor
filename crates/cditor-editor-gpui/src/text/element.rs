@@ -11,7 +11,7 @@ use gpui::{
     Window, fill, point, px, rgb, rgba,
 };
 
-use crate::app::{CditorV2View, GuiPlatformInputTarget};
+use crate::editor_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::input::platform_adapter::handle_registered_platform_input;
 use crate::theme::GuiTheme;
 use cditor_core::edit::TextAffinity;

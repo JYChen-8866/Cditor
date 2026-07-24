@@ -1,7 +1,7 @@
 use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_runtime::InputTarget;
 
-use crate::app::cditor_v2_view::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::input::ime::support::InputContextSource;
 use crate::input::trace::trace_input;
 use crate::text::TextPlatformLayoutIdentity;
@@ -155,7 +155,7 @@ impl CditorV2View {
         }
     }
 
-    pub(in crate::app) fn begin_platform_input_registration_frame(&mut self) {
+    pub(crate) fn begin_platform_input_registration_frame(&mut self) {
         self.input.session_identity = None;
         self.input.layout_identity = None;
         self.input.target = self

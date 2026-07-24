@@ -4,11 +4,11 @@ use gpui::Context;
 
 use cditor_core::ids::BlockId;
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
-use crate::app::state::{
+use crate::editor_view::state::{
     EditorDiagnosticsState, EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState,
     OverlayUiState, PlatformInputState, RenderCacheState,
 };
+use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::overlay::table::TableViewportMeasurement;
 use crate::persistence::{
     DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline, schedule_storage_autosave,
@@ -194,7 +194,7 @@ impl CditorV2View {
 
     /// Return the persistent horizontal `ScrollHandle` for a table block.
     /// The handle is a GPUI adapter; the stable offset lives in table state.
-    pub(in crate::app) fn table_scroll_handle(
+    pub(crate) fn table_scroll_handle(
         &mut self,
         block_id: BlockId,
         offset_x: f32,
@@ -204,7 +204,7 @@ impl CditorV2View {
             .handle(block_id, offset_x)
     }
 
-    pub(in crate::app) fn stable_table_viewport_measurement(
+    pub(crate) fn stable_table_viewport_measurement(
         &mut self,
         block_id: BlockId,
         handle: &gpui::ScrollHandle,

@@ -1,8 +1,9 @@
-pub mod app;
+pub(crate) mod app;
 pub mod block;
 pub mod clipboard_assets;
 pub mod diagnostics;
 pub mod document;
+pub mod editor_view;
 pub mod image_loader;
 pub mod image_preview;
 pub mod input;
@@ -16,6 +17,8 @@ pub mod scroll;
 pub mod skeleton;
 pub mod text;
 pub mod theme;
+
+pub use editor_view::CditorV2View;
 
 #[cfg(test)]
 pub(crate) mod test_support;

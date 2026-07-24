@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gpui::{Context, Pixels, Point, ScrollHandle, Window, point, px};
 
-use crate::app::cditor_v2_view::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::overlay::table::{TableViewportMeasurement, table_viewport_measurement_from_handle};
 use cditor_core::ids::BlockId;

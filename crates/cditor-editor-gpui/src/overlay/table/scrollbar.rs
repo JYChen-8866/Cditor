@@ -3,8 +3,8 @@ use gpui::{
     Styled, div, px, rgb,
 };
 
-use crate::app::CditorV2View;
 use crate::block::table::TableToolbarEditorOrigin;
+use crate::editor_view::CditorV2View;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 #[cfg(test)]

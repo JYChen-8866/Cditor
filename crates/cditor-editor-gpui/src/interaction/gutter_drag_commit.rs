@@ -1,6 +1,6 @@
 use gpui::Context;
 
-use crate::app::cditor_v2_view::CditorV2View;
+use crate::editor_view::CditorV2View;
 use cditor_editor_protocol::command::{CommandSource, EditorCommand};
 
 use super::geometry::parent_drop_target_from_rects;

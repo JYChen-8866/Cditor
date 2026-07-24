@@ -6,9 +6,9 @@ use cditor_core::ids::SurfaceId;
 
 use crate::text::RichTextPlatformLayout;
 
-pub(in crate::app) const BLOCK_LAYOUT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
-pub(in crate::app) const TABLE_LAYOUT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
-pub(in crate::app) const AUX_LAYOUT_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const BLOCK_LAYOUT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const TABLE_LAYOUT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const AUX_LAYOUT_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 pub(crate) struct PlatformLayoutCache<K> {
     entries: HashMap<K, RichTextPlatformLayout>,
@@ -52,7 +52,7 @@ where
         self.trim(pinned_surface);
     }
 
-    pub(in crate::app) fn remove(&mut self, key: &K) -> Option<RichTextPlatformLayout> {
+    pub(crate) fn remove(&mut self, key: &K) -> Option<RichTextPlatformLayout> {
         self.last_insert.remove(key);
         let removed = self.entries.remove(key)?;
         self.estimated_bytes = self
@@ -61,10 +61,7 @@ where
         Some(removed)
     }
 
-    pub(in crate::app) fn retain(
-        &mut self,
-        mut keep: impl FnMut(&K, &mut RichTextPlatformLayout) -> bool,
-    ) {
+    pub(crate) fn retain(&mut self, mut keep: impl FnMut(&K, &mut RichTextPlatformLayout) -> bool) {
         let removed = self
             .entries
             .iter_mut()
@@ -75,7 +72,7 @@ where
         }
     }
 
-    pub(in crate::app) fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.entries.clear();
         self.last_insert.clear();
         self.estimated_bytes = 0;
@@ -119,21 +116,21 @@ impl<K> Deref for PlatformLayoutCache<K> {
     }
 }
 
-pub(in crate::app) fn block_layout_cache<K>() -> PlatformLayoutCache<K>
+pub(crate) fn block_layout_cache<K>() -> PlatformLayoutCache<K>
 where
     K: Clone + Eq + Hash,
 {
     PlatformLayoutCache::new(1_024, BLOCK_LAYOUT_CACHE_MAX_BYTES)
 }
 
-pub(in crate::app) fn table_layout_cache<K>() -> PlatformLayoutCache<K>
+pub(crate) fn table_layout_cache<K>() -> PlatformLayoutCache<K>
 where
     K: Clone + Eq + Hash,
 {
     PlatformLayoutCache::new(4_096, TABLE_LAYOUT_CACHE_MAX_BYTES)
 }
 
-pub(in crate::app) fn auxiliary_layout_cache<K>() -> PlatformLayoutCache<K>
+pub(crate) fn auxiliary_layout_cache<K>() -> PlatformLayoutCache<K>
 where
     K: Clone + Eq + Hash,
 {

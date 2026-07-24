@@ -9,7 +9,7 @@ use cditor_session::{
 };
 use cditor_storage::{StorageError, block_on_storage};
 
-use crate::app::cditor_v2_view::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::input::GuiInputCommand;
 use crate::persistence::{
     EditorSaveStatus, PersistencePipelineError, save_storage_batch, schedule_storage_autosave,
@@ -590,7 +590,7 @@ impl CditorV2View {
     }
 }
 
-pub(in crate::app) fn save_status_for_mode(readonly: bool) -> EditorSaveStatus {
+pub(crate) fn save_status_for_mode(readonly: bool) -> EditorSaveStatus {
     if readonly {
         EditorSaveStatus::Readonly
     } else {

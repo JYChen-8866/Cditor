@@ -6,7 +6,7 @@ use gpui::{
     deferred, div, px, rgb,
 };
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::menu_metrics::EditorViewport;
 use crate::theme::GuiTheme;
 

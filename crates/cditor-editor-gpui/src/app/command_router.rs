@@ -1,7 +1,7 @@
 use gpui::{ClipboardItem, Context};
 use std::sync::OnceLock;
 
-use crate::app::cditor_v2_view::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::input::GuiInputCommand;
 use cditor_api::{CditorError, command::CommandState, event::CditorEvent};
 use cditor_core::edit::ChangeOrigin;

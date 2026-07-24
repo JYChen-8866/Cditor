@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use cditor_whiteboard::{Scene, WhiteboardView};
 use gpui::{AppContext, Context, Entity};
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayload, BlockPayloadView};

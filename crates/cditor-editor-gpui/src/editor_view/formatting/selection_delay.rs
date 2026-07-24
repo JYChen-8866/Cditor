@@ -3,11 +3,11 @@ use std::time::Duration;
 use cditor_core::edit::DocumentSelection;
 use gpui::Context;
 
-use crate::app::cditor_v2_view::CditorV2View;
+use crate::editor_view::CditorV2View;
 
-pub(in crate::app) const SELECTION_TOOLBAR_DELAY: Duration = Duration::from_millis(500);
+pub(crate) const SELECTION_TOOLBAR_DELAY: Duration = Duration::from_millis(500);
 
-pub(in crate::app) const fn floating_toolbar_passes_selection_delay(
+pub(crate) const fn floating_toolbar_passes_selection_delay(
     has_text_selection: bool,
     selection_toolbar_ready: bool,
 ) -> bool {
@@ -46,7 +46,7 @@ impl SelectionToolbarDelay {
 }
 
 impl CditorV2View {
-    pub(in crate::app) fn sync_selection_toolbar_delay(&mut self, cx: &mut Context<Self>) -> bool {
+    pub(crate) fn sync_selection_toolbar_delay(&mut self, cx: &mut Context<Self>) -> bool {
         let target = (self.overlay.gutter_toolbar_block_id.is_none())
             .then(|| {
                 self.ready_session().and_then(|session| {

@@ -1,6 +1,6 @@
 use gpui::Context;
 
-use crate::app::cditor_v2_view::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::image_preview::close_active_preview_if_escape_enabled;
 use crate::input::trace::trace_input;
 use crate::input::{AiPromptEditAction, CodeLanguageEditAction, GuiInputCommand};

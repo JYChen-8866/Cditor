@@ -2,13 +2,13 @@ use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_core::rich_text::TableRange;
 use gpui::{Context, Pixels, Point, Window};
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::block::table::menu::{
     TableBackgroundColor, TableMenuAction, filter_table_menu_items, table_axis_menu_items,
 };
 use crate::block::table::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
 };
+use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use cditor_editor_protocol::command::{
     CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
@@ -40,21 +40,17 @@ impl CditorV2View {
         self.interaction.table_interaction_mode.axis_selection()
     }
 
-    pub(in crate::app) fn projected_table_axis_visual_selection(
-        &self,
-    ) -> Option<TableAxisSelection> {
+    pub(crate) fn projected_table_axis_visual_selection(&self) -> Option<TableAxisSelection> {
         self.interaction
             .table_interaction_mode
             .visual_axis_selection()
     }
 
-    pub(in crate::app) fn projected_table_range_selection(
-        &self,
-    ) -> Option<TableCellRangeSelection> {
+    pub(crate) fn projected_table_range_selection(&self) -> Option<TableCellRangeSelection> {
         self.interaction.table_interaction_mode.range_selection()
     }
 
-    pub(in crate::app) fn projected_table_cell_selection(&self) -> Option<TableCellSelection> {
+    pub(crate) fn projected_table_cell_selection(&self) -> Option<TableCellSelection> {
         self.interaction.table_interaction_mode.cell_selection()
     }
 
@@ -500,7 +496,7 @@ impl CditorV2View {
         changed
     }
 
-    pub(in crate::app) fn selected_table_range(&self) -> Option<(BlockId, TableRange)> {
+    pub(crate) fn selected_table_range(&self) -> Option<(BlockId, TableRange)> {
         if let Some(selection) = self.projected_table_cell_selection() {
             let range = self
                 .ready_session()?

@@ -4,7 +4,7 @@ use gpui::{
     px, rgb,
 };
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::menu_metrics::{MenuViewportBounds, SECONDARY_MENU_WIDTH_PX, secondary_menu_geometry};
 use crate::theme::GuiTheme;
 use cditor_runtime::TableViewState;

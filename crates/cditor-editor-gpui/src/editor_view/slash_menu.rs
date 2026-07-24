@@ -1,7 +1,7 @@
 use cditor_core::ids::BlockId;
 use gpui::Context;
 
-use crate::app::cditor_v2_view::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::interaction::geometry::{FallbackViewportOrigin, ProjectedBlockRect};
 use crate::menu_metrics::EditorViewport;
 use crate::overlay::{SlashMenuCommand, SlashMenuItem, SlashMenuState};

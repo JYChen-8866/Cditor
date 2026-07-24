@@ -1,7 +1,7 @@
 use cditor_core::ids::BlockId;
 use gpui::{Context, Window};
 
-use crate::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
+use crate::editor_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::input::{
     CodeLanguageEditAction, CodeLanguageEditKeyResult, CodeLanguageEditState,
     CodeLanguagePopupPlacement, apply_code_language_action,

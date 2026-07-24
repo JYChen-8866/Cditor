@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use gpui::{AppContext, Context, Pixels, Point, Window};
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::block::BlockDragOverlaySnapshot;
+use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::input::BlockDragSelectionController;
 use cditor_core::block::{BlockDropTarget, DragPoint, GutterBlockDragState};
 use cditor_core::ids::BlockId;

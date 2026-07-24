@@ -2,7 +2,6 @@ use gpui::{
     AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div, px,
 };
 
-use crate::app::CditorV2View;
 use crate::block::code::highlight::code_theme_item;
 use crate::block::collection::render_collection_block;
 use crate::block::media::render_image_block;
@@ -15,6 +14,7 @@ use crate::block::table::{
 };
 use crate::block::{CodeHighlightCache, WhiteboardThumbnailCache, render_whiteboard_thumbnail};
 use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
+use crate::editor_view::CditorV2View;
 use crate::text::{RichTextElement, RichTextLayoutInput};
 use crate::{rich_text::render_payload_text, theme::GuiTheme};
 use cditor_core::edit::SelectionRange;

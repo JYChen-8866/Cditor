@@ -5,8 +5,8 @@ use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_runtime::DocumentRuntime;
 use cditor_session::SurfaceVersionSnapshot;
 
-use crate::app::cditor_v2_view::CditorV2View;
-use crate::app::cditor_v2_view::TableCellLayoutKey;
+use crate::editor_view::CditorV2View;
+use crate::editor_view::TableCellLayoutKey;
 use crate::input::trace::trace_input;
 use crate::interaction::geometry::FallbackViewportOrigin;
 use crate::text::{
@@ -15,9 +15,7 @@ use crate::text::{
     record_unavailable_geometry, text_geometry_telemetry,
 };
 
-pub(in crate::app) fn selection_kind_for_click_count(
-    click_count: usize,
-) -> Option<ParleySelectionKind> {
+pub(crate) fn selection_kind_for_click_count(click_count: usize) -> Option<ParleySelectionKind> {
     match click_count {
         0 | 1 => None,
         2 => Some(ParleySelectionKind::Word),
@@ -68,7 +66,7 @@ impl CditorV2View {
         }
     }
 
-    pub(in crate::app) fn text_position_for_surface_at_position(
+    pub(crate) fn text_position_for_surface_at_position(
         &self,
         surface_id: SurfaceId,
         position: Point<Pixels>,
@@ -109,7 +107,7 @@ impl CditorV2View {
         fallback
     }
 
-    pub(in crate::app) fn text_position_for_table_cell_at_position(
+    pub(crate) fn text_position_for_table_cell_at_position(
         &self,
         block_id: BlockId,
         row: usize,
@@ -242,7 +240,7 @@ fn viewport_origin_for_block(
     })
 }
 
-pub(in crate::app) fn layout_cache_is_current(
+pub(crate) fn layout_cache_is_current(
     cache: &RichTextPlatformLayout,
     current: SurfaceVersionSnapshot,
 ) -> bool {
@@ -251,7 +249,7 @@ pub(in crate::app) fn layout_cache_is_current(
         && cache.layout_version == current.layout_version
 }
 
-pub(in crate::app) fn fallback_text_hit_point(
+pub(crate) fn fallback_text_hit_point(
     position: Point<Pixels>,
     viewport_origin: FallbackViewportOrigin,
     document_top: f64,

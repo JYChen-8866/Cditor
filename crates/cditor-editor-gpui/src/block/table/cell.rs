@@ -3,7 +3,7 @@ use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
 };
 
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::input::{
     begin_table_cell_text_selection_from_mouse, update_table_cell_text_selection_from_mouse,
 };

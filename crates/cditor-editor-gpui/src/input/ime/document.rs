@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use gpui::Context;
 
-use crate::app::cditor_v2_view::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::input::trace::trace_input;
 use crate::platform::{is_single_line_break_commit, normalize_external_line_endings};
 

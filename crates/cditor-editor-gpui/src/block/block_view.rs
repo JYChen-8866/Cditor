@@ -3,7 +3,6 @@ use gpui::{
     px, rgb,
 };
 
-use crate::app::CditorV2View;
 use crate::block::block_content::render_block_content;
 use crate::block::block_shell::{BlockActionState, block_shell};
 use crate::block::code::render_code_block;
@@ -15,6 +14,7 @@ use crate::block::table::{
 use crate::block::{
     CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache, render_mermaid_block,
 };
+use crate::editor_view::CditorV2View;
 use crate::input::{
     CodeLanguageEditState, focus_block_from_mouse, gutter_mouse_down_from_mouse,
     hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,

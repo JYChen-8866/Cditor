@@ -1,4 +1,4 @@
-use crate::app::CditorV2View;
+use crate::editor_view::CditorV2View;
 use crate::input::CodeLanguageEditState;
 use crate::platform::EDITOR_MONO_FONT_FAMILY;
 use crate::theme::GuiTheme;

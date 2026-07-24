@@ -1,6 +1,6 @@
 use gpui::{App, Bounds, ElementInputHandler, Entity, FocusHandle, Pixels, Window};
 
-use crate::app::{CditorV2View, GuiPlatformInputTarget};
+use crate::editor_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::text::TextPlatformLayoutIdentity;
 
 pub(crate) fn handle_registered_platform_input(
@@ -24,7 +24,7 @@ pub(crate) fn handle_registered_platform_input(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::cditor_v2_view::platform_input_registration_allows;
+    use crate::editor_view::platform_input_registration_allows;
     use cditor_core::rich_text::{
         BlockPayload, BlockPayloadRecord, RichBlockKind, TableCellPayload, TablePayload,
         TableRowPayload,

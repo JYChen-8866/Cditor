@@ -24,7 +24,7 @@ use crate::persistence::EditorSaveStatus;
 use crate::scroll::ScrollAccumulator;
 use crate::text::TextPlatformLayoutIdentity;
 
-use super::cditor_v2_view::{
+use super::{
     CditorV2View, GuiPlatformInputTarget, SelectionToolbarDelay, TableCellLayoutKey,
     ai::default_ai_provider,
 };
@@ -228,7 +228,7 @@ impl EditorStatusUiState {
             requested_readonly,
             readonly_reason: None,
             dirty: false,
-            save_status: super::cditor_v2_view::save_status_for_mode(readonly),
+            save_status: super::save_status_for_mode(readonly),
         }
     }
 
@@ -236,14 +236,14 @@ impl EditorStatusUiState {
         self.readonly = readonly;
         self.readonly_reason = None;
         self.dirty = false;
-        self.save_status = super::cditor_v2_view::save_status_for_mode(readonly);
+        self.save_status = super::save_status_for_mode(readonly);
     }
 
     pub(crate) fn reset_after_load_failure(&mut self) {
         self.readonly_reason = None;
         self.readonly = self.requested_readonly;
         self.dirty = false;
-        self.save_status = super::cditor_v2_view::save_status_for_mode(self.readonly);
+        self.save_status = super::save_status_for_mode(self.readonly);
     }
 }
 
