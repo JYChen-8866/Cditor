@@ -8,6 +8,7 @@ use gpui::{
     px, rgb,
 };
 
+mod actions;
 pub(crate) mod highlight;
 mod language_actions;
 mod theme_actions;

@@ -18,6 +18,13 @@ use cditor_runtime::DocumentRuntime;
 use cditor_session::{EditorSession, EditorSessionHandle};
 
 impl CditorV2View {
+    pub(crate) fn ready_session(&self) -> Option<&EditorSessionHandle> {
+        match &self.state {
+            CditorViewState::Ready(session) => Some(session),
+            CditorViewState::Loading { .. } | CditorViewState::LoadFailed { .. } => None,
+        }
+    }
+
     fn compose(
         state: CditorViewState,
         show_debug: bool,

@@ -25,7 +25,7 @@ pub(crate) use slash_menu::render_slash_menu;
 pub(crate) use slash_menu::{
     SlashMenuCommand, SlashMenuItem, SlashMenuState, slash_query_before_caret,
 };
-pub(crate) use toast::{GuiToast, render_toast};
+pub(crate) use toast::{GuiToast, render_toast, show_toast};
 pub(crate) use whiteboard_editor::{WhiteboardEditorSession, render_whiteboard_editor};
 
 use crate::theme::GuiTheme;

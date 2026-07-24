@@ -1,4 +1,5 @@
 pub(super) mod geometry;
+mod gutter_action;
 pub(super) mod gutter_drag;
 pub(super) mod gutter_drag_commit;
 pub(super) mod gutter_drag_metrics;

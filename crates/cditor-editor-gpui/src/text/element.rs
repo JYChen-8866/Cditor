@@ -636,7 +636,7 @@ impl Element for RichTextGpuiElement {
                     .focused
                     .then(|| view.registered_platform_input_session_identity())
                     .flatten();
-                if view.update_text_layout_cache(cache) {
+                if crate::cache::accept_text_layout(view, cache) {
                     cx.notify();
                 }
             });

@@ -1,3 +1,4 @@
+mod block;
 mod commands;
 mod view;
 

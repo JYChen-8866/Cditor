@@ -1,3 +1,4 @@
+mod actions;
 mod cache;
 mod render;
 mod theme;

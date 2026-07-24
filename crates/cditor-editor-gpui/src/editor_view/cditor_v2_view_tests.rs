@@ -6,12 +6,14 @@ use crate::input::ime::adapter::{
 };
 use crate::input::ime::support::platform_input_fallback_range;
 use crate::interaction::geometry::{
-    ParentDropTarget, drop_target_for_document_y_from_rects, fallback_text_metrics_for_block,
-    parent_drop_target_from_rects,
+    ParentDropTarget, ProjectedBlockRect, drop_target_for_document_y_from_rects,
+    fallback_text_metrics_for_block, parent_drop_target_from_rects,
 };
 use crate::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta;
+use crate::persistence::EditorSaveStatus;
 use crate::theme::GuiTheme;
 use cditor_core::block::BlockDropTarget;
+use cditor_runtime::DocumentRuntime;
 
 fn update_composition(
     runtime: &mut DocumentRuntime,

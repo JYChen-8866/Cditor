@@ -1,7 +1,8 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, deferred, div, px, rgb,
+    AnyElement, Context, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement,
+    MouseButton, ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, deferred, div,
+    px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
@@ -168,7 +169,7 @@ pub fn render_floating_toolbar(
                     let view = view.clone();
                     move |_event, _window, cx| {
                         view.update(cx, |view, cx| {
-                            view.dismiss_gutter_toolbar_from_gui(cx);
+                            dismiss_gutter_toolbar_from_gui(view, cx);
                         });
                     }
                 })
@@ -643,4 +644,16 @@ mod tests;
 
 fn floating_toolbar_dismisses_on_mouse_down_out(state: FloatingToolbarState) -> bool {
     state.show_delete
+}
+
+fn dismiss_gutter_toolbar_from_gui(
+    view: &mut CditorV2View,
+    cx: &mut Context<CditorV2View>,
+) -> bool {
+    if view.overlay.gutter_toolbar_block_id.is_none() {
+        return false;
+    }
+    view.clear_gutter_action();
+    cx.notify();
+    true
 }

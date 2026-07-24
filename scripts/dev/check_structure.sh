@@ -432,6 +432,28 @@ if [ -n "$editor_public_module_violations" ]; then
   exit 1
 fi
 
+editor_composition_root_violations=$(
+  grep -n -E '^impl CditorV2View' crates/cditor-editor-gpui/src/editor_view/mod.rs || true
+)
+if [ -n "$editor_composition_root_violations" ]; then
+  echo 'error: editor_view/mod.rs must remain a composition root without feature or interaction behavior:' >&2
+  echo "$editor_composition_root_violations" >&2
+  exit 1
+fi
+
+for editor_responsibility_file in \
+  crates/cditor-editor-gpui/src/cache/layout_update.rs \
+  crates/cditor-editor-gpui/src/features/code/actions.rs \
+  crates/cditor-editor-gpui/src/features/mermaid/actions.rs \
+  crates/cditor-editor-gpui/src/input/mouse/block.rs \
+  crates/cditor-editor-gpui/src/interaction/gutter_action.rs
+do
+  if [ ! -f "$editor_responsibility_file" ]; then
+    echo "error: GPUI Editor behavior must retain its responsibility module: $editor_responsibility_file" >&2
+    exit 1
+  fi
+done
+
 for legacy_editor_path in \
   crates/cditor-editor-gpui/src/block/code_toolbar \
   crates/cditor-editor-gpui/src/native_menu \

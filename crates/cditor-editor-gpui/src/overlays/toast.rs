@@ -1,7 +1,8 @@
 use std::time::{Duration, Instant};
 
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
+use gpui::{AnyElement, AppContext, Context, IntoElement, ParentElement, Styled, div, px, rgb};
 
+use crate::editor_view::CditorV2View;
 use crate::theme::GuiTheme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +24,34 @@ impl GuiToast {
     pub fn is_alive(&self, now: Instant) -> bool {
         now.duration_since(self.created_at) < self.duration
     }
+}
+
+pub(crate) fn show_toast(
+    view: &mut CditorV2View,
+    message: impl Into<String>,
+    duration: Duration,
+    cx: &mut Context<CditorV2View>,
+) {
+    view.overlay.toast = Some(GuiToast::new(message, duration));
+    let dismiss_after = cx.background_spawn(async move {
+        std::thread::sleep(duration);
+    });
+    cx.spawn(async move |view, cx| {
+        let _ = dismiss_after.await;
+        let _ = view.update(cx, |view, cx| {
+            let should_clear = view
+                .overlay
+                .toast
+                .as_ref()
+                .is_some_and(|toast| !toast.is_alive(Instant::now()));
+            if should_clear {
+                view.overlay.toast = None;
+                cx.notify();
+            }
+        });
+    })
+    .detach();
+    cx.notify();
 }
 
 pub fn render_toast(toast: &GuiToast, theme: GuiTheme) -> AnyElement {

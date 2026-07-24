@@ -510,7 +510,7 @@ fn render_copy_button(
         .child(render_copy_icon(theme))
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             view.update(cx, |view, cx| {
-                view.copy_code_block_from_gui(block_id, cx);
+                super::actions::copy_code_block_from_gui(view, block_id, cx);
             });
             cx.stop_propagation();
         })

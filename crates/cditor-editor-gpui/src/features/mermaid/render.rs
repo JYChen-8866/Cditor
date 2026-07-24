@@ -101,7 +101,7 @@ pub(crate) fn render_mermaid_block(
                         .child(if show_source { "预览" } else { "源码" })
                         .on_mouse_down(gpui::MouseButton::Left, move |_event, _window, cx| {
                             toggle_view.update(cx, |view, cx| {
-                                view.toggle_mermaid_source_from_gui(block_id, cx);
+                                super::actions::toggle_source_from_gui(view, block_id, cx);
                             });
                             cx.stop_propagation();
                         }),

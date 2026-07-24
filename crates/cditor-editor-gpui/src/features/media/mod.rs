@@ -212,11 +212,11 @@ pub(crate) fn schedule_rendered_media_height_report(
         .spawn(async move {
             async_cx.update(|cx| {
                 view.update(cx, |view, cx| {
-                    if view.queue_rendered_media_height(
+                    if crate::cache::queue_rendered_media_height(
+                        view,
                         block_id,
                         content_version,
                         measured_height,
-                        cx,
                     ) {
                         view.mark_dirty(cx);
                         cx.notify();
