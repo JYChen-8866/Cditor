@@ -15,11 +15,10 @@ use crate::overlay::{
 use crate::text::{RichTextPlatformLayout, platform_range_bounds};
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayload, InlineColorTarget, InlineMark, InlineSpan};
+#[cfg(test)]
 use cditor_runtime::DocumentRuntime;
-use cditor_session::{
-    ToolbarContextRequest, ToolbarContextSnapshot, VersionedSelectionFragment,
-    project_toolbar_context,
-};
+use cditor_session::EditorSessionHandle;
+use cditor_session::{ToolbarContextRequest, ToolbarContextSnapshot, VersionedSelectionFragment};
 
 #[cfg(test)]
 use super::actions::inline_mark_for_toolbar_action;
@@ -343,20 +342,43 @@ fn active_block_color(
 }
 
 pub(in crate::app) fn formatting_toolbar_context(
-    runtime: Option<&DocumentRuntime>,
+    session: Option<&impl ToolbarContextSource>,
     gutter_block_id: Option<BlockId>,
 ) -> Option<ToolbarContextSnapshot> {
-    let runtime = runtime?;
-    Some(project_toolbar_context(
-        runtime,
-        ToolbarContextRequest {
-            gutter_block_id,
-            transform_targets: BlockTransformAction::all()
-                .into_iter()
-                .map(|action| action.kind())
-                .collect(),
-        },
-    ))
+    let session = session?;
+    session.project_toolbar_context(ToolbarContextRequest {
+        gutter_block_id,
+        transform_targets: BlockTransformAction::all()
+            .into_iter()
+            .map(|action| action.kind())
+            .collect(),
+    })
+}
+
+pub(in crate::app) trait ToolbarContextSource {
+    fn project_toolbar_context(
+        &self,
+        request: ToolbarContextRequest,
+    ) -> Option<ToolbarContextSnapshot>;
+}
+
+impl ToolbarContextSource for EditorSessionHandle {
+    fn project_toolbar_context(
+        &self,
+        request: ToolbarContextRequest,
+    ) -> Option<ToolbarContextSnapshot> {
+        self.toolbar_context(request).ok()
+    }
+}
+
+#[cfg(test)]
+impl ToolbarContextSource for DocumentRuntime {
+    fn project_toolbar_context(
+        &self,
+        request: ToolbarContextRequest,
+    ) -> Option<ToolbarContextSnapshot> {
+        Some(cditor_session::project_toolbar_context(self, request))
+    }
 }
 
 fn selected_spans_have_mark(

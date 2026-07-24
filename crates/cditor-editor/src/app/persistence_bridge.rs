@@ -3,20 +3,17 @@ use gpui::{AppContext, Context};
 use cditor_runtime::SelectionMaterializationRequest;
 use cditor_runtime::content::payload_window::{PayloadWindowLoadRequest, PayloadWindowLoadResult};
 use cditor_session::{
-    HistoryActionSnapshot, HistoryDirection, UndoBlobWriteResult, apply_payload_window_error,
-    apply_payload_window_result, project_apply_undo_blob_write_result,
-    project_begin_undo_blob_cleanup, project_begin_undo_blob_spill,
-    project_finish_undo_blob_cleanup, project_history_action, project_hydrated_history_action,
-    project_note_content_changed, project_persistence_save_failure,
-    project_persistence_save_success, project_selection_materialization_result,
+    HistoryActionSnapshot, HistoryDirection, PayloadStorageRequest, UndoBlobWriteResult,
+    execute_payload_load, execute_storage_flush, execute_undo_blob_read, run_undo_blob_delete,
+    run_undo_blob_write,
 };
-use cditor_storage::{StorageError, StorageSession, block_on_storage};
+use cditor_storage::{StorageError, block_on_storage};
 
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
+use crate::app::cditor_v2_view::CditorV2View;
 use crate::input::GuiInputCommand;
 use crate::persistence::{
-    EditorSaveStatus, PersistencePipelineError, STORAGE_VIEWPORT_LOAD_TIMEOUT,
-    mark_dirty_and_schedule_save, save_storage_batch, schedule_storage_autosave,
+    EditorSaveStatus, PersistencePipelineError, STORAGE_VIEWPORT_LOAD_TIMEOUT, save_storage_batch,
+    schedule_storage_autosave,
 };
 use cditor_api::CditorError;
 use cditor_api::event::CditorEvent;
@@ -24,6 +21,8 @@ use cditor_core::edit::ChangeOrigin;
 use cditor_editor_protocol::command::CommandSource;
 #[cfg(test)]
 use cditor_editor_protocol::command::{CommandEnvelope, EditorCommand};
+#[cfg(test)]
+use cditor_storage::StorageSession;
 
 impl CditorV2View {
     pub(crate) fn schedule_selection_materialization(
@@ -35,7 +34,10 @@ impl CditorV2View {
         if self.selection_materialization_in_flight.is_some() {
             return true;
         }
-        let Some(session) = self.storage_persistence.session().cloned() else {
+        let Some(storage_request) = self
+            .ready_session()
+            .and_then(|session| session.payload_storage_request().ok().flatten())
+        else {
             return false;
         };
         self.selection_materialization_in_flight = Some((request.clone(), command));
@@ -44,7 +46,7 @@ impl CditorV2View {
             block_on_storage(async move {
                 let loaded = tokio::time::timeout(
                     STORAGE_VIEWPORT_LOAD_TIMEOUT,
-                    session.load_payloads(&load_request.block_ids),
+                    execute_payload_load(storage_request, &load_request.block_ids),
                 )
                 .await
                 .map_err(|_| StorageError::Timeout {
@@ -70,20 +72,19 @@ impl CditorV2View {
                 view.selection_materialization_in_flight = None;
                 let should_replay = match result {
                     Ok((records, missing_block_ids)) if missing_block_ids.is_empty() => {
-                        view.ready_runtime().is_some_and(|runtime| {
-                            project_selection_materialization_result(
-                                runtime,
-                                &request,
-                                records,
-                                &missing_block_ids,
-                            )
-                            .replay_ready
+                        view.ready_session().is_some_and(|session| {
+                            session
+                                .apply_selection_materialization_result(
+                                    &request,
+                                    records,
+                                    &missing_block_ids,
+                                )
+                                .is_ok_and(|snapshot| snapshot.replay_ready)
                         })
                     }
                     Ok((records, missing_block_ids)) => {
-                        if let Some(runtime) = view.ready_runtime() {
-                            project_selection_materialization_result(
-                                runtime,
+                        if let Some(session) = view.ready_session() {
+                            let _ = session.apply_selection_materialization_result(
                                 &request,
                                 records,
                                 &missing_block_ids,
@@ -118,11 +119,10 @@ impl CditorV2View {
         } else {
             HistoryDirection::Undo
         };
-        let result = project_history_action(
-            self.ready_runtime().ok_or(CditorError::NotReady)?,
-            source,
-            direction,
-        );
+        let result = self
+            .ready_session()
+            .ok_or(CditorError::NotReady)?
+            .apply_history(source, direction);
         let origin = if redo {
             ChangeOrigin::Redo
         } else {
@@ -161,42 +161,41 @@ impl CditorV2View {
                 "another undo or redo hydration is already running".to_owned(),
             ));
         }
-        let session = self.storage_persistence.session().cloned().ok_or_else(|| {
-            CditorError::Unsupported(
-                "external undo hydration requires persistent storage".to_owned(),
-            )
-        })?;
+        let storage_request = self
+            .ready_session()
+            .ok_or(CditorError::NotReady)?
+            .undo_blob_read_request(reference.clone())
+            .map_err(|error| CditorError::Internal(error.to_string()))?
+            .ok_or_else(|| {
+                CditorError::Unsupported(
+                    "external undo hydration requires persistent storage".to_owned(),
+                )
+            })?;
         self.history_hydration_in_flight = Some(key);
         cx.emit(CditorEvent::HistoryHydrationStarted {
             snapshot_id: reference.snapshot_id,
             redo,
         });
         let hydrate_task = cx.background_spawn(async move {
-            let result = block_on_storage(session.load_undo_blob(&reference))
-                .and_then(|result| result.map_err(|error| error.to_string()));
-            (reference, result)
+            block_on_storage(execute_undo_blob_read(storage_request))
+                .and_then(|result| result.map_err(|error| error.to_string()))
         });
         cx.spawn(async move |view, cx| {
-            let (reference, result) = hydrate_task.await;
+            let result = hydrate_task.await;
             let _ = view.update(cx, |view, cx| {
                 view.history_hydration_in_flight = None;
                 let replay = match result {
-                    Ok(transaction) => match view.ready_runtime() {
-                        Some(runtime) => {
+                    Ok((reference, transaction)) => match view.ready_session() {
+                        Some(session_handle) => {
                             let direction = if redo {
                                 HistoryDirection::Redo
                             } else {
                                 HistoryDirection::Undo
                             };
-                            project_hydrated_history_action(
-                                runtime,
-                                &reference,
-                                transaction,
-                                source,
-                                direction,
-                            )
-                            .map(|snapshot| (snapshot.outcome.changed(), snapshot.revision))
-                            .map_err(|error| error.message)
+                            session_handle
+                                .apply_hydrated_history(&reference, transaction, source, direction)
+                                .map(|snapshot| (snapshot.outcome.changed(), snapshot.revision))
+                                .map_err(|error| error.message)
                         }
                         None => Err("editor runtime is no longer ready".to_owned()),
                     },
@@ -211,7 +210,7 @@ impl CditorV2View {
                         };
                         view.mark_dirty_at_revision(origin, revision, cx);
                         cx.emit(CditorEvent::HistoryHydrationSucceeded {
-                            snapshot_id: reference.snapshot_id,
+                            snapshot_id: key.0,
                             redo,
                         });
                     }
@@ -241,8 +240,8 @@ impl CditorV2View {
 
     pub(crate) fn mark_dirty_with_origin(&mut self, origin: ChangeOrigin, cx: &mut Context<Self>) {
         let revision = self
-            .ready_runtime()
-            .map(project_note_content_changed)
+            .ready_session()
+            .and_then(|session| session.record_content_changed().ok())
             .map(|snapshot| snapshot.revision)
             .unwrap_or_default();
         self.mark_dirty_at_revision(origin, revision, cx);
@@ -256,7 +255,11 @@ impl CditorV2View {
     ) {
         let was_dirty = self.dirty;
         self.dirty = true;
-        mark_dirty_and_schedule_save(&mut self.storage_persistence, &mut self.save_status, cx);
+        self.save_status = EditorSaveStatus::Dirty;
+        if let Some(session) = self.ready_session() {
+            let _ = session.mark_persistence_dirty();
+        }
+        schedule_storage_autosave(self, cx);
         self.schedule_external_undo_spill(cx);
         self.schedule_external_undo_cleanup(cx);
         cx.emit(CditorEvent::ContentChanged { revision, origin });
@@ -269,30 +272,22 @@ impl CditorV2View {
         if self.undo_spill_in_flight {
             return;
         }
-        let Some(session) = self.storage_persistence.session().cloned() else {
-            return;
-        };
-        let Some(job) = self.ready_runtime().and_then(project_begin_undo_blob_spill) else {
+        let Some(request) = self
+            .ready_session()
+            .and_then(|session| session.undo_blob_write_request().ok().flatten())
+        else {
             return;
         };
         self.undo_spill_in_flight = true;
-        let spill_task = cx.background_spawn(async move {
-            let result = block_on_storage(session.write_undo_blob(
-                job.snapshot_id,
-                job.block_count,
-                &job.transaction,
-            ))
-            .and_then(|result| result.map_err(|error| error.to_string()));
-            (job, result)
-        });
+        let spill_task = cx.background_spawn(async move { run_undo_blob_write(request) });
         cx.spawn(async move |view, cx| {
             let (job, result) = spill_task.await;
             let _ = view.update(cx, |view, cx| {
                 view.undo_spill_in_flight = false;
-                if let Some(runtime) = view.ready_runtime() {
+                if let Some(session_handle) = view.ready_session() {
                     let result =
                         result.map_or(UndoBlobWriteResult::Failed, UndoBlobWriteResult::Stored);
-                    project_apply_undo_blob_write_result(runtime, job, result);
+                    let _ = session_handle.apply_undo_blob_write_result(job, result);
                 }
                 cx.notify();
             });
@@ -304,34 +299,20 @@ impl CditorV2View {
         if self.undo_cleanup_in_flight {
             return;
         }
-        let Some(session) = self.storage_persistence.session().cloned() else {
+        let Some(request) = self
+            .ready_session()
+            .and_then(|session| session.undo_blob_delete_request().ok().flatten())
+        else {
             return;
         };
-        let references = self
-            .ready_runtime()
-            .map(project_begin_undo_blob_cleanup)
-            .unwrap_or_default();
-        if references.is_empty() {
-            return;
-        }
         self.undo_cleanup_in_flight = true;
-        let cleanup_task = cx.background_spawn(async move {
-            let mut failed = Vec::new();
-            for reference in references {
-                let result = block_on_storage(session.delete_undo_blob(reference.snapshot_id))
-                    .and_then(|result| result.map_err(|error| error.to_string()));
-                if result.is_err() {
-                    failed.push(reference);
-                }
-            }
-            failed
-        });
+        let cleanup_task = cx.background_spawn(async move { run_undo_blob_delete(request) });
         cx.spawn(async move |view, cx| {
             let failed = cleanup_task.await;
             let _ = view.update(cx, |view, cx| {
                 view.undo_cleanup_in_flight = false;
-                if let Some(runtime) = view.ready_runtime() {
-                    project_finish_undo_blob_cleanup(runtime, failed);
+                if let Some(session_handle) = view.ready_session() {
+                    let _ = session_handle.finish_undo_blob_cleanup(failed);
                 }
                 cx.notify();
             });
@@ -341,13 +322,15 @@ impl CditorV2View {
 
     pub(crate) fn flush_storage_persistence(&mut self, cx: &mut Context<Self>) {
         if self.readonly {
-            self.storage_persistence.clear_scheduled_save();
+            if let Some(session) = self.ready_session() {
+                let _ = session.clear_scheduled_save();
+            }
             return;
         }
-        let CditorViewState::Ready(runtime) = &mut self.state else {
+        let Some(session) = self.ready_session().cloned() else {
             return;
         };
-        let Some(batch) = self.storage_persistence.begin_batch(runtime) else {
+        let Ok(Some(batch)) = session.capture_storage_save() else {
             self.settle_storage_barriers(cx);
             return;
         };
@@ -361,18 +344,12 @@ impl CditorV2View {
         cx.spawn(async move |view, cx| match save_task.await {
             (request, Ok(outcome)) => {
                 let _ = view.update(cx, |view, cx| {
-                    let saved_layout_or_structure = outcome.saved_structure_version.is_some();
                     let should_reschedule = view
-                        .storage_persistence
-                        .finish_success(&request, outcome.saved_structure_version);
-                    if let Some(runtime) = view.ready_runtime() {
-                        project_persistence_save_success(
-                            runtime,
-                            &outcome,
-                            saved_layout_or_structure,
-                            should_reschedule,
-                        );
-                    }
+                        .ready_session()
+                        .and_then(|session| {
+                            session.apply_storage_save_success(&request, &outcome).ok()
+                        })
+                        .is_some_and(|apply| apply.should_reschedule);
                     view.trim_persistent_payload_cache();
                     let became_clean = view.dirty && !should_reschedule;
                     view.dirty = should_reschedule;
@@ -388,7 +365,7 @@ impl CditorV2View {
                         cx.emit(CditorEvent::DirtyChanged { dirty: false });
                     }
                     if should_reschedule {
-                        schedule_storage_autosave(&mut view.storage_persistence, cx);
+                        schedule_storage_autosave(view, cx);
                     }
                     view.settle_storage_barriers(cx);
                     cx.notify();
@@ -396,11 +373,12 @@ impl CditorV2View {
             }
             (request, Err(message)) => {
                 let _ = view.update(cx, |view, cx| {
-                    if let Some(runtime) = view.ready_runtime() {
-                        project_persistence_save_failure(runtime, request.transactions().to_vec());
-                    }
-                    let should_reschedule = view.storage_persistence.finish_failed(&request);
-                    view.storage_persistence.fail_barriers(&message);
+                    let should_reschedule = view
+                        .ready_session()
+                        .and_then(|session| {
+                            session.apply_storage_save_failure(&request, &message).ok()
+                        })
+                        .unwrap_or(false);
                     view.dirty = true;
                     view.save_status = EditorSaveStatus::Failed(message.clone());
                     cx.emit(CditorEvent::SaveFailed {
@@ -408,7 +386,7 @@ impl CditorV2View {
                         error: CditorError::Persistence(message),
                     });
                     if should_reschedule {
-                        schedule_storage_autosave(&mut view.storage_persistence, cx);
+                        schedule_storage_autosave(view, cx);
                     }
                     cx.notify();
                 });
@@ -419,14 +397,19 @@ impl CditorV2View {
     }
 
     pub(crate) fn settle_storage_barriers(&mut self, cx: &mut Context<Self>) {
-        let (save_barriers, flush_barriers) = self.storage_persistence.drain_ready_barriers();
+        let Some(session) = self.ready_session().cloned() else {
+            return;
+        };
+        let Ok((save_barriers, flush_barriers)) = session.drain_ready_persistence_barriers() else {
+            return;
+        };
         for barrier in save_barriers {
             barrier.resolve(Ok(()));
         }
         if flush_barriers.is_empty() {
             return;
         }
-        let Some(session) = self.storage_persistence.session().cloned() else {
+        let Ok(Some(flush_request)) = session.begin_storage_flush() else {
             let error = PersistencePipelineError::Unavailable(
                 "save and flush require a persistent storage backend".to_owned(),
             );
@@ -436,20 +419,16 @@ impl CditorV2View {
             return;
         };
 
-        self.storage_persistence.begin_backend_flush();
         let flush_task = cx.background_spawn(async move {
-            block_on_storage(async move {
-                session.flush().await?;
-                session.prune_undo_blobs(100).await?;
-                Ok::<(), StorageError>(())
-            })
-            .and_then(|result| result.map_err(|error| error.to_string()))
+            block_on_storage(execute_storage_flush(flush_request)).and_then(|result| result)
         });
         cx.spawn(async move |view, cx| {
             let result = flush_task.await.map_err(PersistencePipelineError::Storage);
             let state_result = result.clone();
             let _ = view.update(cx, |view, cx| {
-                view.storage_persistence.finish_backend_flush();
+                if let Some(session) = view.ready_session() {
+                    let _ = session.finish_storage_flush();
+                }
                 if let Err(error) = &state_result {
                     view.save_status = EditorSaveStatus::Failed(error.to_string());
                 } else if !view.dirty && !view.readonly {
@@ -467,7 +446,7 @@ impl CditorV2View {
 
     pub(crate) fn load_storage_payload_window(
         &mut self,
-        session: StorageSession,
+        storage_request: PayloadStorageRequest,
         request: PayloadWindowLoadRequest,
         cx: &mut Context<Self>,
     ) {
@@ -476,7 +455,7 @@ impl CditorV2View {
             block_on_storage(async move {
                 let loaded = tokio::time::timeout(
                     STORAGE_VIEWPORT_LOAD_TIMEOUT,
-                    session.load_payloads(&request.block_ids),
+                    execute_payload_load(storage_request, &request.block_ids),
                 )
                 .await
                 .map_err(|_| StorageError::Timeout {
@@ -494,8 +473,8 @@ impl CditorV2View {
         cx.spawn(async move |view, cx| match load_task.await {
             Ok(result) => {
                 let _ = view.update(cx, |view, cx| {
-                    if let Some(runtime) = view.ready_runtime() {
-                        apply_payload_window_result(runtime, result);
+                    if let Some(session) = view.ready_session() {
+                        let _ = session.apply_payload_window_result(result);
                     }
                     view.trim_persistent_payload_cache();
                     cx.notify();
@@ -503,8 +482,8 @@ impl CditorV2View {
             }
             Err(message) => {
                 let _ = view.update(cx, |view, cx| {
-                    if let Some(runtime) = view.ready_runtime() {
-                        apply_payload_window_error(runtime, failed_request, message);
+                    if let Some(session) = view.ready_session() {
+                        let _ = session.apply_payload_window_error(failed_request, message);
                     }
                     cx.notify();
                 });
@@ -642,11 +621,14 @@ mod tests {
         );
         let session = StorageSession::new(storage.clone(), 1);
         let view = cx.new(|cx| {
-            CditorV2View::from_runtime_with_storage_options(
+            CditorV2View::from_runtime_with_persistence_options(
                 runtime,
                 false,
                 false,
-                Some(session),
+                Some(cditor_session::PersistencePipeline::for_session(
+                    session,
+                    Some(std::time::Duration::ZERO),
+                )),
                 cx,
             )
         });
@@ -662,9 +644,11 @@ mod tests {
         ));
         assert_eq!(
             view.read_with(cx, |view, _| {
-                view.ready_runtime_ref()
+                view.ready_session()
                     .unwrap()
-                    .pending_structure_transaction_count()
+                    .persistence_runtime_snapshot()
+                    .unwrap()
+                    .pending_structure_transactions
             }),
             1
         );

@@ -114,25 +114,22 @@ impl CditorV2View {
     ) -> bool {
         let expected = self.platform_input_session_identity;
         let has_pending_composition = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_input_context)
+            .ready_session()
+            .and_then(|session| session.input_context().ok())
             .is_some_and(|context| context.has_pending_composition);
         if !has_pending_composition {
             return true;
         }
-        let result = self.ready_runtime().map(|runtime| {
+        let result = self.ready_session().map(|session| {
             let expected = expected
                 .ok_or_else(|| "active composition has no registered input identity".to_owned())?;
-            cditor_session::project_realtime_input(
-                runtime,
-                cditor_runtime::RealtimeInputRequest {
+            session
+                .apply_realtime_input(cditor_runtime::RealtimeInputRequest {
                     expected,
                     input: cditor_runtime::RealtimeInput::CommitBeforeExternalFocus,
-                },
-                false,
-            )
-            .map(Some)
-            .map_err(|error| error.to_string())
+                })
+                .map(Some)
+                .map_err(|error| error.to_string())
         });
         match result {
             Some(Ok(Some(outcome))) if outcome.document_changed => {
@@ -187,10 +184,12 @@ impl CditorV2View {
         target: GuiPlatformInputTarget,
         layout_identity: TextPlatformLayoutIdentity,
     ) -> bool {
-        let Some(runtime) = self.ready_runtime_ref() else {
+        let Some(session) = self.ready_session() else {
             return false;
         };
-        let input_context = cditor_session::project_input_context(runtime);
+        let Ok(input_context) = session.input_context() else {
+            return false;
+        };
         if !platform_input_registration_allows(self.platform_input_target, target, &input_context) {
             trace_input(
                 "register_platform_input_target.rejected",
@@ -274,16 +273,20 @@ mod tests {
 
         view.update(cx, |view, cx| {
             view.platform_input_session_identity = view
-                .ready_runtime_ref()
-                .and_then(DocumentRuntime::input_session_identity);
+                .ready_session()
+                .and_then(|session| session.input_context().ok()?.identity);
             assert!(view.commit_document_composition_before_external_focus(cx));
             assert!(view.dirty);
-            let runtime = view.ready_runtime_ref().unwrap();
+            let session = view.ready_session().unwrap();
             assert_eq!(
-                runtime.block_payload_record(1).unwrap().plain_text(),
+                session
+                    .loaded_payload_record(1)
+                    .unwrap()
+                    .unwrap()
+                    .plain_text(),
                 "a中b"
             );
-            assert!(runtime.active_composition().is_none());
+            assert!(session.input_context().unwrap().composition.is_none());
         });
     }
 
@@ -295,8 +298,8 @@ mod tests {
 
         view.update(cx, |view, cx| {
             view.platform_input_session_identity = view
-                .ready_runtime_ref()
-                .and_then(DocumentRuntime::input_session_identity);
+                .ready_session()
+                .and_then(|session| session.input_context().ok()?.identity);
             view.platform_input_session_identity
                 .as_mut()
                 .unwrap()
@@ -308,10 +311,10 @@ mod tests {
                 view.save_status,
                 crate::persistence::EditorSaveStatus::Failed(_)
             ));
-            let runtime = view.ready_runtime_ref().unwrap();
-            assert!(runtime.active_composition().is_some());
+            let session = view.ready_session().unwrap();
+            assert!(session.input_context().unwrap().composition.is_some());
             assert_eq!(
-                crate::test_support::committed_block_plain_text(runtime, 1).as_deref(),
+                session.committed_block_plain_text(1).unwrap().as_deref(),
                 Some("ab")
             );
         });

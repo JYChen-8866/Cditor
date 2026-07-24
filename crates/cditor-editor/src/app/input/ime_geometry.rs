@@ -14,18 +14,19 @@ use crate::input::ime::utf16_range_to_utf8_range;
 use crate::input::{SINGLE_LINE_INPUT_FONT_SIZE_PX, single_line_visible_range_x};
 use crate::text::{platform_index_for_point, platform_range_bounds, record_unavailable_geometry};
 use cditor_core::ids::SurfaceId;
-use cditor_runtime::{DocumentRuntime, InputTarget};
+use cditor_runtime::InputTarget;
+use cditor_session::EditorSessionHandle;
 
 impl CditorV2View {
     pub(in crate::app) fn ime_character_index_for_text_surface(
         &self,
-        runtime: &DocumentRuntime,
+        session: &EditorSessionHandle,
         surface_id: SurfaceId,
         point: Point<Pixels>,
         text: &str,
     ) -> Option<usize> {
-        let input_context = cditor_session::project_input_context(runtime);
-        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        let input_context = session.input_context().ok()?;
+        let current = session.surface_version(surface_id).ok().flatten()?;
         let Some(cache) = self.current_text_surface_layout_cache(current) else {
             record_unavailable_geometry();
             return None;
@@ -131,8 +132,8 @@ impl CditorV2View {
                 },
             });
         }
-        let runtime = self.ready_runtime_ref()?;
-        let input_context = cditor_session::project_input_context(runtime);
+        let session = self.ready_session()?;
+        let input_context = session.input_context().ok()?;
         if !platform_input_target_allows(
             self.platform_input_target,
             self.platform_input_session_identity,
@@ -152,7 +153,7 @@ impl CditorV2View {
         let range = utf16_range_to_utf8_range(text, &range_utf16);
         let target = input_context.target?;
         let surface_id = target.surface_id()?;
-        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        let current = session.surface_version(surface_id).ok().flatten()?;
         match target {
             InputTarget::TableCell {
                 block_id: target_block_id,

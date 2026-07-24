@@ -67,8 +67,8 @@ impl EntityInputHandler for CditorV2View {
         let registered_target = self.platform_input_target;
         let registered_identity = self.platform_input_session_identity;
         let context = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_input_context)?;
+            .ready_session()
+            .and_then(|session| session.input_context().ok())?;
         if !platform_input_target_allows(registered_target, registered_identity, &context) {
             trace_input(
                 "text_for_range.rejected_target",
@@ -142,8 +142,8 @@ impl EntityInputHandler for CditorV2View {
         let registered_target = self.platform_input_target;
         let registered_identity = self.platform_input_session_identity;
         let context = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_input_context)?;
+            .ready_session()
+            .and_then(|session| session.input_context().ok())?;
         if !platform_input_target_allows(registered_target, registered_identity, &context) {
             trace_input(
                 "selected_text_range.rejected_target",
@@ -206,8 +206,8 @@ impl EntityInputHandler for CditorV2View {
                 .as_ref()
                 .map(|range| utf8_range_to_utf16_range(&edit.draft, range));
         }
-        let runtime = self.ready_runtime_ref()?;
-        let context = cditor_session::project_input_context(runtime);
+        let session = self.ready_session()?;
+        let context = session.input_context().ok()?;
         if !platform_input_target_allows(
             self.platform_input_target,
             self.platform_input_session_identity,
@@ -273,7 +273,7 @@ impl EntityInputHandler for CditorV2View {
         }
         let expected = self.platform_input_session_identity;
         let result = self
-            .ready_runtime()
+            .ready_session()
             .and_then(|runtime| expected.map(|expected| apply_platform_unmark(runtime, expected)));
         match result {
             Some(Ok(outcome)) if outcome.document_changed => {
@@ -498,8 +498,8 @@ impl EntityInputHandler for CditorV2View {
             );
             return Some(utf8_to_utf16_offset(&edit.draft, utf8));
         }
-        let runtime = self.ready_runtime_ref()?;
-        let context = cditor_session::project_input_context(runtime);
+        let session = self.ready_session()?;
+        let context = session.input_context().ok()?;
         if !platform_input_target_allows(
             self.platform_input_target,
             self.platform_input_session_identity,
@@ -518,7 +518,7 @@ impl EntityInputHandler for CditorV2View {
         let (block_id, text) = (focused.block_id, &focused.text);
         let target = context.target?;
         let surface_id = target.surface_id()?;
-        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        let current = session.surface_version(surface_id).ok().flatten()?;
         match target {
             InputTarget::TableCell {
                 block_id: target_block_id,
@@ -577,7 +577,7 @@ impl EntityInputHandler for CditorV2View {
             | InputTarget::CollectionTitle {
                 block_id: target_block_id,
             }) if target_block_id == block_id => self.ime_character_index_for_text_surface(
-                runtime,
+                session,
                 target.surface_id()?,
                 point,
                 text,
@@ -602,8 +602,10 @@ impl EntityInputHandler for CditorV2View {
         }
         !self.readonly
             && matches!(self.state, CditorViewState::Ready(_))
-            && self.ready_runtime_ref().is_none_or(|runtime| {
-                let context = cditor_session::project_input_context(runtime);
+            && self.ready_session().is_none_or(|session| {
+                let Ok(context) = session.input_context() else {
+                    return false;
+                };
                 platform_input_target_allows(
                     self.platform_input_target,
                     self.platform_input_session_identity,

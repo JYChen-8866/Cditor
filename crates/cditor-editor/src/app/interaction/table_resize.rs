@@ -59,9 +59,8 @@ impl CditorV2View {
             start_size_px: current_size_px.max(TABLE_RESIZE_MIN_SIZE_PX),
             current_size_px: current_size_px.max(TABLE_RESIZE_MIN_SIZE_PX),
         });
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = cditor_session::project_command_dispatch(
-                runtime,
+        if let CditorViewState::Ready(session) = &self.state {
+            let _ = session.dispatch_with_snapshot(
                 cditor_editor_protocol::command::CommandEnvelope::new(
                     cditor_editor_protocol::command::CditorCommand::FocusBlock { block_id },
                     cditor_editor_protocol::command::CommandSource::Toolbar,

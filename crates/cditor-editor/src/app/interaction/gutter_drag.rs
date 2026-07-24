@@ -29,8 +29,8 @@ fn gutter_drag_pointer_document_y_for_view(view: &CditorV2View, window_y: f32) -
         view.infer_document_viewport_origin()
             .map(|origin| origin.y)
             .unwrap_or(0.0),
-        view.ready_runtime_ref()
-            .map(cditor_session::project_layout_viewport)
+        view.ready_session()
+            .and_then(|session| session.layout_viewport().ok())
             .map(|snapshot| snapshot.global_scroll_top)
             .unwrap_or(0.0),
     )
@@ -56,8 +56,8 @@ impl CditorV2View {
             block_id,
             DragPoint::new(f32::from(position.x), f32::from(position.y)),
         ));
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+        if let CditorViewState::Ready(session) = &self.state {
+            let _ = session.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
                 cditor_editor_protocol::command::CditorCommand::FocusBlock { block_id },
                 cditor_editor_protocol::command::CommandSource::Toolbar,
             ));
@@ -123,8 +123,8 @@ impl CditorV2View {
             return false;
         }
         let Some(viewport) = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_layout_viewport)
+            .ready_session()
+            .and_then(|session| session.layout_viewport().ok())
         else {
             return false;
         };
@@ -175,15 +175,19 @@ impl CditorV2View {
     }
 
     fn apply_gutter_drag_auto_scroll(&mut self, pointer_y: f64) -> bool {
-        let CditorViewState::Ready(runtime) = &mut self.state else {
+        let CditorViewState::Ready(session) = &self.state else {
             return false;
         };
-        let viewport = cditor_session::project_layout_viewport(runtime);
+        let Ok(viewport) = session.layout_viewport() else {
+            return false;
+        };
         let delta = gutter_drag_auto_scroll_delta(pointer_y, viewport.viewport_height);
         if delta.abs() < f64::EPSILON {
             return false;
         }
-        cditor_session::project_scroll_by_delta(runtime, delta).is_ok_and(|outcome| outcome.changed)
+        session
+            .request_scroll_delta(delta)
+            .is_ok_and(|outcome| outcome.changed)
     }
 
     fn drop_target_for_document_y(

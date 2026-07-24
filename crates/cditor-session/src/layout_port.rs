@@ -163,11 +163,14 @@ impl EditorSessionHandle {
         project_scroll_input_frame(&mut self.try_session_mut()?.runtime, accumulator, input)
     }
 
-    pub fn scroll_by_delta(&self, delta_y: f64) -> Result<LayoutScrollSnapshot, ProtocolError> {
+    pub fn request_scroll_delta(
+        &self,
+        delta_y: f64,
+    ) -> Result<LayoutScrollSnapshot, ProtocolError> {
         project_scroll_by_delta(&mut self.try_session_mut()?.runtime, delta_y)
     }
 
-    pub fn scroll_focused_block_into_view(&self) -> Result<LayoutScrollSnapshot, ProtocolError> {
+    pub fn ensure_focused_block_visible(&self) -> Result<LayoutScrollSnapshot, ProtocolError> {
         project_scroll_focused_block_into_view(&mut self.try_session_mut()?.runtime)
     }
 
@@ -179,7 +182,7 @@ impl EditorSessionHandle {
         project_scroll_to_block(&mut self.try_session_mut()?.runtime, block_id, alignment)
     }
 
-    pub fn begin_scrollbar_drag(&self) -> Result<ScrollbarVisualState, ProtocolError> {
+    pub fn start_scrollbar_drag(&self) -> Result<ScrollbarVisualState, ProtocolError> {
         Ok(project_begin_scrollbar_drag(
             &mut self.try_session_mut()?.runtime,
         ))
@@ -192,7 +195,7 @@ impl EditorSessionHandle {
         project_drag_scrollbar(&mut self.try_session_mut()?.runtime, thumb_top)
     }
 
-    pub fn finish_scrollbar_drag(&self) -> Result<Option<ScrollbarDragEnd>, ProtocolError> {
+    pub fn end_scrollbar_drag(&self) -> Result<Option<ScrollbarDragEnd>, ProtocolError> {
         project_finish_scrollbar_drag(&mut self.try_session_mut()?.runtime)
     }
 }
@@ -234,7 +237,7 @@ mod tests {
     #[test]
     fn viewport_snapshot_owns_coordinate_conversion_inputs() {
         let handle = EditorSession::new(DocumentRuntime::large_mixed_demo(), false).into_handle();
-        handle.scroll_by_delta(120.0).unwrap();
+        handle.request_scroll_delta(120.0).unwrap();
 
         let snapshot = handle.layout_viewport().unwrap();
         assert!(snapshot.global_scroll_top > 0.0);
@@ -281,12 +284,12 @@ mod tests {
     #[test]
     fn scrollbar_drag_lifecycle_is_owned_by_session() {
         let handle = EditorSession::new(DocumentRuntime::large_mixed_demo(), false).into_handle();
-        let visual = handle.begin_scrollbar_drag().unwrap();
+        let visual = handle.start_scrollbar_drag().unwrap();
         assert!(visual.enabled);
 
         let update = handle.drag_scrollbar(visual.track_height / 2.0).unwrap();
         assert!(update.is_some());
-        assert!(handle.finish_scrollbar_drag().unwrap().is_some());
-        assert!(handle.finish_scrollbar_drag().unwrap().is_none());
+        assert!(handle.end_scrollbar_drag().unwrap().is_some());
+        assert!(handle.end_scrollbar_drag().unwrap().is_none());
     }
 }

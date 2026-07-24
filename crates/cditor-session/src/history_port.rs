@@ -156,6 +156,29 @@ impl EditorSessionHandle {
         project_history_action(&mut session.runtime, source, direction)
     }
 
+    pub fn apply_hydrated_history(
+        &self,
+        reference: &ExternalUndoBlobRef,
+        transaction: EditTransaction,
+        source: CommandSource,
+        direction: HistoryDirection,
+    ) -> Result<CommandDispatchSnapshot, ProtocolError> {
+        let mut session = self.try_session_mut()?;
+        if session.readonly {
+            return Err(
+                ProtocolError::new(ProtocolErrorCode::Readonly, "document is read-only")
+                    .with_document(session.runtime.document_id()),
+            );
+        }
+        project_hydrated_history_action(
+            &mut session.runtime,
+            reference,
+            transaction,
+            source,
+            direction,
+        )
+    }
+
     pub fn begin_undo_blob_spill(&self) -> Result<Option<UndoExternalizationJob>, ProtocolError> {
         Ok(project_begin_undo_blob_spill(
             &mut self.try_session_mut()?.runtime,

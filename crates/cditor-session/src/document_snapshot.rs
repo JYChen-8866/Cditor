@@ -106,6 +106,19 @@ pub fn project_focused_text_block_context(
 }
 
 impl EditorSessionHandle {
+    pub fn committed_block_plain_text(
+        &self,
+        block_id: BlockId,
+    ) -> Result<Option<String>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| busy_error())?;
+        Ok(session
+            .runtime
+            .loaded_payload_records_snapshot()
+            .into_iter()
+            .find(|record| record.block_id == block_id)
+            .map(|record| record.plain_text()))
+    }
+
     pub fn document_snapshot(&self) -> Result<SessionDocumentSnapshot, ProtocolError> {
         let session = self.inner.try_borrow().map_err(|_| {
             ProtocolError::new(
@@ -196,6 +209,14 @@ impl EditorSessionHandle {
             candidate_block_ids,
         ))
     }
+}
+
+fn busy_error() -> ProtocolError {
+    ProtocolError::new(
+        ProtocolErrorCode::Busy,
+        "editor session is already processing a synchronous request",
+    )
+    .retryable()
 }
 
 #[cfg(test)]

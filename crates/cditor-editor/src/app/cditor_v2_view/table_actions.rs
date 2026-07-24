@@ -14,9 +14,7 @@ use cditor_editor_protocol::command::{
     CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
     TableAxis as CommandTableAxis,
 };
-use cditor_session::{
-    TableRangeRequest, project_surface_version, project_table_interaction, project_table_range,
-};
+use cditor_session::TableRangeRequest;
 
 impl CditorV2View {
     pub(crate) fn dismiss_table_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
@@ -70,14 +68,13 @@ impl CditorV2View {
             return;
         }
         let already_focused = self
-            .ready_runtime_ref()
-            .and_then(|runtime| project_table_interaction(runtime, None).focused_cell)
+            .ready_session()
+            .and_then(|session| session.table_interaction(None).ok()?.focused_cell)
             .is_some_and(|focused| {
                 (focused.block_id, focused.row, focused.col) == (block_id, row, col)
             });
-        if !already_focused && let Some(runtime) = self.ready_runtime() {
-            let _ = cditor_session::project_command_dispatch(
-                runtime,
+        if !already_focused && let Some(session) = self.ready_session() {
+            let _ = session.dispatch_with_snapshot(
                 cditor_editor_protocol::command::CommandEnvelope::new(
                     CditorCommand::FocusTableCell {
                         block_id,
@@ -117,7 +114,7 @@ impl CditorV2View {
                 "block={block_id} row={row} col={col} position={position:?} resolved_position={text_position:?}"
             ),
         );
-        if let CditorViewState::Ready(runtime) = &mut self.state {
+        if let CditorViewState::Ready(session) = &self.state {
             let command = if let Some(text_position) = text_position {
                 CditorCommand::FocusTableCell {
                     block_id,
@@ -135,14 +132,15 @@ impl CditorV2View {
                     affinity: cditor_core::edit::TextAffinity::Downstream,
                 }
             };
-            let _ = cditor_session::project_command_dispatch(
-                runtime,
+            let _ = session.dispatch_with_snapshot(
                 cditor_editor_protocol::command::CommandEnvelope::new(
                     command,
                     CommandSource::Toolbar,
                 ),
             );
-            let snapshot = project_table_interaction(runtime, Some(block_id));
+            let Ok(snapshot) = session.table_interaction(Some(block_id)) else {
+                return;
+            };
             let payload_state = snapshot
                 .requested_table
                 .map(|table| {
@@ -175,15 +173,15 @@ impl CditorV2View {
         let position = pointer.map(|(position, _)| position);
         let click_count = pointer.map(|(_, click_count)| click_count).unwrap_or(1);
         self.focus_table_cell_from_gui(block_id, row, col, position, window, cx);
-        let surface_version = self.ready_runtime_ref().and_then(|runtime| {
-            project_surface_version(
-                runtime,
-                SurfaceId::TableCell {
+        let surface_version = self.ready_session().and_then(|session| {
+            session
+                .surface_version(SurfaceId::TableCell {
                     block_id,
                     row,
                     column: col,
-                },
-            )
+                })
+                .ok()
+                .flatten()
         });
         if let Some(kind) = crate::app::text_hit::selection_kind_for_click_count(click_count)
             && let Some(position) = position
@@ -193,26 +191,23 @@ impl CditorV2View {
             let local_x = f32::from(position.x - cache.bounds.left());
             let local_y = f32::from(position.y - cache.bounds.top());
             let selection = cache.snapshot.selection_at_point(local_x, local_y, kind);
-            if let Some(runtime) = self.ready_runtime() {
-                let _ = cditor_session::project_command_dispatch(
-                    runtime,
-                    CommandEnvelope::new(
-                        CditorCommand::SetTableCellSelection {
-                            block_id,
-                            row,
-                            col,
-                            anchor_offset: selection.anchor.offset,
-                            focus_offset: selection.focus.offset,
-                            focus_affinity: selection.focus.affinity,
-                        },
-                        CommandSource::Toolbar,
-                    ),
-                );
+            if let Some(session) = self.ready_session() {
+                let _ = session.dispatch_with_snapshot(CommandEnvelope::new(
+                    CditorCommand::SetTableCellSelection {
+                        block_id,
+                        row,
+                        col,
+                        anchor_offset: selection.anchor.offset,
+                        focus_offset: selection.focus.offset,
+                        focus_affinity: selection.focus.affinity,
+                    },
+                    CommandSource::Toolbar,
+                ));
             }
         }
         let anchor_position = self
-            .ready_runtime_ref()
-            .and_then(|runtime| project_table_interaction(runtime, None).focused_cell)
+            .ready_session()
+            .and_then(|session| session.table_interaction(None).ok()?.focused_cell)
             .filter(|focused| (focused.block_id, focused.row, focused.col) == (block_id, row, col))
             .map(|focused| (focused.offset, focused.affinity))
             .unwrap_or((0, cditor_core::edit::TextAffinity::Downstream));
@@ -251,10 +246,9 @@ impl CditorV2View {
         else {
             return;
         };
-        let changed = self.ready_runtime().is_some_and(|runtime| {
-            cditor_session::project_command_dispatch(
-                runtime,
-                CommandEnvelope::new(
+        let changed = self.ready_session().is_some_and(|session| {
+            session
+                .dispatch_with_snapshot(CommandEnvelope::new(
                     CditorCommand::SetTableCellSelection {
                         block_id,
                         row,
@@ -264,9 +258,8 @@ impl CditorV2View {
                         focus_affinity: focus_position.affinity,
                     },
                     CommandSource::Toolbar,
-                ),
-            )
-            .is_ok_and(|snapshot| snapshot.outcome.changed())
+                ))
+                .is_ok_and(|snapshot| snapshot.outcome.changed())
         });
         if changed {
             cx.notify();
@@ -499,40 +492,45 @@ impl CditorV2View {
 
     pub(in crate::app) fn selected_table_range(&self) -> Option<(BlockId, TableRange)> {
         if let Some(selection) = self.projected_table_cell_selection() {
-            let range = project_table_range(
-                self.ready_runtime_ref()?,
-                selection.block_id,
-                TableRangeRequest::Cell {
-                    row: selection.row,
-                    col: selection.col,
-                },
-            )?;
+            let range = self
+                .ready_session()?
+                .table_range(
+                    selection.block_id,
+                    TableRangeRequest::Cell {
+                        row: selection.row,
+                        col: selection.col,
+                    },
+                )
+                .ok()
+                .flatten()?;
             return Some((selection.block_id, range));
         }
         if let Some(selection) = self.projected_table_range_selection() {
-            let runtime = self.ready_runtime_ref()?;
-            return project_table_range(
-                runtime,
-                selection.block_id,
-                TableRangeRequest::Range(selection.range),
-            )
-            .map(|range| (selection.block_id, range));
+            let session = self.ready_session()?;
+            return session
+                .table_range(
+                    selection.block_id,
+                    TableRangeRequest::Range(selection.range),
+                )
+                .ok()
+                .flatten()
+                .map(|range| (selection.block_id, range));
         }
         let selection = self.projected_table_axis_selection()?;
-        let runtime = self.ready_runtime_ref()?;
+        let session = self.ready_session()?;
         let range = match selection.axis {
-            TableAxis::Row => project_table_range(
-                runtime,
-                selection.block_id,
-                TableRangeRequest::Row(selection.index),
-            ),
-            TableAxis::Column => project_table_range(
-                runtime,
+            TableAxis::Row => {
+                session.table_range(selection.block_id, TableRangeRequest::Row(selection.index))
+            }
+            TableAxis::Column => session.table_range(
                 selection.block_id,
                 TableRangeRequest::Column(selection.index),
             ),
         };
-        range.map(|range| (selection.block_id, range))
+        range
+            .ok()
+            .flatten()
+            .map(|range| (selection.block_id, range))
     }
 }
 

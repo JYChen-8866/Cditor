@@ -136,20 +136,26 @@ fn keyboard_navigation_consumes_parley_layout_cache() {
         },
     );
 
+    let session = cditor_session::EditorSession::new(runtime, false).into_handle();
     assert!(
         move_caret_with_parley(
             &layouts,
             &Default::default(),
             &mut None,
-            &mut runtime,
+            &session,
             ParleyMoveCommand::NextVisual,
             false,
         )
         .unwrap()
     );
-    let position = runtime.caret_position_for_block(1).unwrap();
-    assert!(position.offset > 0);
-    assert!(text.is_char_boundary(position.offset));
+    let offset = session
+        .text_block_context(1)
+        .unwrap()
+        .unwrap()
+        .caret
+        .unwrap();
+    assert!(offset > 0);
+    assert!(text.is_char_boundary(offset));
 }
 
 #[test]
@@ -199,13 +205,14 @@ fn repeated_vertical_navigation_preserves_original_x_across_a_short_line() {
         ),
     );
     let mut preferred_x = None;
+    let session = cditor_session::EditorSession::new(runtime, false).into_handle();
 
     assert!(
         move_caret_with_parley(
             &layouts,
             &Default::default(),
             &mut preferred_x,
-            &mut runtime,
+            &session,
             ParleyMoveCommand::NextLine,
             false,
         )
@@ -217,19 +224,27 @@ fn repeated_vertical_navigation_preserves_original_x_across_a_short_line() {
             &layouts,
             &Default::default(),
             &mut preferred_x,
-            &mut runtime,
+            &session,
             ParleyMoveCommand::NextLine,
             false,
         )
         .unwrap()
     );
-    assert!(runtime.caret_offset_for_block(1).unwrap() >= 20);
+    assert!(
+        session
+            .text_block_context(1)
+            .unwrap()
+            .unwrap()
+            .caret
+            .unwrap()
+            >= 20
+    );
 
     move_caret_with_parley(
         &layouts,
         &Default::default(),
         &mut preferred_x,
-        &mut runtime,
+        &session,
         ParleyMoveCommand::PreviousVisual,
         false,
     )

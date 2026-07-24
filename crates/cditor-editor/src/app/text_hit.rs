@@ -1,6 +1,7 @@
 use gpui::{Pixels, Point};
 
 use cditor_core::ids::{BlockId, SurfaceId};
+#[cfg(test)]
 use cditor_runtime::DocumentRuntime;
 use cditor_session::SurfaceVersionSnapshot;
 
@@ -71,8 +72,8 @@ impl CditorV2View {
         surface_id: SurfaceId,
         position: Point<Pixels>,
     ) -> Option<ParleyTextPosition> {
-        let runtime = self.ready_runtime_ref()?;
-        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        let session = self.ready_session()?;
+        let current = session.surface_version(surface_id).ok().flatten()?;
         let cache = self.current_text_surface_layout_cache(current)?;
         Some(platform_text_position_for_point(cache, position))
     }
@@ -82,14 +83,17 @@ impl CditorV2View {
         block_id: BlockId,
         position: Point<Pixels>,
     ) -> Option<ParleyTextPosition> {
-        let runtime = self.ready_runtime_ref()?;
-        let current = cditor_session::project_surface_version(runtime, SurfaceId::Block(block_id))?;
+        let session = self.ready_session()?;
+        let current = session
+            .surface_version(SurfaceId::Block(block_id))
+            .ok()
+            .flatten()?;
         if let Some(cache) = self.current_text_layout_cache(current, block_id) {
             return Some(platform_text_position_for_point(cache, position));
         }
         record_synchronous_geometry_fallback();
         let fallback =
-            self.fallback_text_position_for_block_at_position(runtime, block_id, position);
+            self.fallback_text_position_for_block_at_position(session, block_id, position);
         if fallback.is_none() {
             record_unavailable_geometry();
         }
@@ -111,13 +115,13 @@ impl CditorV2View {
         col: usize,
         position: Point<Pixels>,
     ) -> Option<ParleyTextPosition> {
-        let runtime = self.ready_runtime_ref()?;
+        let session = self.ready_session()?;
         let surface_id = SurfaceId::TableCell {
             block_id,
             row,
             column: col,
         };
-        let current = cditor_session::project_surface_version(runtime, surface_id)?;
+        let current = session.surface_version(surface_id).ok().flatten()?;
         let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col) else {
             record_unavailable_geometry();
             return None;
@@ -127,7 +131,7 @@ impl CditorV2View {
 
     fn fallback_text_position_for_block_at_position(
         &self,
-        runtime: &DocumentRuntime,
+        session: &cditor_session::EditorSessionHandle,
         block_id: BlockId,
         position: Point<Pixels>,
     ) -> Option<ParleyTextPosition> {
@@ -136,7 +140,7 @@ impl CditorV2View {
             .iter()
             .find(|rect| rect.block_id == block_id)?;
         let viewport_origin = self.infer_document_viewport_origin()?;
-        let payload = runtime.block_payload_record(block_id)?;
+        let payload = session.loaded_payload_record(block_id).ok().flatten()?;
         let spans = match &payload.payload {
             cditor_core::rich_text::BlockPayload::RichText { spans } => spans.clone(),
             cditor_core::rich_text::BlockPayload::Code { text, .. } => {
@@ -157,13 +161,17 @@ impl CditorV2View {
             rect.document_top,
             rect.text_origin_x_in_block_px,
             rect.text_origin_y_in_block_px,
-            cditor_session::project_layout_viewport(runtime).global_scroll_top,
+            session.layout_viewport().ok()?.global_scroll_top,
         );
         let input = RichTextLayoutInput {
             block_id,
             surface_id: crate::text::TextLayoutSurfaceId::Block(block_id),
             content_version: payload.content_version,
-            layout_version: runtime.block_layout_version(block_id)?,
+            layout_version: session
+                .surface_version(SurfaceId::Block(block_id))
+                .ok()
+                .flatten()?
+                .layout_version,
             kind: payload.kind,
             text_align: cditor_core::rich_text::TextAlign::Start,
             spans,
@@ -178,19 +186,23 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn infer_document_viewport_origin(&self) -> Option<FallbackViewportOrigin> {
-        let runtime = self.ready_runtime_ref()?;
-        let focused = runtime.focused_block_id().and_then(|block_id| {
-            viewport_origin_for_block(
-                runtime,
-                &self.projected_block_rects,
-                &self.text_layouts,
-                block_id,
-            )
-        });
+        let session = self.ready_session()?;
+        let focused = session
+            .document_snapshot()
+            .ok()
+            .and_then(|snapshot| snapshot.focused_block_id)
+            .and_then(|block_id| {
+                viewport_origin_for_block(
+                    session,
+                    &self.projected_block_rects,
+                    &self.text_layouts,
+                    block_id,
+                )
+            });
         focused.or_else(|| {
             self.projected_block_rects.iter().find_map(|rect| {
                 viewport_origin_for_block(
-                    runtime,
+                    session,
                     &self.projected_block_rects,
                     &self.text_layouts,
                     rect.block_id,
@@ -201,20 +213,26 @@ impl CditorV2View {
 }
 
 fn viewport_origin_for_block(
-    runtime: &DocumentRuntime,
+    session: &cditor_session::EditorSessionHandle,
     rects: &[crate::app::interaction::geometry::ProjectedBlockRect],
     layouts: &std::collections::HashMap<BlockId, RichTextPlatformLayout>,
     block_id: BlockId,
 ) -> Option<FallbackViewportOrigin> {
     let cache = layouts.get(&block_id)?;
     let rect = rects.iter().find(|rect| rect.block_id == block_id)?;
-    if runtime.block_content_version(block_id)? != cache.content_version {
+    if session
+        .surface_version(SurfaceId::Block(block_id))
+        .ok()
+        .flatten()?
+        .content_version
+        != cache.content_version
+    {
         return None;
     }
     Some(FallbackViewportOrigin {
         x: f32::from(cache.bounds.left()) as f64 - rect.text_origin_x_in_block_px,
         y: f32::from(cache.bounds.top()) as f64 - rect.document_top
-            + cditor_session::project_layout_viewport(runtime).global_scroll_top
+            + session.layout_viewport().ok()?.global_scroll_top
             - rect.text_origin_y_in_block_px,
     })
 }

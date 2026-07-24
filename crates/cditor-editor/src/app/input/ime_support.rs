@@ -5,12 +5,14 @@ use gpui::UTF16Selection;
 
 use cditor_core::ids::BlockId;
 use cditor_runtime::{
-    DocumentRuntime, InputSessionIdentity, RealtimeInput, RealtimeInputOutcome,
-    RealtimeInputRequest,
+    InputSessionIdentity, RealtimeInput, RealtimeInputOutcome, RealtimeInputRequest,
 };
-use cditor_session::{
-    InputContextSnapshot, SessionRealtimeError, project_input_context, project_realtime_input,
-};
+use cditor_session::{EditorSessionHandle, InputContextSnapshot, SessionRealtimeError};
+
+#[cfg(test)]
+use cditor_runtime::DocumentRuntime;
+#[cfg(test)]
+use cditor_session::project_input_context;
 
 use crate::app::cditor_v2_view::GuiPlatformInputTarget;
 use crate::app::input_trace::trace_input;
@@ -38,12 +40,14 @@ impl InputContextSource for DocumentRuntime {
 }
 
 pub(super) fn apply_platform_text_replacement(
-    runtime: &mut DocumentRuntime,
+    session: &EditorSessionHandle,
     expected: InputSessionIdentity,
     range: Option<Range<usize>>,
     text: &str,
 ) -> Result<RealtimeInputOutcome, SessionRealtimeError> {
-    let context = project_input_context(runtime);
+    let context = session
+        .input_context()
+        .map_err(SessionRealtimeError::Protocol)?;
     let has_active_selection = context.has_active_selection;
     let route = if text.is_empty() && has_active_selection {
         "delete_active_selection"
@@ -61,14 +65,10 @@ pub(super) fn apply_platform_text_replacement(
             context.selected_range,
         ),
     );
-    let result = project_realtime_input(
-        runtime,
-        RealtimeInputRequest {
-            expected,
-            input: RealtimeInput::ReplaceText { range, text },
-        },
-        false,
-    );
+    let result = session.apply_realtime_input(RealtimeInputRequest {
+        expected,
+        input: RealtimeInput::ReplaceText { range, text },
+    });
     trace_input(
         "platform_text_replacement.end",
         format_args!("route={route} result={result:?}"),
@@ -77,17 +77,13 @@ pub(super) fn apply_platform_text_replacement(
 }
 
 pub(super) fn apply_platform_unmark(
-    runtime: &mut DocumentRuntime,
+    session: &EditorSessionHandle,
     expected: InputSessionIdentity,
 ) -> Result<RealtimeInputOutcome, SessionRealtimeError> {
-    project_realtime_input(
-        runtime,
-        RealtimeInputRequest {
-            expected,
-            input: RealtimeInput::UnmarkComposition,
-        },
-        false,
-    )
+    session.apply_realtime_input(RealtimeInputRequest {
+        expected,
+        input: RealtimeInput::UnmarkComposition,
+    })
 }
 
 pub(in crate::app) fn platform_input_target_allows<S: InputContextSource + ?Sized>(
@@ -254,22 +250,11 @@ mod tests {
         platform_input_geometry_allows, platform_input_target_allows,
     };
     use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
-    use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
     use cditor_runtime::{DocumentRuntime, RealtimeInput, RealtimeInputRequest};
     use gpui::{point, px, size};
 
     use crate::app::GuiPlatformInputTarget;
     use crate::text::test_platform_layout;
-
-    fn undo(runtime: &mut DocumentRuntime) -> bool {
-        runtime
-            .dispatch(CommandEnvelope::new(
-                EditorCommand::Undo,
-                CommandSource::Ime,
-            ))
-            .unwrap()
-            .changed()
-    }
 
     fn update_composition(runtime: &mut DocumentRuntime, text: &str) {
         let expected = runtime.input_session_identity().unwrap();
@@ -307,15 +292,26 @@ mod tests {
         crate::test_support::focus_block_at_offset(&mut runtime, 1, 1);
 
         let expected = runtime.input_session_identity().unwrap();
+        let session = cditor_session::EditorSession::new(runtime, false).into_handle();
         assert!(
-            apply_platform_text_replacement(&mut runtime, expected, None, "中")
+            apply_platform_text_replacement(&session, expected, None, "中")
                 .unwrap()
                 .document_changed
         );
-        assert_eq!(runtime.focused_text(), Some("a中b"));
-        assert!(undo(&mut runtime));
-        assert_eq!(runtime.focused_text(), Some("ab"));
-        assert!(!undo(&mut runtime));
+        assert_eq!(
+            session.block_plain_text(1).unwrap().as_deref(),
+            Some("a中b")
+        );
+        assert!(
+            session
+                .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::EditorCommand::Undo,
+                    cditor_editor_protocol::command::CommandSource::Automation
+                ))
+                .unwrap()
+                .changed()
+        );
+        assert_eq!(session.block_plain_text(1).unwrap().as_deref(), Some("ab"));
     }
 
     #[test]
@@ -332,16 +328,30 @@ mod tests {
         crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 1, 3);
 
         let expected = runtime.input_session_identity().unwrap();
+        let session = cditor_session::EditorSession::new(runtime, false).into_handle();
         assert!(
-            apply_platform_text_replacement(&mut runtime, expected, None, "X")
+            apply_platform_text_replacement(&session, expected, None, "X")
                 .unwrap()
                 .document_changed
         );
-        assert_eq!(runtime.focused_text(), Some("aXd"));
-        assert_eq!(runtime.caret_offset_for_block(1), Some(2));
-        assert!(undo(&mut runtime));
-        assert_eq!(runtime.focused_text(), Some("abcd"));
-        assert!(!undo(&mut runtime));
+        assert_eq!(session.block_plain_text(1).unwrap().as_deref(), Some("aXd"));
+        assert_eq!(
+            session.text_block_context(1).unwrap().unwrap().caret,
+            Some(2)
+        );
+        assert!(
+            session
+                .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::EditorCommand::Undo,
+                    cditor_editor_protocol::command::CommandSource::Automation
+                ))
+                .unwrap()
+                .changed()
+        );
+        assert_eq!(
+            session.block_plain_text(1).unwrap().as_deref(),
+            Some("abcd")
+        );
     }
 
     #[test]
@@ -359,15 +369,27 @@ mod tests {
         update_composition(&mut runtime, "中");
 
         let expected = runtime.input_session_identity().unwrap();
+        let session = cditor_session::EditorSession::new(runtime, false).into_handle();
         assert!(
-            apply_platform_unmark(&mut runtime, expected)
+            apply_platform_unmark(&session, expected)
                 .unwrap()
                 .document_changed
         );
-        assert_eq!(runtime.focused_text(), Some("a中b"));
-        assert!(runtime.active_composition().is_none());
-        assert!(undo(&mut runtime));
-        assert_eq!(runtime.focused_text(), Some("ab"));
+        assert_eq!(
+            session.block_plain_text(1).unwrap().as_deref(),
+            Some("a中b")
+        );
+        assert!(session.input_context().unwrap().composition.is_none());
+        assert!(
+            session
+                .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    cditor_editor_protocol::command::EditorCommand::Undo,
+                    cditor_editor_protocol::command::CommandSource::Automation
+                ))
+                .unwrap()
+                .changed()
+        );
+        assert_eq!(session.block_plain_text(1).unwrap().as_deref(), Some("ab"));
     }
 
     #[test]
@@ -448,14 +470,15 @@ mod tests {
         crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 3, 1);
 
         let expected = runtime.input_session_identity().unwrap();
+        let session = cditor_session::EditorSession::new(runtime, false).into_handle();
         assert!(
-            apply_platform_text_replacement(&mut runtime, expected, Some(1..1), "")
+            apply_platform_text_replacement(&session, expected, Some(1..1), "")
                 .unwrap()
                 .document_changed
         );
-        assert_eq!(runtime.focused_text(), Some("ad"));
-        assert_eq!(runtime.projection_for_window().blocks.len(), 1);
-        assert!(!runtime.has_active_selection());
+        assert_eq!(session.block_plain_text(1).unwrap().as_deref(), Some("ad"));
+        assert_eq!(session.document_snapshot().unwrap().block_count, 1);
+        assert!(!session.input_context().unwrap().has_active_selection);
     }
 
     #[test]
@@ -472,13 +495,17 @@ mod tests {
         crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 1, 3);
 
         let expected = runtime.input_session_identity().unwrap();
+        let session = cditor_session::EditorSession::new(runtime, false).into_handle();
         assert!(
-            apply_platform_text_replacement(&mut runtime, expected, Some(1..3), "")
+            apply_platform_text_replacement(&session, expected, Some(1..3), "")
                 .unwrap()
                 .document_changed
         );
-        assert_eq!(runtime.focused_text(), Some("ad"));
-        assert_eq!(runtime.caret_offset_for_block(1), Some(1));
-        assert!(!runtime.has_active_selection());
+        assert_eq!(session.block_plain_text(1).unwrap().as_deref(), Some("ad"));
+        assert_eq!(
+            session.text_block_context(1).unwrap().unwrap().caret,
+            Some(1)
+        );
+        assert!(!session.input_context().unwrap().has_active_selection);
     }
 }

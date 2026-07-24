@@ -43,8 +43,8 @@ impl CditorV2View {
             current_width_px: current_width_px.clamp(max_width_px * 0.2, max_width_px),
             max_width_px,
         });
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+        if let CditorViewState::Ready(session) = &self.state {
+            let _ = session.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
                 cditor_editor_protocol::command::CditorCommand::FocusBlock { block_id },
                 cditor_editor_protocol::command::CommandSource::Toolbar,
             ));

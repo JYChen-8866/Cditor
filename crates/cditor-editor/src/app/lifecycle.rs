@@ -14,7 +14,7 @@ use crate::persistence::{
     DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline, schedule_storage_autosave,
 };
 use cditor_runtime::DocumentRuntime;
-use cditor_storage::StorageSession;
+use cditor_session::EditorSession;
 
 impl CditorV2View {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -35,36 +35,39 @@ impl CditorV2View {
         readonly: bool,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::from_runtime_with_storage_options(runtime, show_debug, readonly, None, cx)
+        Self::from_runtime_with_persistence_options(runtime, show_debug, readonly, None, cx)
     }
 
-    pub fn from_runtime_with_storage_options(
+    pub fn from_runtime_with_persistence_options(
         runtime: DocumentRuntime,
         show_debug: bool,
         readonly: bool,
-        storage_session: Option<StorageSession>,
+        persistence: Option<PersistencePipeline>,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::from_runtime_with_storage_options_and_autosave(
+        Self::from_runtime_with_persistence_options_and_autosave(
             runtime,
             show_debug,
             readonly,
-            storage_session,
+            persistence,
             Some(DEFAULT_STORAGE_SAVE_DEBOUNCE),
             cx,
         )
     }
 
-    pub fn from_runtime_with_storage_options_and_autosave(
+    pub fn from_runtime_with_persistence_options_and_autosave(
         runtime: DocumentRuntime,
         show_debug: bool,
         readonly: bool,
-        storage_session: Option<StorageSession>,
-        autosave_interval: Option<Duration>,
+        persistence: Option<PersistencePipeline>,
+        _autosave_interval: Option<Duration>,
         cx: &mut Context<Self>,
     ) -> Self {
+        let persistence = persistence.unwrap_or_else(PersistencePipeline::disabled);
         Self {
-            state: CditorViewState::Ready(Box::new(runtime)),
+            state: CditorViewState::Ready(
+                EditorSession::with_persistence(runtime, readonly, persistence).into_handle(),
+            ),
             focus: cx.focus_handle(),
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
@@ -119,15 +122,11 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            storage_persistence: storage_session
-                .map(|session| PersistencePipeline::for_session(session, autosave_interval))
-                .unwrap_or_else(PersistencePipeline::disabled),
             undo_spill_in_flight: false,
             history_hydration_in_flight: None,
             selection_materialization_in_flight: None,
             undo_cleanup_in_flight: false,
             payload_window_load_scheduler: Default::default(),
-            autosave_interval,
             platform_input_target: None,
             platform_input_session_identity: None,
             platform_input_layout_identity: None,
@@ -143,7 +142,7 @@ impl CditorV2View {
         message: impl Into<String>,
         show_debug: bool,
         readonly: bool,
-        autosave_interval: Option<Duration>,
+        _autosave_interval: Option<Duration>,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
@@ -204,13 +203,11 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            storage_persistence: PersistencePipeline::disabled(),
             undo_spill_in_flight: false,
             history_hydration_in_flight: None,
             selection_materialization_in_flight: None,
             undo_cleanup_in_flight: false,
             payload_window_load_scheduler: Default::default(),
-            autosave_interval,
             platform_input_target: None,
             platform_input_session_identity: None,
             platform_input_layout_identity: None,
@@ -290,13 +287,11 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            storage_persistence: PersistencePipeline::disabled(),
             undo_spill_in_flight: false,
             history_hydration_in_flight: None,
             selection_materialization_in_flight: None,
             undo_cleanup_in_flight: false,
             payload_window_load_scheduler: Default::default(),
-            autosave_interval: None,
             platform_input_target: None,
             platform_input_session_identity: None,
             platform_input_layout_identity: None,
@@ -305,15 +300,19 @@ impl CditorV2View {
     }
 
     pub fn apply_loaded_runtime(&mut self, runtime: DocumentRuntime) {
-        self.apply_loaded_runtime_with_storage(runtime, None);
+        self.apply_loaded_runtime_with_persistence(runtime, None);
     }
 
-    pub fn apply_loaded_runtime_with_storage(
+    pub fn apply_loaded_runtime_with_persistence(
         &mut self,
         runtime: DocumentRuntime,
-        storage_session: Option<StorageSession>,
+        persistence: Option<PersistencePipeline>,
     ) {
-        self.state.apply_loaded_runtime(runtime);
+        let persistence = persistence.unwrap_or_else(PersistencePipeline::disabled);
+        self.state.apply_loaded_session(
+            EditorSession::with_persistence(runtime, self.requested_readonly, persistence)
+                .into_handle(),
+        );
         self.readonly_reason = None;
         self.readonly = self.requested_readonly;
         self.dirty = false;
@@ -350,31 +349,31 @@ impl CditorV2View {
         self.table_reorder_drag = None;
         self.table_hscroll_drag = None;
         self.projected_block_rects.clear();
-        self.storage_persistence
-            .set_session(storage_session, self.autosave_interval);
-        if let CditorViewState::Ready(runtime) = &self.state {
-            self.storage_persistence.mark_loaded_structure_version(
-                cditor_session::project_persistence_runtime_snapshot(runtime).structure_version,
-            );
+        if let CditorViewState::Ready(session) = &self.state
+            && let Ok(snapshot) = session.persistence_runtime_snapshot()
+        {
+            let _ = session.mark_loaded_structure_version(snapshot.structure_version);
         }
         self.save_status = save_status_for_mode(self.readonly);
     }
 
-    pub fn apply_recovered_runtime_with_storage(
+    pub fn apply_recovered_runtime_with_persistence(
         &mut self,
         runtime: DocumentRuntime,
-        storage_session: Option<StorageSession>,
+        persistence: Option<PersistencePipeline>,
         recovered_transactions: usize,
         cx: &mut Context<Self>,
     ) {
-        self.apply_loaded_runtime_with_storage(runtime, storage_session);
+        self.apply_loaded_runtime_with_persistence(runtime, persistence);
         if recovered_transactions == 0 || self.readonly {
             return;
         }
         self.dirty = true;
         self.save_status = EditorSaveStatus::Dirty;
-        self.storage_persistence.mark_dirty();
-        schedule_storage_autosave(&mut self.storage_persistence, cx);
+        if let Some(session) = self.ready_session() {
+            let _ = session.mark_persistence_dirty();
+        }
+        schedule_storage_autosave(self, cx);
     }
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {

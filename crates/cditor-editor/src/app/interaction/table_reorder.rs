@@ -64,9 +64,8 @@ impl CditorV2View {
             track_sizes_px,
             exceeded_threshold: false,
         });
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = cditor_session::project_command_dispatch(
-                runtime,
+        if let CditorViewState::Ready(session) = &self.state {
+            let _ = session.dispatch_with_snapshot(
                 cditor_editor_protocol::command::CommandEnvelope::new(
                     cditor_editor_protocol::command::CditorCommand::FocusBlock { block_id },
                     cditor_editor_protocol::command::CommandSource::Toolbar,

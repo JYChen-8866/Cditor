@@ -9,8 +9,6 @@ use cditor_editor_protocol::command::{
     CaretDirection, CditorCommand, CommandCatalog, CommandEnvelope, CommandOutcome,
     CommandQueryState, CommandSource, CommandUnavailableReason,
 };
-use cditor_session::project_command_query;
-use cditor_session::{project_block_plain_text, project_command_dispatch, project_end_input_batch};
 
 impl CditorV2View {
     pub(in crate::app) fn apply_input_command(
@@ -62,14 +60,14 @@ impl CditorV2View {
                 .map(|changed| CommandOutcome::from_document_change(changed, None));
         }
 
-        if let Some(runtime) = self.ready_runtime() {
-            project_end_input_batch(runtime);
+        if let Some(session) = self.ready_session() {
+            let _ = session.end_input_batch();
         }
 
         if let CditorCommand::CopyBlockText { block_id } = command {
             let text = self
-                .ready_runtime_ref()
-                .and_then(|runtime| project_block_plain_text(runtime, block_id))
+                .ready_session()
+                .and_then(|session| session.block_plain_text(block_id).ok().flatten())
                 .ok_or(CditorError::BlockNotFound(block_id))?;
             cx.write_to_clipboard(ClipboardItem::new_string(text));
             return Ok(CommandOutcome::applied_side_effect(false));
@@ -77,11 +75,11 @@ impl CditorV2View {
 
         if runtime_dispatches(&command) {
             let mutates_document = command_mutates_document(&command);
-            let dispatched = project_command_dispatch(
-                self.ready_runtime().ok_or(CditorError::NotReady)?,
-                CommandEnvelope::new(command.clone(), source),
-            )
-            .map_err(protocol_command_error)?;
+            let dispatched = self
+                .ready_session()
+                .ok_or(CditorError::NotReady)?
+                .dispatch_with_snapshot(CommandEnvelope::new(command.clone(), source))
+                .map_err(protocol_command_error)?;
             if dispatched.revision != dispatched.before_revision && mutates_document {
                 self.mark_dirty_at_revision(
                     change_origin_for_source(source),
@@ -101,15 +99,23 @@ impl CditorV2View {
             return Ok(outcome);
         }
         if let Some(gui_command) = gui_handler_for_command(&command) {
-            let before_revision = self.ready_runtime_ref().map(|runtime| runtime.revision());
+            let before = self
+                .ready_session()
+                .and_then(|session| session.document_snapshot().ok());
+            let before_revision = before.as_ref().map(|snapshot| snapshot.revision);
             let before_selection = self
-                .ready_runtime_ref()
-                .and_then(|runtime| runtime.document_selection_snapshot());
+                .ready_session()
+                .and_then(|session| session.document_snapshot().ok())
+                .and_then(|snapshot| snapshot.selection);
             self.execute_gui_input_command_handler(gui_command, cx);
-            let after_revision = self.ready_runtime_ref().map(|runtime| runtime.revision());
+            let after = self
+                .ready_session()
+                .and_then(|session| session.document_snapshot().ok());
+            let after_revision = after.as_ref().map(|snapshot| snapshot.revision);
             let after_selection = self
-                .ready_runtime_ref()
-                .and_then(|runtime| runtime.document_selection_snapshot());
+                .ready_session()
+                .and_then(|session| session.document_snapshot().ok())
+                .and_then(|snapshot| snapshot.selection);
             let changed = before_revision != after_revision;
             let selection_changed = before_selection != after_selection;
             let side_effect_only = matches!(command, CditorCommand::CopySelection);
@@ -126,10 +132,12 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn query_command(&self, command: &CditorCommand) -> CommandQueryState {
-        let Some(runtime) = self.ready_runtime_ref() else {
+        let Some(session) = self.ready_session() else {
             return CommandQueryState::disabled(CommandUnavailableReason::RuntimeNotReady);
         };
-        project_command_query(runtime, command, self.readonly)
+        session.query_editor_command(command).unwrap_or_else(|_| {
+            CommandQueryState::disabled(CommandUnavailableReason::RuntimeNotReady)
+        })
     }
 }
 

@@ -18,8 +18,8 @@ impl CditorV2View {
         }
         window.focus(&self.focus, cx);
         let command = self
-            .ready_runtime_ref()
-            .and_then(|runtime| cditor_session::project_text_block_context(runtime, block_id))
+            .ready_session()
+            .and_then(|session| session.text_block_context(block_id).ok().flatten())
             .and_then(|context| {
                 matches!(
                     context.kind,
@@ -36,9 +36,8 @@ impl CditorV2View {
         let Some(command) = command else {
             return false;
         };
-        if let Some(runtime) = self.ready_runtime() {
-            let _ = cditor_session::project_command_dispatch(
-                runtime,
+        if let Some(session) = self.ready_session() {
+            let _ = session.dispatch_with_snapshot(
                 cditor_editor_protocol::command::CommandEnvelope::new(
                     cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
                         selection: cditor_core::edit::DocumentSelection::caret(
@@ -54,10 +53,8 @@ impl CditorV2View {
             Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied => {
                 let cached_block_ids = self.text_layouts.keys().copied().collect::<Vec<_>>();
                 let visible_blocks = self
-                    .ready_runtime_ref()
-                    .map(|runtime| {
-                        cditor_session::project_visible_block_subset(runtime, &cached_block_ids)
-                    })
+                    .ready_session()
+                    .and_then(|session| session.visible_block_subset(&cached_block_ids).ok())
                     .unwrap_or_default();
                 self.text_layouts
                     .retain(|candidate, _| visible_blocks.contains(candidate));

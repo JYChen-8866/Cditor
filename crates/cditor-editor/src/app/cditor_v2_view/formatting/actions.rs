@@ -6,9 +6,6 @@ use crate::overlay::{BlockTransformAction, InlineFormatAction};
 use cditor_editor_protocol::command::{
     BlockTransform, CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
 };
-use cditor_session::{
-    project_command_dispatch, project_document_snapshot, project_text_block_context,
-};
 
 use super::super::CditorV2View;
 
@@ -38,15 +35,19 @@ impl CditorV2View {
         let gutter_block_id = (!has_text_selection).then_some(self.gutter_toolbar_block_id);
         if let Some(block_id) = gutter_block_id.flatten() {
             let prepared = self
-                .ready_runtime()
-                .and_then(|runtime| {
-                    let text_len = project_text_block_context(runtime, block_id)?.text.len();
+                .ready_session()
+                .and_then(|session| {
+                    let text_len = session
+                        .text_block_context(block_id)
+                        .ok()
+                        .flatten()?
+                        .text
+                        .len();
                     if text_len == 0 {
                         return Some(false);
                     }
-                    project_command_dispatch(
-                        runtime,
-                        CommandEnvelope::new(
+                    session
+                        .dispatch_with_snapshot(CommandEnvelope::new(
                             CditorCommand::SetDocumentSelection {
                                 selection: cditor_core::edit::DocumentSelection {
                                     anchor: cditor_core::edit::TextPosition::downstream(
@@ -58,9 +59,8 @@ impl CditorV2View {
                                 },
                             },
                             CommandSource::Toolbar,
-                        ),
-                    )
-                    .ok()?;
+                        ))
+                        .ok()?;
                     Some(true)
                 })
                 .unwrap_or(false);
@@ -84,24 +84,26 @@ impl CditorV2View {
         if self.readonly {
             return false;
         }
-        let readonly = self.readonly;
         let focused = self
-            .ready_runtime()
+            .ready_session()
             .ok_or_else(|| "runtime is not ready".to_owned())
-            .and_then(|runtime| {
-                if project_document_snapshot(runtime, readonly).focused_block_id != Some(block_id) {
-                    project_command_dispatch(
-                        runtime,
-                        CommandEnvelope::new(
+            .and_then(|session| {
+                if session
+                    .document_snapshot()
+                    .map_err(|error| error.to_string())?
+                    .focused_block_id
+                    != Some(block_id)
+                {
+                    session
+                        .dispatch_with_snapshot(CommandEnvelope::new(
                             CditorCommand::SetDocumentSelection {
                                 selection: cditor_core::edit::DocumentSelection::caret(
                                     cditor_core::edit::TextPosition::downstream(block_id, 0),
                                 ),
                             },
                             CommandSource::Toolbar,
-                        ),
-                    )
-                    .map_err(|error| error.to_string())?;
+                        ))
+                        .map_err(|error| error.to_string())?;
                 }
                 Ok(())
             });

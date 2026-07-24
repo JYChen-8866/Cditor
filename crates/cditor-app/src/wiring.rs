@@ -128,6 +128,7 @@ fn spawn_storage_cold_start(
     timeout: Duration,
     cx: &mut Context<CditorV2View>,
 ) {
+    let autosave_interval = options.autosave_interval;
     let load_task = cx.background_spawn(async move {
         block_on_storage(async move {
             tokio::time::timeout(timeout, load_runtime_from_options(&options))
@@ -145,9 +146,13 @@ fn spawn_storage_cold_start(
             let _ = view.update(cx, |view, cx| {
                 let schema_access = loaded.schema_access;
                 let recovered_transactions = loaded.recovered_transactions;
-                view.apply_recovered_runtime_with_storage(
+                let persistence = cditor_session::PersistencePipeline::for_session(
+                    loaded.storage_session,
+                    autosave_interval,
+                );
+                view.apply_recovered_runtime_with_persistence(
                     loaded.runtime,
-                    Some(loaded.storage_session),
+                    Some(persistence),
                     recovered_transactions,
                     cx,
                 );

@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use cditor_editor_protocol::ProtocolError;
+use cditor_storage::StorageBackendKind;
 use cditor_storage::{StorageSaveOutcome, StorageSession};
 
 use crate::{
@@ -10,6 +11,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PersistenceSessionSnapshot {
+    pub backend: Option<StorageBackendKind>,
     pub enabled: bool,
     pub saving: bool,
     pub pending_operations: usize,
@@ -32,7 +34,13 @@ pub async fn execute_storage_flush(request: StorageFlushRequest) -> Result<(), S
         .session
         .flush()
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    request
+        .session
+        .prune_undo_blobs(100)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 impl EditorSessionHandle {
@@ -42,6 +50,10 @@ impl EditorSessionHandle {
             .try_borrow()
             .map_err(|_| super::session::busy_error())?;
         Ok(PersistenceSessionSnapshot {
+            backend: session
+                .persistence
+                .session()
+                .map(StorageSession::backend_kind),
             enabled: session.persistence.is_enabled(),
             saving: session.persistence.is_saving(),
             pending_operations: session.persistence.pending_operation_count(),
@@ -53,6 +65,10 @@ impl EditorSessionHandle {
         let mut session = self.try_session_mut()?;
         session.persistence.mark_dirty();
         Ok(PersistenceSessionSnapshot {
+            backend: session
+                .persistence
+                .session()
+                .map(StorageSession::backend_kind),
             enabled: session.persistence.is_enabled(),
             saving: session.persistence.is_saving(),
             pending_operations: session.persistence.pending_operation_count(),

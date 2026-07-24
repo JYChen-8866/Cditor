@@ -1071,6 +1071,7 @@ dependencies = [
  "cditor-ai",
  "cditor-core",
  "cditor-editor-protocol",
+ "cditor-import-export",
  "cditor-runtime",
  "cditor-storage",
  "cditor-viewport",

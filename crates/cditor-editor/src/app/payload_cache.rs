@@ -3,7 +3,6 @@ use std::ops::Range;
 
 use cditor_core::ids::BlockId;
 use cditor_runtime::PayloadCachePolicy;
-use cditor_session::{retry_failed_payload_window, trim_payload_cache};
 use gpui::Context;
 
 use super::cditor_v2_view::{CditorV2View, CditorViewState};
@@ -14,10 +13,14 @@ impl CditorV2View {
         block_range: Range<usize>,
         cx: &mut Context<Self>,
     ) {
-        let CditorViewState::Ready(runtime) = &mut self.state else {
+        let CditorViewState::Ready(session) = &self.state else {
             return;
         };
-        if retry_failed_payload_window(runtime, block_range) == 0 {
+        if session
+            .retry_failed_payload_window(block_range)
+            .unwrap_or_default()
+            == 0
+        {
             return;
         }
         self.payload_window_load_scheduler.reset();
@@ -25,14 +28,21 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn trim_persistent_payload_cache(&mut self) {
-        if !self.storage_persistence.is_enabled() {
+        if !self.ready_session().is_some_and(|session| {
+            session
+                .persistence_snapshot()
+                .is_ok_and(|snapshot| snapshot.enabled)
+        }) {
             return;
         }
         let pins = self.payload_cache_ui_pins();
-        let CditorViewState::Ready(runtime) = &mut self.state else {
+        let CditorViewState::Ready(session) = &self.state else {
             return;
         };
-        let report = trim_payload_cache(runtime, PayloadCachePolicy::persistent_default(), pins);
+        let Ok(report) = session.trim_payload_cache(PayloadCachePolicy::persistent_default(), pins)
+        else {
+            return;
+        };
         for block_id in report.evicted_block_ids {
             self.text_layouts.remove(&block_id);
             self.table_cell_layouts

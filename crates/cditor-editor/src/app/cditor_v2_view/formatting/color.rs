@@ -2,7 +2,6 @@ use std::ops::Range;
 use std::time::Duration;
 
 use cditor_core::rich_text::{InlineColorTarget, InlineMark, InlineSpan};
-use cditor_session::{project_block_attrs, project_document_snapshot};
 
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::overlay::{ActiveColor, ColorMenuAction, PaletteColor};
@@ -76,8 +75,10 @@ impl CditorV2View {
 
     pub(crate) fn open_color_menu_from_gui(&mut self, cx: &mut gpui::Context<Self>) -> bool {
         let has_target = self.gutter_toolbar_block_id.is_some()
-            || self.ready_runtime_ref().is_some_and(|runtime| {
-                project_document_snapshot(runtime, self.readonly).has_document_text_selection
+            || self.ready_session().is_some_and(|session| {
+                session
+                    .document_snapshot()
+                    .is_ok_and(|snapshot| snapshot.has_document_text_selection)
             });
         if self.color_menu_open || !has_target {
             return false;
@@ -111,8 +112,8 @@ impl CditorV2View {
             ),
         );
         let before = gutter_block_id.and_then(|block_id| {
-            self.ready_runtime_ref()
-                .and_then(|runtime| project_block_attrs(runtime, block_id))
+            self.ready_session()
+                .and_then(|session| session.block_attrs(block_id).ok().flatten())
         });
         let command = gutter_block_id.map_or_else(
             || CditorCommand::SetInlineColor {
@@ -130,8 +131,8 @@ impl CditorV2View {
             Ok(outcome) => {
                 let changed = outcome.status == CommandOutcomeStatus::Applied;
                 let after = gutter_block_id.and_then(|block_id| {
-                    self.ready_runtime_ref()
-                        .and_then(|runtime| project_block_attrs(runtime, block_id))
+                    self.ready_session()
+                        .and_then(|session| session.block_attrs(block_id).ok().flatten())
                 });
                 trace_block_color(
                     "apply.finish",

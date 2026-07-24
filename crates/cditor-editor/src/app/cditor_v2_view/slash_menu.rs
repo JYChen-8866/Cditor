@@ -8,15 +8,14 @@ use crate::overlay::{SlashMenuCommand, SlashMenuItem, SlashMenuState};
 use crate::persistence::EditorSaveStatus;
 use crate::text::platform_range_bounds;
 use cditor_runtime::AiRequestPresentation;
-use cditor_session::{project_focused_text_block_context, project_text_block_context};
 
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 impl CditorV2View {
     pub(crate) fn sync_slash_menu_from_runtime(&mut self, cx: &mut Context<Self>) {
         let Some(context) = self
-            .ready_runtime_ref()
-            .and_then(project_focused_text_block_context)
+            .ready_session()
+            .and_then(|session| session.focused_text_block_context().ok().flatten())
         else {
             self.slash_menu = None;
             return;
@@ -140,8 +139,8 @@ impl CditorV2View {
             return false;
         }
         if item.command == Some(SlashMenuCommand::AskAi) {
-            let command = self.ready_runtime_ref().and_then(|runtime| {
-                let context = project_text_block_context(runtime, menu.block_id)?;
+            let command = self.ready_session().and_then(|session| {
+                let context = session.text_block_context(menu.block_id).ok().flatten()?;
                 let caret = context.caret?;
                 Some(CditorCommand::ApplySlashBlock {
                     block_id: menu.block_id,
@@ -169,8 +168,14 @@ impl CditorV2View {
         let kind = item.kind;
         let opens_whiteboard = matches!(kind, cditor_core::rich_text::RichBlockKind::Whiteboard);
         let caret = self
-            .ready_runtime_ref()
-            .and_then(|runtime| project_text_block_context(runtime, menu.block_id)?.caret)
+            .ready_session()
+            .and_then(|session| {
+                session
+                    .text_block_context(menu.block_id)
+                    .ok()
+                    .flatten()?
+                    .caret
+            })
             .unwrap_or(menu.trigger_start);
         let result = self.dispatch_command(
             CditorCommand::ApplySlashBlock {
@@ -211,8 +216,8 @@ impl CditorV2View {
             return (120.0, 120.0);
         };
         let Some(scroll_top) = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_layout_viewport)
+            .ready_session()
+            .and_then(|session| session.layout_viewport().ok())
             .map(|snapshot| snapshot.global_scroll_top)
         else {
             return (120.0, 120.0);
@@ -236,8 +241,8 @@ impl CditorV2View {
             return (120.0, 120.0);
         };
         let Some(scroll_top) = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_layout_viewport)
+            .ready_session()
+            .and_then(|session| session.layout_viewport().ok())
             .map(|snapshot| snapshot.global_scroll_top)
         else {
             return (120.0, 120.0);

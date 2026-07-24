@@ -61,6 +61,27 @@ if grep -R -n -E 'StoragePersistenceState' --include='*.rs' crates/cditor-editor
   exit 1
 fi
 
+if grep -R -n -E 'ready_runtime(_ref)?|\.storage_persistence|storage_persistence[[:space:]]*:' \
+  --include='*.rs' crates/cditor-editor/src | grep -q .; then
+  echo 'error: GPUI Editor must access the document and persistence policy through EditorSessionHandle' >&2
+  exit 1
+fi
+
+if grep -R -n -E 'Ready[[:space:]]*\([[:space:]]*(Box[[:space:]]*<[[:space:]]*)?DocumentRuntime|Ready[[:space:]]*\([[:space:]]*Box::new' \
+  --include='*.rs' crates/cditor-editor/src | grep -q .; then
+  echo 'error: CditorViewState::Ready must contain EditorSessionHandle, not DocumentRuntime' >&2
+  exit 1
+fi
+
+if grep -n -E 'StorageSession' \
+  crates/cditor-editor/src/app/lifecycle.rs \
+  crates/cditor-editor/src/app/cditor_v2_view.rs \
+  crates/cditor-editor/src/app/render.rs \
+  crates/cditor-editor/src/app/sdk.rs | grep -q .; then
+  echo 'error: GPUI View construction and state must not accept or retain StorageSession' >&2
+  exit 1
+fi
+
 if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])cditor-runtime[[:space:]]*=|(^|[[:space:]])cditor-editor[[:space:]]*=|(^|[[:space:]])cditor-whiteboard[[:space:]]*=|(^|[[:space:]])sqlx[[:space:]]*=' crates/cditor-api/Cargo.toml; then
   echo 'error: API contracts must not depend on concrete storage, runtime, editor, whiteboard engine, or SQLx' >&2
   exit 1

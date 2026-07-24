@@ -5,6 +5,7 @@
 //! operations without returning runtime borrows.
 
 mod ai_port;
+mod clipboard_port;
 mod cold_start;
 mod diagnostics_snapshot;
 mod document_snapshot;
@@ -18,12 +19,14 @@ mod persistence_session;
 mod render_port;
 mod selection_materialization_port;
 mod session;
+mod storage_io;
 mod surface_port;
 mod table_port;
 mod toolbar_snapshot;
 mod ui_snapshot;
 
 pub use ai_port::{AiContextSnapshot, project_ai_context, project_ai_session_request};
+pub use clipboard_port::SessionClipboardSnapshot;
 pub use cold_start::{SessionColdStartRequest, SessionColdStartResult, open_editor_session};
 pub use diagnostics_snapshot::{SessionDiagnosticsSnapshot, project_diagnostics_snapshot};
 pub use document_snapshot::{
@@ -81,7 +84,15 @@ pub use session::{
     SessionSnapshot, project_block_plain_text, project_command_dispatch, project_command_query,
     project_end_input_batch, project_realtime_input,
 };
-pub use surface_port::{SurfaceVersionSnapshot, project_surface_version};
+pub use storage_io::{
+    PayloadStorageRequest, UndoBlobDeleteRequest, UndoBlobReadRequest, UndoBlobWriteRequest,
+    execute_payload_load, execute_undo_blob_delete, execute_undo_blob_read,
+    execute_undo_blob_write, run_undo_blob_delete, run_undo_blob_write,
+};
+pub use surface_port::{
+    SurfaceVersionSnapshot, TextSurfaceStateSnapshot, project_surface_version,
+    project_text_surface_state,
+};
 pub use table_port::{
     FocusedTableCellSnapshot, TableInteractionSnapshot, TablePayloadSummary, TableRangeRequest,
     project_table_horizontal_scroll_offset, project_table_interaction, project_table_range,

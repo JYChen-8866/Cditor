@@ -7,9 +7,6 @@ use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use crate::scroll::ScrollbarVisualState;
 use crate::theme::GuiTheme;
-use cditor_session::{
-    project_begin_scrollbar_drag, project_drag_scrollbar, project_finish_scrollbar_drag,
-};
 
 const GUI_SCROLLBAR_WIDTH_PX: f32 = 10.0;
 const GUI_SCROLLBAR_RIGHT_PX: f32 = 8.0;
@@ -69,10 +66,12 @@ impl CditorV2View {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let CditorViewState::Ready(runtime) = &mut self.state else {
+        let CditorViewState::Ready(session) = &self.state else {
             return;
         };
-        let visual = project_begin_scrollbar_drag(runtime);
+        let Ok(visual) = session.start_scrollbar_drag() else {
+            return;
+        };
         if !visual.enabled {
             return;
         }
@@ -87,7 +86,7 @@ impl CditorV2View {
         self.scrollbar_drag = Some(GuiScrollbarDrag {
             pointer_y_offset_in_thumb,
         });
-        let _ = project_drag_scrollbar(runtime, pointer_y - pointer_y_offset_in_thumb);
+        let _ = session.drag_scrollbar(pointer_y - pointer_y_offset_in_thumb);
         cx.stop_propagation();
         cx.notify();
     }
@@ -96,8 +95,8 @@ impl CditorV2View {
         if self.scrollbar_drag.take().is_none() {
             return;
         }
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = project_finish_scrollbar_drag(runtime);
+        if let CditorViewState::Ready(session) = &self.state {
+            let _ = session.end_scrollbar_drag();
         }
         cx.stop_propagation();
         cx.notify();

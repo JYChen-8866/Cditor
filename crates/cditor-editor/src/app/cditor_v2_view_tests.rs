@@ -45,7 +45,9 @@ fn cditor_view_state_can_swap_from_loading_to_ready_or_failed() {
     };
 
     assert!(state.is_loading());
-    state.apply_loaded_runtime(DocumentRuntime::demo());
+    state.apply_loaded_session(
+        cditor_session::EditorSession::new(DocumentRuntime::demo(), false).into_handle(),
+    );
     assert!(state.is_ready());
     state.apply_load_failed("network error");
     assert!(state.is_load_failed());

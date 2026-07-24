@@ -13,8 +13,11 @@ use crate::text::{
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_editor_protocol::command::CaretDirection;
+#[cfg(test)]
 use cditor_import_export::clipboard::ClipboardSelection;
+#[cfg(test)]
 use cditor_runtime::DocumentRuntime;
+use cditor_session::EditorSessionHandle;
 
 impl CditorV2View {
     pub(in crate::app) fn execute_gui_input_command_handler(
@@ -68,8 +71,8 @@ impl CditorV2View {
                 | GuiInputCommand::DeleteBackward
                 | GuiInputCommand::DeleteForward
         ) && let Some(request) = self
-            .ready_runtime_ref()
-            .and_then(DocumentRuntime::selection_materialization_request)
+            .ready_session()
+            .and_then(|session| session.selection_materialization_request().ok().flatten())
             && self.schedule_selection_materialization(command, request, cx)
         {
             return;
@@ -83,9 +86,10 @@ impl CditorV2View {
         let selected_table_axis = self.projected_table_axis_selection();
         let mut deferred_command = None;
         {
-            let CditorViewState::Ready(runtime) = &mut self.state else {
+            let CditorViewState::Ready(session) = &self.state else {
                 return;
             };
+            let runtime = session;
             match command {
                 GuiInputCommand::Ignore | GuiInputCommand::ToggleDebugOverlay => {}
                 GuiInputCommand::SelectAllFocusedText => unreachable!(
@@ -94,41 +98,43 @@ impl CditorV2View {
                 GuiInputCommand::CopySelection => {
                     if let Some((block_id, range)) =
                         selected_table_axis_range(runtime, selected_table_axis)
-                        && let Some(table) = runtime.table_clipboard_for_range(block_id, range)
+                        && let Ok(Some(selection)) =
+                            runtime.table_clipboard_selection(block_id, range)
                     {
+                        let document_id =
+                            runtime.snapshot().ok().map(|snapshot| snapshot.document_id);
                         let (system_text, envelope) =
-                            crate::input::clipboard::envelope_for_selection(
-                                Some(runtime.document_id()),
-                                ClipboardSelection::Table { table: table.table },
-                            );
+                            crate::input::clipboard::envelope_for_selection(document_id, selection);
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
                             system_text,
                             &envelope,
                         ));
-                    } else if let Some(selection) = runtime.clipboard_selection_snapshot() {
+                    } else if let Ok(snapshot) = runtime.clipboard_snapshot()
+                        && let Some(selection) = snapshot.selection
+                    {
                         let (system_text, envelope) =
                             crate::input::clipboard::envelope_for_selection(
-                                Some(runtime.document_id()),
+                                Some(snapshot.document_id),
                                 selection,
                             );
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
                             system_text,
                             &envelope,
                         ));
-                    } else if let Some(text) = runtime.selected_focused_text() {
+                    } else if let Ok(Some(text)) = runtime.selected_text() {
                         cx.write_to_clipboard(ClipboardItem::new_string(text));
                     }
                 }
                 GuiInputCommand::CutSelection => {
                     if let Some((block_id, range)) =
                         selected_table_axis_range(runtime, selected_table_axis)
-                        && let Some(table) = runtime.table_clipboard_for_range(block_id, range)
+                        && let Ok(Some(selection)) =
+                            runtime.table_clipboard_selection(block_id, range)
                     {
+                        let document_id =
+                            runtime.snapshot().ok().map(|snapshot| snapshot.document_id);
                         let (system_text, envelope) =
-                            crate::input::clipboard::envelope_for_selection(
-                                Some(runtime.document_id()),
-                                ClipboardSelection::Table { table: table.table },
-                            );
+                            crate::input::clipboard::envelope_for_selection(document_id, selection);
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
                             system_text,
                             &envelope,
@@ -139,10 +145,12 @@ impl CditorV2View {
                                 range,
                             },
                         );
-                    } else if let Some(selection) = runtime.clipboard_selection_snapshot() {
+                    } else if let Ok(snapshot) = runtime.clipboard_snapshot()
+                        && let Some(selection) = snapshot.selection
+                    {
                         let (system_text, envelope) =
                             crate::input::clipboard::envelope_for_selection(
-                                Some(runtime.document_id()),
+                                Some(snapshot.document_id),
                                 selection,
                             );
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
@@ -151,7 +159,7 @@ impl CditorV2View {
                         ));
                         deferred_command =
                             Some(cditor_editor_protocol::command::EditorCommand::DeleteSelection);
-                    } else if let Some(text) = runtime.selected_focused_text() {
+                    } else if let Ok(Some(text)) = runtime.selected_text() {
                         cx.write_to_clipboard(ClipboardItem::new_string(text));
                         deferred_command =
                             Some(cditor_editor_protocol::command::EditorCommand::DeleteSelection);
@@ -361,8 +369,8 @@ impl CditorV2View {
                 cx,
             );
         }
-        if should_scroll_focus && let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = cditor_session::project_scroll_focused_block_into_view(runtime);
+        if should_scroll_focus && let CditorViewState::Ready(session) = &self.state {
+            let _ = session.ensure_focused_block_visible();
         }
     }
 }
@@ -390,16 +398,22 @@ pub(super) fn mermaid_preview_blocks_command(command: GuiInputCommand) -> bool {
 }
 
 fn selected_table_axis_range(
-    runtime: &DocumentRuntime,
+    session: &EditorSessionHandle,
     selection: Option<TableAxisSelection>,
 ) -> Option<(BlockId, cditor_core::rich_text::TableRange)> {
     let selection = selection?;
     let range = match selection.axis {
-        TableAxis::Row => runtime.table_row_selection_range(selection.block_id, selection.index),
-        TableAxis::Column => {
-            runtime.table_column_selection_range(selection.block_id, selection.index)
-        }
-    }?;
+        TableAxis::Row => session.table_range(
+            selection.block_id,
+            cditor_session::TableRangeRequest::Row(selection.index),
+        ),
+        TableAxis::Column => session.table_range(
+            selection.block_id,
+            cditor_session::TableRangeRequest::Column(selection.index),
+        ),
+    }
+    .ok()
+    .flatten()?;
     Some((selection.block_id, range))
 }
 
@@ -407,11 +421,12 @@ fn move_caret_with_parley(
     text_layouts: &HashMap<BlockId, RichTextPlatformLayout>,
     text_surface_layouts: &HashMap<SurfaceId, RichTextPlatformLayout>,
     preferred_x: &mut Option<(SurfaceId, f32)>,
-    runtime: &mut DocumentRuntime,
+    runtime: &EditorSessionHandle,
     command: ParleyMoveCommand,
     extend_selection: bool,
 ) -> Result<bool, String> {
-    let Some(surface_id) = runtime.focused_text_surface_id() else {
+    let input_context = runtime.input_context().map_err(|error| error.to_string())?;
+    let Some(surface_id) = input_context.target.and_then(|target| target.surface_id()) else {
         return Ok(false);
     };
     let cache = match surface_id {
@@ -425,29 +440,26 @@ fn move_caret_with_parley(
         record_unavailable_geometry();
         return Ok(false);
     };
-    let Some(current) = runtime.text_surface_snapshot(surface_id) else {
+    let Some(current) = runtime
+        .text_surface_state(surface_id)
+        .map_err(|error| error.to_string())?
+    else {
         return Ok(false);
     };
-    if cache.content_version != current.identity.content_version {
+    if cache.content_version != current.snapshot.identity.content_version {
         record_unavailable_geometry();
         return Ok(false);
     }
-    let Some(caret_offset) = runtime.text_surface_caret_offset(surface_id) else {
+    let Some(caret_offset) = current.caret_offset else {
         return Ok(false);
     };
-    let caret_affinity = match surface_id {
-        SurfaceId::Block(block_id) => runtime
-            .caret_position_for_block(block_id)
-            .map(|position| position.affinity)
-            .unwrap_or(TextAffinity::Downstream),
-        _ => TextAffinity::Downstream,
-    };
+    let caret_affinity = current.caret_affinity;
     let layout = &cache.snapshot;
     record_snapshot_geometry(TextGeometryOperation::Navigation);
-    let selected = runtime
-        .input_session_selected_range()
+    let selected = input_context
+        .selected_range
         .unwrap_or(caret_offset..caret_offset);
-    let anchor_offset = if runtime.input_session_selection_reversed() {
+    let anchor_offset = if input_context.selection_reversed {
         selected.end
     } else {
         selected.start
@@ -504,7 +516,9 @@ fn move_caret_with_parley(
         };
         let anchor = if extend_selection {
             runtime
-                .document_selection_snapshot()
+                .document_snapshot()
+                .ok()
+                .and_then(|snapshot| snapshot.selection)
                 .map(|selection| selection.anchor)
                 .unwrap_or_else(|| {
                     cditor_core::edit::TextPosition::downstream(block_id, anchor_offset)
@@ -525,7 +539,7 @@ fn move_caret_with_parley(
 }
 
 fn dispatch_caret_navigation(
-    runtime: &mut DocumentRuntime,
+    runtime: &EditorSessionHandle,
     direction: CaretDirection,
     extend_selection: bool,
 ) -> Result<bool, String> {

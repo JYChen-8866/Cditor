@@ -21,8 +21,8 @@ impl CditorV2View {
         &self,
         position: Point<Pixels>,
     ) -> Option<(BlockId, ParleyTextPosition)> {
-        let runtime = self.ready_runtime_ref()?;
-        let viewport = cditor_session::project_layout_viewport(runtime);
+        let session = self.ready_session()?;
+        let viewport = session.layout_viewport().ok()?;
         let block_id = self
             .infer_document_viewport_origin()
             .and_then(|viewport_origin| {
@@ -34,7 +34,7 @@ impl CditorV2View {
                 current_layout_block_at_viewport_y(
                     &self.projected_block_rects,
                     &self.text_layouts,
-                    runtime,
+                    session,
                     position.y,
                 )
             })?;
@@ -58,8 +58,8 @@ impl CditorV2View {
             self.schedule_text_drag_auto_scroll(cx);
             return;
         };
-        if let CditorViewState::Ready(runtime) = &mut self.state {
-            let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+        if let CditorViewState::Ready(session) = &self.state {
+            let _ = session.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
                 cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
                     selection: DocumentSelection {
                         anchor: TextPosition {
@@ -92,8 +92,8 @@ impl CditorV2View {
             return;
         };
         let Some(viewport) = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_layout_viewport)
+            .ready_session()
+            .and_then(|session| session.layout_viewport().ok())
         else {
             return;
         };
@@ -137,16 +137,19 @@ impl CditorV2View {
         else {
             return false;
         };
-        let Some(runtime) = self.ready_runtime() else {
+        let Some(session) = self.ready_session() else {
             return false;
         };
-        let viewport = cditor_session::project_layout_viewport(runtime);
+        let Ok(viewport) = session.layout_viewport() else {
+            return false;
+        };
         let delta = crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
             pointer_y,
             viewport.viewport_height,
         );
         if delta.abs() < f64::EPSILON
-            || !cditor_session::project_scroll_by_delta(runtime, delta)
+            || !session
+                .request_scroll_delta(delta)
                 .is_ok_and(|outcome| outcome.changed)
         {
             return false;
@@ -177,12 +180,18 @@ fn projected_block_at_document_y(
 fn current_layout_block_at_viewport_y(
     rects: &[crate::app::interaction::geometry::ProjectedBlockRect],
     layouts: &std::collections::HashMap<BlockId, crate::text::RichTextPlatformLayout>,
-    runtime: &cditor_runtime::DocumentRuntime,
+    session: &cditor_session::EditorSessionHandle,
     viewport_y: Pixels,
 ) -> Option<BlockId> {
     rects.iter().find_map(|rect| {
         let layout = layouts.get(&rect.block_id)?;
-        if runtime.block_content_version(rect.block_id)? != layout.content_version {
+        if session
+            .surface_version(cditor_core::ids::SurfaceId::Block(rect.block_id))
+            .ok()
+            .flatten()?
+            .content_version
+            != layout.content_version
+        {
             return None;
         }
         (layout.bounds.top() <= viewport_y && viewport_y < layout.bounds.bottom())
@@ -261,8 +270,9 @@ mod tests {
             );
         }
 
+        let session = cditor_session::EditorSession::new(runtime, false).into_handle();
         assert_eq!(
-            current_layout_block_at_viewport_y(&rects, &layouts, &runtime, px(210.0)),
+            current_layout_block_at_viewport_y(&rects, &layouts, &session, px(210.0)),
             Some(10)
         );
     }

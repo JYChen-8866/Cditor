@@ -1,4 +1,4 @@
-use cditor_runtime::DocumentRuntime;
+use cditor_session::EditorSessionHandle;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorReadonlyReason {
@@ -32,7 +32,7 @@ impl EditorReadonlyReason {
 }
 
 pub enum CditorViewState {
-    Ready(Box<DocumentRuntime>),
+    Ready(EditorSessionHandle),
     Loading { message: String },
     LoadFailed { message: String },
 }
@@ -50,8 +50,8 @@ impl CditorViewState {
         matches!(self, Self::LoadFailed { .. })
     }
 
-    pub fn apply_loaded_runtime(&mut self, runtime: DocumentRuntime) {
-        *self = Self::Ready(Box::new(runtime));
+    pub fn apply_loaded_session(&mut self, session: EditorSessionHandle) {
+        *self = Self::Ready(session);
     }
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {

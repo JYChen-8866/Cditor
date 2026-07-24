@@ -17,8 +17,8 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) -> bool {
         let Some(scene_json) = self
-            .ready_runtime_ref()
-            .and_then(|runtime| cditor_session::project_whiteboard_scene(runtime, block_id))
+            .ready_session()
+            .and_then(|session| session.whiteboard_scene(block_id).ok().flatten())
         else {
             return false;
         };
@@ -36,20 +36,16 @@ impl CditorV2View {
                 board.set_on_change(Rc::new(move |scene_json, _window, app| {
                     let _ = host.update(app, |view, cx| {
                         let result = match &mut view.state {
-                            CditorViewState::Ready(runtime) => {
-                                cditor_session::project_command_dispatch(
-                                    runtime,
-                                    CommandEnvelope::new(
-                                        EditorCommand::UpdateWhiteboardScene {
-                                            block_id,
-                                            scene_json,
-                                        },
-                                        CommandSource::Toolbar,
-                                    ),
-                                )
+                            CditorViewState::Ready(session) => session
+                                .dispatch_with_snapshot(CommandEnvelope::new(
+                                    EditorCommand::UpdateWhiteboardScene {
+                                        block_id,
+                                        scene_json,
+                                    },
+                                    CommandSource::Toolbar,
+                                ))
                                 .map(|snapshot| (snapshot.outcome.changed(), snapshot.revision))
-                                .unwrap_or((false, 0))
-                            }
+                                .unwrap_or((false, 0)),
                             _ => (false, 0),
                         };
                         if result.0 {
@@ -80,17 +76,14 @@ impl CditorV2View {
         // the board entity. This ensures edits made since the last on_change fire
         // are not lost.
         let scene_json = session.board.read(cx).scene().to_json();
-        if let Some(runtime) = self.ready_runtime() {
-            let result = cditor_session::project_command_dispatch(
-                runtime,
-                CommandEnvelope::new(
-                    EditorCommand::UpdateWhiteboardScene {
-                        block_id: session.block_id,
-                        scene_json,
-                    },
-                    CommandSource::Toolbar,
-                ),
-            );
+        if let Some(session_handle) = self.ready_session() {
+            let result = session_handle.dispatch_with_snapshot(CommandEnvelope::new(
+                EditorCommand::UpdateWhiteboardScene {
+                    block_id: session.block_id,
+                    scene_json,
+                },
+                CommandSource::Toolbar,
+            ));
             if let Ok(snapshot) = result
                 && snapshot.outcome.changed()
             {

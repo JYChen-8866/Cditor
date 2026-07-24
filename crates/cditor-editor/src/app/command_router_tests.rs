@@ -18,6 +18,16 @@ fn realtime_replace(runtime: &mut cditor_runtime::DocumentRuntime, text: &str) {
         .unwrap();
 }
 
+fn session_realtime_replace(session: &cditor_session::EditorSessionHandle, text: &str) {
+    let expected = session.input_context().unwrap().identity.unwrap();
+    session
+        .apply_realtime_input(cditor_runtime::RealtimeInputRequest {
+            expected,
+            input: cditor_runtime::RealtimeInput::ReplaceText { range: None, text },
+        })
+        .unwrap();
+}
+
 /// P4-015：每个 command variant 一个代表性实例（参数只需类型合法）。
 fn representative_commands() -> Vec<CditorCommand> {
     use cditor_editor_protocol::command::BlockTransform;
@@ -249,9 +259,15 @@ fn assert_query_execute_consistency(
     for command in representative_commands() {
         view.update(cx, |view, cx| {
                 let state = view.query_command(&command);
-                let before = view.ready_runtime_ref().map(|runtime| runtime.revision());
+                let before = view
+                    .ready_session()
+                    .and_then(|session| session.snapshot().ok())
+                    .map(|snapshot| snapshot.revision);
                 let result = view.dispatch_command(command.clone(), CommandSource::Sdk, cx);
-                let after = view.ready_runtime_ref().map(|runtime| runtime.revision());
+                let after = view
+                    .ready_session()
+                    .and_then(|session| session.snapshot().ok())
+                    .map(|snapshot| snapshot.revision);
 
                 if state.enabled {
                     if let Err(error) = &result {
@@ -345,9 +361,10 @@ fn automation_and_sdk_execute_the_same_command_path(cx: &mut TestAppContext) {
 
     let payload = |view: &gpui::Entity<CditorV2View>, cx: &mut TestAppContext| {
         view.read_with(cx, |view, _| {
-            view.ready_runtime_ref()
+            view.ready_session()
                 .unwrap()
-                .block_payload_record(1)
+                .loaded_payload_record(1)
+                .unwrap()
                 .unwrap()
                 .payload
         })
@@ -365,18 +382,27 @@ fn format_command_reports_transaction_and_advances_revision_once(cx: &mut TestAp
     });
 
     view.update(cx, |view, cx| {
-        let before = view.ready_runtime_ref().unwrap().revision();
+        let before = view.ready_session().unwrap().snapshot().unwrap().revision;
         let outcome = view
             .dispatch_command(CditorCommand::ToggleBold, CommandSource::Keyboard, cx)
             .expect("format command");
-        let runtime = view.ready_runtime_ref().unwrap();
-        assert_eq!(runtime.revision(), before + 1);
+        let runtime = view.ready_session().unwrap();
+        assert_eq!(runtime.snapshot().unwrap().revision, before + 1);
         assert_eq!(
             outcome.transaction_ids.first().copied(),
-            runtime.last_committed_transaction_id()
+            runtime
+                .persistence_runtime_snapshot()
+                .unwrap()
+                .last_committed_transaction_id
         );
         assert!(!outcome.transaction_ids.is_empty());
-        assert_eq!(runtime.pending_structure_transaction_count(), 1);
+        assert_eq!(
+            runtime
+                .persistence_runtime_snapshot()
+                .unwrap()
+                .pending_structure_transactions,
+            1
+        );
     });
 }
 
@@ -387,7 +413,7 @@ fn table_command_reports_transaction_and_advances_revision_once(cx: &mut TestApp
     });
 
     view.update(cx, |view, cx| {
-        let before = view.ready_runtime_ref().unwrap().revision();
+        let before = view.ready_session().unwrap().snapshot().unwrap().revision;
         let outcome = view
             .dispatch_command(
                 CditorCommand::TableInsertAxis {
@@ -399,15 +425,25 @@ fn table_command_reports_transaction_and_advances_revision_once(cx: &mut TestApp
                 cx,
             )
             .expect("table command");
-        let runtime = view.ready_runtime_ref().unwrap();
-        assert_eq!(runtime.revision(), before + 1);
+        let runtime = view.ready_session().unwrap();
+        assert_eq!(runtime.snapshot().unwrap().revision, before + 1);
         assert_eq!(
             outcome.transaction_ids.first().copied(),
-            runtime.last_committed_transaction_id()
+            runtime
+                .persistence_runtime_snapshot()
+                .unwrap()
+                .last_committed_transaction_id
         );
         assert!(!outcome.transaction_ids.is_empty());
-        assert_eq!(runtime.pending_structure_transaction_count(), 1);
-        let BlockPayload::Table(table) = runtime.block_payload_record(3).unwrap().payload else {
+        assert_eq!(
+            runtime
+                .persistence_runtime_snapshot()
+                .unwrap()
+                .pending_structure_transactions,
+            1
+        );
+        let BlockPayload::Table(table) = runtime.loaded_payload_record(3).unwrap().unwrap().payload
+        else {
             panic!("table payload");
         };
         assert_eq!(table.row_count(), 3);
@@ -431,14 +467,15 @@ fn dispatched_command_breaks_runtime_typing_coalescing(cx: &mut TestAppContext) 
             cx,
         )
         .unwrap();
-        realtime_replace(view.ready_runtime().unwrap(), "c");
+        session_realtime_replace(view.ready_session().unwrap(), "c");
 
         view.dispatch_command(CditorCommand::Undo, CommandSource::Keyboard, cx)
             .unwrap();
         assert_eq!(
-            view.ready_runtime_ref()
+            view.ready_session()
                 .unwrap()
-                .block_payload_record(1)
+                .loaded_payload_record(1)
+                .unwrap()
                 .unwrap()
                 .plain_text(),
             "hello worldab"
@@ -446,9 +483,10 @@ fn dispatched_command_breaks_runtime_typing_coalescing(cx: &mut TestAppContext) 
         view.dispatch_command(CditorCommand::Undo, CommandSource::Keyboard, cx)
             .unwrap();
         assert_eq!(
-            view.ready_runtime_ref()
+            view.ready_session()
                 .unwrap()
-                .block_payload_record(1)
+                .loaded_payload_record(1)
+                .unwrap()
                 .unwrap()
                 .plain_text(),
             "hello world"
@@ -509,7 +547,7 @@ fn down_placer_focus_without_document_change_does_not_mark_the_editor_dirty(
     let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
 
     view.update(cx, |view, cx| {
-        let before_revision = view.ready_runtime_ref().unwrap().revision();
+        let before_revision = view.ready_session().unwrap().snapshot().unwrap().revision;
         let outcome = view
             .dispatch_command(
                 CditorCommand::EnsureTrailingParagraph,
@@ -520,7 +558,7 @@ fn down_placer_focus_without_document_change_does_not_mark_the_editor_dirty(
 
         assert!(outcome.selection_changed);
         assert_eq!(
-            view.ready_runtime_ref().unwrap().revision(),
+            view.ready_session().unwrap().snapshot().unwrap().revision,
             before_revision
         );
         assert_eq!(

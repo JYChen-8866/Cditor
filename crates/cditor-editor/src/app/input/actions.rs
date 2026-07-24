@@ -5,7 +5,6 @@ use crate::app::input_trace::trace_input;
 use crate::image_preview::close_active_preview_if_escape_enabled;
 use crate::input::{AiPromptEditAction, CodeLanguageEditAction, GuiInputCommand};
 use crate::platform::normalize_external_line_endings;
-use cditor_runtime::DocumentRuntime;
 
 use super::keyboard::mermaid_preview_blocks_command;
 use super::table_cell_navigation::{
@@ -47,10 +46,10 @@ impl CditorV2View {
             "action.dispatch",
             format_args!(
                 "action={action:?} focus={:?} target={:?}",
-                self.ready_runtime_ref()
-                    .and_then(DocumentRuntime::focused_block_id),
-                self.ready_runtime_ref()
-                    .and_then(DocumentRuntime::input_session_target),
+                self.ready_session()
+                    .and_then(|session| { session.document_snapshot().ok()?.focused_block_id }),
+                self.ready_session()
+                    .and_then(|session| session.input_context().ok()?.target),
             ),
         );
 
@@ -65,10 +64,11 @@ impl CditorV2View {
             return;
         }
 
-        if self
-            .ready_runtime_ref()
-            .is_some_and(|runtime| runtime.ai_session_snapshot().is_some())
-        {
+        if self.ready_session().is_some_and(|session| {
+            session
+                .ai_context()
+                .is_ok_and(|context| context.session_active)
+        }) {
             match action {
                 BoundInputAction::Tab { .. } => {
                     let _ = self.accept_ai_preview_from_gui(cx);
@@ -282,8 +282,8 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) -> bool {
         let table_context = self
-            .ready_runtime_ref()
-            .map(|runtime| cditor_session::project_table_interaction(runtime, None));
+            .ready_session()
+            .and_then(|session| session.table_interaction(None).ok());
         let (parley_target, next_preferred_x) = table_cell_parley_target(
             &self.table_cell_layouts,
             table_context.as_ref(),
@@ -451,18 +451,22 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn focused_mermaid_is_preview(&self) -> bool {
-        let Some(runtime) = self.ready_runtime_ref() else {
+        let Some(session) = self.ready_session() else {
             return false;
         };
-        let Some(block_id) = runtime.focused_block_id() else {
+        let Some(block_id) = session
+            .document_snapshot()
+            .ok()
+            .and_then(|snapshot| snapshot.focused_block_id)
+        else {
             return false;
         };
         !self.mermaid_source_blocks.contains(&block_id)
-            && runtime
-                .block_payload_record(block_id)
-                .is_some_and(|payload| {
-                    matches!(payload.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
+            && session.text_block_context(block_id).is_ok_and(|context| {
+                context.is_some_and(|context| {
+                    matches!(context.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
                 })
+            })
     }
 }
 

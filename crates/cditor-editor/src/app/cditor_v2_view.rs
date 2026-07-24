@@ -27,9 +27,12 @@ use crate::overlay::SlashMenuState;
 use crate::overlay::WhiteboardEditorSession;
 
 use crate::input::GuiInputCommand;
-use crate::persistence::{EditorSaveStatus, PayloadWindowLoadScheduler, PersistencePipeline};
+use crate::persistence::{EditorSaveStatus, PayloadWindowLoadScheduler};
 use crate::text::{RichTextPlatformLayout, TextPlatformLayoutIdentity};
-use cditor_runtime::{DocumentRuntime, InputSessionIdentity, SelectionMaterializationRequest};
+#[cfg(test)]
+use cditor_runtime::DocumentRuntime;
+use cditor_runtime::{InputSessionIdentity, SelectionMaterializationRequest};
+use cditor_session::EditorSessionHandle;
 
 pub(in crate::app) mod ai;
 mod block_actions;
@@ -111,14 +114,12 @@ pub struct CditorV2View {
     pub(in crate::app) table_reorder_drag: Option<GuiTableReorderDrag>,
     pub(in crate::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
     pub(in crate::app) projected_block_rects: Vec<ProjectedBlockRect>,
-    pub(in crate::app) storage_persistence: PersistencePipeline,
     pub(in crate::app) undo_spill_in_flight: bool,
     pub(in crate::app) history_hydration_in_flight: Option<(u64, bool)>,
     pub(in crate::app) selection_materialization_in_flight:
         Option<(SelectionMaterializationRequest, GuiInputCommand)>,
     pub(in crate::app) undo_cleanup_in_flight: bool,
     pub(in crate::app) payload_window_load_scheduler: PayloadWindowLoadScheduler,
-    pub(in crate::app) autosave_interval: Option<Duration>,
     pub(in crate::app) platform_input_target: Option<GuiPlatformInputTarget>,
     pub(in crate::app) platform_input_session_identity: Option<InputSessionIdentity>,
     pub(in crate::app) platform_input_layout_identity: Option<TextPlatformLayoutIdentity>,
@@ -207,15 +208,11 @@ impl CditorV2View {
         measured_height: f64,
         _cx: &mut Context<Self>,
     ) -> bool {
-        self.ready_runtime()
-            .and_then(|runtime| {
-                cditor_session::project_measured_block_height(
-                    runtime,
-                    block_id,
-                    content_version,
-                    measured_height,
-                )
-                .ok()
+        self.ready_session()
+            .and_then(|session| {
+                session
+                    .queue_measured_block_height(block_id, content_version, measured_height)
+                    .ok()
             })
             .unwrap_or(false)
     }
@@ -262,39 +259,31 @@ impl CditorV2View {
         let content_version = cache.content_version;
         let measured_height = cache.measured_height;
         self.text_layouts.insert(block_id, cache, pinned_surface);
-        if self.ready_runtime_ref().is_some_and(|runtime| {
-            matches!(
-                runtime.block_kind(block_id),
-                Some(cditor_core::rich_text::RichBlockKind::Mermaid)
-            )
+        if self.ready_session().is_some_and(|session| {
+            session
+                .text_block_context(block_id)
+                .ok()
+                .flatten()
+                .is_some_and(|context| {
+                    context.kind == cditor_core::rich_text::RichBlockKind::Mermaid
+                })
         }) {
             // Mermaid owns a stable preview/source box and reports its rendered
             // media height separately. Source text shaping must not overwrite it.
             return false;
         }
-        self.ready_runtime()
-            .and_then(|runtime| {
-                cditor_session::project_measured_block_height(
-                    runtime,
-                    block_id,
-                    content_version,
-                    measured_height,
-                )
-                .ok()
+        self.ready_session()
+            .and_then(|session| {
+                session
+                    .queue_measured_block_height(block_id, content_version, measured_height)
+                    .ok()
             })
             .unwrap_or(false)
     }
 
-    pub(in crate::app) fn ready_runtime(&mut self) -> Option<&mut DocumentRuntime> {
-        match &mut self.state {
-            CditorViewState::Ready(runtime) => Some(runtime),
-            CditorViewState::Loading { .. } | CditorViewState::LoadFailed { .. } => None,
-        }
-    }
-
-    pub(in crate::app) fn ready_runtime_ref(&self) -> Option<&DocumentRuntime> {
+    pub(crate) fn ready_session(&self) -> Option<&EditorSessionHandle> {
         match &self.state {
-            CditorViewState::Ready(runtime) => Some(runtime),
+            CditorViewState::Ready(session) => Some(session),
             CditorViewState::Loading { .. } | CditorViewState::LoadFailed { .. } => None,
         }
     }
@@ -316,30 +305,31 @@ impl CditorV2View {
         let position = position.into();
         let text_position = position
             .and_then(|position| self.text_position_for_block_at_position(block_id, position));
-        let click_selection = if let Some(kind) =
-            crate::app::text_hit::selection_kind_for_click_count(click_count)
-        {
-            position.and_then(|position| {
-                let runtime = self.ready_runtime_ref()?;
-                let current =
-                    cditor_session::project_surface_version(runtime, SurfaceId::Block(block_id))?;
-                let cache = self.current_text_layout_cache(current, block_id)?;
-                let local_x = f32::from(position.x - cache.bounds.left());
-                let local_y = f32::from(position.y - cache.bounds.top());
-                Some(cache.snapshot.selection_at_point(local_x, local_y, kind))
-            })
-        } else {
-            None
-        };
+        let click_selection =
+            if let Some(kind) = crate::app::text_hit::selection_kind_for_click_count(click_count) {
+                position.and_then(|position| {
+                    let session = self.ready_session()?;
+                    let current = session
+                        .surface_version(SurfaceId::Block(block_id))
+                        .ok()
+                        .flatten()?;
+                    let cache = self.current_text_layout_cache(current, block_id)?;
+                    let local_x = f32::from(position.x - cache.bounds.left());
+                    let local_y = f32::from(position.y - cache.bounds.top());
+                    Some(cache.snapshot.selection_at_point(local_x, local_y, kind))
+                })
+            } else {
+                None
+            };
         trace_input(
             "focus_block_from_gui_at_position",
             format_args!(
                 "block={block_id} position={position:?} resolved_position={text_position:?}"
             ),
         );
-        if let CditorViewState::Ready(runtime) = &mut self.state {
+        if let CditorViewState::Ready(session) = &self.state {
             if let Some(selection) = click_selection {
-                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                let _ = session.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
                     cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
                         selection: cditor_core::edit::DocumentSelection {
                             anchor: cditor_core::edit::TextPosition {
@@ -362,7 +352,7 @@ impl CditorV2View {
                 return;
             }
             if let Some(text_position) = text_position {
-                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                let _ = session.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
                     cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
                         selection: cditor_core::edit::DocumentSelection::caret(
                             cditor_core::edit::TextPosition {
@@ -380,12 +370,21 @@ impl CditorV2View {
                     pointer_position: position.unwrap_or_default(),
                 });
             } else {
+                let focused_block_id = session
+                    .document_snapshot()
+                    .ok()
+                    .and_then(|snapshot| snapshot.focused_block_id);
+                let caret_offset = session
+                    .text_block_context(block_id)
+                    .ok()
+                    .flatten()
+                    .and_then(|context| context.caret);
                 let anchor_offset = block_focus_offset_after_missed_hit_test(
-                    runtime.focused_block_id(),
+                    focused_block_id,
                     block_id,
-                    runtime.caret_offset_for_block(block_id),
+                    caret_offset,
                 );
-                let _ = runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                let _ = session.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
                     cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
                         selection: cditor_core::edit::DocumentSelection::caret(
                             cditor_core::edit::TextPosition::downstream(block_id, anchor_offset),
@@ -426,9 +425,9 @@ impl CditorV2View {
             cx,
         );
         if result.is_ok()
-            && let Some(runtime) = self.ready_runtime()
+            && let Some(session) = self.ready_session()
         {
-            let _ = cditor_session::project_scroll_focused_block_into_view(runtime);
+            let _ = session.ensure_focused_block_visible();
         }
         match result {
             Ok(_) => {
@@ -452,9 +451,9 @@ impl CditorV2View {
         let mut selection_changed = false;
         if dragging
             && self.block_drag_selection.is_dragging()
-            && let CditorViewState::Ready(runtime) = &mut self.state
+            && let CditorViewState::Ready(session) = &self.state
         {
-            selection_changed = self.block_drag_selection.update(block_id, runtime);
+            selection_changed = self.block_drag_selection.update(block_id, session);
         }
         if hover_changed || selection_changed {
             cx.notify();

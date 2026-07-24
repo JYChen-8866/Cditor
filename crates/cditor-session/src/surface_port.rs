@@ -1,6 +1,9 @@
-use cditor_core::ids::SurfaceId;
+use std::ops::Range;
+
+use cditor_core::{edit::TextAffinity, ids::SurfaceId};
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
 use cditor_runtime::DocumentRuntime;
+use cditor_runtime::TextSurfaceSnapshot;
 
 use crate::EditorSessionHandle;
 
@@ -10,6 +13,37 @@ pub struct SurfaceVersionSnapshot {
     pub surface_id: SurfaceId,
     pub content_version: u64,
     pub layout_version: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextSurfaceStateSnapshot {
+    pub snapshot: TextSurfaceSnapshot,
+    pub focused: bool,
+    pub caret_offset: Option<usize>,
+    pub caret_affinity: TextAffinity,
+    pub selection_range: Option<Range<usize>>,
+    pub marked_range: Option<Range<usize>>,
+}
+
+pub fn project_text_surface_state(
+    runtime: &DocumentRuntime,
+    surface_id: SurfaceId,
+) -> Option<TextSurfaceStateSnapshot> {
+    let caret_affinity = match surface_id {
+        SurfaceId::Block(block_id) => runtime
+            .caret_position_for_block(block_id)
+            .map(|position| position.affinity)
+            .unwrap_or(TextAffinity::Downstream),
+        _ => TextAffinity::Downstream,
+    };
+    Some(TextSurfaceStateSnapshot {
+        snapshot: runtime.text_surface_snapshot(surface_id)?,
+        focused: runtime.focused_text_surface_id() == Some(surface_id),
+        caret_offset: runtime.text_surface_caret_offset(surface_id),
+        caret_affinity,
+        selection_range: runtime.text_surface_selection_range(surface_id),
+        marked_range: runtime.text_surface_marked_range(surface_id),
+    })
 }
 
 pub fn project_surface_version(
@@ -30,6 +64,20 @@ pub fn project_surface_version(
 }
 
 impl EditorSessionHandle {
+    pub fn text_surface_state(
+        &self,
+        surface_id: SurfaceId,
+    ) -> Result<Option<TextSurfaceStateSnapshot>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_text_surface_state(&session.runtime, surface_id))
+    }
+
     pub fn surface_version(
         &self,
         surface_id: SurfaceId,

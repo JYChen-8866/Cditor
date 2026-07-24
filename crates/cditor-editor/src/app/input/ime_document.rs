@@ -23,15 +23,17 @@ impl CditorV2View {
         }
         let registered_target = self.platform_input_target;
         let empty_line_ai_input = is_empty_line_ai_platform_input(range_utf16.as_ref(), text)
-            && self.ready_runtime_ref().is_some_and(|runtime| {
-                let input_context = cditor_session::project_input_context(runtime);
+            && self.ready_session().is_some_and(|session| {
+                let Ok(input_context) = session.input_context() else {
+                    return false;
+                };
                 platform_input_target_allows(
                     registered_target,
                     self.platform_input_session_identity,
                     &input_context,
-                ) && cditor_session::project_ai_context(runtime)
-                    .focused_empty_text_block
-                    .is_some()
+                ) && session
+                    .ai_context()
+                    .is_ok_and(|context| context.focused_empty_text_block.is_some())
             });
         if empty_line_ai_input && self.invoke_empty_line_ai_from_gui(cx) {
             cx.notify();
@@ -49,8 +51,8 @@ impl CditorV2View {
         }
         let registered_identity = self.platform_input_session_identity;
         let Some(input_context) = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_input_context)
+            .ready_session()
+            .and_then(|session| session.input_context().ok())
         else {
             return;
         };
@@ -66,7 +68,7 @@ impl CditorV2View {
         }
         let focused = input_context.focused_block_id;
         let range = ime_replacement_range(&input_context, range_utf16.clone());
-        let Some(runtime) = self.ready_runtime() else {
+        let Some(session) = self.ready_session() else {
             return;
         };
         trace_input(
@@ -78,7 +80,7 @@ impl CditorV2View {
         );
         let text = normalize_external_line_endings(text);
         match apply_platform_text_replacement(
-            runtime,
+            session,
             registered_identity.expect("validated platform input identity"),
             range,
             text.as_ref(),
@@ -119,8 +121,8 @@ impl CditorV2View {
         let registered_target = self.platform_input_target;
         let registered_identity = self.platform_input_session_identity;
         let Some(input_context) = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_input_context)
+            .ready_session()
+            .and_then(|session| session.input_context().ok())
         else {
             return;
         };
@@ -151,21 +153,17 @@ impl CditorV2View {
                 new_text.len()
             ),
         );
-        let Some(runtime) = self.ready_runtime() else {
+        let Some(session) = self.ready_session() else {
             return;
         };
-        let result = cditor_session::project_realtime_input(
-            runtime,
-            cditor_runtime::RealtimeInputRequest {
-                expected: registered_identity.expect("validated platform input identity"),
-                input: cditor_runtime::RealtimeInput::UpdateComposition {
-                    range,
-                    text: new_text,
-                    selected_range,
-                },
+        let result = session.apply_realtime_input(cditor_runtime::RealtimeInputRequest {
+            expected: registered_identity.expect("validated platform input identity"),
+            input: cditor_runtime::RealtimeInput::UpdateComposition {
+                range,
+                text: new_text,
+                selected_range,
             },
-            false,
-        );
+        });
         match result {
             Ok(outcome) => {
                 self.platform_input_session_identity = outcome.input_identity;

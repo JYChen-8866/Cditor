@@ -103,17 +103,6 @@ pub(crate) fn replace_realtime_text(
         .unwrap();
 }
 
-pub(crate) fn committed_block_plain_text(
-    runtime: &DocumentRuntime,
-    block_id: BlockId,
-) -> Option<String> {
-    runtime
-        .loaded_payload_records_snapshot()
-        .into_iter()
-        .find(|record| record.block_id == block_id)
-        .map(|record| record.plain_text())
-}
-
 pub(crate) fn set_inline_color_for_range(
     runtime: &mut DocumentRuntime,
     block_id: BlockId,

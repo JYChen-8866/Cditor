@@ -154,6 +154,9 @@ impl CditorV2View {
             return;
         }
         self.readonly = effective_readonly;
+        if let Some(session) = self.ready_session() {
+            let _ = session.set_readonly(effective_readonly);
+        }
         self.save_status = if effective_readonly {
             EditorSaveStatus::Readonly
         } else if self.dirty {
@@ -162,7 +165,7 @@ impl CditorV2View {
             EditorSaveStatus::Clean
         };
         if !effective_readonly && self.dirty {
-            schedule_storage_autosave(&mut self.storage_persistence, cx);
+            schedule_storage_autosave(self, cx);
         }
         cx.notify();
     }
@@ -173,6 +176,9 @@ impl CditorV2View {
             supported_major,
         });
         self.readonly = true;
+        if let Some(session) = self.ready_session() {
+            let _ = session.set_readonly(true);
+        }
         self.save_status = EditorSaveStatus::Readonly;
     }
 
@@ -186,6 +192,9 @@ impl CditorV2View {
             supported_major,
         });
         self.readonly = true;
+        if let Some(session) = self.ready_session() {
+            let _ = session.set_readonly(true);
+        }
         self.save_status = EditorSaveStatus::Readonly;
     }
 
@@ -202,14 +211,18 @@ impl CditorV2View {
     }
 
     pub fn sdk_can_undo(&self) -> bool {
-        self.ready_runtime_ref().is_some_and(|runtime| {
-            cditor_session::project_document_snapshot(runtime, self.readonly).can_undo
+        self.ready_session().is_some_and(|session| {
+            session
+                .document_snapshot()
+                .is_ok_and(|snapshot| snapshot.can_undo)
         })
     }
 
     pub fn sdk_can_redo(&self) -> bool {
-        self.ready_runtime_ref().is_some_and(|runtime| {
-            cditor_session::project_document_snapshot(runtime, self.readonly).can_redo
+        self.ready_session().is_some_and(|session| {
+            session
+                .document_snapshot()
+                .is_ok_and(|snapshot| snapshot.can_redo)
         })
     }
 
@@ -224,8 +237,7 @@ impl CditorV2View {
     }
 
     pub fn sdk_document_info(&self) -> Option<DocumentInfo> {
-        let snapshot =
-            cditor_session::project_document_snapshot(self.ready_runtime_ref()?, self.readonly);
+        let snapshot = self.ready_session()?.document_snapshot().ok()?;
         Some(DocumentInfo {
             document_id: snapshot.document_id,
             title: snapshot.title,
@@ -250,7 +262,10 @@ impl CditorV2View {
     }
 
     pub fn sdk_close_guard(&self) -> CloseGuard {
-        let saving = self.storage_persistence.is_saving();
+        let saving = self
+            .ready_session()
+            .and_then(|session| session.persistence_snapshot().ok())
+            .is_some_and(|snapshot| snapshot.saving);
         let failed_operations =
             usize::from(matches!(self.save_status, EditorSaveStatus::Failed(_)));
         CloseGuard {
@@ -277,18 +292,29 @@ impl CditorV2View {
         if self.readonly {
             return Task::ready(Err(CditorError::Readonly));
         }
-        let Some(revision) = self.ready_runtime_ref().map(|runtime| {
-            cditor_session::project_document_snapshot(runtime, self.readonly).revision
-        }) else {
+        let Some(revision) = self
+            .ready_session()
+            .and_then(|session| session.document_snapshot().ok())
+            .map(|snapshot| snapshot.revision)
+        else {
             return Task::ready(Err(CditorError::NotReady));
         };
-        if !self.storage_persistence.is_enabled() {
+        let Some(session) = self.ready_session().cloned() else {
+            return Task::ready(Err(CditorError::NotReady));
+        };
+        if !session
+            .persistence_snapshot()
+            .is_ok_and(|snapshot| snapshot.enabled)
+        {
             return Task::ready(Err(CditorError::Unsupported(
                 "save and flush require a persistent storage backend".to_owned(),
             )));
         }
 
-        let receiver = self.storage_persistence.request_barrier(kind, revision);
+        let receiver = match session.request_persistence_barrier(kind, revision) {
+            Ok(receiver) => receiver,
+            Err(error) => return Task::ready(Err(CditorError::Internal(error.to_string()))),
+        };
         self.flush_storage_persistence(cx);
         cx.background_spawn(async move {
             match receiver.await {
@@ -305,19 +331,22 @@ impl CditorV2View {
 
     pub fn sdk_diagnostics(&self) -> Result<CditorDiagnostics, CditorError> {
         let diagnostics = self
-            .ready_runtime_ref()
-            .map(cditor_session::project_diagnostics_snapshot)
+            .ready_session()
+            .and_then(|session| session.diagnostics_snapshot().ok())
             .ok_or(CditorError::NotReady)?;
         Ok(CditorDiagnostics {
             storage_backend: self
-                .storage_persistence
-                .session()
-                .map(|session| session.backend_kind()),
+                .ready_session()
+                .and_then(|session| session.persistence_snapshot().ok())
+                .and_then(|snapshot| snapshot.backend),
             document_blocks: diagnostics.document_blocks,
             loaded_payloads: diagnostics.loaded_payloads,
             rendered_blocks: self.projected_block_rects.len(),
             pending_layout_tasks: diagnostics.pending_layout_tasks,
-            pending_saves: self.storage_persistence.pending_operation_count(),
+            pending_saves: self
+                .ready_session()
+                .and_then(|session| session.persistence_snapshot().ok())
+                .map_or(0, |snapshot| snapshot.pending_operations),
             dirty_blocks: diagnostics.dirty_payloads,
             estimated_document_height: diagnostics.estimated_document_height,
             memory_estimate_bytes: u64::try_from(
@@ -332,9 +361,7 @@ impl CditorV2View {
     }
 
     pub fn sdk_selection(&self) -> Option<DocumentSelection> {
-        let selection =
-            cditor_session::project_document_snapshot(self.ready_runtime_ref()?, self.readonly)
-                .selection?;
+        let selection = self.ready_session()?.document_snapshot().ok()?.selection?;
         Some(DocumentSelection {
             anchor: sdk_position(selection.anchor),
             head: sdk_position(selection.focus),
@@ -346,10 +373,10 @@ impl CditorV2View {
         selection: DocumentSelection,
         cx: &mut Context<Self>,
     ) -> Result<(), CditorError> {
-        let runtime = self.ready_runtime().ok_or(CditorError::NotReady)?;
-        let anchor = runtime_position(runtime, selection.anchor)?;
-        let focus = runtime_position(runtime, selection.head)?;
-        runtime
+        let session = self.ready_session().ok_or(CditorError::NotReady)?;
+        let anchor = session_position(session, selection.anchor)?;
+        let focus = session_position(session, selection.head)?;
+        session
             .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
                 CditorCommand::SetDocumentSelection {
                     selection: cditor_core::edit::DocumentSelection { anchor, focus },
@@ -365,7 +392,7 @@ impl CditorV2View {
     }
 
     pub fn sdk_selected_text(&self) -> Option<String> {
-        cditor_session::project_selected_text(self.ready_runtime_ref()?)
+        self.ready_session()?.selected_text().ok().flatten()
     }
 
     pub fn sdk_scroll_to_block(
@@ -380,12 +407,10 @@ impl CditorV2View {
             ScrollAlignment::End => Some(1.0),
             ScrollAlignment::Nearest => None,
         };
-        cditor_session::project_scroll_to_block(
-            self.ready_runtime().ok_or(CditorError::NotReady)?,
-            block_id,
-            alignment,
-        )
-        .map_err(|_| CditorError::BlockNotFound(block_id))?;
+        self.ready_session()
+            .ok_or(CditorError::NotReady)?
+            .scroll_to_block(block_id, alignment)
+            .map_err(|_| CditorError::BlockNotFound(block_id))?;
         cx.notify();
         Ok(())
     }
@@ -457,12 +482,13 @@ fn sdk_position(position: cditor_core::edit::TextPosition) -> DocumentPosition {
     }
 }
 
-fn runtime_position(
-    runtime: &cditor_runtime::DocumentRuntime,
+fn session_position(
+    session: &cditor_session::EditorSessionHandle,
     position: DocumentPosition,
 ) -> Result<cditor_core::edit::TextPosition, CditorError> {
-    let text = runtime
-        .block_payload_record(position.block_id)
+    let text = session
+        .loaded_payload_record(position.block_id)
+        .map_err(|_| CditorError::NotReady)?
         .ok_or(CditorError::BlockNotFound(position.block_id))?
         .plain_text();
     let offset = match position.offset {
@@ -550,15 +576,16 @@ mod tests {
             )],
             720.0,
         );
+        let session = cditor_session::EditorSession::new(runtime, false).into_handle();
         let position = |offset| DocumentPosition {
             block_id: 1,
             offset: TextOffset::Utf16CodeUnits(offset),
             affinity: Affinity::Downstream,
         };
 
-        assert_eq!(runtime_position(&runtime, position(3)).unwrap().offset, 5);
+        assert_eq!(session_position(&session, position(3)).unwrap().offset, 5);
         assert_eq!(
-            runtime_position(&runtime, position(2)),
+            session_position(&session, position(2)),
             Err(CditorError::InvalidSelection)
         );
     }

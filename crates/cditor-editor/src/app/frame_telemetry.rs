@@ -5,11 +5,12 @@ use crate::diagnostics::frame_telemetry::{
     AppFrameTelemetryInput, FrameCacheSnapshot, FrameEntitySnapshot, FrameQueueSnapshot,
     FrameWindowSnapshot, record_app_frame,
 };
-use cditor_session::project_diagnostics_snapshot;
 
 impl CditorV2View {
     pub(in crate::app) fn record_frame_telemetry(&self, elapsed: Duration) {
-        let diagnostics = self.ready_runtime_ref().map(project_diagnostics_snapshot);
+        let diagnostics = self
+            .ready_session()
+            .and_then(|session| session.diagnostics_snapshot().ok());
         let interaction = if self.scrollbar_drag.is_some() {
             "scrollbar_drag".to_owned()
         } else if self.gutter_block_drag.is_some()
@@ -32,7 +33,10 @@ impl CditorV2View {
                     FrameQueueSnapshot {
                         pending_layout_tasks: snapshot.pending_layout_tasks,
                         pending_payload_loads: snapshot.pending_payload_loads,
-                        pending_saves: self.storage_persistence.pending_operation_count(),
+                        pending_saves: self
+                            .ready_session()
+                            .and_then(|session| session.persistence_snapshot().ok())
+                            .map_or(0, |snapshot| snapshot.pending_operations),
                         // P6-006 keeps this false until all GPUI dispatch is routed
                         // through the five production scheduler lanes.
                         scheduler_lanes_connected: false,

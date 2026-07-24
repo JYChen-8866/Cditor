@@ -3,7 +3,7 @@ use gpui::{App, Entity, MouseDownEvent, MouseMoveEvent, Window};
 use crate::app::CditorV2View;
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
-use cditor_runtime::DocumentRuntime;
+use cditor_session::EditorSessionHandle;
 
 pub fn focus_block_from_mouse(
     view: &Entity<CditorV2View>,
@@ -130,18 +130,18 @@ pub struct BlockDragSelectionController {
 }
 
 impl BlockDragSelectionController {
-    pub fn begin(&mut self, block_id: BlockId, runtime: &mut DocumentRuntime) -> bool {
+    pub fn begin(&mut self, block_id: BlockId, session: &EditorSessionHandle) -> bool {
         self.anchor = Some(block_id);
         self.focus = Some(block_id);
-        dispatch_block_range_selection(runtime, block_id, block_id)
+        dispatch_block_range_selection(session, block_id, block_id)
     }
 
-    pub fn update(&mut self, block_id: BlockId, runtime: &mut DocumentRuntime) -> bool {
+    pub fn update(&mut self, block_id: BlockId, session: &EditorSessionHandle) -> bool {
         let Some(anchor) = self.anchor else {
-            return self.begin(block_id, runtime);
+            return self.begin(block_id, session);
         };
         self.focus = Some(block_id);
-        dispatch_block_range_selection(runtime, anchor, block_id)
+        dispatch_block_range_selection(session, anchor, block_id)
     }
 
     pub fn finish(&mut self) -> Option<(BlockId, BlockId)> {
@@ -157,11 +157,11 @@ impl BlockDragSelectionController {
 }
 
 fn dispatch_block_range_selection(
-    runtime: &mut DocumentRuntime,
+    session: &EditorSessionHandle,
     anchor_block_id: BlockId,
     focus_block_id: BlockId,
 ) -> bool {
-    runtime
+    session
         .dispatch(CommandEnvelope::new(
             EditorCommand::SetBlockSelectionRange {
                 anchor_block_id,
@@ -175,20 +175,27 @@ fn dispatch_block_range_selection(
 #[cfg(test)]
 mod tests {
     use cditor_runtime::DocumentRuntime;
+    use cditor_session::EditorSession;
 
     use super::*;
 
     #[test]
     fn block_drag_selection_updates_runtime_visible_selection() {
-        let mut runtime = DocumentRuntime::demo();
+        let runtime = DocumentRuntime::demo();
         let projection = runtime.projection_for_window();
         let first = projection.blocks[0].block_id;
         let third = projection.blocks[2].block_id;
+        let session = EditorSession::new(runtime, false).into_handle();
         let mut controller = BlockDragSelectionController::default();
 
-        assert!(controller.begin(first, &mut runtime));
-        assert!(controller.update(third, &mut runtime));
-        let projection = runtime.projection_for_window();
+        assert!(controller.begin(first, &session));
+        assert!(controller.update(third, &session));
+        let projection = session
+            .projection(cditor_editor_protocol::projection::ProjectionRequest {
+                viewport_revision: 0,
+                include_diagnostics: false,
+            })
+            .unwrap();
         let selected = projection
             .blocks
             .iter()

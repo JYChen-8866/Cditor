@@ -220,6 +220,11 @@ impl EditorSessionHandle {
         self.inner.borrow().id
     }
 
+    pub fn set_readonly(&self, readonly: bool) -> Result<(), ProtocolError> {
+        self.try_session_mut()?.readonly = readonly;
+        Ok(())
+    }
+
     pub fn dispatch(&self, envelope: CommandEnvelope) -> Result<CommandOutcome, ProtocolError> {
         self.try_session_mut()?.dispatch(envelope)
     }

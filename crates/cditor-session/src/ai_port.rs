@@ -74,7 +74,7 @@ impl EditorSessionHandle {
         Ok(project_ai_context(&session.runtime))
     }
 
-    pub fn apply_ai_session_request(
+    pub fn request_ai_session(
         &self,
         request: AiSessionRequest,
     ) -> Result<AiSessionOutcome, ProtocolError> {
@@ -106,7 +106,7 @@ mod tests {
 
     fn begin(handle: &EditorSessionHandle) -> u64 {
         let outcome = handle
-            .apply_ai_session_request(AiSessionRequest::Begin {
+            .request_ai_session(AiSessionRequest::Begin {
                 instruction: "continue".to_owned(),
                 presentation: AiRequestPresentation::Automatic,
             })
@@ -123,7 +123,7 @@ mod tests {
         let request_id = begin(&handle);
 
         let stale = handle
-            .apply_ai_session_request(AiSessionRequest::Stream(AiStreamEvent::Delta {
+            .request_ai_session(AiSessionRequest::Stream(AiStreamEvent::Delta {
                 request_id: request_id + 1,
                 text: "stale".to_owned(),
             }))
@@ -134,7 +134,7 @@ mod tests {
         ));
 
         let matching = handle
-            .apply_ai_session_request(AiSessionRequest::Stream(AiStreamEvent::Delta {
+            .request_ai_session(AiSessionRequest::Stream(AiStreamEvent::Delta {
                 request_id,
                 text: "next".to_owned(),
             }))
@@ -150,16 +150,14 @@ mod tests {
         let handle = EditorSession::new(focused_runtime(), false).into_handle();
         begin(&handle);
         assert!(matches!(
-            handle
-                .apply_ai_session_request(AiSessionRequest::Cancel)
-                .unwrap(),
+            handle.request_ai_session(AiSessionRequest::Cancel).unwrap(),
             AiSessionOutcome::Cancelled(true)
         ));
 
         begin(&handle);
         assert!(matches!(
             handle
-                .apply_ai_session_request(AiSessionRequest::RejectPreview)
+                .request_ai_session(AiSessionRequest::RejectPreview)
                 .unwrap(),
             AiSessionOutcome::PreviewRejected(true)
         ));
@@ -169,7 +167,7 @@ mod tests {
     fn readonly_rejects_begin_and_stream_but_allows_cleanup() {
         let readonly = EditorSession::new(focused_runtime(), true).into_handle();
         let error = readonly
-            .apply_ai_session_request(AiSessionRequest::Begin {
+            .request_ai_session(AiSessionRequest::Begin {
                 instruction: "continue".to_owned(),
                 presentation: AiRequestPresentation::Automatic,
             })
@@ -188,14 +186,14 @@ mod tests {
         };
         let readonly = EditorSession::new(runtime, true).into_handle();
         let error = readonly
-            .apply_ai_session_request(AiSessionRequest::Stream(AiStreamEvent::Done {
+            .request_ai_session(AiSessionRequest::Stream(AiStreamEvent::Done {
                 request_id: dispatch.request.request_id,
             }))
             .unwrap_err();
         assert_eq!(error.code, ProtocolErrorCode::Readonly);
         assert!(matches!(
             readonly
-                .apply_ai_session_request(AiSessionRequest::Cancel)
+                .request_ai_session(AiSessionRequest::Cancel)
                 .unwrap(),
             AiSessionOutcome::Cancelled(true)
         ));
@@ -210,7 +208,7 @@ mod tests {
         let readonly = EditorSession::new(runtime, true).into_handle();
         assert!(matches!(
             readonly
-                .apply_ai_session_request(AiSessionRequest::RejectPreview)
+                .request_ai_session(AiSessionRequest::RejectPreview)
                 .unwrap(),
             AiSessionOutcome::PreviewRejected(true)
         ));

@@ -7,7 +7,6 @@ use cditor_ai::{
 use cditor_runtime::{
     AiApplyMode, AiRequestPresentation, AiSessionOutcome, AiSessionRequest, AiStreamApplyResult,
 };
-use cditor_session::{project_ai_context, project_ai_session_request};
 use gpui::{AppContext, Context, px};
 
 use crate::app::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
@@ -30,15 +29,17 @@ impl CditorV2View {
             || self.ai_prompt.is_some()
             || self.slash_menu.is_some()
             || self.code_language_edit.is_some()
-            || self
-                .ready_runtime_ref()
-                .is_some_and(|runtime| project_ai_context(runtime).session_active)
+            || self.ready_session().is_some_and(|session| {
+                session
+                    .ai_context()
+                    .is_ok_and(|context| context.session_active)
+            })
         {
             return false;
         }
         let Some((block_id, caret)) = self
-            .ready_runtime_ref()
-            .and_then(|runtime| project_ai_context(runtime).focused_empty_text_block)
+            .ready_session()
+            .and_then(|session| session.ai_context().ok()?.focused_empty_text_block)
         else {
             return false;
         };
@@ -76,17 +77,16 @@ impl CditorV2View {
             return false;
         }
         let Some(block_id) = self
-            .ready_runtime_ref()
-            .and_then(|runtime| project_ai_context(runtime).prompt_block_id)
+            .ready_session()
+            .and_then(|session| session.ai_context().ok()?.prompt_block_id)
         else {
             return false;
         };
         if !self.commit_document_composition_before_external_focus(cx) {
             return false;
         }
-        let readonly = self.readonly;
-        if let Some(runtime) = self.ready_runtime() {
-            let _ = project_ai_session_request(runtime, AiSessionRequest::Cancel, readonly);
+        if let Some(session) = self.ready_session() {
+            let _ = session.request_ai_session(AiSessionRequest::Cancel);
         }
         self.slash_menu = None;
         self.code_language_edit = None;
@@ -121,20 +121,16 @@ impl CditorV2View {
                     AiRequestPresentation::Automatic
                 }
             });
-        let readonly = self.readonly;
         let dispatch = match self
-            .ready_runtime()
+            .ready_session()
             .ok_or_else(|| "runtime is not ready".to_owned())
-            .and_then(|runtime| {
-                project_ai_session_request(
-                    runtime,
-                    AiSessionRequest::Begin {
+            .and_then(|session| {
+                session
+                    .request_ai_session(AiSessionRequest::Begin {
                         instruction,
                         presentation,
-                    },
-                    readonly,
-                )
-                .map_err(|error| error.to_string())
+                    })
+                    .map_err(|error| error.to_string())
             })
             .and_then(|outcome| match outcome {
                 AiSessionOutcome::Started(dispatch) => Ok(dispatch),
@@ -177,16 +173,12 @@ impl CditorV2View {
                     AiStreamEvent::Done { .. } | AiStreamEvent::Error { .. }
                 );
                 let result = view.update(cx, |view, cx| {
-                    let readonly = view.readonly;
                     let result = view
-                        .ready_runtime()
-                        .and_then(|runtime| {
-                            project_ai_session_request(
-                                runtime,
-                                AiSessionRequest::Stream(event),
-                                readonly,
-                            )
-                            .ok()
+                        .ready_session()
+                        .and_then(|session| {
+                            session
+                                .request_ai_session(AiSessionRequest::Stream(event))
+                                .ok()
                         })
                         .and_then(|outcome| match outcome {
                             AiSessionOutcome::StreamApplied(result) => Some(result),
@@ -247,8 +239,8 @@ impl CditorV2View {
 
     pub(crate) fn accept_ai_preview_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
         let mode = self
-            .ready_runtime_ref()
-            .and_then(|runtime| project_ai_context(runtime).apply_mode);
+            .ready_session()
+            .and_then(|session| session.ai_context().ok()?.apply_mode);
         let Some(mode) = mode else {
             return false;
         };
@@ -280,11 +272,12 @@ impl CditorV2View {
     }
 
     pub(crate) fn reject_ai_preview_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        let readonly = self.readonly;
         let changed = self
-            .ready_runtime()
-            .and_then(|runtime| {
-                project_ai_session_request(runtime, AiSessionRequest::RejectPreview, readonly).ok()
+            .ready_session()
+            .and_then(|session| {
+                session
+                    .request_ai_session(AiSessionRequest::RejectPreview)
+                    .ok()
             })
             .is_some_and(|outcome| matches!(outcome, AiSessionOutcome::PreviewRejected(true)));
         if changed {

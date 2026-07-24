@@ -26,6 +26,8 @@ pub struct PersistenceSaveCapture {
 pub struct PersistenceRuntimeSnapshot {
     pub revision: u64,
     pub structure_version: u64,
+    pub pending_structure_transactions: usize,
+    pub last_committed_transaction_id: Option<u64>,
 }
 
 impl PersistenceSaveCapture {
@@ -40,6 +42,8 @@ pub fn project_persistence_runtime_snapshot(
     PersistenceRuntimeSnapshot {
         revision: runtime.revision(),
         structure_version: runtime.structure_version(),
+        pending_structure_transactions: runtime.pending_structure_transaction_count(),
+        last_committed_transaction_id: runtime.last_committed_transaction_id(),
     }
 }
 
@@ -134,7 +138,7 @@ impl EditorSessionHandle {
         Ok(project_persistence_runtime_snapshot(&session.runtime))
     }
 
-    pub fn note_content_changed(&self) -> Result<PersistenceRuntimeSnapshot, ProtocolError> {
+    pub fn record_content_changed(&self) -> Result<PersistenceRuntimeSnapshot, ProtocolError> {
         Ok(project_note_content_changed(
             &mut self.try_session_mut()?.runtime,
         ))

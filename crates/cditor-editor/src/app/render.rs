@@ -36,10 +36,7 @@ use crate::persistence::{EditorLoadStateLabel, render_load_state, render_readonl
 use crate::scroll::HeightCorrectionPriority;
 use crate::theme::GuiTheme;
 use cditor_runtime::AiRequestPresentation;
-use cditor_session::{
-    RenderFrameRequest, activate_resident_payload_window, apply_table_horizontal_scroll_offset,
-    plan_payload_window_load, project_render_frame,
-};
+use cditor_session::RenderFrameRequest;
 
 impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -71,7 +68,7 @@ impl Render for CditorV2View {
         let code_highlight_theme = self.code_highlight_theme;
         let mermaid_source_blocks = self.mermaid_source_blocks.clone();
         let formatting_context =
-            formatting_toolbar_context(self.ready_runtime_ref(), self.gutter_toolbar_block_id);
+            formatting_toolbar_context(self.ready_session(), self.gutter_toolbar_block_id);
         let embedded_ai_prompt = self.ai_prompt.as_ref().is_some_and(|prompt| {
             self.gutter_toolbar_block_id == Some(prompt.block_id)
                 || (prompt.presentation == AiRequestPresentation::Automatic
@@ -378,12 +375,14 @@ impl Render for CditorV2View {
             .text_color(rgb(theme.text));
 
         let mut pending_table_scroll_offsets = Vec::new();
-        let payload_storage_session = self.storage_persistence.session().cloned();
+        let payload_storage_request = self
+            .ready_session()
+            .and_then(|session| session.payload_storage_request().ok().flatten());
         let mut pending_payload_window_load = None;
         let mut pending_payload_window_range = None;
 
         match &mut self.state {
-            CditorViewState::Ready(runtime) => {
+            CditorViewState::Ready(session) => {
                 let viewport_height =
                     (editor_viewport.height - DEFAULT_DOCUMENT_TOP_INSET_PX).max(1.0) as f64;
                 self.scroll_accumulator
@@ -393,20 +392,19 @@ impl Render for CditorV2View {
                 } else {
                     self.scroll_accumulator.height_correction_priority()
                 };
-                let frame = project_render_frame(
-                    runtime,
-                    RenderFrameRequest {
+                let frame = session
+                    .render_frame(RenderFrameRequest {
                         viewport_height,
                         include_diagnostics: self.show_debug,
                         height_correction_priority,
                         min_scrollbar_thumb_height: 24.0,
-                    },
-                );
+                    })
+                    .expect("ready editor session must project a render frame");
                 crate::text::sync_automatic_text_layout_pins(&frame.automatic_text_layout_pins);
                 let projection = frame.projection;
                 let has_missing_payloads = projection.render_window.is_placeholder()
                     || projection.blocks.iter().any(|block| block.placeholder);
-                if payload_storage_session.is_some() && has_missing_payloads {
+                if payload_storage_request.is_some() && has_missing_payloads {
                     pending_payload_window_range =
                         Some(projection.payload_prefetch_block_range.clone());
                 }
@@ -568,17 +566,19 @@ impl Render for CditorV2View {
             }
         }
         if !pending_table_scroll_offsets.is_empty()
-            && let Some(runtime) = self.ready_runtime()
+            && let Some(session) = self.ready_session()
         {
             for (block_id, offset_x) in pending_table_scroll_offsets {
-                let _ = apply_table_horizontal_scroll_offset(runtime, block_id, offset_x);
+                let _ = session.set_table_horizontal_scroll_offset(block_id, offset_x);
             }
         }
-        if let (Some(session), Some(block_range)) =
-            (payload_storage_session, pending_payload_window_range)
+        if let (Some(storage_request), Some(block_range)) =
+            (payload_storage_request, pending_payload_window_range)
         {
-            let activated_resident_window = self.ready_runtime().is_some_and(|runtime| {
-                activate_resident_payload_window(runtime, block_range.clone())
+            let activated_resident_window = self.ready_session().is_some_and(|session| {
+                session
+                    .activate_resident_payload_window(block_range.clone())
+                    .unwrap_or(false)
             });
             if activated_resident_window {
                 // This frame was projected before the cached range became active.
@@ -590,9 +590,9 @@ impl Render for CditorV2View {
                     .request(std::time::Instant::now())
                 {
                     crate::persistence::PayloadWindowLoadSchedule::DispatchNow => {
-                        pending_payload_window_load = self
-                            .ready_runtime()
-                            .and_then(|runtime| plan_payload_window_load(runtime, block_range));
+                        pending_payload_window_load = self.ready_session().and_then(|session| {
+                            session.plan_payload_window_load(block_range).ok().flatten()
+                        });
                     }
                     crate::persistence::PayloadWindowLoadSchedule::WakeAfter(delay) => {
                         self.schedule_storage_payload_window_wake(delay, cx);
@@ -601,7 +601,7 @@ impl Render for CditorV2View {
                 }
             }
             if let Some(request) = pending_payload_window_load {
-                self.load_storage_payload_window(session, request, cx);
+                self.load_storage_payload_window(storage_request, request, cx);
             }
         }
         if let Some(toolbar) = formatting_toolbar {

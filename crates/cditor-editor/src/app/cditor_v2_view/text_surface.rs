@@ -22,23 +22,19 @@ impl CditorV2View {
         &self,
         surface_id: SurfaceId,
     ) -> Option<TextSurfaceRenderState> {
-        let CditorViewState::Ready(runtime) = &self.state else {
+        let CditorViewState::Ready(session) = &self.state else {
             return None;
         };
-        let snapshot = runtime.text_surface_snapshot(surface_id)?;
-        let focused = runtime.focused_text_surface_id() == Some(surface_id) && !self.readonly;
-        let selection_range = runtime
-            .text_surface_selection_range(surface_id)
-            .filter(|range| !range.is_empty());
+        let state = session.text_surface_state(surface_id).ok().flatten()?;
+        let focused = state.focused && !self.readonly;
+        let selection_range = state.selection_range.filter(|range| !range.is_empty());
         Some(TextSurfaceRenderState {
-            snapshot,
+            snapshot: state.snapshot,
             focused,
-            caret_offset: focused
-                .then(|| runtime.text_surface_caret_offset(surface_id))
-                .flatten(),
-            caret_affinity: TextAffinity::Downstream,
+            caret_offset: focused.then_some(state.caret_offset).flatten(),
+            caret_affinity: state.caret_affinity,
             selection_range,
-            marked_range: runtime.text_surface_marked_range(surface_id),
+            marked_range: state.marked_range,
         })
     }
 
@@ -56,31 +52,30 @@ impl CditorV2View {
         let hit = self
             .text_position_for_surface_at_position(surface_id, position)
             .map(|position| position.offset);
-        let click_selection = if let Some(kind) =
-            crate::app::text_hit::selection_kind_for_click_count(click_count)
-        {
-            self.ready_runtime_ref()
-                .and_then(|runtime| cditor_session::project_surface_version(runtime, surface_id))
-                .and_then(|current| self.current_text_surface_layout_cache(current))
-                .map(|cache| {
-                    let local_x = f32::from(position.x - cache.bounds.left());
-                    let local_y = f32::from(position.y - cache.bounds.top());
-                    cache.snapshot.selection_at_point(local_x, local_y, kind)
-                })
-        } else {
-            None
-        };
+        let click_selection =
+            if let Some(kind) = crate::app::text_hit::selection_kind_for_click_count(click_count) {
+                self.ready_session()
+                    .and_then(|session| session.surface_version(surface_id).ok().flatten())
+                    .and_then(|current| self.current_text_surface_layout_cache(current))
+                    .map(|cache| {
+                        let local_x = f32::from(position.x - cache.bounds.left());
+                        let local_y = f32::from(position.y - cache.bounds.top());
+                        cache.snapshot.selection_at_point(local_x, local_y, kind)
+                    })
+            } else {
+                None
+            };
         let fallback = self
-            .ready_runtime_ref()
-            .and_then(|runtime| runtime.text_surface_snapshot(surface_id))
-            .map(|snapshot| snapshot.len())
+            .ready_session()
+            .and_then(|session| session.text_surface_state(surface_id).ok().flatten())
+            .map(|state| state.snapshot.len())
             .unwrap_or_default();
 
         window.focus(&self.focus, cx);
         self.table_interaction_mode = Default::default();
         self.table_menu_ui = Default::default();
         self.clear_gutter_action();
-        if let Some(runtime) = self.ready_runtime() {
+        if let Some(session) = self.ready_session() {
             let command = if let Some(selection) = click_selection {
                 cditor_editor_protocol::command::CditorCommand::SetTextSurfaceSelection {
                     surface_id,
@@ -98,7 +93,7 @@ impl CditorV2View {
                 }
             };
             let focus_result =
-                runtime.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                session.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
                     command,
                     cditor_editor_protocol::command::CommandSource::Toolbar,
                 ));

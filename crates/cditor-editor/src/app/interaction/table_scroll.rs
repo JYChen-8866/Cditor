@@ -106,10 +106,8 @@ impl CditorV2View {
             block_id,
             start_pointer_x: f32::from(pointer.x),
             start_offset_x: self
-                .ready_runtime_ref()
-                .map(|runtime| {
-                    cditor_session::project_table_horizontal_scroll_offset(runtime, block_id)
-                })
+                .ready_session()
+                .and_then(|session| session.table_horizontal_scroll_offset(block_id).ok())
                 .unwrap_or(0.0),
             max_offset_x,
             thumb_travel_px,
@@ -133,11 +131,10 @@ impl CditorV2View {
             drag.max_offset_x,
             drag.thumb_travel_px,
         );
-        let Some(runtime) = self.ready_runtime() else {
+        let Some(session) = self.ready_session() else {
             return false;
         };
-        let _ =
-            cditor_session::apply_table_horizontal_scroll_offset(runtime, block_id, next_offset_x);
+        let _ = session.set_table_horizontal_scroll_offset(block_id, next_offset_x);
         self.table_scroll_state
             .sync_handle_offset_x(block_id, next_offset_x);
         cx.notify();
