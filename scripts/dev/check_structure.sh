@@ -50,6 +50,11 @@ if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])sqlx[[
   exit 1
 fi
 
+if [ ! -f crates/cditor-session/tests/session_integration.rs ]; then
+  echo 'error: cditor-session must retain its headless integration test target' >&2
+  exit 1
+fi
+
 if grep -R -n -E 'Arc[[:space:]]*<[[:space:]]*Mutex[[:space:]]*<[[:space:]]*DocumentRuntime' \
   --include='*.rs' crates/cditor-session/src | grep -q .; then
   echo 'error: session must keep one serial Runtime owner instead of Arc<Mutex<DocumentRuntime>>' >&2
