@@ -72,7 +72,7 @@ impl CditorV2View {
             .unwrap_or_default();
 
         window.focus(&self.focus.editor, cx);
-        self.table_interaction_mode = Default::default();
+        self.interaction.table_interaction_mode = Default::default();
         self.table_menu_ui = Default::default();
         self.clear_gutter_action();
         if let Some(session) = self.ready_session() {

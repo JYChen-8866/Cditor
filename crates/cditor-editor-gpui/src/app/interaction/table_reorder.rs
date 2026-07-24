@@ -39,23 +39,23 @@ impl CditorV2View {
             return;
         }
         window.focus(&self.focus.editor, cx);
-        self.text_drag_selection = None;
-        self.block_drag_selection = BlockDragSelectionController::default();
+        self.interaction.text_drag_selection = None;
+        self.interaction.block_drag_selection = BlockDragSelectionController::default();
         self.clear_gutter_action();
-        self.scrollbar_drag = None;
-        self.image_resize_drag = None;
-        self.table_resize_drag = None;
-        self.table_hscroll_drag = None;
-        self.table_interaction_mode = GuiTableInteractionMode::Reordering {
+        self.interaction.scrollbar_drag = None;
+        self.interaction.image_resize_drag = None;
+        self.interaction.table_resize_drag = None;
+        self.interaction.table_hscroll_drag = None;
+        self.interaction.table_interaction_mode = GuiTableInteractionMode::Reordering {
             block_id,
             axis,
             from_index: index,
             target_index: index,
             active: false,
         };
-        self.hovered_block_id = Some(block_id);
-        self.action_block_id = Some(block_id);
-        self.table_reorder_drag = Some(GuiTableReorderDrag {
+        self.interaction.hovered_block_id = Some(block_id);
+        self.interaction.action_block_id = Some(block_id);
+        self.interaction.table_reorder_drag = Some(GuiTableReorderDrag {
             block_id,
             axis,
             from_index: index,
@@ -78,7 +78,7 @@ impl CditorV2View {
     pub(in crate::app) fn table_reorder_preview(
         &self,
     ) -> Option<(BlockId, TableAxis, usize, usize)> {
-        let drag = self.table_reorder_drag.as_ref()?;
+        let drag = self.interaction.table_reorder_drag.as_ref()?;
         drag.exceeded_threshold.then_some((
             drag.block_id,
             drag.axis,
@@ -93,9 +93,9 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) -> bool {
         if self.status.readonly {
-            return self.table_reorder_drag.is_some();
+            return self.interaction.table_reorder_drag.is_some();
         }
-        let Some(mut drag) = self.table_reorder_drag.take() else {
+        let Some(mut drag) = self.interaction.table_reorder_drag.take() else {
             return false;
         };
         let pointer = table_reorder_pointer(drag.axis, position);
@@ -103,20 +103,21 @@ impl CditorV2View {
         drag.exceeded_threshold |= delta.abs() >= TABLE_REORDER_MIN_DRAG_DELTA_PX;
         drag.target_index =
             table_reorder_target_index(drag.from_index, delta, &drag.track_sizes_px);
-        self.table_interaction_mode = table_reorder_interaction_mode(&drag);
-        self.table_reorder_drag = Some(drag);
+        self.interaction.table_interaction_mode = table_reorder_interaction_mode(&drag);
+        self.interaction.table_reorder_drag = Some(drag);
         cx.notify();
         true
     }
 
     pub(in crate::app) fn commit_table_reorder_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.table_reorder_drag.take() else {
+        let Some(drag) = self.interaction.table_reorder_drag.take() else {
             return false;
         };
-        self.action_block_id = self
+        self.interaction.action_block_id = self
+            .interaction
             .action_block_id
             .filter(|action_block_id| *action_block_id != drag.block_id);
-        self.table_interaction_mode = table_reorder_release_mode(&drag);
+        self.interaction.table_interaction_mode = table_reorder_release_mode(&drag);
         if !drag.exceeded_threshold {
             cx.notify();
             return true;

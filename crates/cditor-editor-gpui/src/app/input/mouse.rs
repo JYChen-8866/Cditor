@@ -11,12 +11,12 @@ impl CditorV2View {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.last_wheel_delta_y = scroll_delta_y(event);
+        self.interaction.last_wheel_delta_y = scroll_delta_y(event);
         if let CditorViewState::Ready(session) = &self.state {
             let _ = session.apply_scroll_input_frame(
-                &mut self.scroll_accumulator,
+                &mut self.interaction.scroll_accumulator,
                 ScrollInput {
-                    delta_y: self.last_wheel_delta_y,
+                    delta_y: self.interaction.last_wheel_delta_y,
                     mode: ScrollDeltaMode::Pixel,
                     phase: scroll_phase_from_touch(event.touch_phase),
                     device: ScrollDevice::Trackpad,
@@ -34,39 +34,39 @@ impl CditorV2View {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event.dragging() && self.image_resize_drag.is_some() {
+        if event.dragging() && self.interaction.image_resize_drag.is_some() {
             if self.update_image_resize_drag(event.position, cx) {
                 cx.stop_propagation();
             }
             return;
         }
-        if event.dragging() && self.table_resize_drag.is_some() {
+        if event.dragging() && self.interaction.table_resize_drag.is_some() {
             if self.update_table_resize_drag(event.position, cx) {
                 cx.stop_propagation();
             }
             return;
         }
-        if event.dragging() && self.table_reorder_drag.is_some() {
+        if event.dragging() && self.interaction.table_reorder_drag.is_some() {
             if self.update_table_reorder_drag(event.position, cx) {
                 cx.stop_propagation();
             }
             return;
         }
-        if event.dragging() && self.table_hscroll_drag.is_some() {
+        if event.dragging() && self.interaction.table_hscroll_drag.is_some() {
             if self.update_table_hscroll_drag(event.position, cx) {
                 cx.stop_propagation();
             }
             return;
         }
-        if event.dragging() && self.gutter_block_drag.is_some() {
+        if event.dragging() && self.interaction.gutter_block_drag.is_some() {
             if self.update_gutter_block_drag(event.position, cx) {
                 cx.stop_propagation();
             }
             return;
         }
-        let Some(drag) = self.scrollbar_drag else {
+        let Some(drag) = self.interaction.scrollbar_drag else {
             if event.dragging() {
-                if !self.block_drag_selection.is_dragging() {
+                if !self.interaction.block_drag_selection.is_dragging() {
                     self.update_text_drag_selection(event.position, cx);
                 }
             } else {
@@ -82,7 +82,7 @@ impl CditorV2View {
             return;
         }
         let CditorViewState::Ready(session) = &self.state else {
-            self.scrollbar_drag = None;
+            self.interaction.scrollbar_drag = None;
             return;
         };
         let thumb_top =

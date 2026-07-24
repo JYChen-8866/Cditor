@@ -6,10 +6,10 @@ use cditor_core::ids::BlockId;
 
 use crate::app::cditor_v2_view::ai::default_ai_provider;
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
-use crate::app::interaction::table_mode::GuiTableInteractionMode;
-use crate::app::state::{EditorStatusUiState, FocusUiState, PlatformInputState};
+use crate::app::state::{
+    EditorStatusUiState, FocusUiState, InteractionUiState, PlatformInputState,
+};
 use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
-use crate::input::BlockDragSelectionController;
 use crate::overlay::table::TableViewportMeasurement;
 use crate::persistence::{
     DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline, schedule_storage_autosave,
@@ -88,31 +88,21 @@ impl CditorV2View {
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             status: EditorStatusUiState::new(readonly, requested_readonly),
-            last_wheel_delta_y: 0.0,
-            scroll_accumulator: Default::default(),
-            editor_viewport_handle: Default::default(),
+            interaction: InteractionUiState::default(),
             text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
             table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
             text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
-            table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
-            scrollbar_drag: None,
-            text_drag_selection: None,
-            text_drag_auto_scroll_scheduled: false,
-            block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
             code_theme_menu_block_id: None,
             code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
             slash_menu: None,
             toast: None,
-            table_interaction_mode: GuiTableInteractionMode::Idle,
             table_menu_ui: Default::default(),
-            hovered_block_id: None,
-            action_block_id: None,
             gutter_toolbar_block_id: None,
             selection_toolbar_delay: Default::default(),
             block_transform_menu_open: false,
@@ -120,13 +110,6 @@ impl CditorV2View {
             color_menu_hover_generation: 0,
             color_menu_scroll_handle: Default::default(),
             last_color_action: None,
-            gutter_block_drag: None,
-            gutter_drag_auto_scroll_scheduled: false,
-            image_resize_drag: None,
-            table_resize_drag: None,
-            table_reorder_drag: None,
-            table_hscroll_drag: None,
-            projected_block_rects: Vec::new(),
         }
     }
 
@@ -153,31 +136,21 @@ impl CditorV2View {
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             status: EditorStatusUiState::new(readonly, readonly),
-            last_wheel_delta_y: 0.0,
-            scroll_accumulator: Default::default(),
-            editor_viewport_handle: Default::default(),
+            interaction: InteractionUiState::default(),
             text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
             table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
             text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
-            table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
-            scrollbar_drag: None,
-            text_drag_selection: None,
-            text_drag_auto_scroll_scheduled: false,
-            block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
             code_theme_menu_block_id: None,
             code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
             slash_menu: None,
             toast: None,
-            table_interaction_mode: GuiTableInteractionMode::Idle,
             table_menu_ui: Default::default(),
-            hovered_block_id: None,
-            action_block_id: None,
             gutter_toolbar_block_id: None,
             selection_toolbar_delay: Default::default(),
             block_transform_menu_open: false,
@@ -185,13 +158,6 @@ impl CditorV2View {
             color_menu_hover_generation: 0,
             color_menu_scroll_handle: Default::default(),
             last_color_action: None,
-            gutter_block_drag: None,
-            gutter_drag_auto_scroll_scheduled: false,
-            image_resize_drag: None,
-            table_resize_drag: None,
-            table_reorder_drag: None,
-            table_hscroll_drag: None,
-            projected_block_rects: Vec::new(),
         }
     }
 
@@ -221,31 +187,21 @@ impl CditorV2View {
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             status: EditorStatusUiState::new(readonly, readonly),
-            last_wheel_delta_y: 0.0,
-            scroll_accumulator: Default::default(),
-            editor_viewport_handle: Default::default(),
+            interaction: InteractionUiState::default(),
             text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
             table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
             text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
-            table_scroll_state: Default::default(),
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             whiteboard_editor: None,
-            scrollbar_drag: None,
-            text_drag_selection: None,
-            text_drag_auto_scroll_scheduled: false,
-            block_drag_selection: BlockDragSelectionController::default(),
             code_language_edit: None,
             code_theme_menu_block_id: None,
             code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
             slash_menu: None,
             toast: None,
-            table_interaction_mode: GuiTableInteractionMode::Idle,
             table_menu_ui: Default::default(),
-            hovered_block_id: None,
-            action_block_id: None,
             gutter_toolbar_block_id: None,
             selection_toolbar_delay: Default::default(),
             block_transform_menu_open: false,
@@ -253,13 +209,6 @@ impl CditorV2View {
             color_menu_hover_generation: 0,
             color_menu_scroll_handle: Default::default(),
             last_color_action: None,
-            gutter_block_drag: None,
-            gutter_drag_auto_scroll_scheduled: false,
-            image_resize_drag: None,
-            table_resize_drag: None,
-            table_reorder_drag: None,
-            table_hscroll_drag: None,
-            projected_block_rects: Vec::new(),
         }
     }
 
@@ -271,36 +220,24 @@ impl CditorV2View {
         self.status.reset_for_session(session_readonly);
         self.focus.reset_session_projection();
         self.input.reset();
+        self.interaction.reset();
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.text_surface_layouts.clear();
-        self.table_scroll_state.clear();
         self.code_highlights.clear();
         self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
         self.whiteboard_editor = None;
-        self.text_drag_selection = None;
-        self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
         self.code_theme_menu_block_id = None;
         self.slash_menu = None;
         self.toast = None;
-        self.table_interaction_mode = GuiTableInteractionMode::Idle;
         self.table_menu_ui = Default::default();
-        self.hovered_block_id = None;
-        self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
         self.selection_toolbar_delay = Default::default();
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
-        self.gutter_block_drag = None;
-        self.gutter_drag_auto_scroll_scheduled = false;
-        self.image_resize_drag = None;
-        self.table_resize_drag = None;
-        self.table_reorder_drag = None;
-        self.table_hscroll_drag = None;
-        self.projected_block_rects.clear();
     }
 
     pub fn apply_recovered_session(
@@ -323,34 +260,22 @@ impl CditorV2View {
         self.status.reset_after_load_failure();
         self.focus.reset_session_projection();
         self.input.reset();
+        self.interaction.reset();
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.text_surface_layouts.clear();
-        self.table_scroll_state.clear();
         self.code_highlights.clear();
         self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
-        self.text_drag_selection = None;
-        self.block_drag_selection = BlockDragSelectionController::default();
         self.code_language_edit = None;
         self.code_theme_menu_block_id = None;
         self.slash_menu = None;
         self.toast = None;
-        self.table_interaction_mode = GuiTableInteractionMode::Idle;
         self.table_menu_ui = Default::default();
-        self.hovered_block_id = None;
-        self.action_block_id = None;
         self.gutter_toolbar_block_id = None;
         self.selection_toolbar_delay = Default::default();
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
-        self.gutter_block_drag = None;
-        self.gutter_drag_auto_scroll_scheduled = false;
-        self.image_resize_drag = None;
-        self.table_resize_drag = None;
-        self.table_reorder_drag = None;
-        self.table_hscroll_drag = None;
-        self.projected_block_rects.clear();
     }
 
     /// Return the persistent horizontal `ScrollHandle` for a table block.
@@ -360,7 +285,9 @@ impl CditorV2View {
         block_id: BlockId,
         offset_x: f32,
     ) -> gpui::ScrollHandle {
-        self.table_scroll_state.handle(block_id, offset_x)
+        self.interaction
+            .table_scroll_state
+            .handle(block_id, offset_x)
     }
 
     pub(in crate::app) fn stable_table_viewport_measurement(
@@ -368,7 +295,8 @@ impl CditorV2View {
         block_id: BlockId,
         handle: &gpui::ScrollHandle,
     ) -> Option<TableViewportMeasurement> {
-        self.table_scroll_state
+        self.interaction
+            .table_scroll_state
             .stable_viewport_measurement(block_id, handle)
     }
 

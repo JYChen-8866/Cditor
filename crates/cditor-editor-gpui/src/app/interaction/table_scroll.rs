@@ -14,11 +14,6 @@ pub(in crate::app) struct GuiTableScrollState {
 }
 
 impl GuiTableScrollState {
-    pub(in crate::app) fn clear(&mut self) {
-        self.handles.clear();
-        self.viewport_measurements.clear();
-    }
-
     pub(in crate::app) fn handle(&mut self, block_id: BlockId, offset_x: f32) -> ScrollHandle {
         let handle = self.handles.entry(block_id).or_default().clone();
         handle.set_offset(point(px(offset_x), handle.offset().y));
@@ -96,13 +91,13 @@ impl CditorV2View {
             return;
         }
         window.focus(&self.focus.editor, cx);
-        self.scrollbar_drag = None;
-        self.image_resize_drag = None;
-        self.table_resize_drag = None;
-        self.table_reorder_drag = None;
-        self.gutter_block_drag = None;
-        self.table_interaction_mode = GuiTableInteractionMode::HScrolling { block_id };
-        self.table_hscroll_drag = Some(GuiTableHScrollDrag {
+        self.interaction.scrollbar_drag = None;
+        self.interaction.image_resize_drag = None;
+        self.interaction.table_resize_drag = None;
+        self.interaction.table_reorder_drag = None;
+        self.interaction.gutter_block_drag = None;
+        self.interaction.table_interaction_mode = GuiTableInteractionMode::HScrolling { block_id };
+        self.interaction.table_hscroll_drag = Some(GuiTableHScrollDrag {
             block_id,
             start_pointer_x: f32::from(pointer.x),
             start_offset_x: self
@@ -120,7 +115,7 @@ impl CditorV2View {
         pointer: Point<Pixels>,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(drag) = self.table_hscroll_drag.as_ref() else {
+        let Some(drag) = self.interaction.table_hscroll_drag.as_ref() else {
             return false;
         };
         let block_id = drag.block_id;
@@ -135,22 +130,23 @@ impl CditorV2View {
             return false;
         };
         let _ = session.set_table_horizontal_scroll_offset(block_id, next_offset_x);
-        self.table_scroll_state
+        self.interaction
+            .table_scroll_state
             .sync_handle_offset_x(block_id, next_offset_x);
         cx.notify();
         true
     }
 
     pub(in crate::app) fn finish_table_hscroll_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.table_hscroll_drag.take() else {
+        let Some(drag) = self.interaction.table_hscroll_drag.take() else {
             return false;
         };
-        if self.table_interaction_mode
+        if self.interaction.table_interaction_mode
             == (GuiTableInteractionMode::HScrolling {
                 block_id: drag.block_id,
             })
         {
-            self.table_interaction_mode = GuiTableInteractionMode::Idle;
+            self.interaction.table_interaction_mode = GuiTableInteractionMode::Idle;
         }
         cx.notify();
         true

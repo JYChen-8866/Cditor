@@ -45,14 +45,14 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus.editor, cx);
-        self.hovered_block_id = Some(block_id);
-        self.action_block_id = Some(block_id);
+        self.interaction.hovered_block_id = Some(block_id);
+        self.interaction.action_block_id = Some(block_id);
         self.gutter_toolbar_block_id = Some(block_id);
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
-        self.text_drag_selection = None;
-        self.block_drag_selection = BlockDragSelectionController::default();
-        self.gutter_block_drag = Some(GutterBlockDragState::new(
+        self.interaction.text_drag_selection = None;
+        self.interaction.block_drag_selection = BlockDragSelectionController::default();
+        self.interaction.gutter_block_drag = Some(GutterBlockDragState::new(
             block_id,
             DragPoint::new(f32::from(position.x), f32::from(position.y)),
         ));
@@ -70,7 +70,7 @@ impl CditorV2View {
         position: Point<Pixels>,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(mut drag) = self.gutter_block_drag else {
+        let Some(mut drag) = self.interaction.gutter_block_drag else {
             return false;
         };
         let point = DragPoint::new(f32::from(position.x), f32::from(position.y));
@@ -88,7 +88,7 @@ impl CditorV2View {
         } else {
             false
         };
-        self.gutter_block_drag = Some(drag);
+        self.interaction.gutter_block_drag = Some(drag);
         let target_changed = self.refresh_gutter_block_drag_target();
         if self.should_continue_gutter_drag_auto_scroll() {
             self.schedule_gutter_drag_auto_scroll_tick(cx);
@@ -100,7 +100,7 @@ impl CditorV2View {
     }
 
     fn refresh_gutter_block_drag_target(&mut self) -> bool {
-        let Some(mut drag) = self.gutter_block_drag else {
+        let Some(mut drag) = self.interaction.gutter_block_drag else {
             return false;
         };
         let pointer_document_y =
@@ -111,12 +111,12 @@ impl CditorV2View {
             .flatten();
         let target_changed = drag.target != target;
         drag.target = target;
-        self.gutter_block_drag = Some(drag);
+        self.interaction.gutter_block_drag = Some(drag);
         target_changed
     }
 
     fn should_continue_gutter_drag_auto_scroll(&self) -> bool {
-        let Some(drag) = self.gutter_block_drag else {
+        let Some(drag) = self.interaction.gutter_block_drag else {
             return false;
         };
         if !drag.exceeded_threshold {
@@ -137,17 +137,17 @@ impl CditorV2View {
     }
 
     fn schedule_gutter_drag_auto_scroll_tick(&mut self, cx: &mut Context<Self>) {
-        if self.gutter_drag_auto_scroll_scheduled {
+        if self.interaction.gutter_drag_auto_scroll_scheduled {
             return;
         }
-        self.gutter_drag_auto_scroll_scheduled = true;
+        self.interaction.gutter_drag_auto_scroll_scheduled = true;
         let tick = cx.background_spawn(async move {
             std::thread::sleep(Duration::from_millis(GUTTER_DRAG_AUTO_SCROLL_TICK_MS));
         });
         cx.spawn(async move |view, cx| {
             let _ = tick.await;
             let _ = view.update(cx, |view, cx| {
-                view.gutter_drag_auto_scroll_scheduled = false;
+                view.interaction.gutter_drag_auto_scroll_scheduled = false;
                 let changed = view.tick_gutter_drag_auto_scroll();
                 if changed {
                     cx.notify();
@@ -161,7 +161,7 @@ impl CditorV2View {
     }
 
     fn tick_gutter_drag_auto_scroll(&mut self) -> bool {
-        let Some(drag) = self.gutter_block_drag else {
+        let Some(drag) = self.interaction.gutter_block_drag else {
             return false;
         };
         if !drag.exceeded_threshold {
@@ -196,21 +196,21 @@ impl CditorV2View {
         document_y: f64,
     ) -> Option<BlockDropTarget> {
         drop_target_for_document_y_from_rects(
-            &self.projected_block_rects,
+            &self.interaction.projected_block_rects,
             source_block_id,
             document_y,
         )
     }
 
     pub(in crate::app) fn block_drag_overlay_snapshot(&self) -> Option<BlockDragOverlaySnapshot> {
-        let drag = self.gutter_block_drag?;
+        let drag = self.interaction.gutter_block_drag?;
         if !drag.exceeded_threshold {
             return None;
         }
 
-        let window_start_global_y = self.projected_block_rects.first()?.document_top;
+        let window_start_global_y = self.interaction.projected_block_rects.first()?.document_top;
         let guideline = gutter_drag_guideline_geometry(
-            &self.projected_block_rects,
+            &self.interaction.projected_block_rects,
             drag.target?,
             window_start_global_y,
         )?;

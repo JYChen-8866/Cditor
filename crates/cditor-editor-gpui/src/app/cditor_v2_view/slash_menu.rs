@@ -223,6 +223,7 @@ impl CditorV2View {
             return (120.0, 120.0);
         };
         let anchor = self
+            .interaction
             .projected_block_rects
             .iter()
             .find(|rect| rect.block_id == block_id)
@@ -248,6 +249,7 @@ impl CditorV2View {
             return (120.0, 120.0);
         };
         let anchor = self
+            .interaction
             .projected_block_rects
             .iter()
             .find(|rect| rect.block_id == block_id)
@@ -257,7 +259,7 @@ impl CditorV2View {
     }
 
     fn window_anchor_to_editor_local(&self, x: f32, y: f32) -> (f32, f32) {
-        let bounds = self.editor_viewport_handle.bounds();
+        let bounds = self.interaction.editor_viewport_handle.bounds();
         EditorViewport::from_measurement(bounds, bounds.size).window_point_to_local(x, y)
     }
 }

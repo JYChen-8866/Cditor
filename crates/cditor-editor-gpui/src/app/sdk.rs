@@ -344,7 +344,7 @@ impl CditorV2View {
                 .and_then(|snapshot| snapshot.backend),
             document_blocks: diagnostics.document_blocks,
             loaded_payloads: diagnostics.loaded_payloads,
-            rendered_blocks: self.projected_block_rects.len(),
+            rendered_blocks: self.interaction.projected_block_rects.len(),
             pending_layout_tasks: diagnostics.pending_layout_tasks,
             pending_saves: self
                 .ready_session()

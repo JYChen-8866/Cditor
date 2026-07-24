@@ -58,7 +58,7 @@ impl Render for CditorV2View {
         self.begin_platform_input_registration_frame();
 
         let editor_viewport = EditorViewport::from_measurement(
-            self.editor_viewport_handle.bounds(),
+            self.interaction.editor_viewport_handle.bounds(),
             window.viewport_size(),
         );
 
@@ -87,13 +87,14 @@ impl Render for CditorV2View {
                 || (self.ai_prompt.is_some() && !embedded_ai_prompt),
             editor_viewport,
             self.gutter_toolbar_block_id.filter(|_| {
-                self.gutter_block_drag
+                self.interaction
+                    .gutter_block_drag
                     .is_none_or(|drag| !drag.exceeded_threshold)
             }),
             self.block_transform_menu_open,
             self.color_menu_open,
             self.last_color_action,
-            &self.projected_block_rects,
+            &self.interaction.projected_block_rects,
         );
         if formatting_toolbar.as_ref().is_some_and(|toolbar| {
             !floating_toolbar_passes_selection_delay(
@@ -113,7 +114,7 @@ impl Render for CditorV2View {
             .id("cditor-v2-root")
             .relative()
             .overflow_hidden()
-            .track_scroll(&self.editor_viewport_handle)
+            .track_scroll(&self.interaction.editor_viewport_handle)
             .key_context(CDITOR_KEY_CONTEXT)
             .track_focus(&self.focus.editor)
             .on_action(cx.listener(|view, _: &Newline, _window, cx| {
@@ -385,12 +386,15 @@ impl Render for CditorV2View {
             CditorViewState::Ready(session) => {
                 let viewport_height =
                     (editor_viewport.height - DEFAULT_DOCUMENT_TOP_INSET_PX).max(1.0) as f64;
-                self.scroll_accumulator
+                self.interaction
+                    .scroll_accumulator
                     .maybe_mark_idle(std::time::Instant::now());
-                let height_correction_priority = if self.scrollbar_drag.is_some() {
+                let height_correction_priority = if self.interaction.scrollbar_drag.is_some() {
                     HeightCorrectionPriority::DeferUntilIdle
                 } else {
-                    self.scroll_accumulator.height_correction_priority()
+                    self.interaction
+                        .scroll_accumulator
+                        .height_correction_priority()
                 };
                 let frame = session
                     .render_frame(RenderFrameRequest {
@@ -418,21 +422,23 @@ impl Render for CditorV2View {
                 self.whiteboard_thumbnails
                     .sync_visible_window(&projection, theme, cx);
                 let scrollbar_visual = frame.scrollbar_visual;
-                self.projected_block_rects = projected_block_rects_from_projection(&projection);
+                self.interaction.projected_block_rects =
+                    projected_block_rects_from_projection(&projection);
                 let drag_overlay = self.block_drag_overlay_snapshot();
                 let table_axis_selection = self.projected_table_axis_visual_selection();
                 let table_axis_menu_selection = self.projected_table_axis_selection();
                 let table_cell_selection = self.projected_table_cell_selection();
                 let table_range_selection = self.projected_table_range_selection();
                 let block_action = DocumentBlockActionProjection {
-                    action_block_id: self.action_block_id,
+                    action_block_id: self.interaction.action_block_id,
                     dragging: self
+                        .interaction
                         .gutter_block_drag
                         .is_some_and(|drag| drag.exceeded_threshold)
-                        || self.table_interaction_mode.is_dragging(),
+                        || self.interaction.table_interaction_mode.is_dragging(),
                 };
                 let document_editor = DocumentEditorView::new(theme);
-                let scrollbar_dragging = self.scrollbar_drag.is_some();
+                let scrollbar_dragging = self.interaction.scrollbar_drag.is_some();
                 // Pre-create persistent horizontal scroll handles for every table
                 // block in the current window, then pass a read-only snapshot down
                 // the render chain so each table can track scroll + draw its bar.
@@ -471,7 +477,8 @@ impl Render for CditorV2View {
                             pending_table_scroll_offsets.push((block_id, projected_offset_x));
                         }
                     }
-                    self.table_scroll_state
+                    self.interaction
+                        .table_scroll_state
                         .sync_handle_offset_x(block_id, projected_offset_x);
                     table_scroll_snapshots.insert(
                         block_id,
@@ -488,7 +495,7 @@ impl Render for CditorV2View {
                         view.clone(),
                         self.focus.editor.clone(),
                         self.focus.code_language.clone(),
-                        self.hovered_block_id,
+                        self.interaction.hovered_block_id,
                         drag_overlay,
                         block_action,
                         table_axis_selection,

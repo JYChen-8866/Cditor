@@ -57,7 +57,7 @@ impl CditorV2View {
         window.focus(&self.focus.code_language, cx);
         self.input.target = Some(GuiPlatformInputTarget::code_language(block_id));
         let viewport = EditorViewport::from_measurement(
-            self.editor_viewport_handle.bounds(),
+            self.interaction.editor_viewport_handle.bounds(),
             window.viewport_size(),
         );
         let placement = code_language_popup_placement(pointer_y_px, viewport);

@@ -83,7 +83,7 @@ impl CditorV2View {
         } else {
             visual.thumb_height / 2.0
         };
-        self.scrollbar_drag = Some(GuiScrollbarDrag {
+        self.interaction.scrollbar_drag = Some(GuiScrollbarDrag {
             pointer_y_offset_in_thumb,
         });
         let _ = session.drag_scrollbar(pointer_y - pointer_y_offset_in_thumb);
@@ -92,7 +92,7 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn finish_gui_scrollbar_drag(&mut self, cx: &mut Context<Self>) {
-        if self.scrollbar_drag.take().is_none() {
+        if self.interaction.scrollbar_drag.take().is_none() {
             return;
         }
         if let CditorViewState::Ready(session) = &self.state {

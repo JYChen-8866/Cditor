@@ -28,11 +28,11 @@ impl CditorV2View {
             .and_then(|viewport_origin| {
                 let document_y =
                     f32::from(position.y) as f64 - viewport_origin.y + viewport.global_scroll_top;
-                projected_block_at_document_y(&self.projected_block_rects, document_y)
+                projected_block_at_document_y(&self.interaction.projected_block_rects, document_y)
             })
             .or_else(|| {
                 current_layout_block_at_viewport_y(
-                    &self.projected_block_rects,
+                    &self.interaction.projected_block_rects,
                     &self.text_layouts,
                     session,
                     position.y,
@@ -47,10 +47,10 @@ impl CditorV2View {
         position: Point<Pixels>,
         cx: &mut Context<Self>,
     ) {
-        let Some(drag) = self.text_drag_selection else {
+        let Some(drag) = self.interaction.text_drag_selection else {
             return;
         };
-        self.text_drag_selection = Some(GuiTextDragSelection {
+        self.interaction.text_drag_selection = Some(GuiTextDragSelection {
             pointer_position: position,
             ..drag
         });
@@ -83,12 +83,12 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn finish_text_drag_selection(&mut self) {
-        self.text_drag_selection = None;
-        self.text_drag_auto_scroll_scheduled = false;
+        self.interaction.text_drag_selection = None;
+        self.interaction.text_drag_auto_scroll_scheduled = false;
     }
 
     fn schedule_text_drag_auto_scroll(&mut self, cx: &mut Context<Self>) {
-        let Some(drag) = self.text_drag_selection else {
+        let Some(drag) = self.interaction.text_drag_selection else {
             return;
         };
         let Some(viewport) = self
@@ -108,17 +108,17 @@ impl CditorV2View {
         if delta.abs() < f64::EPSILON {
             return;
         }
-        if self.text_drag_auto_scroll_scheduled {
+        if self.interaction.text_drag_auto_scroll_scheduled {
             return;
         }
-        self.text_drag_auto_scroll_scheduled = true;
+        self.interaction.text_drag_auto_scroll_scheduled = true;
         let tick = cx.background_spawn(async move {
             std::thread::sleep(Duration::from_millis(TEXT_DRAG_AUTO_SCROLL_TICK_MS));
         });
         cx.spawn(async move |view, cx| {
             let _ = tick.await;
             let _ = view.update(cx, |view, cx| {
-                view.text_drag_auto_scroll_scheduled = false;
+                view.interaction.text_drag_auto_scroll_scheduled = false;
                 if view.tick_text_drag_auto_scroll(cx) {
                     cx.notify();
                 }
@@ -128,7 +128,7 @@ impl CditorV2View {
     }
 
     fn tick_text_drag_auto_scroll(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.text_drag_selection else {
+        let Some(drag) = self.interaction.text_drag_selection else {
             return false;
         };
         let Some(pointer_y) = self
@@ -159,7 +159,7 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn finish_block_drag_selection(&mut self) {
-        let _ = self.block_drag_selection.finish();
+        let _ = self.interaction.block_drag_selection.finish();
     }
 }
 

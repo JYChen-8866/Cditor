@@ -11,12 +11,12 @@ impl CditorV2View {
         let diagnostics = self
             .ready_session()
             .and_then(|session| session.diagnostics_snapshot().ok());
-        let interaction = if self.scrollbar_drag.is_some() {
+        let interaction = if self.interaction.scrollbar_drag.is_some() {
             "scrollbar_drag".to_owned()
-        } else if self.gutter_block_drag.is_some()
-            || self.table_interaction_mode.is_dragging()
-            || self.image_resize_drag.is_some()
-            || self.table_resize_drag.is_some()
+        } else if self.interaction.gutter_block_drag.is_some()
+            || self.interaction.table_interaction_mode.is_dragging()
+            || self.interaction.image_resize_drag.is_some()
+            || self.interaction.table_resize_drag.is_some()
         {
             "drag".to_owned()
         } else if diagnostics
@@ -25,7 +25,11 @@ impl CditorV2View {
         {
             "editing".to_owned()
         } else {
-            format!("{:?}", self.scroll_accumulator.interaction_state).to_lowercase()
+            format!(
+                "{:?}",
+                self.interaction.scroll_accumulator.interaction_state
+            )
+            .to_lowercase()
         };
         let (queues, window, entities, payload_and_undo_bytes, payload_over_budget) = diagnostics
             .map(|snapshot| {
@@ -54,7 +58,7 @@ impl CditorV2View {
                         page_end: snapshot.page_window.end,
                     },
                     FrameEntitySnapshot {
-                        rendered_blocks: self.projected_block_rects.len(),
+                        rendered_blocks: self.interaction.projected_block_rects.len(),
                         loaded_payloads: snapshot.loaded_payloads,
                         block_layouts: self.text_layouts.len(),
                         table_cell_layouts: self.table_cell_layouts.len(),

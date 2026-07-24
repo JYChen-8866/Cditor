@@ -136,6 +136,7 @@ impl CditorV2View {
         position: Point<Pixels>,
     ) -> Option<ParleyTextPosition> {
         let rect = self
+            .interaction
             .projected_block_rects
             .iter()
             .find(|rect| rect.block_id == block_id)?;
@@ -194,20 +195,23 @@ impl CditorV2View {
             .and_then(|block_id| {
                 viewport_origin_for_block(
                     session,
-                    &self.projected_block_rects,
+                    &self.interaction.projected_block_rects,
                     &self.text_layouts,
                     block_id,
                 )
             });
         focused.or_else(|| {
-            self.projected_block_rects.iter().find_map(|rect| {
-                viewport_origin_for_block(
-                    session,
-                    &self.projected_block_rects,
-                    &self.text_layouts,
-                    rect.block_id,
-                )
-            })
+            self.interaction
+                .projected_block_rects
+                .iter()
+                .find_map(|rect| {
+                    viewport_origin_for_block(
+                        session,
+                        &self.interaction.projected_block_rects,
+                        &self.text_layouts,
+                        rect.block_id,
+                    )
+                })
         })
     }
 }

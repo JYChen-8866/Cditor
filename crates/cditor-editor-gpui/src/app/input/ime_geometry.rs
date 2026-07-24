@@ -52,7 +52,7 @@ impl CditorV2View {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
-        if let Some(selection) = self.table_interaction_mode.axis_selection() {
+        if let Some(selection) = self.interaction.table_interaction_mode.axis_selection() {
             if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return None;
             }

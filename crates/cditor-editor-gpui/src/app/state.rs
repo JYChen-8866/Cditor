@@ -1,7 +1,20 @@
 use cditor_session::EditorSessionHandle;
 use gpui::{Context, FocusHandle};
 
+use cditor_core::block::GutterBlockDragState;
+use cditor_core::ids::BlockId;
+
+use crate::app::input::text_drag::GuiTextDragSelection;
+use crate::app::interaction::geometry::ProjectedBlockRect;
+use crate::app::interaction::image_resize::GuiImageResizeDrag;
+use crate::app::interaction::scrollbar::GuiScrollbarDrag;
+use crate::app::interaction::table_mode::GuiTableInteractionMode;
+use crate::app::interaction::table_reorder::GuiTableReorderDrag;
+use crate::app::interaction::table_resize::GuiTableResizeDrag;
+use crate::app::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
+use crate::input::BlockDragSelectionController;
 use crate::persistence::EditorSaveStatus;
+use crate::scroll::ScrollAccumulator;
 use crate::text::TextPlatformLayoutIdentity;
 
 use super::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
@@ -39,6 +52,58 @@ pub(in crate::app) struct PlatformInputState {
 }
 
 impl PlatformInputState {
+    pub(in crate::app) fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+pub(in crate::app) struct InteractionUiState {
+    pub(in crate::app) last_wheel_delta_y: f64,
+    pub(in crate::app) scroll_accumulator: ScrollAccumulator,
+    pub(in crate::app) editor_viewport_handle: gpui::ScrollHandle,
+    pub(in crate::app) table_scroll_state: GuiTableScrollState,
+    pub(in crate::app) scrollbar_drag: Option<GuiScrollbarDrag>,
+    pub(in crate::app) text_drag_selection: Option<GuiTextDragSelection>,
+    pub(in crate::app) text_drag_auto_scroll_scheduled: bool,
+    pub(in crate::app) block_drag_selection: BlockDragSelectionController,
+    pub(in crate::app) table_interaction_mode: GuiTableInteractionMode,
+    pub(in crate::app) hovered_block_id: Option<BlockId>,
+    pub(in crate::app) action_block_id: Option<BlockId>,
+    pub(in crate::app) gutter_block_drag: Option<GutterBlockDragState>,
+    pub(in crate::app) gutter_drag_auto_scroll_scheduled: bool,
+    pub(in crate::app) image_resize_drag: Option<GuiImageResizeDrag>,
+    pub(in crate::app) table_resize_drag: Option<GuiTableResizeDrag>,
+    pub(in crate::app) table_reorder_drag: Option<GuiTableReorderDrag>,
+    pub(in crate::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
+    pub(in crate::app) projected_block_rects: Vec<ProjectedBlockRect>,
+}
+
+impl Default for InteractionUiState {
+    fn default() -> Self {
+        Self {
+            last_wheel_delta_y: 0.0,
+            scroll_accumulator: Default::default(),
+            editor_viewport_handle: Default::default(),
+            table_scroll_state: Default::default(),
+            scrollbar_drag: None,
+            text_drag_selection: None,
+            text_drag_auto_scroll_scheduled: false,
+            block_drag_selection: Default::default(),
+            table_interaction_mode: GuiTableInteractionMode::Idle,
+            hovered_block_id: None,
+            action_block_id: None,
+            gutter_block_drag: None,
+            gutter_drag_auto_scroll_scheduled: false,
+            image_resize_drag: None,
+            table_resize_drag: None,
+            table_reorder_drag: None,
+            table_hscroll_drag: None,
+            projected_block_rects: Vec::new(),
+        }
+    }
+}
+
+impl InteractionUiState {
     pub(in crate::app) fn reset(&mut self) {
         *self = Self::default();
     }
@@ -129,6 +194,36 @@ mod tests {
         assert!(input.session_identity.is_none());
         assert!(input.layout_identity.is_none());
         assert!(input.preferred_navigation_x.is_none());
+    }
+
+    #[test]
+    fn interaction_reset_discards_drag_scroll_and_hit_test_state() {
+        let mut interaction = InteractionUiState {
+            last_wheel_delta_y: 18.0,
+            text_drag_auto_scroll_scheduled: true,
+            gutter_drag_auto_scroll_scheduled: true,
+            hovered_block_id: Some(7),
+            action_block_id: Some(8),
+            table_interaction_mode: GuiTableInteractionMode::EditingCell {
+                block_id: 9,
+                row: 1,
+                col: 2,
+            },
+            ..Default::default()
+        };
+
+        interaction.reset();
+
+        assert_eq!(interaction.last_wheel_delta_y, 0.0);
+        assert!(!interaction.text_drag_auto_scroll_scheduled);
+        assert!(!interaction.gutter_drag_auto_scroll_scheduled);
+        assert!(interaction.hovered_block_id.is_none());
+        assert!(interaction.action_block_id.is_none());
+        assert!(matches!(
+            interaction.table_interaction_mode,
+            GuiTableInteractionMode::Idle
+        ));
+        assert!(interaction.projected_block_rects.is_empty());
     }
 }
 

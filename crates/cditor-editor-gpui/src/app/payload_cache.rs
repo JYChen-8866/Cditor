@@ -54,7 +54,7 @@ impl CditorV2View {
 
     fn payload_cache_ui_pins(&self) -> Vec<BlockId> {
         let mut pins = HashSet::new();
-        pins.extend(self.action_block_id);
+        pins.extend(self.interaction.action_block_id);
         pins.extend(self.gutter_toolbar_block_id);
         pins.extend(self.code_theme_menu_block_id);
         pins.extend(self.ai_prompt.as_ref().map(|prompt| prompt.block_id));
@@ -66,16 +66,42 @@ impl CditorV2View {
                 .map(|session| session.block_id),
         );
         pins.extend(
-            self.text_drag_selection
+            self.interaction
+                .text_drag_selection
                 .as_ref()
                 .map(|drag| drag.anchor_block_id),
         );
-        pins.extend(self.gutter_block_drag.as_ref().map(|drag| drag.block_id));
-        pins.extend(self.image_resize_drag.as_ref().map(|drag| drag.block_id));
-        pins.extend(self.table_resize_drag.as_ref().map(|drag| drag.block_id));
-        pins.extend(self.table_reorder_drag.as_ref().map(|drag| drag.block_id));
-        pins.extend(self.table_hscroll_drag.as_ref().map(|drag| drag.block_id));
-        pins.extend(self.table_interaction_mode.block_id());
+        pins.extend(
+            self.interaction
+                .gutter_block_drag
+                .as_ref()
+                .map(|drag| drag.block_id),
+        );
+        pins.extend(
+            self.interaction
+                .image_resize_drag
+                .as_ref()
+                .map(|drag| drag.block_id),
+        );
+        pins.extend(
+            self.interaction
+                .table_resize_drag
+                .as_ref()
+                .map(|drag| drag.block_id),
+        );
+        pins.extend(
+            self.interaction
+                .table_reorder_drag
+                .as_ref()
+                .map(|drag| drag.block_id),
+        );
+        pins.extend(
+            self.interaction
+                .table_hscroll_drag
+                .as_ref()
+                .map(|drag| drag.block_id),
+        );
+        pins.extend(self.interaction.table_interaction_mode.block_id());
         pins.into_iter().collect()
     }
 }

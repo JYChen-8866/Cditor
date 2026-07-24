@@ -5,23 +5,17 @@ use std::{
 
 use gpui::{AppContext, Context, Pixels, Point, Window};
 
-use cditor_core::block::GutterBlockDragState;
 use cditor_core::ids::{BlockId, SurfaceId};
 
 use crate::app::input::text_drag::GuiTextDragSelection;
 use crate::app::input_trace::trace_input;
+#[cfg(test)]
 use crate::app::interaction::geometry::ProjectedBlockRect;
-use crate::app::interaction::image_resize::GuiImageResizeDrag;
-use crate::app::interaction::scrollbar::GuiScrollbarDrag;
 use crate::app::interaction::table_mode::GuiTableInteractionMode;
-use crate::app::interaction::table_reorder::GuiTableReorderDrag;
-use crate::app::interaction::table_resize::GuiTableResizeDrag;
-use crate::app::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
 use crate::app::platform_layout_cache::PlatformLayoutCache;
 use crate::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
-use crate::scroll::ScrollAccumulator;
 
-use crate::input::{AiPromptState, BlockDragSelectionController, CodeLanguageEditState};
+use crate::input::{AiPromptState, CodeLanguageEditState};
 use crate::overlay::GuiToast;
 use crate::overlay::SlashMenuState;
 use crate::overlay::WhiteboardEditorSession;
@@ -46,7 +40,7 @@ mod whiteboard;
 
 pub(in crate::app) use super::persistence_bridge::save_status_for_mode;
 pub use super::state::{CditorViewState, EditorReadonlyReason};
-use super::state::{EditorStatusUiState, FocusUiState, PlatformInputState};
+use super::state::{EditorStatusUiState, FocusUiState, InteractionUiState, PlatformInputState};
 pub(crate) use crate::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::app) use block_actions::block_focus_offset_after_missed_hit_test;
 pub(in crate::app) use formatting::{
@@ -67,31 +61,21 @@ pub struct CditorV2View {
     pub(in crate::app) ai_preview_scroll_handle: gpui::ScrollHandle,
     pub(in crate::app) show_debug: bool,
     pub(in crate::app) status: EditorStatusUiState,
-    pub(in crate::app) last_wheel_delta_y: f64,
-    pub(in crate::app) scroll_accumulator: ScrollAccumulator,
-    pub(in crate::app) editor_viewport_handle: gpui::ScrollHandle,
+    pub(in crate::app) interaction: InteractionUiState,
     pub(in crate::app) text_layouts: PlatformLayoutCache<BlockId>,
     pub(in crate::app) table_cell_layouts: PlatformLayoutCache<TableCellLayoutKey>,
     pub(in crate::app) text_surface_layouts: PlatformLayoutCache<SurfaceId>,
-    pub(in crate::app) table_scroll_state: GuiTableScrollState,
     pub(in crate::app) code_highlights: CodeHighlightCache,
     pub(in crate::app) mermaid_renders: MermaidRenderCache,
     pub(in crate::app) mermaid_source_blocks: std::collections::HashSet<BlockId>,
     pub(in crate::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
     pub(in crate::app) whiteboard_editor: Option<WhiteboardEditorSession>,
-    pub(in crate::app) scrollbar_drag: Option<GuiScrollbarDrag>,
-    pub(in crate::app) text_drag_selection: Option<GuiTextDragSelection>,
-    pub(in crate::app) text_drag_auto_scroll_scheduled: bool,
-    pub(in crate::app) block_drag_selection: BlockDragSelectionController,
     pub(in crate::app) code_language_edit: Option<CodeLanguageEditState>,
     pub(in crate::app) code_theme_menu_block_id: Option<BlockId>,
     pub(in crate::app) code_highlight_theme: &'static str,
     pub(in crate::app) slash_menu: Option<SlashMenuState>,
     pub(in crate::app) toast: Option<GuiToast>,
-    pub(in crate::app) table_interaction_mode: GuiTableInteractionMode,
     pub(in crate::app) table_menu_ui: crate::block::table::menu::TableMenuUiState,
-    pub(in crate::app) hovered_block_id: Option<BlockId>,
-    pub(in crate::app) action_block_id: Option<BlockId>,
     pub(in crate::app) gutter_toolbar_block_id: Option<BlockId>,
     pub(in crate::app) selection_toolbar_delay: SelectionToolbarDelay,
     pub(in crate::app) block_transform_menu_open: bool,
@@ -99,13 +83,6 @@ pub struct CditorV2View {
     pub(in crate::app) color_menu_hover_generation: u64,
     pub(in crate::app) color_menu_scroll_handle: gpui::ScrollHandle,
     pub(in crate::app) last_color_action: Option<crate::overlay::ColorMenuAction>,
-    pub(in crate::app) gutter_block_drag: Option<GutterBlockDragState>,
-    pub(in crate::app) gutter_drag_auto_scroll_scheduled: bool,
-    pub(in crate::app) image_resize_drag: Option<GuiImageResizeDrag>,
-    pub(in crate::app) table_resize_drag: Option<GuiTableResizeDrag>,
-    pub(in crate::app) table_reorder_drag: Option<GuiTableReorderDrag>,
-    pub(in crate::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
-    pub(in crate::app) projected_block_rects: Vec<ProjectedBlockRect>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -280,8 +257,8 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus.editor, cx);
-        if self.table_interaction_mode.block_id().is_some() {
-            self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        if self.interaction.table_interaction_mode.block_id().is_some() {
+            self.interaction.table_interaction_mode = GuiTableInteractionMode::Idle;
             self.table_menu_ui = Default::default();
         }
         self.clear_gutter_action();
@@ -329,7 +306,7 @@ impl CditorV2View {
                     },
                     cditor_editor_protocol::command::CommandSource::Toolbar,
                 ));
-                self.text_drag_selection = None;
+                self.interaction.text_drag_selection = None;
                 cx.stop_propagation();
                 cx.notify();
                 return;
@@ -347,7 +324,7 @@ impl CditorV2View {
                     },
                     cditor_editor_protocol::command::CommandSource::Toolbar,
                 ));
-                self.text_drag_selection = Some(GuiTextDragSelection {
+                self.interaction.text_drag_selection = Some(GuiTextDragSelection {
                     anchor_block_id: block_id,
                     anchor_position: text_position,
                     pointer_position: position.unwrap_or_default(),
@@ -375,7 +352,7 @@ impl CditorV2View {
                     },
                     cditor_editor_protocol::command::CommandSource::Toolbar,
                 ));
-                self.text_drag_selection = Some(GuiTextDragSelection {
+                self.interaction.text_drag_selection = Some(GuiTextDragSelection {
                     anchor_block_id: block_id,
                     anchor_position: crate::text::ParleyTextPosition::downstream(anchor_offset),
                     pointer_position: position.unwrap_or_default(),
@@ -429,14 +406,17 @@ impl CditorV2View {
         dragging: bool,
         cx: &mut Context<Self>,
     ) {
-        let hover_changed = self.hovered_block_id != Some(block_id);
-        self.hovered_block_id = Some(block_id);
+        let hover_changed = self.interaction.hovered_block_id != Some(block_id);
+        self.interaction.hovered_block_id = Some(block_id);
         let mut selection_changed = false;
         if dragging
-            && self.block_drag_selection.is_dragging()
+            && self.interaction.block_drag_selection.is_dragging()
             && let CditorViewState::Ready(session) = &self.state
         {
-            selection_changed = self.block_drag_selection.update(block_id, session);
+            selection_changed = self
+                .interaction
+                .block_drag_selection
+                .update(block_id, session);
         }
         if hover_changed || selection_changed {
             cx.notify();
@@ -444,13 +424,13 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn clear_gutter_action(&mut self) {
-        self.action_block_id = None;
+        self.interaction.action_block_id = None;
         self.gutter_toolbar_block_id = None;
         self.block_transform_menu_open = false;
         self.color_menu_open = false;
         self.color_menu_hover_generation = self.color_menu_hover_generation.wrapping_add(1);
-        self.gutter_block_drag = None;
-        self.gutter_drag_auto_scroll_scheduled = false;
+        self.interaction.gutter_block_drag = None;
+        self.interaction.gutter_drag_auto_scroll_scheduled = false;
     }
 
     pub(crate) fn dismiss_gutter_toolbar_from_gui(&mut self, cx: &mut Context<Self>) -> bool {

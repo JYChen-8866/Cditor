@@ -30,13 +30,13 @@ impl CditorV2View {
             return;
         }
         window.focus(&self.focus.editor, cx);
-        self.text_drag_selection = None;
-        self.block_drag_selection = BlockDragSelectionController::default();
+        self.interaction.text_drag_selection = None;
+        self.interaction.block_drag_selection = BlockDragSelectionController::default();
         self.clear_gutter_action();
-        self.scrollbar_drag = None;
-        self.hovered_block_id = Some(block_id);
-        self.action_block_id = Some(block_id);
-        self.image_resize_drag = Some(GuiImageResizeDrag {
+        self.interaction.scrollbar_drag = None;
+        self.interaction.hovered_block_id = Some(block_id);
+        self.interaction.action_block_id = Some(block_id);
+        self.interaction.image_resize_drag = Some(GuiImageResizeDrag {
             block_id,
             start_pointer_x: f32::from(position.x),
             start_width_px: current_width_px,
@@ -53,7 +53,8 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn image_resize_preview(&self) -> Option<(BlockId, f32)> {
-        self.image_resize_drag
+        self.interaction
+            .image_resize_drag
             .map(|drag| (drag.block_id, drag.current_width_px))
     }
 
@@ -62,7 +63,7 @@ impl CditorV2View {
         position: Point<Pixels>,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(mut drag) = self.image_resize_drag else {
+        let Some(mut drag) = self.interaction.image_resize_drag else {
             return false;
         };
         let dx = f32::from(position.x) - drag.start_pointer_x;
@@ -72,16 +73,16 @@ impl CditorV2View {
             return true;
         }
         drag.current_width_px = next_width;
-        self.image_resize_drag = Some(drag);
+        self.interaction.image_resize_drag = Some(drag);
         cx.notify();
         true
     }
 
     pub(in crate::app) fn commit_image_resize_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.image_resize_drag.take() else {
+        let Some(drag) = self.interaction.image_resize_drag.take() else {
             return false;
         };
-        clear_committed_image_resize_action(&mut self.action_block_id, drag.block_id);
+        clear_committed_image_resize_action(&mut self.interaction.action_block_id, drag.block_id);
         let ratio = image_width_ratio_milli_for_width(drag.current_width_px, drag.max_width_px);
         if let Err(error) = self.dispatch_command(
             EditorCommand::SetMediaWidthRatio {

@@ -66,8 +66,8 @@ impl CditorV2View {
                     self.block_transform_menu_open = false;
                     self.color_menu_open = false;
                 }
-                if self.action_block_id == Some(block_id) {
-                    self.action_block_id = None;
+                if self.interaction.action_block_id == Some(block_id) {
+                    self.interaction.action_block_id = None;
                 }
                 cx.notify();
                 true

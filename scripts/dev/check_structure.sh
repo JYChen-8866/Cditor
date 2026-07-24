@@ -105,6 +105,14 @@ fi
 
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
   crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  | grep -E '^[[:space:]]+pub.*(last_wheel_delta_y|scroll_accumulator|editor_viewport_handle|table_scroll_state|scrollbar_drag|text_drag_selection|text_drag_auto_scroll_scheduled|block_drag_selection|table_interaction_mode|hovered_block_id|action_block_id|gutter_block_drag|gutter_drag_auto_scroll_scheduled|image_resize_drag|table_resize_drag|table_reorder_drag|table_hscroll_drag|projected_block_rects)[[:space:]]*:' \
+  | grep -q .; then
+  echo 'error: scroll, hit-test, and drag lifecycle fields must remain grouped in InteractionUiState' >&2
+  exit 1
+fi
+
+if sed -n '/^pub struct CditorV2View {/,/^}/p' \
+  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
   | grep -E '^[[:space:]]+pub.*(code_language_focus|ai_prompt_focus|sdk_focus_observers_registered|last_emitted_selection|platform_input_target|platform_input_session_identity|platform_input_layout_identity|preferred_text_navigation_x)[[:space:]]*:' \
   | grep -q .; then
   echo 'error: focus and platform input lifecycle fields must remain grouped UI state' >&2

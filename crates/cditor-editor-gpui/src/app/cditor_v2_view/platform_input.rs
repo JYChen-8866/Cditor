@@ -168,12 +168,14 @@ impl CditorV2View {
                     .map(|edit| GuiPlatformInputTarget::code_language(edit.block_id))
             })
             .or_else(|| {
-                self.table_interaction_mode
+                self.interaction
+                    .table_interaction_mode
                     .cell_selection()
                     .map(|_| GuiPlatformInputTarget::None)
             })
             .or_else(|| {
-                self.table_interaction_mode
+                self.interaction
+                    .table_interaction_mode
                     .axis_selection()
                     .map(|selection| GuiPlatformInputTarget::table_menu_query(selection.block_id))
             });

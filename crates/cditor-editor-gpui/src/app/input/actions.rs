@@ -84,7 +84,12 @@ impl CditorV2View {
             }
         }
 
-        if self.table_interaction_mode.cell_selection().is_some() {
+        if self
+            .interaction
+            .table_interaction_mode
+            .cell_selection()
+            .is_some()
+        {
             if matches!(action, BoundInputAction::Cancel) {
                 self.dismiss_table_menu_from_gui(cx);
             }
@@ -94,7 +99,12 @@ impl CditorV2View {
             return;
         }
 
-        if self.table_interaction_mode.axis_selection().is_some() {
+        if self
+            .interaction
+            .table_interaction_mode
+            .axis_selection()
+            .is_some()
+        {
             match action {
                 BoundInputAction::Newline => self.confirm_table_menu_from_gui(cx),
                 BoundInputAction::Cancel => self.dismiss_table_menu_from_gui(cx),

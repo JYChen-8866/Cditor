@@ -18,10 +18,11 @@ use cditor_session::TableRangeRequest;
 
 impl CditorV2View {
     pub(crate) fn dismiss_table_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        if !self.table_interaction_mode.is_menu_open() {
+        if !self.interaction.table_interaction_mode.is_menu_open() {
             return false;
         }
-        self.table_interaction_mode = self
+        self.interaction.table_interaction_mode = self
+            .interaction
             .table_interaction_mode
             .cell_selection()
             .map(|selection| GuiTableInteractionMode::EditingCell {
@@ -36,23 +37,25 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn projected_table_axis_selection(&self) -> Option<TableAxisSelection> {
-        self.table_interaction_mode.axis_selection()
+        self.interaction.table_interaction_mode.axis_selection()
     }
 
     pub(in crate::app) fn projected_table_axis_visual_selection(
         &self,
     ) -> Option<TableAxisSelection> {
-        self.table_interaction_mode.visual_axis_selection()
+        self.interaction
+            .table_interaction_mode
+            .visual_axis_selection()
     }
 
     pub(in crate::app) fn projected_table_range_selection(
         &self,
     ) -> Option<TableCellRangeSelection> {
-        self.table_interaction_mode.range_selection()
+        self.interaction.table_interaction_mode.range_selection()
     }
 
     pub(in crate::app) fn projected_table_cell_selection(&self) -> Option<TableCellSelection> {
-        self.table_interaction_mode.cell_selection()
+        self.interaction.table_interaction_mode.cell_selection()
     }
 
     pub(crate) fn open_table_cell_menu_from_gui(
@@ -87,7 +90,7 @@ impl CditorV2View {
                 ),
             );
         }
-        self.table_interaction_mode =
+        self.interaction.table_interaction_mode =
             GuiTableInteractionMode::CellMenu(TableCellSelection::new(block_id, row, col));
         self.table_menu_ui = Default::default();
         cx.notify();
@@ -103,8 +106,9 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus.editor, cx);
-        self.text_drag_selection = None;
-        self.table_interaction_mode = GuiTableInteractionMode::EditingCell { block_id, row, col };
+        self.interaction.text_drag_selection = None;
+        self.interaction.table_interaction_mode =
+            GuiTableInteractionMode::EditingCell { block_id, row, col };
         let text_position = position.and_then(|position| {
             self.text_position_for_table_cell_at_position(block_id, row, col, position)
         });
@@ -211,7 +215,7 @@ impl CditorV2View {
             .filter(|focused| (focused.block_id, focused.row, focused.col) == (block_id, row, col))
             .map(|focused| (focused.offset, focused.affinity))
             .unwrap_or((0, cditor_core::edit::TextAffinity::Downstream));
-        self.table_interaction_mode = GuiTableInteractionMode::SelectingCellText {
+        self.interaction.table_interaction_mode = GuiTableInteractionMode::SelectingCellText {
             block_id,
             row,
             col,
@@ -234,7 +238,7 @@ impl CditorV2View {
             col: anchor_col,
             anchor_offset,
             anchor_affinity: _,
-        } = self.table_interaction_mode
+        } = self.interaction.table_interaction_mode
         else {
             return;
         };
@@ -269,15 +273,15 @@ impl CditorV2View {
     pub(in crate::app) fn finish_table_cell_text_selection_drag(&mut self) {
         if let GuiTableInteractionMode::SelectingCellText {
             block_id, row, col, ..
-        } = self.table_interaction_mode
+        } = self.interaction.table_interaction_mode
         {
-            self.table_interaction_mode =
+            self.interaction.table_interaction_mode =
                 GuiTableInteractionMode::EditingCell { block_id, row, col };
         }
     }
 
     pub(crate) fn confirm_table_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(selection) = self.table_interaction_mode.axis_selection() else {
+        let Some(selection) = self.interaction.table_interaction_mode.axis_selection() else {
             return false;
         };
         let Some(action) =
@@ -295,7 +299,7 @@ impl CditorV2View {
         &mut self,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(selection) = self.table_interaction_mode.axis_selection() else {
+        let Some(selection) = self.interaction.table_interaction_mode.axis_selection() else {
             return false;
         };
         let action = match selection.axis {
@@ -310,7 +314,12 @@ impl CditorV2View {
         &mut self,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.table_interaction_mode.axis_selection().is_none() {
+        if self
+            .interaction
+            .table_interaction_mode
+            .axis_selection()
+            .is_none()
+        {
             return false;
         }
         self.table_menu_ui.delete_backward();
@@ -371,7 +380,7 @@ impl CditorV2View {
         if self.status.readonly {
             return false;
         }
-        let axis_selection = self.table_interaction_mode.axis_selection();
+        let axis_selection = self.interaction.table_interaction_mode.axis_selection();
         let command = match action {
             TableMenuAction::ToggleHeader => {
                 axis_selection.map(|selection| CditorCommand::TableToggleHeader {
