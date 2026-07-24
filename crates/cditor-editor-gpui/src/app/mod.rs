@@ -4,4 +4,3 @@ pub(crate) mod payload_cache;
 pub(crate) mod persistence_bridge;
 pub(crate) mod platform_layout_cache;
 mod sdk;
-pub(crate) mod text_hit;

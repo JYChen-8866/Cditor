@@ -1,12 +1,15 @@
-use gpui::{Pixels, Point};
+use std::ops::Range;
 
+use gpui::{Context, Pixels, Point, Window};
+
+use cditor_core::edit::TextAffinity;
 use cditor_core::ids::{BlockId, SurfaceId};
 #[cfg(test)]
 use cditor_runtime::DocumentRuntime;
+use cditor_runtime::TextSurfaceSnapshot;
 use cditor_session::SurfaceVersionSnapshot;
 
-use crate::editor_view::CditorV2View;
-use crate::editor_view::TableCellLayoutKey;
+use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::input::trace::trace_input;
 use crate::interaction::geometry::FallbackViewportOrigin;
 use crate::text::{
@@ -23,6 +26,16 @@ pub(crate) fn selection_kind_for_click_count(click_count: usize) -> Option<Parle
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct TextSurfaceRenderState {
+    pub snapshot: TextSurfaceSnapshot,
+    pub focused: bool,
+    pub caret_offset: Option<usize>,
+    pub caret_affinity: TextAffinity,
+    pub selection_range: Option<Range<usize>>,
+    pub marked_range: Option<Range<usize>>,
+}
+
 impl CditorV2View {
     pub(crate) fn current_text_layout_cache(
         &self,
@@ -30,20 +43,6 @@ impl CditorV2View {
         block_id: BlockId,
     ) -> Option<&RichTextPlatformLayout> {
         let cache = self.cache.text_layouts.get(&block_id)?;
-        layout_cache_is_current(cache, current).then_some(cache)
-    }
-
-    pub(crate) fn current_table_cell_layout_cache(
-        &self,
-        current: SurfaceVersionSnapshot,
-        block_id: BlockId,
-        row: usize,
-        col: usize,
-    ) -> Option<&RichTextPlatformLayout> {
-        let cache =
-            self.cache
-                .table_cell_layouts
-                .get(&TableCellLayoutKey { block_id, row, col })?;
         layout_cache_is_current(cache, current).then_some(cache)
     }
 
@@ -58,9 +57,9 @@ impl CditorV2View {
                 row,
                 column,
             } => self.current_table_cell_layout_cache(current, block_id, row, column),
-            SurfaceId::ImageCaption { .. } | SurfaceId::CollectionTitle { .. } => {
-                let cache = self.cache.text_surface_layouts.get(&current.surface_id)?;
-                layout_cache_is_current(cache, current).then_some(cache)
+            SurfaceId::ImageCaption { .. } => super::caption::current_layout(self, current),
+            SurfaceId::CollectionTitle { .. } => {
+                super::collection_title::current_layout(self, current)
             }
             SurfaceId::Ephemeral { .. } => None,
         }
@@ -105,27 +104,6 @@ impl CditorV2View {
             ),
         );
         fallback
-    }
-
-    pub(crate) fn text_position_for_table_cell_at_position(
-        &self,
-        block_id: BlockId,
-        row: usize,
-        col: usize,
-        position: Point<Pixels>,
-    ) -> Option<ParleyTextPosition> {
-        let session = self.ready_session()?;
-        let surface_id = SurfaceId::TableCell {
-            block_id,
-            row,
-            column: col,
-        };
-        let current = session.surface_version(surface_id).ok().flatten()?;
-        let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col) else {
-            record_unavailable_geometry();
-            return None;
-        };
-        Some(platform_text_position_for_point(cache, position))
     }
 
     fn fallback_text_position_for_block_at_position(
@@ -215,6 +193,97 @@ impl CditorV2View {
     }
 }
 
+impl CditorV2View {
+    pub(crate) fn text_surface_render_state(
+        &self,
+        surface_id: SurfaceId,
+    ) -> Option<TextSurfaceRenderState> {
+        let CditorViewState::Ready(session) = &self.state else {
+            return None;
+        };
+        let state = session.text_surface_state(surface_id).ok().flatten()?;
+        let focused = state.focused && !self.status.readonly;
+        let selection_range = state.selection_range.filter(|range| !range.is_empty());
+        Some(TextSurfaceRenderState {
+            snapshot: state.snapshot,
+            focused,
+            caret_offset: focused.then_some(state.caret_offset).flatten(),
+            caret_affinity: state.caret_affinity,
+            selection_range,
+            marked_range: state.marked_range,
+        })
+    }
+
+    pub(crate) fn focus_text_surface_from_gui_at_position(
+        &mut self,
+        surface_id: SurfaceId,
+        position: Point<Pixels>,
+        click_count: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.status.readonly {
+            return;
+        }
+        let hit = self
+            .text_position_for_surface_at_position(surface_id, position)
+            .map(|position| position.offset);
+        let click_selection = if let Some(kind) = selection_kind_for_click_count(click_count) {
+            self.ready_session()
+                .and_then(|session| session.surface_version(surface_id).ok().flatten())
+                .and_then(|current| self.current_text_surface_layout_cache(current))
+                .map(|cache| {
+                    let local_x = f32::from(position.x - cache.bounds.left());
+                    let local_y = f32::from(position.y - cache.bounds.top());
+                    cache.snapshot.selection_at_point(local_x, local_y, kind)
+                })
+        } else {
+            None
+        };
+        let fallback = self
+            .ready_session()
+            .and_then(|session| session.text_surface_state(surface_id).ok().flatten())
+            .map(|state| state.snapshot.len())
+            .unwrap_or_default();
+
+        window.focus(&self.focus.editor, cx);
+        self.interaction.table_interaction_mode = Default::default();
+        self.overlay.table_menu_ui = Default::default();
+        self.clear_gutter_action();
+        if let Some(session) = self.ready_session() {
+            let command = if let Some(selection) = click_selection {
+                cditor_editor_protocol::command::CditorCommand::SetTextSurfaceSelection {
+                    surface_id,
+                    anchor_offset: selection.anchor.offset,
+                    focus_offset: selection.focus.offset,
+                    focus_affinity: selection.focus.affinity,
+                }
+            } else {
+                let offset = hit.unwrap_or(fallback);
+                cditor_editor_protocol::command::CditorCommand::SetTextSurfaceSelection {
+                    surface_id,
+                    anchor_offset: offset,
+                    focus_offset: offset,
+                    focus_affinity: TextAffinity::Downstream,
+                }
+            };
+            let focus_result =
+                session.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+                    command,
+                    cditor_editor_protocol::command::CommandSource::Toolbar,
+                ));
+            match focus_result {
+                Ok(_) => cx.notify(),
+                Err(error) => {
+                    self.status.save_status =
+                        crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                    cx.notify();
+                }
+            }
+        }
+    }
+}
+
 fn viewport_origin_for_block(
     session: &cditor_session::EditorSessionHandle,
     rects: &[crate::interaction::geometry::ProjectedBlockRect],
@@ -270,7 +339,7 @@ pub(crate) fn fallback_text_hit_point(
 mod tests {
     use cditor_core::rich_text::{BlockPayload, BlockPayloadRecord, RichBlockKind};
     use cditor_runtime::TableCellPosition;
-    use gpui::{Bounds, Size, point, px};
+    use gpui::{AppContext, Bounds, Size, TestAppContext, point, px};
 
     use super::*;
 
@@ -380,5 +449,33 @@ mod tests {
             selection_kind_for_click_count(5),
             Some(ParleySelectionKind::Line)
         );
+    }
+
+    #[gpui::test]
+    fn render_state_projects_caption_snapshot_and_focus_session(cx: &mut TestAppContext) {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord {
+                block_id: 10,
+                content_version: 3,
+                kind: RichBlockKind::Image,
+                payload: BlockPayload::Image(cditor_core::rich_text::ImagePayload {
+                    caption: "caption".into(),
+                    ..Default::default()
+                }),
+            }],
+            720.0,
+        );
+        let surface_id = super::super::caption::surface_id(10);
+        crate::test_support::focus_text_surface_at_offset(&mut runtime, surface_id, 2);
+        let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+        view.update(cx, |view, _cx| {
+            let state = view.text_surface_render_state(surface_id).unwrap();
+            assert!(state.focused);
+            assert_eq!(state.caret_offset, Some(2));
+            assert_eq!(state.snapshot.plain_text(), "caption");
+            assert_eq!(state.snapshot.identity.content_version, 3);
+        });
     }
 }

@@ -11,6 +11,7 @@ use crate::interaction::selection_drag::GuiTextDragSelection;
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::overlay::GuiToast;
 use crate::persistence::EditorSaveStatus;
+use crate::surfaces::table_cell::TableCellLayoutKey;
 use crate::text::RichTextPlatformLayout;
 #[cfg(test)]
 use cditor_runtime::DocumentRuntime;
@@ -28,7 +29,6 @@ mod render;
 mod slash_menu;
 mod state;
 mod table_actions;
-pub(crate) mod text_surface;
 mod whiteboard;
 
 pub use self::state::{CditorViewState, EditorReadonlyReason};
@@ -57,13 +57,6 @@ pub struct CditorV2View {
     pub(crate) status: EditorStatusUiState,
     pub(crate) interaction: InteractionUiState,
     pub(crate) cache: RenderCacheState,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct TableCellLayoutKey {
-    pub(crate) block_id: BlockId,
-    pub(crate) row: usize,
-    pub(crate) col: usize,
 }
 
 fn table_trace_enabled() -> bool {
@@ -243,22 +236,23 @@ impl CditorV2View {
         let position = position.into();
         let text_position = position
             .and_then(|position| self.text_position_for_block_at_position(block_id, position));
-        let click_selection =
-            if let Some(kind) = crate::app::text_hit::selection_kind_for_click_count(click_count) {
-                position.and_then(|position| {
-                    let session = self.ready_session()?;
-                    let current = session
-                        .surface_version(SurfaceId::Block(block_id))
-                        .ok()
-                        .flatten()?;
-                    let cache = self.current_text_layout_cache(current, block_id)?;
-                    let local_x = f32::from(position.x - cache.bounds.left());
-                    let local_y = f32::from(position.y - cache.bounds.top());
-                    Some(cache.snapshot.selection_at_point(local_x, local_y, kind))
-                })
-            } else {
-                None
-            };
+        let click_selection = if let Some(kind) =
+            crate::surfaces::text::selection_kind_for_click_count(click_count)
+        {
+            position.and_then(|position| {
+                let session = self.ready_session()?;
+                let current = session
+                    .surface_version(SurfaceId::Block(block_id))
+                    .ok()
+                    .flatten()?;
+                let cache = self.current_text_layout_cache(current, block_id)?;
+                let local_x = f32::from(position.x - cache.bounds.left());
+                let local_y = f32::from(position.y - cache.bounds.top());
+                Some(cache.snapshot.selection_at_point(local_x, local_y, kind))
+            })
+        } else {
+            None
+        };
         trace_input(
             "focus_block_from_gui_at_position",
             format_args!(

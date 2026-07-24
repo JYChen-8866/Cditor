@@ -375,12 +375,32 @@ fi
 
 direct_auxiliary_surface_focus_violations=$(
   {
-    sed '/^#\[cfg(test)\]/,$d' crates/cditor-editor-gpui/src/editor_view/text_surface.rs
+    sed '/^#\[cfg(test)\]/,$d' crates/cditor-editor-gpui/src/surfaces/text.rs
   } | grep -n -E '\.(focus_text_surface_at_offset|move_focused_text_surface_to_offset)\(' || true
 )
 if [ -n "$direct_auxiliary_surface_focus_violations" ]; then
   echo 'error: auxiliary text surface focus must route through Runtime dispatch:' >&2
   echo "$direct_auxiliary_surface_focus_violations" >&2
+  exit 1
+fi
+
+if [ ! -f crates/cditor-editor-gpui/src/surfaces/text.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/surfaces/table_cell.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/surfaces/caption.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/surfaces/collection_title.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/app/text_hit.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/editor_view/text_surface.rs ]; then
+  echo 'error: editable text surface adapters must live in surfaces/' >&2
+  exit 1
+fi
+
+surface_adapter_location_violations=$(
+  grep -R -n -E 'fn (current_text_surface_layout_cache|current_table_cell_layout_cache|text_position_for_surface_at_position|text_position_for_table_cell_at_position|text_surface_render_state)' \
+    --include='*.rs' crates/cditor-editor-gpui/src/app crates/cditor-editor-gpui/src/editor_view || true
+)
+if [ -n "$surface_adapter_location_violations" ]; then
+  echo 'error: surface layout identity, hit-test, and render projection adapters must live in surfaces/:' >&2
+  echo "$surface_adapter_location_violations" >&2
   exit 1
 fi
 

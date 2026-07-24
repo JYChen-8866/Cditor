@@ -1,4 +1,4 @@
-use cditor_core::ids::{BlockId, SurfaceId};
+use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{CollectionPayload, TextAlign};
 use gpui::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
@@ -18,7 +18,7 @@ pub(crate) fn render_collection_block(
     focus: FocusHandle,
     cx: &mut App,
 ) -> AnyElement {
-    let surface_id = SurfaceId::CollectionTitle { block_id };
+    let surface_id = crate::surfaces::collection_title::surface_id(block_id);
     let Some(state) = view.read(cx).text_surface_render_state(surface_id) else {
         return div().into_any_element();
     };

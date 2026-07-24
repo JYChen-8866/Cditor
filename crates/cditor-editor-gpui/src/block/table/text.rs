@@ -120,11 +120,7 @@ fn table_cell_layout_input(
 }
 
 fn table_cell_surface_id(block_id: BlockId, position: TableCellPosition) -> TextLayoutSurfaceId {
-    TextLayoutSurfaceId::TableCell {
-        block_id,
-        row: position.row,
-        column: position.col,
-    }
+    crate::surfaces::table_cell::layout_surface_id(block_id, position)
 }
 
 fn core_text_align(align: TableCellAlign) -> TextAlign {

@@ -22,12 +22,10 @@ use crate::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState}
 use crate::overlay::{GuiToast, SlashMenuState, WhiteboardEditorSession};
 use crate::persistence::EditorSaveStatus;
 use crate::scroll::ScrollAccumulator;
+use crate::surfaces::table_cell::TableCellLayoutKey;
 use crate::text::TextPlatformLayoutIdentity;
 
-use super::{
-    CditorV2View, GuiPlatformInputTarget, SelectionToolbarDelay, TableCellLayoutKey,
-    ai::default_ai_provider,
-};
+use super::{CditorV2View, GuiPlatformInputTarget, SelectionToolbarDelay, ai::default_ai_provider};
 
 pub(crate) struct RenderCacheState {
     pub(crate) text_layouts: PlatformLayoutCache<BlockId>,

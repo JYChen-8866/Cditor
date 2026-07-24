@@ -183,7 +183,7 @@ impl CditorV2View {
                 .ok()
                 .flatten()
         });
-        if let Some(kind) = crate::app::text_hit::selection_kind_for_click_count(click_count)
+        if let Some(kind) = crate::surfaces::text::selection_kind_for_click_count(click_count)
             && let Some(position) = position
             && let Some(current) = surface_version
             && let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col)

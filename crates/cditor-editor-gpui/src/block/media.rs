@@ -40,7 +40,7 @@ pub fn render_image_block(
     image_resize_preview_width_px: Option<f32>,
     cx: &mut App,
 ) -> AnyElement {
-    let caption_surface_id = SurfaceId::ImageCaption { block_id };
+    let caption_surface_id = crate::surfaces::caption::surface_id(block_id);
     let caption_state = view.read(cx).text_surface_render_state(caption_surface_id);
     let loaded = load_render_image(&image.source, cx);
     let display_size = loaded.as_deref().map(|render_image| {
@@ -125,7 +125,7 @@ pub fn render_image_block(
 
 fn render_image_caption(
     surface_id: SurfaceId,
-    state: crate::editor_view::text_surface::TextSurfaceRenderState,
+    state: crate::surfaces::TextSurfaceRenderState,
     layout_version: u64,
     width_px: f32,
     theme: GuiTheme,

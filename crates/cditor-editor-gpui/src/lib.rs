@@ -15,6 +15,7 @@ pub mod platform;
 pub mod rich_text;
 pub mod scroll;
 pub mod skeleton;
+pub(crate) mod surfaces;
 pub mod text;
 pub mod theme;
 

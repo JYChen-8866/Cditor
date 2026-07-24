@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use cditor_editor_protocol::command::{CditorCommand, TableCellNavigationDirection};
 use cditor_session::TableInteractionSnapshot;
 
-use crate::editor_view::TableCellLayoutKey;
+use crate::surfaces::table_cell::TableCellLayoutKey;
 
 use super::routing::BoundInputAction;
 
