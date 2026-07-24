@@ -6,6 +6,7 @@ pub mod document;
 pub mod image_loader;
 pub mod image_preview;
 pub mod input;
+pub(crate) mod interaction;
 pub mod menu_metrics;
 pub mod overlay;
 pub mod persistence;

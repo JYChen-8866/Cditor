@@ -15,7 +15,7 @@ pub(in crate::app) const fn floating_toolbar_passes_selection_delay(
 }
 
 #[derive(Debug, Default)]
-pub(in crate::app) struct SelectionToolbarDelay {
+pub(crate) struct SelectionToolbarDelay {
     target: Option<DocumentSelection>,
     generation: u64,
     ready: bool,

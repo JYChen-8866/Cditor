@@ -2,9 +2,9 @@ use std::{collections::HashMap, ops::Range};
 
 use gpui::{Bounds, Pixels, point, px};
 
-use crate::app::interaction::geometry::ProjectedBlockRect;
 use crate::block::chrome::{block_gutter_left_px, block_gutter_top_px};
 use crate::document::{DEFAULT_DOCUMENT_PAGE_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
+use crate::interaction::geometry::ProjectedBlockRect;
 use crate::menu_metrics::EditorViewport;
 use crate::overlay::{
     ActiveColor, BlockTransformAction, BlockTransformAvailability, ColorMenuAction,

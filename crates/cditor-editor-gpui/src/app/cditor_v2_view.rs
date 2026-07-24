@@ -7,8 +7,8 @@ use cditor_core::ids::{BlockId, SurfaceId};
 use crate::app::input::text_drag::GuiTextDragSelection;
 use crate::app::input_trace::trace_input;
 #[cfg(test)]
-use crate::app::interaction::geometry::ProjectedBlockRect;
-use crate::app::interaction::table_mode::GuiTableInteractionMode;
+use crate::interaction::geometry::ProjectedBlockRect;
+use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::overlay::GuiToast;
 use crate::persistence::EditorSaveStatus;
 use crate::text::RichTextPlatformLayout;
@@ -34,7 +34,7 @@ use super::state::{
     EditorDiagnosticsState, EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState,
     OverlayUiState, PlatformInputState, RenderCacheState,
 };
-pub(crate) use crate::app::interaction::table_scroll::TableScrollSnapshot;
+pub(crate) use crate::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::app) use block_actions::block_focus_offset_after_missed_hit_test;
 pub(in crate::app) use formatting::{
     SelectionToolbarDelay, floating_toolbar_passes_selection_delay, formatting_toolbar_context,
@@ -45,22 +45,22 @@ pub(crate) use platform_input::GuiPlatformInputTarget;
 pub(crate) use platform_input::platform_input_registration_allows;
 
 pub struct CditorV2View {
-    pub(in crate::app) state: CditorViewState,
-    pub(in crate::app) focus: FocusUiState,
-    pub(in crate::app) input: PlatformInputState,
-    pub(in crate::app) features: FeatureUiState,
-    pub(in crate::app) overlay: OverlayUiState,
-    pub(in crate::app) diagnostics: EditorDiagnosticsState,
-    pub(in crate::app) status: EditorStatusUiState,
-    pub(in crate::app) interaction: InteractionUiState,
-    pub(in crate::app) cache: RenderCacheState,
+    pub(crate) state: CditorViewState,
+    pub(crate) focus: FocusUiState,
+    pub(crate) input: PlatformInputState,
+    pub(crate) features: FeatureUiState,
+    pub(crate) overlay: OverlayUiState,
+    pub(crate) diagnostics: EditorDiagnosticsState,
+    pub(crate) status: EditorStatusUiState,
+    pub(crate) interaction: InteractionUiState,
+    pub(crate) cache: RenderCacheState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(in crate::app) struct TableCellLayoutKey {
-    pub block_id: BlockId,
-    pub row: usize,
-    pub col: usize,
+pub(crate) struct TableCellLayoutKey {
+    pub(crate) block_id: BlockId,
+    pub(crate) row: usize,
+    pub(crate) col: usize,
 }
 
 fn table_trace_enabled() -> bool {
@@ -398,7 +398,7 @@ impl CditorV2View {
         }
     }
 
-    pub(in crate::app) fn clear_gutter_action(&mut self) {
+    pub(crate) fn clear_gutter_action(&mut self) {
         self.interaction.action_block_id = None;
         self.overlay.gutter_toolbar_block_id = None;
         self.overlay.block_transform_menu_open = false;

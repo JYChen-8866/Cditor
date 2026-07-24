@@ -3,24 +3,24 @@ use std::collections::HashMap;
 use gpui::{Context, Pixels, Point, ScrollHandle, Window, point, px};
 
 use crate::app::cditor_v2_view::CditorV2View;
-use crate::app::interaction::table_mode::GuiTableInteractionMode;
+use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::overlay::table::{TableViewportMeasurement, table_viewport_measurement_from_handle};
 use cditor_core::ids::BlockId;
 
 #[derive(Debug, Default)]
-pub(in crate::app) struct GuiTableScrollState {
+pub(crate) struct GuiTableScrollState {
     handles: HashMap<BlockId, ScrollHandle>,
     viewport_measurements: HashMap<BlockId, TableViewportMeasurement>,
 }
 
 impl GuiTableScrollState {
-    pub(in crate::app) fn handle(&mut self, block_id: BlockId, offset_x: f32) -> ScrollHandle {
+    pub(crate) fn handle(&mut self, block_id: BlockId, offset_x: f32) -> ScrollHandle {
         let handle = self.handles.entry(block_id).or_default().clone();
         handle.set_offset(point(px(offset_x), handle.offset().y));
         handle
     }
 
-    pub(in crate::app) fn stable_viewport_measurement(
+    pub(crate) fn stable_viewport_measurement(
         &mut self,
         block_id: BlockId,
         handle: &ScrollHandle,
@@ -32,7 +32,7 @@ impl GuiTableScrollState {
         self.viewport_measurements.get(&block_id).copied()
     }
 
-    pub(in crate::app) fn sync_handle_offset_x(&self, block_id: BlockId, offset_x: f32) {
+    pub(crate) fn sync_handle_offset_x(&self, block_id: BlockId, offset_x: f32) {
         if let Some(handle) = self.handles.get(&block_id) {
             handle.set_offset(point(px(offset_x), handle.offset().y));
         }
@@ -47,8 +47,8 @@ pub(crate) struct TableScrollSnapshot {
 }
 
 #[derive(Clone)]
-pub(in crate::app) struct GuiTableHScrollDrag {
-    pub(in crate::app) block_id: BlockId,
+pub(crate) struct GuiTableHScrollDrag {
+    pub(crate) block_id: BlockId,
     start_pointer_x: f32,
     start_offset_x: f32,
     max_offset_x: f32,
@@ -110,7 +110,7 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn update_table_hscroll_drag(
+    pub(crate) fn update_table_hscroll_drag(
         &mut self,
         pointer: Point<Pixels>,
         cx: &mut Context<Self>,
@@ -137,7 +137,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::app) fn finish_table_hscroll_drag(&mut self, cx: &mut Context<Self>) -> bool {
+    pub(crate) fn finish_table_hscroll_drag(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(drag) = self.interaction.table_hscroll_drag.take() else {
             return false;
         };
@@ -166,7 +166,7 @@ pub(super) fn table_hscroll_drag_offset(
     (start_offset_x - pointer_delta_px * scroll_per_thumb_px).clamp(-max_offset_x, 0.0)
 }
 
-pub(in crate::app) fn clamped_table_scroll_offset_x(offset_x: f32, max_offset_x: f32) -> f32 {
+pub(crate) fn clamped_table_scroll_offset_x(offset_x: f32, max_offset_x: f32) -> f32 {
     if max_offset_x <= 0.0 {
         0.0
     } else {

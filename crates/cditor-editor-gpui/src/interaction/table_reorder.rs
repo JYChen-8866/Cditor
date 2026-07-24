@@ -1,9 +1,9 @@
 use gpui::{Context, Pixels, Point, Window};
 
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
-use crate::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::block::table::TableAxis;
 use crate::input::BlockDragSelectionController;
+use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::persistence::EditorSaveStatus;
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{
@@ -13,11 +13,11 @@ use cditor_editor_protocol::command::{
 const TABLE_REORDER_MIN_DRAG_DELTA_PX: f32 = 4.0;
 
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::app) struct GuiTableReorderDrag {
-    pub(in crate::app) block_id: BlockId,
-    pub(in crate::app) axis: TableAxis,
-    pub(in crate::app) from_index: usize,
-    pub(in crate::app) target_index: usize,
+pub(crate) struct GuiTableReorderDrag {
+    pub(crate) block_id: BlockId,
+    pub(crate) axis: TableAxis,
+    pub(crate) from_index: usize,
+    pub(crate) target_index: usize,
     start_pointer: f32,
     track_sizes_px: Vec<f32>,
     exceeded_threshold: bool,
@@ -75,9 +75,7 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn table_reorder_preview(
-        &self,
-    ) -> Option<(BlockId, TableAxis, usize, usize)> {
+    pub(crate) fn table_reorder_preview(&self) -> Option<(BlockId, TableAxis, usize, usize)> {
         let drag = self.interaction.table_reorder_drag.as_ref()?;
         drag.exceeded_threshold.then_some((
             drag.block_id,
@@ -87,7 +85,7 @@ impl CditorV2View {
         ))
     }
 
-    pub(in crate::app) fn update_table_reorder_drag(
+    pub(crate) fn update_table_reorder_drag(
         &mut self,
         position: Point<Pixels>,
         cx: &mut Context<Self>,
@@ -109,7 +107,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::app) fn commit_table_reorder_drag(&mut self, cx: &mut Context<Self>) -> bool {
+    pub(crate) fn commit_table_reorder_drag(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(drag) = self.interaction.table_reorder_drag.take() else {
             return false;
         };

@@ -5,17 +5,17 @@ use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 
 const GUTTER_DRAG_AUTO_SCROLL_EDGE_PX: f64 = 40.0;
 const GUTTER_DRAG_AUTO_SCROLL_MAX_STEP_PX: f64 = 24.0;
-pub(in crate::app) const GUTTER_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
+pub(crate) const GUTTER_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
 const GUTTER_DRAG_GUIDELINE_CONTENT_END_PX: f32 = DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(in crate::app) struct GutterDragGuidelineGeometry {
-    pub(in crate::app) y_px: f32,
-    pub(in crate::app) start_x_px: f32,
-    pub(in crate::app) end_x_px: f32,
+pub(crate) struct GutterDragGuidelineGeometry {
+    pub(crate) y_px: f32,
+    pub(crate) start_x_px: f32,
+    pub(crate) end_x_px: f32,
 }
 
-pub(in crate::app) fn gutter_drag_guideline_geometry(
+pub(crate) fn gutter_drag_guideline_geometry(
     rects: &[super::geometry::ProjectedBlockRect],
     target: BlockDropTarget,
     window_start_global_y: f64,
@@ -42,7 +42,7 @@ pub(in crate::app) fn gutter_drag_guideline_geometry(
     })
 }
 
-pub(in crate::app) fn gutter_drag_pointer_document_y(
+pub(crate) fn gutter_drag_pointer_document_y(
     window_y: f32,
     document_viewport_origin_y: f64,
     scroll_top: f64,
@@ -50,7 +50,7 @@ pub(in crate::app) fn gutter_drag_pointer_document_y(
     f64::from(window_y) - document_viewport_origin_y + scroll_top
 }
 
-pub(in crate::app) fn gutter_drag_auto_scroll_delta(pointer_y: f64, viewport_height: f64) -> f64 {
+pub(crate) fn gutter_drag_auto_scroll_delta(pointer_y: f64, viewport_height: f64) -> f64 {
     if viewport_height <= GUTTER_DRAG_AUTO_SCROLL_EDGE_PX * 2.0 {
         return 0.0;
     }
@@ -71,8 +71,8 @@ pub(in crate::app) fn gutter_drag_auto_scroll_delta(pointer_y: f64, viewport_hei
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::interaction::geometry::ProjectedBlockRect;
     use crate::block::chrome::BLOCK_INDENT_STEP_PX;
+    use crate::interaction::geometry::ProjectedBlockRect;
     use cditor_core::ids::BlockId;
 
     fn rect(block_id: BlockId, top: f64, bottom: f64) -> ProjectedBlockRect {

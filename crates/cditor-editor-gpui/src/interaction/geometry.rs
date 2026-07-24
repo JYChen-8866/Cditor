@@ -7,28 +7,28 @@ use cditor_core::ids::BlockId;
 use cditor_runtime::{EditorViewProjection, ViewBlockSnapshot};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(in crate::app) struct FallbackViewportOrigin {
-    pub(in crate::app) x: f64,
-    pub(in crate::app) y: f64,
+pub(crate) struct FallbackViewportOrigin {
+    pub(crate) x: f64,
+    pub(crate) y: f64,
 }
 
-pub(in crate::app) struct ProjectedBlockRect {
-    pub(in crate::app) block_id: BlockId,
-    pub(in crate::app) visible_index: usize,
-    pub(in crate::app) depth: usize,
-    pub(in crate::app) document_top: f64,
-    pub(in crate::app) document_bottom: f64,
-    pub(in crate::app) indent_px: f32,
-    pub(in crate::app) text_origin_x_in_block_px: f64,
-    pub(in crate::app) text_origin_y_in_block_px: f64,
-    pub(in crate::app) text_width_px: f64,
-    pub(in crate::app) supports_children: bool,
+pub(crate) struct ProjectedBlockRect {
+    pub(crate) block_id: BlockId,
+    pub(crate) visible_index: usize,
+    pub(crate) depth: usize,
+    pub(crate) document_top: f64,
+    pub(crate) document_bottom: f64,
+    pub(crate) indent_px: f32,
+    pub(crate) text_origin_x_in_block_px: f64,
+    pub(crate) text_origin_y_in_block_px: f64,
+    pub(crate) text_width_px: f64,
+    pub(crate) supports_children: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::app) struct ParentDropTarget {
-    pub(in crate::app) parent_id: BlockId,
-    pub(in crate::app) sibling_index: usize,
+pub(crate) struct ParentDropTarget {
+    pub(crate) parent_id: BlockId,
+    pub(crate) sibling_index: usize,
 }
 
 fn source_depth_for_rects(rects: &[ProjectedBlockRect], block_id: BlockId) -> Option<usize> {
@@ -56,7 +56,7 @@ fn projected_subtree_end(
         })
 }
 
-pub(in crate::app) fn parent_drop_target_from_rects(
+pub(crate) fn parent_drop_target_from_rects(
     rects: &[ProjectedBlockRect],
     source_block_id: BlockId,
     target: BlockDropTarget,
@@ -104,7 +104,7 @@ fn sibling_index_for_parent_drop_target(
     usize::MAX
 }
 
-pub(in crate::app) fn drop_target_for_document_y_from_rects(
+pub(crate) fn drop_target_for_document_y_from_rects(
     rects: &[ProjectedBlockRect],
     source_block_id: BlockId,
     document_y: f64,
@@ -132,7 +132,7 @@ pub(in crate::app) fn drop_target_for_document_y_from_rects(
     last_target
 }
 
-pub(in crate::app) fn projected_block_rects_from_projection(
+pub(crate) fn projected_block_rects_from_projection(
     projection: &EditorViewProjection,
 ) -> Vec<ProjectedBlockRect> {
     let mut top = projection.before_window_height;
@@ -163,13 +163,13 @@ pub(in crate::app) fn projected_block_rects_from_projection(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(in crate::app) struct FallbackTextMetrics {
-    pub(in crate::app) origin_x_in_block_px: f64,
-    pub(in crate::app) origin_y_in_block_px: f64,
-    pub(in crate::app) width_px: f64,
+pub(crate) struct FallbackTextMetrics {
+    pub(crate) origin_x_in_block_px: f64,
+    pub(crate) origin_y_in_block_px: f64,
+    pub(crate) width_px: f64,
 }
 
-pub(in crate::app) fn fallback_text_metrics_for_block(
+pub(crate) fn fallback_text_metrics_for_block(
     block: &ViewBlockSnapshot,
     theme: GuiTheme,
 ) -> FallbackTextMetrics {

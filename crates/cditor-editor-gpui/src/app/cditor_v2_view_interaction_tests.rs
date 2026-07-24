@@ -1,5 +1,5 @@
 use crate::app::input::mouse::scroll_delta_y;
-use crate::app::interaction::geometry::{
+use crate::interaction::geometry::{
     ParentDropTarget, ProjectedBlockRect, parent_drop_target_from_rects,
 };
 use cditor_core::block::BlockDropTarget;

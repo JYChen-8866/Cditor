@@ -65,7 +65,7 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn update_gutter_block_drag(
+    pub(crate) fn update_gutter_block_drag(
         &mut self,
         position: Point<Pixels>,
         cx: &mut Context<Self>,
@@ -202,7 +202,7 @@ impl CditorV2View {
         )
     }
 
-    pub(in crate::app) fn block_drag_overlay_snapshot(&self) -> Option<BlockDragOverlaySnapshot> {
+    pub(crate) fn block_drag_overlay_snapshot(&self) -> Option<BlockDragOverlaySnapshot> {
         let drag = self.interaction.gutter_block_drag?;
         if !drag.exceeded_threshold {
             return None;

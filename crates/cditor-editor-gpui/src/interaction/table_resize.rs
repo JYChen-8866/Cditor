@@ -1,9 +1,9 @@
 use gpui::{Context, Pixels, Point, Window};
 
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
-use crate::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::block::table::TableAxis;
 use crate::input::BlockDragSelectionController;
+use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::persistence::EditorSaveStatus;
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{
@@ -13,13 +13,13 @@ use cditor_editor_protocol::command::{
 const TABLE_RESIZE_MIN_SIZE_PX: f32 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(in crate::app) struct GuiTableResizeDrag {
-    pub(in crate::app) block_id: BlockId,
-    pub(in crate::app) axis: TableAxis,
-    pub(in crate::app) index: usize,
+pub(crate) struct GuiTableResizeDrag {
+    pub(crate) block_id: BlockId,
+    pub(crate) axis: TableAxis,
+    pub(crate) index: usize,
     start_pointer: f32,
     start_size_px: f32,
-    pub(in crate::app) current_size_px: f32,
+    pub(crate) current_size_px: f32,
 }
 
 impl CditorV2View {
@@ -70,13 +70,13 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn table_resize_preview(&self) -> Option<(BlockId, TableAxis, usize, f32)> {
+    pub(crate) fn table_resize_preview(&self) -> Option<(BlockId, TableAxis, usize, f32)> {
         self.interaction
             .table_resize_drag
             .map(|drag| (drag.block_id, drag.axis, drag.index, drag.current_size_px))
     }
 
-    pub(in crate::app) fn update_table_resize_drag(
+    pub(crate) fn update_table_resize_drag(
         &mut self,
         position: Point<Pixels>,
         cx: &mut Context<Self>,
@@ -97,7 +97,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::app) fn commit_table_resize_drag(&mut self, cx: &mut Context<Self>) -> bool {
+    pub(crate) fn commit_table_resize_drag(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(drag) = self.interaction.table_resize_drag.take() else {
             return false;
         };

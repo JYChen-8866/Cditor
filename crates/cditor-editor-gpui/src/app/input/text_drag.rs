@@ -10,7 +10,7 @@ use cditor_core::ids::BlockId;
 const TEXT_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(in crate::app) struct GuiTextDragSelection {
+pub(crate) struct GuiTextDragSelection {
     pub(in crate::app) anchor_block_id: BlockId,
     pub(in crate::app) anchor_position: ParleyTextPosition,
     pub(in crate::app) pointer_position: Point<Pixels>,
@@ -101,7 +101,7 @@ impl CditorV2View {
             .infer_document_viewport_origin()
             .map(|origin| text_drag_pointer_viewport_y(drag.pointer_position.y, origin.y))
             .unwrap_or(f64::NAN);
-        let delta = crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
+        let delta = crate::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
             pointer_y,
             viewport.viewport_height,
         );
@@ -143,7 +143,7 @@ impl CditorV2View {
         let Ok(viewport) = session.layout_viewport() else {
             return false;
         };
-        let delta = crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
+        let delta = crate::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
             pointer_y,
             viewport.viewport_height,
         );
@@ -168,7 +168,7 @@ fn text_drag_pointer_viewport_y(window_y: Pixels, viewport_origin_y: f64) -> f64
 }
 
 fn projected_block_at_document_y(
-    rects: &[crate::app::interaction::geometry::ProjectedBlockRect],
+    rects: &[crate::interaction::geometry::ProjectedBlockRect],
     document_y: f64,
 ) -> Option<BlockId> {
     rects
@@ -178,7 +178,7 @@ fn projected_block_at_document_y(
 }
 
 fn current_layout_block_at_viewport_y(
-    rects: &[crate::app::interaction::geometry::ProjectedBlockRect],
+    rects: &[crate::interaction::geometry::ProjectedBlockRect],
     layouts: &std::collections::HashMap<BlockId, crate::text::RichTextPlatformLayout>,
     session: &cditor_session::EditorSessionHandle,
     viewport_y: Pixels,
@@ -202,7 +202,7 @@ fn current_layout_block_at_viewport_y(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::interaction::geometry::ProjectedBlockRect;
+    use crate::interaction::geometry::ProjectedBlockRect;
     use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
     use gpui::{Bounds, Size, point, px};
 

@@ -6,7 +6,7 @@ use cditor_editor_protocol::command::{CommandSource, EditorCommand};
 use super::geometry::parent_drop_target_from_rects;
 
 impl CditorV2View {
-    pub(in crate::app) fn commit_gutter_block_drag(&mut self, cx: &mut Context<Self>) -> bool {
+    pub(crate) fn commit_gutter_block_drag(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(drag) = self.interaction.gutter_block_drag.take() else {
             self.interaction.gutter_drag_auto_scroll_scheduled = false;
             return false;

@@ -89,6 +89,17 @@ if ! grep -q -E 'tasks:[[:space:]]+crate::task_port::SessionTaskCoordinator' \
   exit 1
 fi
 
+if [ -d crates/cditor-editor-gpui/src/app/interaction ]; then
+  echo 'error: interaction adapters must live in the crate-root interaction module' >&2
+  exit 1
+fi
+
+if grep -R -n -E 'crate::app::interaction|pub\(in crate::app\)' \
+  --include='*.rs' crates/cditor-editor-gpui/src/interaction | grep -q .; then
+  echo 'error: root interaction must not depend on the former app/interaction module boundary' >&2
+  exit 1
+fi
+
 if grep -R -n -E '\.plan_payload_window_load(_if_needed)?\(' \
   --include='*.rs' crates/cditor-editor-gpui/src | grep -q .; then
   echo 'error: GPUI Editor must schedule payload hydration through the Session task coordinator' >&2
@@ -324,10 +335,10 @@ fi
 
 direct_interaction_focus_violations=$(
   grep -n -E '\.focus_block\(' \
-    crates/cditor-editor-gpui/src/app/interaction/gutter_drag.rs \
-    crates/cditor-editor-gpui/src/app/interaction/image_resize.rs \
-    crates/cditor-editor-gpui/src/app/interaction/table_resize.rs \
-    crates/cditor-editor-gpui/src/app/interaction/table_reorder.rs || true
+    crates/cditor-editor-gpui/src/interaction/gutter_drag.rs \
+    crates/cditor-editor-gpui/src/interaction/image_resize.rs \
+    crates/cditor-editor-gpui/src/interaction/table_resize.rs \
+    crates/cditor-editor-gpui/src/interaction/table_reorder.rs || true
 )
 if [ -n "$direct_interaction_focus_violations" ]; then
   echo 'error: block interactions must route focus through Runtime dispatch:' >&2

@@ -6,7 +6,7 @@ use crate::block::table::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(in crate::app) enum GuiTableInteractionMode {
+pub(crate) enum GuiTableInteractionMode {
     #[default]
     Idle,
     EditingCell {
@@ -46,7 +46,7 @@ pub(in crate::app) enum GuiTableInteractionMode {
 }
 
 impl GuiTableInteractionMode {
-    pub(in crate::app) fn block_id(self) -> Option<BlockId> {
+    pub(crate) fn block_id(self) -> Option<BlockId> {
         match self {
             Self::Idle => None,
             Self::EditingCell { block_id, .. }
@@ -62,7 +62,7 @@ impl GuiTableInteractionMode {
         }
     }
 
-    pub(in crate::app) fn is_dragging(self) -> bool {
+    pub(crate) fn is_dragging(self) -> bool {
         matches!(
             self,
             Self::SelectingCellText { .. }
@@ -73,14 +73,14 @@ impl GuiTableInteractionMode {
         )
     }
 
-    pub(in crate::app) fn axis_selection(self) -> Option<TableAxisSelection> {
+    pub(crate) fn axis_selection(self) -> Option<TableAxisSelection> {
         match self {
             Self::AxisSelected(selection) => Some(selection),
             _ => None,
         }
     }
 
-    pub(in crate::app) fn visual_axis_selection(self) -> Option<TableAxisSelection> {
+    pub(crate) fn visual_axis_selection(self) -> Option<TableAxisSelection> {
         match self {
             Self::AxisSelected(selection) => Some(selection),
             Self::Reordering {
@@ -93,7 +93,7 @@ impl GuiTableInteractionMode {
         }
     }
 
-    pub(in crate::app) fn range_selection(self) -> Option<TableCellRangeSelection> {
+    pub(crate) fn range_selection(self) -> Option<TableCellRangeSelection> {
         match self {
             Self::SelectingRange(selection) | Self::RangeSelected(selection)
                 if selection.is_multi_cell() =>
@@ -104,14 +104,14 @@ impl GuiTableInteractionMode {
         }
     }
 
-    pub(in crate::app) fn cell_selection(self) -> Option<TableCellSelection> {
+    pub(crate) fn cell_selection(self) -> Option<TableCellSelection> {
         match self {
             Self::CellMenu(selection) => Some(selection),
             _ => None,
         }
     }
 
-    pub(in crate::app) fn is_menu_open(self) -> bool {
+    pub(crate) fn is_menu_open(self) -> bool {
         matches!(
             self,
             Self::AxisSelected(_) | Self::RangeSelected(_) | Self::CellMenu(_)

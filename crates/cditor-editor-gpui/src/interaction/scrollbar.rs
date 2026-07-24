@@ -13,11 +13,11 @@ const GUI_SCROLLBAR_RIGHT_PX: f32 = 8.0;
 const GUI_SCROLLBAR_THUMB_INSET_PX: f32 = 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(in crate::app) struct GuiScrollbarDrag {
-    pub(in crate::app) pointer_y_offset_in_thumb: f64,
+pub(crate) struct GuiScrollbarDrag {
+    pub(crate) pointer_y_offset_in_thumb: f64,
 }
 
-pub(in crate::app) fn render_scrollbar(
+pub(crate) fn render_scrollbar(
     visual: ScrollbarVisualState,
     dragging: bool,
     theme: GuiTheme,
@@ -60,7 +60,7 @@ fn scrollbar_thumb_color(theme: GuiTheme, dragging: bool) -> u32 {
 }
 
 impl CditorV2View {
-    pub(in crate::app) fn on_scrollbar_mouse_down(
+    pub(crate) fn on_scrollbar_mouse_down(
         &mut self,
         event: &MouseDownEvent,
         _window: &mut Window,
@@ -91,7 +91,7 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn finish_gui_scrollbar_drag(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn finish_gui_scrollbar_drag(&mut self, cx: &mut Context<Self>) {
         if self.interaction.scrollbar_drag.take().is_none() {
             return;
         }
@@ -103,7 +103,7 @@ impl CditorV2View {
     }
 }
 
-pub(in crate::app) fn scrollbar_local_pointer_y(window_pointer_y: f64) -> f64 {
+pub(crate) fn scrollbar_local_pointer_y(window_pointer_y: f64) -> f64 {
     window_pointer_y - f64::from(DEFAULT_DOCUMENT_TOP_INSET_PX)
 }
 

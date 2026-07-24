@@ -8,11 +8,11 @@ use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{CommandSource, EditorCommand};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(in crate::app) struct GuiImageResizeDrag {
-    pub(in crate::app) block_id: BlockId,
+pub(crate) struct GuiImageResizeDrag {
+    pub(crate) block_id: BlockId,
     start_pointer_x: f32,
     start_width_px: f32,
-    pub(in crate::app) current_width_px: f32,
+    pub(crate) current_width_px: f32,
     max_width_px: f32,
 }
 
@@ -52,13 +52,13 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn image_resize_preview(&self) -> Option<(BlockId, f32)> {
+    pub(crate) fn image_resize_preview(&self) -> Option<(BlockId, f32)> {
         self.interaction
             .image_resize_drag
             .map(|drag| (drag.block_id, drag.current_width_px))
     }
 
-    pub(in crate::app) fn update_image_resize_drag(
+    pub(crate) fn update_image_resize_drag(
         &mut self,
         position: Point<Pixels>,
         cx: &mut Context<Self>,
@@ -78,7 +78,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::app) fn commit_image_resize_drag(&mut self, cx: &mut Context<Self>) -> bool {
+    pub(crate) fn commit_image_resize_drag(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(drag) = self.interaction.image_resize_drag.take() else {
             return false;
         };

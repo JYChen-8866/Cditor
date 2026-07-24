@@ -38,7 +38,7 @@ impl CditorV2View {
         CommandState::from_query(self.query_command(command))
     }
 
-    pub(in crate::app) fn dispatch_command(
+    pub(crate) fn dispatch_command(
         &mut self,
         command: CditorCommand,
         source: CommandSource,

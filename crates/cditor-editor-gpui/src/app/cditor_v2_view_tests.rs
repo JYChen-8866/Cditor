@@ -4,12 +4,12 @@ use crate::app::input::ime::{
     code_language_input_target_allows, platform_input_target_allows, platform_selected_text_range,
 };
 use crate::app::input::ime_support::platform_input_fallback_range;
-use crate::app::interaction::geometry::{
+use crate::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+use crate::interaction::geometry::{
     ParentDropTarget, drop_target_for_document_y_from_rects, fallback_text_metrics_for_block,
     parent_drop_target_from_rects,
 };
-use crate::app::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta;
-use crate::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+use crate::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta;
 use crate::theme::GuiTheme;
 use cditor_core::block::BlockDropTarget;
 

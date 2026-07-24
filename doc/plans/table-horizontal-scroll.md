@@ -87,7 +87,7 @@ GPUI 的 `scrollbar_width` 默认为 `0`，即 `Overflow::Scroll` **不会自动
      `None`，即不显示滚动条。
 
 thumb 使用半透明灰（`0x8c959faa`）配合表面色描边，视觉上与文档主竖向滚动条
-（`app/interaction/scrollbar.rs`）保持一致。
+（`interaction/scrollbar.rs`）保持一致。
 
 ### 测试
 

@@ -8,11 +8,6 @@ use crate::app::cditor_v2_view::{
     formatting_toolbar_context, formatting_toolbar_state,
 };
 use crate::app::input::actions::BoundInputAction;
-use crate::app::interaction::geometry::{
-    fallback_text_metrics_for_block, projected_block_rects_from_projection,
-};
-use crate::app::interaction::scrollbar::render_scrollbar;
-use crate::app::interaction::table_scroll::TableScrollSnapshot;
 use crate::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX;
 use crate::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use crate::document::{DocumentBlockActionProjection, DocumentEditorView};
@@ -26,6 +21,11 @@ use crate::input::actions::{
     SelectToLineEnd, SelectToLineStart, SelectToNextWord, SelectToPreviousWord, SelectUp,
     SoftLineBreak, Tab, ToggleBold, ToggleInlineCode, ToggleItalic, ToggleUnderline, Undo,
 };
+use crate::interaction::geometry::{
+    fallback_text_metrics_for_block, projected_block_rects_from_projection,
+};
+use crate::interaction::scrollbar::render_scrollbar;
+use crate::interaction::table_scroll::TableScrollSnapshot;
 use crate::menu_metrics::EditorViewport;
 use crate::overlay::table::{table_hscroll_scroll_max, table_hscroll_track_width};
 use crate::overlay::{
@@ -471,7 +471,7 @@ impl Render for CditorV2View {
                             table_hscroll_track_width(measurement.viewport_width_px, 0.0);
                         let max_offset_x = table_hscroll_scroll_max(table_width_px, track_width_px);
                         projected_offset_x =
-                            crate::app::interaction::table_scroll::clamped_table_scroll_offset_x(
+                            crate::interaction::table_scroll::clamped_table_scroll_offset_x(
                                 offset_x,
                                 max_offset_x,
                             );

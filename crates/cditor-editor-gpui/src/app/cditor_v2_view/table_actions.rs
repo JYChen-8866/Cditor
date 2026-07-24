@@ -3,13 +3,13 @@ use cditor_core::rich_text::TableRange;
 use gpui::{Context, Pixels, Point, Window};
 
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
-use crate::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::block::table::menu::{
     TableBackgroundColor, TableMenuAction, filter_table_menu_items, table_axis_menu_items,
 };
 use crate::block::table::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
 };
+use crate::interaction::table_mode::GuiTableInteractionMode;
 use cditor_editor_protocol::command::{
     CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
     TableAxis as CommandTableAxis,

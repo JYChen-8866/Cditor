@@ -8,7 +8,7 @@ use cditor_session::SurfaceVersionSnapshot;
 use crate::app::cditor_v2_view::CditorV2View;
 use crate::app::cditor_v2_view::TableCellLayoutKey;
 use crate::app::input_trace::trace_input;
-use crate::app::interaction::geometry::FallbackViewportOrigin;
+use crate::interaction::geometry::FallbackViewportOrigin;
 use crate::text::{
     ParleySelectionKind, ParleyTextPosition, RichTextElement, RichTextLayoutInput,
     RichTextPlatformLayout, platform_text_position_for_point, record_synchronous_geometry_fallback,
@@ -187,7 +187,7 @@ impl CditorV2View {
         )
     }
 
-    pub(in crate::app) fn infer_document_viewport_origin(&self) -> Option<FallbackViewportOrigin> {
+    pub(crate) fn infer_document_viewport_origin(&self) -> Option<FallbackViewportOrigin> {
         let session = self.ready_session()?;
         let focused = session
             .document_snapshot()
@@ -219,7 +219,7 @@ impl CditorV2View {
 
 fn viewport_origin_for_block(
     session: &cditor_session::EditorSessionHandle,
-    rects: &[crate::app::interaction::geometry::ProjectedBlockRect],
+    rects: &[crate::interaction::geometry::ProjectedBlockRect],
     layouts: &std::collections::HashMap<BlockId, RichTextPlatformLayout>,
     block_id: BlockId,
 ) -> Option<FallbackViewportOrigin> {

@@ -7,18 +7,18 @@ use cditor_core::block::GutterBlockDragState;
 use cditor_core::ids::BlockId;
 
 use crate::app::input::text_drag::GuiTextDragSelection;
-use crate::app::interaction::geometry::ProjectedBlockRect;
-use crate::app::interaction::image_resize::GuiImageResizeDrag;
-use crate::app::interaction::scrollbar::GuiScrollbarDrag;
-use crate::app::interaction::table_mode::GuiTableInteractionMode;
-use crate::app::interaction::table_reorder::GuiTableReorderDrag;
-use crate::app::interaction::table_resize::GuiTableResizeDrag;
-use crate::app::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
 use crate::app::platform_layout_cache::PlatformLayoutCache;
 use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
 use crate::input::BlockDragSelectionController;
 use crate::input::{AiPromptState, CodeLanguageEditState};
+use crate::interaction::geometry::ProjectedBlockRect;
+use crate::interaction::image_resize::GuiImageResizeDrag;
+use crate::interaction::scrollbar::GuiScrollbarDrag;
+use crate::interaction::table_mode::GuiTableInteractionMode;
+use crate::interaction::table_reorder::GuiTableReorderDrag;
+use crate::interaction::table_resize::GuiTableResizeDrag;
+use crate::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
 use crate::overlay::{GuiToast, SlashMenuState, WhiteboardEditorSession};
 use crate::persistence::EditorSaveStatus;
 use crate::scroll::ScrollAccumulator;
@@ -29,14 +29,14 @@ use super::cditor_v2_view::{
     ai::default_ai_provider,
 };
 
-pub(in crate::app) struct RenderCacheState {
-    pub(in crate::app) text_layouts: PlatformLayoutCache<BlockId>,
-    pub(in crate::app) table_cell_layouts: PlatformLayoutCache<TableCellLayoutKey>,
-    pub(in crate::app) text_surface_layouts: PlatformLayoutCache<cditor_core::ids::SurfaceId>,
-    pub(in crate::app) code_highlights: CodeHighlightCache,
-    pub(in crate::app) mermaid_renders: MermaidRenderCache,
-    pub(in crate::app) mermaid_source_blocks: std::collections::HashSet<BlockId>,
-    pub(in crate::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
+pub(crate) struct RenderCacheState {
+    pub(crate) text_layouts: PlatformLayoutCache<BlockId>,
+    pub(crate) table_cell_layouts: PlatformLayoutCache<TableCellLayoutKey>,
+    pub(crate) text_surface_layouts: PlatformLayoutCache<cditor_core::ids::SurfaceId>,
+    pub(crate) code_highlights: CodeHighlightCache,
+    pub(crate) mermaid_renders: MermaidRenderCache,
+    pub(crate) mermaid_source_blocks: std::collections::HashSet<BlockId>,
+    pub(crate) whiteboard_thumbnails: WhiteboardThumbnailCache,
 }
 
 impl Default for RenderCacheState {
@@ -54,7 +54,7 @@ impl Default for RenderCacheState {
 }
 
 impl RenderCacheState {
-    pub(in crate::app) fn reset_session(&mut self) {
+    pub(crate) fn reset_session(&mut self) {
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.text_surface_layouts.clear();
@@ -65,21 +65,21 @@ impl RenderCacheState {
     }
 }
 
-pub(in crate::app) struct EditorDiagnosticsState {
-    pub(in crate::app) show_debug: bool,
+pub(crate) struct EditorDiagnosticsState {
+    pub(crate) show_debug: bool,
 }
 
 impl EditorDiagnosticsState {
-    pub(in crate::app) const fn new(show_debug: bool) -> Self {
+    pub(crate) const fn new(show_debug: bool) -> Self {
         Self { show_debug }
     }
 }
 
-pub(in crate::app) struct FeatureUiState {
-    pub(in crate::app) ai_provider: Arc<dyn cditor_ai::AiProvider>,
-    pub(in crate::app) ai_enabled: bool,
-    pub(in crate::app) code_highlight_theme: &'static str,
-    pub(in crate::app) whiteboard_editor: Option<WhiteboardEditorSession>,
+pub(crate) struct FeatureUiState {
+    pub(crate) ai_provider: Arc<dyn cditor_ai::AiProvider>,
+    pub(crate) ai_enabled: bool,
+    pub(crate) code_highlight_theme: &'static str,
+    pub(crate) whiteboard_editor: Option<WhiteboardEditorSession>,
 }
 
 impl Default for FeatureUiState {
@@ -94,45 +94,45 @@ impl Default for FeatureUiState {
 }
 
 impl FeatureUiState {
-    pub(in crate::app) fn reset_session(&mut self) {
+    pub(crate) fn reset_session(&mut self) {
         self.whiteboard_editor = None;
     }
 }
 
 #[derive(Default)]
-pub(in crate::app) struct OverlayUiState {
-    pub(in crate::app) ai_prompt: Option<AiPromptState>,
-    pub(in crate::app) ai_preview_scroll_handle: gpui::ScrollHandle,
-    pub(in crate::app) code_language_edit: Option<CodeLanguageEditState>,
-    pub(in crate::app) code_theme_menu_block_id: Option<BlockId>,
-    pub(in crate::app) slash_menu: Option<SlashMenuState>,
-    pub(in crate::app) toast: Option<GuiToast>,
-    pub(in crate::app) table_menu_ui: crate::block::table::menu::TableMenuUiState,
-    pub(in crate::app) gutter_toolbar_block_id: Option<BlockId>,
-    pub(in crate::app) selection_toolbar_delay: SelectionToolbarDelay,
-    pub(in crate::app) block_transform_menu_open: bool,
-    pub(in crate::app) color_menu_open: bool,
-    pub(in crate::app) color_menu_hover_generation: u64,
-    pub(in crate::app) color_menu_scroll_handle: gpui::ScrollHandle,
-    pub(in crate::app) last_color_action: Option<crate::overlay::ColorMenuAction>,
+pub(crate) struct OverlayUiState {
+    pub(crate) ai_prompt: Option<AiPromptState>,
+    pub(crate) ai_preview_scroll_handle: gpui::ScrollHandle,
+    pub(crate) code_language_edit: Option<CodeLanguageEditState>,
+    pub(crate) code_theme_menu_block_id: Option<BlockId>,
+    pub(crate) slash_menu: Option<SlashMenuState>,
+    pub(crate) toast: Option<GuiToast>,
+    pub(crate) table_menu_ui: crate::block::table::menu::TableMenuUiState,
+    pub(crate) gutter_toolbar_block_id: Option<BlockId>,
+    pub(crate) selection_toolbar_delay: SelectionToolbarDelay,
+    pub(crate) block_transform_menu_open: bool,
+    pub(crate) color_menu_open: bool,
+    pub(crate) color_menu_hover_generation: u64,
+    pub(crate) color_menu_scroll_handle: gpui::ScrollHandle,
+    pub(crate) last_color_action: Option<crate::overlay::ColorMenuAction>,
 }
 
 impl OverlayUiState {
-    pub(in crate::app) fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         *self = Self::default();
     }
 }
 
-pub(in crate::app) struct FocusUiState {
-    pub(in crate::app) editor: FocusHandle,
-    pub(in crate::app) code_language: FocusHandle,
-    pub(in crate::app) ai_prompt: FocusHandle,
-    pub(in crate::app) sdk_observers_registered: bool,
-    pub(in crate::app) last_emitted_selection: Option<cditor_api::document::DocumentSelection>,
+pub(crate) struct FocusUiState {
+    pub(crate) editor: FocusHandle,
+    pub(crate) code_language: FocusHandle,
+    pub(crate) ai_prompt: FocusHandle,
+    pub(crate) sdk_observers_registered: bool,
+    pub(crate) last_emitted_selection: Option<cditor_api::document::DocumentSelection>,
 }
 
 impl FocusUiState {
-    pub(in crate::app) fn new(cx: &mut Context<CditorV2View>) -> Self {
+    pub(crate) fn new(cx: &mut Context<CditorV2View>) -> Self {
         Self {
             editor: cx.focus_handle(),
             code_language: cx.focus_handle(),
@@ -142,44 +142,44 @@ impl FocusUiState {
         }
     }
 
-    pub(in crate::app) fn reset_session_projection(&mut self) {
+    pub(crate) fn reset_session_projection(&mut self) {
         self.last_emitted_selection = None;
     }
 }
 
 #[derive(Default)]
-pub(in crate::app) struct PlatformInputState {
-    pub(in crate::app) target: Option<GuiPlatformInputTarget>,
-    pub(in crate::app) session_identity: Option<cditor_runtime::InputSessionIdentity>,
-    pub(in crate::app) layout_identity: Option<TextPlatformLayoutIdentity>,
-    pub(in crate::app) preferred_navigation_x: Option<(cditor_core::ids::SurfaceId, f32)>,
+pub(crate) struct PlatformInputState {
+    pub(crate) target: Option<GuiPlatformInputTarget>,
+    pub(crate) session_identity: Option<cditor_runtime::InputSessionIdentity>,
+    pub(crate) layout_identity: Option<TextPlatformLayoutIdentity>,
+    pub(crate) preferred_navigation_x: Option<(cditor_core::ids::SurfaceId, f32)>,
 }
 
 impl PlatformInputState {
-    pub(in crate::app) fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         *self = Self::default();
     }
 }
 
-pub(in crate::app) struct InteractionUiState {
-    pub(in crate::app) last_wheel_delta_y: f64,
-    pub(in crate::app) scroll_accumulator: ScrollAccumulator,
-    pub(in crate::app) editor_viewport_handle: gpui::ScrollHandle,
-    pub(in crate::app) table_scroll_state: GuiTableScrollState,
-    pub(in crate::app) scrollbar_drag: Option<GuiScrollbarDrag>,
-    pub(in crate::app) text_drag_selection: Option<GuiTextDragSelection>,
-    pub(in crate::app) text_drag_auto_scroll_scheduled: bool,
-    pub(in crate::app) block_drag_selection: BlockDragSelectionController,
-    pub(in crate::app) table_interaction_mode: GuiTableInteractionMode,
-    pub(in crate::app) hovered_block_id: Option<BlockId>,
-    pub(in crate::app) action_block_id: Option<BlockId>,
-    pub(in crate::app) gutter_block_drag: Option<GutterBlockDragState>,
-    pub(in crate::app) gutter_drag_auto_scroll_scheduled: bool,
-    pub(in crate::app) image_resize_drag: Option<GuiImageResizeDrag>,
-    pub(in crate::app) table_resize_drag: Option<GuiTableResizeDrag>,
-    pub(in crate::app) table_reorder_drag: Option<GuiTableReorderDrag>,
-    pub(in crate::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
-    pub(in crate::app) projected_block_rects: Vec<ProjectedBlockRect>,
+pub(crate) struct InteractionUiState {
+    pub(crate) last_wheel_delta_y: f64,
+    pub(crate) scroll_accumulator: ScrollAccumulator,
+    pub(crate) editor_viewport_handle: gpui::ScrollHandle,
+    pub(crate) table_scroll_state: GuiTableScrollState,
+    pub(crate) scrollbar_drag: Option<GuiScrollbarDrag>,
+    pub(crate) text_drag_selection: Option<GuiTextDragSelection>,
+    pub(crate) text_drag_auto_scroll_scheduled: bool,
+    pub(crate) block_drag_selection: BlockDragSelectionController,
+    pub(crate) table_interaction_mode: GuiTableInteractionMode,
+    pub(crate) hovered_block_id: Option<BlockId>,
+    pub(crate) action_block_id: Option<BlockId>,
+    pub(crate) gutter_block_drag: Option<GutterBlockDragState>,
+    pub(crate) gutter_drag_auto_scroll_scheduled: bool,
+    pub(crate) image_resize_drag: Option<GuiImageResizeDrag>,
+    pub(crate) table_resize_drag: Option<GuiTableResizeDrag>,
+    pub(crate) table_reorder_drag: Option<GuiTableReorderDrag>,
+    pub(crate) table_hscroll_drag: Option<GuiTableHScrollDrag>,
+    pub(crate) projected_block_rects: Vec<ProjectedBlockRect>,
 }
 
 impl Default for InteractionUiState {
@@ -208,21 +208,21 @@ impl Default for InteractionUiState {
 }
 
 impl InteractionUiState {
-    pub(in crate::app) fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         *self = Self::default();
     }
 }
 
-pub(in crate::app) struct EditorStatusUiState {
-    pub(in crate::app) readonly: bool,
-    pub(in crate::app) requested_readonly: bool,
-    pub(in crate::app) readonly_reason: Option<EditorReadonlyReason>,
-    pub(in crate::app) dirty: bool,
-    pub(in crate::app) save_status: EditorSaveStatus,
+pub(crate) struct EditorStatusUiState {
+    pub(crate) readonly: bool,
+    pub(crate) requested_readonly: bool,
+    pub(crate) readonly_reason: Option<EditorReadonlyReason>,
+    pub(crate) dirty: bool,
+    pub(crate) save_status: EditorSaveStatus,
 }
 
 impl EditorStatusUiState {
-    pub(in crate::app) fn new(readonly: bool, requested_readonly: bool) -> Self {
+    pub(crate) fn new(readonly: bool, requested_readonly: bool) -> Self {
         Self {
             readonly,
             requested_readonly,
@@ -232,14 +232,14 @@ impl EditorStatusUiState {
         }
     }
 
-    pub(in crate::app) fn reset_for_session(&mut self, readonly: bool) {
+    pub(crate) fn reset_for_session(&mut self, readonly: bool) {
         self.readonly = readonly;
         self.readonly_reason = None;
         self.dirty = false;
         self.save_status = super::cditor_v2_view::save_status_for_mode(readonly);
     }
 
-    pub(in crate::app) fn reset_after_load_failure(&mut self) {
+    pub(crate) fn reset_after_load_failure(&mut self) {
         self.readonly_reason = None;
         self.readonly = self.requested_readonly;
         self.dirty = false;
