@@ -4,9 +4,13 @@ pub mod clipboard;
 pub mod code_language;
 pub mod command;
 pub mod ime;
+pub(crate) mod keyboard;
 pub mod mouse;
 pub mod platform_adapter;
+pub(crate) mod routing;
 pub mod single_line;
+mod table_cell_navigation;
+pub(crate) mod trace;
 
 pub use actions::bind_cditor_keys;
 pub use ai_prompt::{AiPromptEditAction, AiPromptKeyResult, AiPromptState, apply_ai_prompt_action};

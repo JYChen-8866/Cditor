@@ -2,8 +2,6 @@ pub mod cditor_v2_view;
 
 mod command_router;
 mod frame_telemetry;
-mod input;
-mod input_trace;
 mod lifecycle;
 mod payload_cache;
 mod persistence_bridge;

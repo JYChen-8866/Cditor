@@ -3,10 +3,10 @@ use std::ops::Range;
 use gpui::Context;
 
 use crate::app::cditor_v2_view::CditorV2View;
-use crate::app::input_trace::trace_input;
+use crate::input::trace::trace_input;
 use crate::platform::{is_single_line_break_commit, normalize_external_line_endings};
 
-use super::ime_support::{
+use super::support::{
     apply_platform_text_replacement, ime_replacement_range, is_empty_line_ai_platform_input,
     platform_input_fallback_range, platform_input_target_allows,
 };

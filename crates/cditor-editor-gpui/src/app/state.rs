@@ -6,7 +6,6 @@ use gpui::{Context, FocusHandle};
 use cditor_core::block::GutterBlockDragState;
 use cditor_core::ids::BlockId;
 
-use crate::app::input::text_drag::GuiTextDragSelection;
 use crate::app::platform_layout_cache::PlatformLayoutCache;
 use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
@@ -15,6 +14,7 @@ use crate::input::{AiPromptState, CodeLanguageEditState};
 use crate::interaction::geometry::ProjectedBlockRect;
 use crate::interaction::image_resize::GuiImageResizeDrag;
 use crate::interaction::scrollbar::GuiScrollbarDrag;
+use crate::interaction::selection_drag::GuiTextDragSelection;
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::interaction::table_reorder::GuiTableReorderDrag;
 use crate::interaction::table_resize::GuiTableResizeDrag;

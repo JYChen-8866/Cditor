@@ -2,15 +2,15 @@ use std::ops::Range;
 
 use gpui::{Bounds, Context, Pixels, Point, Size, Window, px};
 
-use super::ime_support::{
+use super::support::{
     ai_prompt_input_target_allows, code_language_input_target_allows,
     platform_input_geometry_allows, platform_input_target_allows, table_menu_input_target_allows,
 };
 use crate::app::cditor_v2_view::CditorV2View;
-use crate::app::input_trace::trace_input;
 use crate::block::table::menu::TABLE_MENU_SEARCH_FONT_SIZE_PX;
 use crate::input::ime::utf8_to_utf16_offset;
 use crate::input::ime::utf16_range_to_utf8_range;
+use crate::input::trace::trace_input;
 use crate::input::{SINGLE_LINE_INPUT_FONT_SIZE_PX, single_line_visible_range_x};
 use crate::text::{platform_index_for_point, platform_range_bounds, record_unavailable_geometry};
 use cditor_core::ids::SurfaceId;
@@ -18,7 +18,7 @@ use cditor_runtime::InputTarget;
 use cditor_session::EditorSessionHandle;
 
 impl CditorV2View {
-    pub(in crate::app) fn ime_character_index_for_text_surface(
+    pub(crate) fn ime_character_index_for_text_surface(
         &self,
         session: &EditorSessionHandle,
         surface_id: SurfaceId,
@@ -45,7 +45,7 @@ impl CditorV2View {
         Some(utf8_to_utf16_offset(text, utf8))
     }
 
-    pub(in crate::app) fn ime_bounds_for_range(
+    pub(crate) fn ime_bounds_for_range(
         &mut self,
         range_utf16: Range<usize>,
         element_bounds: Bounds<Pixels>,

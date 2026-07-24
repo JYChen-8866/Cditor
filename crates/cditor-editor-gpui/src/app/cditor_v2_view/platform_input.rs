@@ -2,8 +2,8 @@ use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_runtime::InputTarget;
 
 use crate::app::cditor_v2_view::CditorV2View;
-use crate::app::input::ime_support::InputContextSource;
-use crate::app::input_trace::trace_input;
+use crate::input::ime::support::InputContextSource;
+use crate::input::trace::trace_input;
 use crate::text::TextPlatformLayoutIdentity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

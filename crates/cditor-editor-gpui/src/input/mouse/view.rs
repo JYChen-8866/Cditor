@@ -5,7 +5,7 @@ use crate::interaction::scrollbar::scrollbar_local_pointer_y;
 use crate::scroll::{ScrollDeltaMode, ScrollDevice, ScrollInput, ScrollPhase};
 
 impl CditorV2View {
-    pub(in crate::app) fn on_scroll_wheel(
+    pub(crate) fn on_scroll_wheel(
         &mut self,
         event: &ScrollWheelEvent,
         _window: &mut Window,
@@ -28,7 +28,7 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn on_scrollbar_mouse_move(
+    pub(crate) fn on_scrollbar_mouse_move(
         &mut self,
         event: &MouseMoveEvent,
         _window: &mut Window,
@@ -92,7 +92,7 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(in crate::app) fn on_scrollbar_mouse_up(
+    pub(crate) fn on_scrollbar_mouse_up(
         &mut self,
         _event: &MouseUpEvent,
         _window: &mut Window,
@@ -120,7 +120,7 @@ impl CditorV2View {
     }
 }
 
-pub(in crate::app) fn scroll_delta_y(event: &ScrollWheelEvent) -> f64 {
+pub(crate) fn scroll_delta_y(event: &ScrollWheelEvent) -> f64 {
     match event.delta {
         ScrollDelta::Pixels(delta) => -(f32::from(delta.y) as f64),
         ScrollDelta::Lines(delta) => -(delta.y as f64 * 16.0),

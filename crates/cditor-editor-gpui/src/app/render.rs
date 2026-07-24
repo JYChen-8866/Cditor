@@ -7,7 +7,6 @@ use crate::app::cditor_v2_view::{
     CditorV2View, CditorViewState, floating_toolbar_passes_selection_delay,
     formatting_toolbar_context, formatting_toolbar_state,
 };
-use crate::app::input::actions::BoundInputAction;
 use crate::document::DEFAULT_DOCUMENT_PAGE_WIDTH_PX;
 use crate::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use crate::document::{DocumentBlockActionProjection, DocumentEditorView};
@@ -21,6 +20,7 @@ use crate::input::actions::{
     SelectToLineEnd, SelectToLineStart, SelectToNextWord, SelectToPreviousWord, SelectUp,
     SoftLineBreak, Tab, ToggleBold, ToggleInlineCode, ToggleItalic, ToggleUnderline, Undo,
 };
+use crate::input::routing::BoundInputAction;
 use crate::interaction::geometry::{
     fallback_text_metrics_for_block, projected_block_rects_from_projection,
 };

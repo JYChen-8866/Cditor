@@ -5,7 +5,7 @@ use cditor_session::TableInteractionSnapshot;
 
 use crate::app::cditor_v2_view::TableCellLayoutKey;
 
-use super::actions::BoundInputAction;
+use super::routing::BoundInputAction;
 
 pub(super) fn table_cell_parley_target(
     layouts: &HashMap<TableCellLayoutKey, crate::text::RichTextPlatformLayout>,

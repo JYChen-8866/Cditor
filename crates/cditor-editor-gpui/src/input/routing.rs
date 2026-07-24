@@ -1,20 +1,20 @@
 use gpui::Context;
 
 use crate::app::cditor_v2_view::CditorV2View;
-use crate::app::input_trace::trace_input;
 use crate::image_preview::close_active_preview_if_escape_enabled;
+use crate::input::trace::trace_input;
 use crate::input::{AiPromptEditAction, CodeLanguageEditAction, GuiInputCommand};
 use crate::platform::normalize_external_line_endings;
 
 use super::keyboard::mermaid_preview_blocks_command;
-use super::table_cell_navigation::{
+use crate::input::table_cell_navigation::{
     table_cell_navigation_command, table_cell_offset_selection_command,
     table_cell_parley_selection_command, table_cell_parley_target,
     table_cell_vertical_selection_target,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::app) enum BoundInputAction {
+pub(crate) enum BoundInputAction {
     Newline,
     SoftLineBreak,
     NewlineBelow,
@@ -37,7 +37,7 @@ pub(in crate::app) enum BoundInputAction {
 }
 
 impl CditorV2View {
-    pub(in crate::app) fn handle_bound_input_action(
+    pub(crate) fn handle_bound_input_action(
         &mut self,
         action: BoundInputAction,
         cx: &mut Context<Self>,
@@ -462,7 +462,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::app) fn focused_mermaid_is_preview(&self) -> bool {
+    pub(crate) fn focused_mermaid_is_preview(&self) -> bool {
         let Some(session) = self.ready_session() else {
             return false;
         };

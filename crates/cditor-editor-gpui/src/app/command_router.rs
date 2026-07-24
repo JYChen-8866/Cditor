@@ -11,11 +11,7 @@ use cditor_editor_protocol::command::{
 };
 
 impl CditorV2View {
-    pub(in crate::app) fn apply_input_command(
-        &mut self,
-        command: GuiInputCommand,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn apply_input_command(&mut self, command: GuiInputCommand, cx: &mut Context<Self>) {
         if matches!(command, GuiInputCommand::ToggleDebugOverlay) {
             self.diagnostics.show_debug = !self.diagnostics.show_debug;
             return;

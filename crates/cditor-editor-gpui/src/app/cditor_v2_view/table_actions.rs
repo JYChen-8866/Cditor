@@ -36,7 +36,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::app) fn projected_table_axis_selection(&self) -> Option<TableAxisSelection> {
+    pub(crate) fn projected_table_axis_selection(&self) -> Option<TableAxisSelection> {
         self.interaction.table_interaction_mode.axis_selection()
     }
 
@@ -270,7 +270,7 @@ impl CditorV2View {
         }
     }
 
-    pub(in crate::app) fn finish_table_cell_text_selection_drag(&mut self) {
+    pub(crate) fn finish_table_cell_text_selection_drag(&mut self) {
         if let GuiTableInteractionMode::SelectingCellText {
             block_id, row, col, ..
         } = self.interaction.table_interaction_mode

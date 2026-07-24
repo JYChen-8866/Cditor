@@ -1,10 +1,10 @@
 use super::*;
 use crate::app::GuiPlatformInputTarget;
-use crate::app::input::ime::{
+use crate::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+use crate::input::ime::adapter::{
     code_language_input_target_allows, platform_input_target_allows, platform_selected_text_range,
 };
-use crate::app::input::ime_support::platform_input_fallback_range;
-use crate::block::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+use crate::input::ime::support::platform_input_fallback_range;
 use crate::interaction::geometry::{
     ParentDropTarget, drop_target_for_document_y_from_rects, fallback_text_metrics_for_block,
     parent_drop_target_from_rects,

@@ -20,7 +20,7 @@ use cditor_runtime::DocumentRuntime;
 use cditor_session::EditorSessionHandle;
 
 impl CditorV2View {
-    pub(in crate::app) fn execute_gui_input_command_handler(
+    pub(crate) fn execute_gui_input_command_handler(
         &mut self,
         command: GuiInputCommand,
         cx: &mut Context<Self>,

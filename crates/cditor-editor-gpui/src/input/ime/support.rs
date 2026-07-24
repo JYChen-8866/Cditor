@@ -15,11 +15,11 @@ use cditor_runtime::DocumentRuntime;
 use cditor_session::project_input_context;
 
 use crate::app::cditor_v2_view::GuiPlatformInputTarget;
-use crate::app::input_trace::trace_input;
 use crate::input::ime::{
     marked_preview_range_to_base_range, utf8_range_to_utf16_range, utf8_to_utf16_offset,
     utf16_range_to_utf8_range,
 };
+use crate::input::trace::trace_input;
 use crate::text::{RichTextPlatformLayout, TextPlatformLayoutIdentity};
 
 pub(crate) trait InputContextSource {
@@ -86,7 +86,7 @@ pub(super) fn apply_platform_unmark(
     })
 }
 
-pub(in crate::app) fn platform_input_target_allows<S: InputContextSource + ?Sized>(
+pub(crate) fn platform_input_target_allows<S: InputContextSource + ?Sized>(
     registered: Option<GuiPlatformInputTarget>,
     registered_identity: Option<InputSessionIdentity>,
     source: &S,
@@ -101,7 +101,7 @@ pub(in crate::app) fn platform_input_target_allows<S: InputContextSource + ?Size
     registered.matches_runtime_target(runtime_target) && registered_identity == context.identity
 }
 
-pub(in crate::app) fn platform_input_geometry_allows<S: InputContextSource + ?Sized>(
+pub(crate) fn platform_input_geometry_allows<S: InputContextSource + ?Sized>(
     registered: Option<GuiPlatformInputTarget>,
     registered_session: Option<InputSessionIdentity>,
     registered_layout: Option<TextPlatformLayoutIdentity>,
@@ -113,7 +113,7 @@ pub(in crate::app) fn platform_input_geometry_allows<S: InputContextSource + ?Si
         && cache.input_session_identity == registered_session
 }
 
-pub(in crate::app) fn code_language_input_target_allows(
+pub(crate) fn code_language_input_target_allows(
     registered: Option<GuiPlatformInputTarget>,
     block_id: BlockId,
 ) -> bool {
@@ -123,21 +123,21 @@ pub(in crate::app) fn code_language_input_target_allows(
     registered.is_code_language_for(block_id)
 }
 
-pub(in crate::app) fn ai_prompt_input_target_allows(
+pub(crate) fn ai_prompt_input_target_allows(
     registered: Option<GuiPlatformInputTarget>,
     block_id: BlockId,
 ) -> bool {
     registered.is_some_and(|target| target.is_ai_prompt_for(block_id))
 }
 
-pub(in crate::app) fn table_menu_input_target_allows(
+pub(crate) fn table_menu_input_target_allows(
     registered: Option<GuiPlatformInputTarget>,
     block_id: BlockId,
 ) -> bool {
     registered.is_some_and(|target| target.is_table_menu_query_for(block_id))
 }
 
-pub(in crate::app) fn platform_selected_text_range<S: InputContextSource + ?Sized>(
+pub(crate) fn platform_selected_text_range<S: InputContextSource + ?Sized>(
     source: &S,
 ) -> Option<UTF16Selection> {
     let context = source.input_context();
@@ -187,7 +187,7 @@ pub(in crate::app) fn platform_selected_text_range<S: InputContextSource + ?Size
     })
 }
 
-pub(in crate::app) fn platform_input_fallback_range<S: InputContextSource + ?Sized>(
+pub(crate) fn platform_input_fallback_range<S: InputContextSource + ?Sized>(
     source: &S,
     block_id: BlockId,
 ) -> Range<usize> {

@@ -4,10 +4,10 @@ use gpui::{AppContext, Context, Pixels, Point, Window};
 
 use cditor_core::ids::{BlockId, SurfaceId};
 
-use crate::app::input::text_drag::GuiTextDragSelection;
-use crate::app::input_trace::trace_input;
+use crate::input::trace::trace_input;
 #[cfg(test)]
 use crate::interaction::geometry::ProjectedBlockRect;
+use crate::interaction::selection_drag::GuiTextDragSelection;
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::overlay::GuiToast;
 use crate::persistence::EditorSaveStatus;

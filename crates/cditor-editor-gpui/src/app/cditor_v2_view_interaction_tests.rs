@@ -1,4 +1,4 @@
-use crate::app::input::mouse::scroll_delta_y;
+use crate::input::mouse::scroll_delta_y;
 use crate::interaction::geometry::{
     ParentDropTarget, ProjectedBlockRect, parent_drop_target_from_rects,
 };

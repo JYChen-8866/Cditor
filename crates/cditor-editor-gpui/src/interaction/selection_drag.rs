@@ -11,9 +11,9 @@ const TEXT_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct GuiTextDragSelection {
-    pub(in crate::app) anchor_block_id: BlockId,
-    pub(in crate::app) anchor_position: ParleyTextPosition,
-    pub(in crate::app) pointer_position: Point<Pixels>,
+    pub(crate) anchor_block_id: BlockId,
+    pub(crate) anchor_position: ParleyTextPosition,
+    pub(crate) pointer_position: Point<Pixels>,
 }
 
 impl CditorV2View {
@@ -42,7 +42,7 @@ impl CditorV2View {
             .map(|position| (block_id, position))
     }
 
-    pub(in crate::app) fn update_text_drag_selection(
+    pub(crate) fn update_text_drag_selection(
         &mut self,
         position: Point<Pixels>,
         cx: &mut Context<Self>,
@@ -82,7 +82,7 @@ impl CditorV2View {
         self.schedule_text_drag_auto_scroll(cx);
     }
 
-    pub(in crate::app) fn finish_text_drag_selection(&mut self) {
+    pub(crate) fn finish_text_drag_selection(&mut self) {
         self.interaction.text_drag_selection = None;
         self.interaction.text_drag_auto_scroll_scheduled = false;
     }
@@ -158,7 +158,7 @@ impl CditorV2View {
         true
     }
 
-    pub(in crate::app) fn finish_block_drag_selection(&mut self) {
+    pub(crate) fn finish_block_drag_selection(&mut self) {
         let _ = self.interaction.block_drag_selection.finish();
     }
 }

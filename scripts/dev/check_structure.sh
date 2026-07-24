@@ -94,6 +94,13 @@ if [ -d crates/cditor-editor-gpui/src/app/interaction ]; then
   exit 1
 fi
 
+if [ -d crates/cditor-editor-gpui/src/app/input ] \
+  || grep -R -n -E 'crate::app::input|crate::app::input_trace' \
+    --include='*.rs' crates/cditor-editor-gpui/src | grep -q .; then
+  echo 'error: GPUI input adapters must live in the single crate-root input module' >&2
+  exit 1
+fi
+
 if grep -R -n -E 'crate::app::interaction|pub\(in crate::app\)' \
   --include='*.rs' crates/cditor-editor-gpui/src/interaction | grep -q .; then
   echo 'error: root interaction must not depend on the former app/interaction module boundary' >&2
@@ -349,7 +356,7 @@ fi
 direct_table_cell_focus_violations=$(
   grep -n -E '\.(focus_table_cell|focus_table_cell_at_offset|blur_table_cell|move_focused_table_cell_(left|right|up|down|tab|to_text_position)|extend_focused_table_cell_selection_(left|right|to_offset))\(' \
     crates/cditor-editor-gpui/src/app/cditor_v2_view/table_actions.rs \
-    crates/cditor-editor-gpui/src/app/input/actions.rs || true
+    crates/cditor-editor-gpui/src/input/routing.rs || true
 )
 if [ -n "$direct_table_cell_focus_violations" ]; then
   echo 'error: table cell focus and blur must route through Runtime dispatch:' >&2
@@ -370,7 +377,7 @@ fi
 
 direct_caret_navigation_violations=$(
   grep -n -E '\.(move_caret_(left|right|up|down|to_document_boundary)|move_focused_caret_(by_word|to_line_boundary|to_offset|to_text_position)|move_focused_text_surface_to_offset)\(' \
-    crates/cditor-editor-gpui/src/app/input/keyboard.rs || true
+    crates/cditor-editor-gpui/src/input/keyboard.rs || true
 )
 if [ -n "$direct_caret_navigation_violations" ]; then
   echo 'error: caret navigation must route semantic fallback and Parley targets through Runtime dispatch:' >&2

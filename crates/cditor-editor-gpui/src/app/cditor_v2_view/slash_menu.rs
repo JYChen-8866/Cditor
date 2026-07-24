@@ -63,10 +63,7 @@ impl CditorV2View {
         self.apply_slash_menu_item(menu, item, cx)
     }
 
-    pub(in crate::app) fn apply_selected_slash_menu_item(
-        &mut self,
-        cx: &mut Context<Self>,
-    ) -> bool {
+    pub(crate) fn apply_selected_slash_menu_item(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(menu) = self.overlay.slash_menu.clone() else {
             return false;
         };
@@ -76,7 +73,7 @@ impl CditorV2View {
         self.apply_slash_menu_item(menu, item, cx)
     }
 
-    pub(in crate::app) fn move_slash_menu_selection(
+    pub(crate) fn move_slash_menu_selection(
         &mut self,
         delta: isize,
         cx: &mut Context<Self>,

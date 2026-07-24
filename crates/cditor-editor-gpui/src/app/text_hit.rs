@@ -7,7 +7,7 @@ use cditor_session::SurfaceVersionSnapshot;
 
 use crate::app::cditor_v2_view::CditorV2View;
 use crate::app::cditor_v2_view::TableCellLayoutKey;
-use crate::app::input_trace::trace_input;
+use crate::input::trace::trace_input;
 use crate::interaction::geometry::FallbackViewportOrigin;
 use crate::text::{
     ParleySelectionKind, ParleyTextPosition, RichTextElement, RichTextLayoutInput,
@@ -26,7 +26,7 @@ pub(in crate::app) fn selection_kind_for_click_count(
 }
 
 impl CditorV2View {
-    pub(in crate::app) fn current_text_layout_cache(
+    pub(crate) fn current_text_layout_cache(
         &self,
         current: SurfaceVersionSnapshot,
         block_id: BlockId,
@@ -35,7 +35,7 @@ impl CditorV2View {
         layout_cache_is_current(cache, current).then_some(cache)
     }
 
-    pub(in crate::app) fn current_table_cell_layout_cache(
+    pub(crate) fn current_table_cell_layout_cache(
         &self,
         current: SurfaceVersionSnapshot,
         block_id: BlockId,
@@ -49,7 +49,7 @@ impl CditorV2View {
         layout_cache_is_current(cache, current).then_some(cache)
     }
 
-    pub(in crate::app) fn current_text_surface_layout_cache(
+    pub(crate) fn current_text_surface_layout_cache(
         &self,
         current: SurfaceVersionSnapshot,
     ) -> Option<&RichTextPlatformLayout> {
@@ -79,7 +79,7 @@ impl CditorV2View {
         Some(platform_text_position_for_point(cache, position))
     }
 
-    pub(in crate::app) fn text_position_for_block_at_position(
+    pub(crate) fn text_position_for_block_at_position(
         &self,
         block_id: BlockId,
         position: Point<Pixels>,
