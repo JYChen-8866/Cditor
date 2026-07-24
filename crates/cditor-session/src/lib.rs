@@ -27,7 +27,11 @@ mod ui_snapshot;
 
 pub use ai_port::{AiContextSnapshot, project_ai_context, project_ai_session_request};
 pub use clipboard_port::SessionClipboardSnapshot;
-pub use cold_start::{SessionColdStartRequest, SessionColdStartResult, open_editor_session};
+pub use cold_start::{
+    PreparedEditorSession, PreparedSessionColdStartResult, SessionColdStartRequest,
+    SessionColdStartResult, open_editor_session, open_editor_session_with_persistence,
+    prepare_editor_session_with_persistence,
+};
 pub use diagnostics_snapshot::{SessionDiagnosticsSnapshot, project_diagnostics_snapshot};
 pub use document_snapshot::{
     SessionDocumentSnapshot, TextBlockContextSnapshot, project_block_attrs,

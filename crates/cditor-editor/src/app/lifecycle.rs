@@ -14,7 +14,7 @@ use crate::persistence::{
     DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline, schedule_storage_autosave,
 };
 use cditor_runtime::DocumentRuntime;
-use cditor_session::EditorSession;
+use cditor_session::{EditorSession, EditorSessionHandle};
 
 impl CditorV2View {
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -64,10 +64,21 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) -> Self {
         let persistence = persistence.unwrap_or_else(PersistencePipeline::disabled);
+        let session = EditorSession::with_persistence(runtime, readonly, persistence).into_handle();
+        Self::from_session_with_options(session, show_debug, readonly, cx)
+    }
+
+    pub fn from_session_with_options(
+        session: EditorSessionHandle,
+        show_debug: bool,
+        requested_readonly: bool,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let readonly = session
+            .snapshot()
+            .map_or(requested_readonly, |snapshot| snapshot.readonly);
         Self {
-            state: CditorViewState::Ready(
-                EditorSession::with_persistence(runtime, readonly, persistence).into_handle(),
-            ),
+            state: CditorViewState::Ready(session),
             focus: cx.focus_handle(),
             code_language_focus: cx.focus_handle(),
             ai_prompt_focus: cx.focus_handle(),
@@ -77,7 +88,7 @@ impl CditorV2View {
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             readonly,
-            requested_readonly: readonly,
+            requested_readonly,
             readonly_reason: None,
             dirty: false,
             sdk_focus_observers_registered: false,
@@ -299,22 +310,13 @@ impl CditorV2View {
         }
     }
 
-    pub fn apply_loaded_runtime(&mut self, runtime: DocumentRuntime) {
-        self.apply_loaded_runtime_with_persistence(runtime, None);
-    }
-
-    pub fn apply_loaded_runtime_with_persistence(
-        &mut self,
-        runtime: DocumentRuntime,
-        persistence: Option<PersistencePipeline>,
-    ) {
-        let persistence = persistence.unwrap_or_else(PersistencePipeline::disabled);
-        self.state.apply_loaded_session(
-            EditorSession::with_persistence(runtime, self.requested_readonly, persistence)
-                .into_handle(),
-        );
+    pub fn apply_loaded_session(&mut self, session: EditorSessionHandle) {
+        let session_readonly = session
+            .snapshot()
+            .map_or(self.requested_readonly, |snapshot| snapshot.readonly);
+        self.state.apply_loaded_session(session);
         self.readonly_reason = None;
-        self.readonly = self.requested_readonly;
+        self.readonly = session_readonly;
         self.dirty = false;
         self.last_emitted_selection = None;
         self.text_layouts.clear();
@@ -349,30 +351,21 @@ impl CditorV2View {
         self.table_reorder_drag = None;
         self.table_hscroll_drag = None;
         self.projected_block_rects.clear();
-        if let CditorViewState::Ready(session) = &self.state
-            && let Ok(snapshot) = session.persistence_runtime_snapshot()
-        {
-            let _ = session.mark_loaded_structure_version(snapshot.structure_version);
-        }
         self.save_status = save_status_for_mode(self.readonly);
     }
 
-    pub fn apply_recovered_runtime_with_persistence(
+    pub fn apply_recovered_session(
         &mut self,
-        runtime: DocumentRuntime,
-        persistence: Option<PersistencePipeline>,
+        session: EditorSessionHandle,
         recovered_transactions: usize,
         cx: &mut Context<Self>,
     ) {
-        self.apply_loaded_runtime_with_persistence(runtime, persistence);
+        self.apply_loaded_session(session);
         if recovered_transactions == 0 || self.readonly {
             return;
         }
         self.dirty = true;
         self.save_status = EditorSaveStatus::Dirty;
-        if let Some(session) = self.ready_session() {
-            let _ = session.mark_persistence_dirty();
-        }
         schedule_storage_autosave(self, cx);
     }
 

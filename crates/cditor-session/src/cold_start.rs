@@ -1,5 +1,7 @@
 use cditor_core::layout::PageLayoutIndex;
+use cditor_core::rich_text::BlockPayloadRecord;
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
+use cditor_runtime::content::payload_window::PayloadWindowLoadResult;
 use cditor_runtime::document_runtime::{
     DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport,
 };
@@ -7,7 +9,7 @@ use cditor_storage::EmergencyLogEntry;
 
 use crate::{
     EditorSession, EditorSessionHandle, EmergencyRecoveryDecision, EmergencyRecoveryReport,
-    plan_emergency_recovery, project_emergency_recovery,
+    PersistencePipeline, plan_emergency_recovery, project_emergency_recovery,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -17,6 +19,7 @@ pub struct SessionColdStartRequest {
     pub cached_page_layout: Option<PageLayoutIndex>,
     pub readonly: bool,
     pub emergency_log_entries: Vec<EmergencyLogEntry>,
+    pub emergency_payloads: Vec<BlockPayloadRecord>,
 }
 
 #[derive(Debug)]
@@ -27,6 +30,44 @@ pub struct SessionColdStartResult {
     pub emergency_newer_major: Option<u32>,
 }
 
+pub struct PreparedEditorSession {
+    session: EditorSession,
+}
+
+impl std::fmt::Debug for PreparedEditorSession {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PreparedEditorSession")
+            .field("snapshot", &self.session.snapshot())
+            .finish_non_exhaustive()
+    }
+}
+
+impl PreparedEditorSession {
+    pub fn into_handle(self) -> EditorSessionHandle {
+        self.session.into_handle()
+    }
+}
+
+#[derive(Debug)]
+pub struct PreparedSessionColdStartResult {
+    pub session: PreparedEditorSession,
+    pub report: DocumentRuntimeColdStartReport,
+    pub emergency_recovery: Option<EmergencyRecoveryReport>,
+    pub emergency_newer_major: Option<u32>,
+}
+
+impl PreparedSessionColdStartResult {
+    pub fn into_opened(self) -> SessionColdStartResult {
+        SessionColdStartResult {
+            session: self.session.into_handle(),
+            report: self.report,
+            emergency_recovery: self.emergency_recovery,
+            emergency_newer_major: self.emergency_newer_major,
+        }
+    }
+}
+
 /// Opens a session from storage-neutral document data.
 ///
 /// Storage adapters remain responsible for I/O and cache DTO decoding. This
@@ -35,6 +76,21 @@ pub struct SessionColdStartResult {
 pub fn open_editor_session(
     request: SessionColdStartRequest,
 ) -> Result<SessionColdStartResult, ProtocolError> {
+    open_editor_session_with_persistence(request, PersistencePipeline::disabled())
+}
+
+pub fn open_editor_session_with_persistence(
+    request: SessionColdStartRequest,
+    persistence: PersistencePipeline,
+) -> Result<SessionColdStartResult, ProtocolError> {
+    prepare_editor_session_with_persistence(request, persistence)
+        .map(PreparedSessionColdStartResult::into_opened)
+}
+
+pub fn prepare_editor_session_with_persistence(
+    request: SessionColdStartRequest,
+    persistence: PersistencePipeline,
+) -> Result<PreparedSessionColdStartResult, ProtocolError> {
     let document_id = request.data.document_id;
     let (mut runtime, mut report) = cditor_runtime::DocumentRuntime::from_cold_start_data(
         request.data,
@@ -54,24 +110,79 @@ pub fn open_editor_session(
         match plan_emergency_recovery(request.emergency_log_entries).map_err(|message| {
             ProtocolError::new(ProtocolErrorCode::ApplyFailed, message).with_document(document_id)
         })? {
-            EmergencyRecoveryDecision::Replay(plan) => {
+            EmergencyRecoveryDecision::Replay(plan) if !request.readonly => {
+                hydrate_emergency_payloads(
+                    &mut runtime,
+                    &plan,
+                    request.emergency_payloads,
+                    document_id,
+                )?;
                 let report = project_emergency_recovery(&mut runtime, plan).map_err(|message| {
                     ProtocolError::new(ProtocolErrorCode::ApplyFailed, message)
                         .with_document(document_id)
                 })?;
                 (Some(report), None)
             }
+            EmergencyRecoveryDecision::Replay(_) => (None, None),
             EmergencyRecoveryDecision::ReadOnlyNewerMajor { written_major, .. } => {
                 (None, Some(written_major))
             }
         };
     let readonly = request.readonly || emergency_newer_major.is_some();
 
-    Ok(SessionColdStartResult {
-        session: EditorSession::new(runtime, readonly).into_handle(),
+    let recovered_transactions = emergency_recovery
+        .as_ref()
+        .map_or(0, |report| report.replayed_transactions);
+    let structure_version = runtime.structure_version();
+    let mut session = EditorSession::with_persistence(runtime, readonly, persistence);
+    session
+        .persistence
+        .mark_loaded_structure_version(structure_version);
+    if recovered_transactions > 0 && !readonly {
+        session.persistence.mark_dirty();
+    }
+
+    Ok(PreparedSessionColdStartResult {
+        session: PreparedEditorSession { session },
         report,
         emergency_recovery,
         emergency_newer_major,
+    })
+}
+
+fn hydrate_emergency_payloads(
+    runtime: &mut cditor_runtime::DocumentRuntime,
+    plan: &crate::EmergencyRecoveryPlan,
+    records: Vec<BlockPayloadRecord>,
+    document_id: u64,
+) -> Result<(), ProtocolError> {
+    let Some(load_request) =
+        crate::project_emergency_payload_request(runtime, plan).map_err(|message| {
+            ProtocolError::new(ProtocolErrorCode::ApplyFailed, message).with_document(document_id)
+        })?
+    else {
+        return Ok(());
+    };
+    let loaded_ids = records
+        .iter()
+        .map(|payload| payload.block_id)
+        .collect::<std::collections::HashSet<_>>();
+    let missing_block_ids = load_request
+        .block_ids
+        .iter()
+        .copied()
+        .filter(|block_id| !loaded_ids.contains(block_id))
+        .collect();
+    crate::project_emergency_payload_result(
+        runtime,
+        PayloadWindowLoadResult {
+            request: load_request,
+            records,
+            missing_block_ids,
+        },
+    )
+    .map_err(|message| {
+        ProtocolError::new(ProtocolErrorCode::ApplyFailed, message).with_document(document_id)
     })
 }
 
@@ -166,6 +277,45 @@ mod tests {
         }
     }
 
+    fn deferred_emergency_fixture() -> (
+        DocumentRuntimeColdStartData,
+        EmergencyLogEntry,
+        BlockPayloadRecord,
+    ) {
+        let mut data = cold_start_data(2);
+        data.records.push(BlockIndexRecord::new(
+            3,
+            None,
+            0,
+            kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+            0,
+        ));
+        let transaction = EditTransaction::new(
+            11,
+            EditTransactionKind::Typing,
+            11,
+            vec![EditOperation::InsertText {
+                block_id: 3,
+                offset: 1,
+                text: " recovered".to_owned(),
+            }],
+            vec![EditOperation::DeleteText {
+                block_id: 3,
+                range: 1..11,
+            }],
+        )
+        .with_origin(ChangeOrigin::User);
+        (
+            data,
+            EmergencyLogEntry {
+                sequence: 4,
+                transaction_id: transaction.id,
+                envelope: encode_transaction(&transaction).unwrap(),
+            },
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "3"),
+        )
+    }
+
     #[test]
     fn cold_start_hydrates_initial_payloads_and_returns_the_runtime_owner() {
         let result = open_editor_session(SessionColdStartRequest {
@@ -174,6 +324,7 @@ mod tests {
             cached_page_layout: Some(cached_page_layout(PagePolicy::default())),
             readonly: false,
             emergency_log_entries: Vec::new(),
+            emergency_payloads: Vec::new(),
         })
         .unwrap();
 
@@ -197,6 +348,7 @@ mod tests {
             cached_page_layout: None,
             readonly: false,
             emergency_log_entries: Vec::new(),
+            emergency_payloads: Vec::new(),
         })
         .unwrap_err();
 
@@ -215,6 +367,7 @@ mod tests {
             cached_page_layout: Some(cached_page_layout(incompatible_policy)),
             readonly: true,
             emergency_log_entries: Vec::new(),
+            emergency_payloads: Vec::new(),
         })
         .unwrap();
 
@@ -235,6 +388,7 @@ mod tests {
             cached_page_layout: None,
             readonly: false,
             emergency_log_entries: vec![emergency_entry()],
+            emergency_payloads: Vec::new(),
         })
         .unwrap();
 
@@ -250,5 +404,61 @@ mod tests {
             1
         );
         assert!(result.session.snapshot().unwrap().dirty);
+    }
+
+    #[test]
+    fn readonly_cold_start_preserves_compatible_emergency_log_without_replay() {
+        let result = open_editor_session(SessionColdStartRequest {
+            data: cold_start_data(2),
+            viewport_height: 720.0,
+            cached_page_layout: None,
+            readonly: true,
+            emergency_log_entries: vec![emergency_entry()],
+            emergency_payloads: Vec::new(),
+        })
+        .unwrap();
+
+        assert_eq!(
+            result.session.block_plain_text(1).unwrap().as_deref(),
+            Some("1")
+        );
+        assert!(result.emergency_recovery.is_none());
+        assert!(result.session.snapshot().unwrap().readonly);
+    }
+
+    #[test]
+    fn cold_start_hydrates_deferred_emergency_payload_before_replay() {
+        let (data, entry, payload) = deferred_emergency_fixture();
+        let result = open_editor_session(SessionColdStartRequest {
+            data,
+            viewport_height: 720.0,
+            cached_page_layout: None,
+            readonly: false,
+            emergency_log_entries: vec![entry],
+            emergency_payloads: vec![payload],
+        })
+        .unwrap();
+
+        assert_eq!(
+            result.session.block_plain_text(3).unwrap().as_deref(),
+            Some("3 recovered")
+        );
+    }
+
+    #[test]
+    fn cold_start_rejects_missing_deferred_emergency_payload() {
+        let (data, entry, _) = deferred_emergency_fixture();
+        let error = open_editor_session(SessionColdStartRequest {
+            data,
+            viewport_height: 720.0,
+            cached_page_layout: None,
+            readonly: false,
+            emergency_log_entries: vec![entry],
+            emergency_payloads: Vec::new(),
+        })
+        .unwrap_err();
+
+        assert_eq!(error.code, ProtocolErrorCode::ApplyFailed);
+        assert!(error.message.contains("missing for blocks [3]"));
     }
 }

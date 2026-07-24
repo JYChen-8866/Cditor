@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::storage_host::{CditorColdStartPlan, DocumentSchemaAccess, load_runtime_from_options};
+use crate::storage_host::{CditorColdStartPlan, DocumentSchemaAccess, load_session_from_options};
 use cditor_api::event::CditorEvent;
 use cditor_api::{Cditor, CditorComponent, CditorError, CditorOptions, CditorViewFactory};
 use cditor_editor::app::CditorV2View;
@@ -128,10 +128,9 @@ fn spawn_storage_cold_start(
     timeout: Duration,
     cx: &mut Context<CditorV2View>,
 ) {
-    let autosave_interval = options.autosave_interval;
     let load_task = cx.background_spawn(async move {
         block_on_storage(async move {
-            tokio::time::timeout(timeout, load_runtime_from_options(&options))
+            tokio::time::timeout(timeout, load_session_from_options(&options))
                 .await
                 .map_err(|_| StorageError::Timeout {
                     operation: "document storage cold start",
@@ -145,17 +144,12 @@ fn spawn_storage_cold_start(
         Ok(Some(loaded)) => {
             let _ = view.update(cx, |view, cx| {
                 let schema_access = loaded.schema_access;
-                let recovered_transactions = loaded.recovered_transactions;
-                let persistence = cditor_session::PersistencePipeline::for_session(
-                    loaded.storage_session,
-                    autosave_interval,
-                );
-                view.apply_recovered_runtime_with_persistence(
-                    loaded.runtime,
-                    Some(persistence),
-                    recovered_transactions,
-                    cx,
-                );
+                let opened = loaded.prepared.into_opened();
+                let recovered_transactions = opened
+                    .emergency_recovery
+                    .as_ref()
+                    .map_or(0, |report| report.replayed_transactions);
+                view.apply_recovered_session(opened.session, recovered_transactions, cx);
                 if let DocumentSchemaAccess::ReadOnlyNewerMajor {
                     written_major,
                     supported_major,

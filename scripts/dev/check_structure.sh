@@ -82,6 +82,18 @@ if grep -n -E 'StorageSession' \
   exit 1
 fi
 
+if grep -n -E 'CditorRuntimeLoadResult|load_runtime_from_|pub[[:space:]]+(runtime|storage_session)[[:space:]]*:' \
+  crates/cditor-app/src/storage_host.rs crates/cditor-app/src/wiring.rs | grep -q .; then
+  echo 'error: App cold start must return a prepared EditorSession, not Runtime or StorageSession ownership' >&2
+  exit 1
+fi
+
+if grep -n -E 'apply_(loaded|recovered)_runtime' \
+  crates/cditor-editor/src/app/lifecycle.rs crates/cditor-app/src/wiring.rs | grep -q .; then
+  echo 'error: GPUI Editor loading must adopt EditorSessionHandle instead of DocumentRuntime' >&2
+  exit 1
+fi
+
 if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])cditor-runtime[[:space:]]*=|(^|[[:space:]])cditor-editor[[:space:]]*=|(^|[[:space:]])cditor-whiteboard[[:space:]]*=|(^|[[:space:]])sqlx[[:space:]]*=' crates/cditor-api/Cargo.toml; then
   echo 'error: API contracts must not depend on concrete storage, runtime, editor, whiteboard engine, or SQLx' >&2
   exit 1
