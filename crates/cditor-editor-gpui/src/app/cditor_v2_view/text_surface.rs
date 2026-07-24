@@ -26,7 +26,7 @@ impl CditorV2View {
             return None;
         };
         let state = session.text_surface_state(surface_id).ok().flatten()?;
-        let focused = state.focused && !self.readonly;
+        let focused = state.focused && !self.status.readonly;
         let selection_range = state.selection_range.filter(|range| !range.is_empty());
         Some(TextSurfaceRenderState {
             snapshot: state.snapshot,
@@ -46,7 +46,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.readonly {
+        if self.status.readonly {
             return;
         }
         let hit = self
@@ -100,7 +100,7 @@ impl CditorV2View {
             match focus_result {
                 Ok(_) => cx.notify(),
                 Err(error) => {
-                    self.save_status =
+                    self.status.save_status =
                         crate::persistence::EditorSaveStatus::Failed(error.to_string());
                     cx.notify();
                 }

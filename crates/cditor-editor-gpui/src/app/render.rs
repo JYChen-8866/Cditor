@@ -80,7 +80,7 @@ impl Render for CditorV2View {
         let mut formatting_toolbar = formatting_toolbar_state(
             formatting_context.as_ref(),
             &self.text_layouts,
-            self.readonly,
+            self.status.readonly,
             self.slash_menu.is_some()
                 || code_language_edit.is_some()
                 || code_theme_menu_block_id.is_some()
@@ -497,7 +497,7 @@ impl Render for CditorV2View {
                         &self.table_menu_ui,
                         editor_viewport.width,
                         editor_viewport.height,
-                        self.readonly,
+                        self.status.readonly,
                         self.image_resize_preview(),
                         self.table_resize_preview(),
                         self.table_reorder_preview(),
@@ -615,7 +615,7 @@ impl Render for CditorV2View {
                 &self.color_menu_scroll_handle,
             ));
         }
-        if let Some(reason) = self.readonly_reason.as_ref() {
+        if let Some(reason) = self.status.readonly_reason.as_ref() {
             root = root.child(render_readonly_notice(reason, theme));
         }
         if let Some(preview_overlay) = render_image_preview_overlay(window, cx) {

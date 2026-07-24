@@ -26,7 +26,7 @@ pub(in crate::app) fn default_ai_provider() -> Arc<dyn AiProvider> {
 impl CditorV2View {
     pub(crate) fn invoke_empty_line_ai_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
         if !self.ai_enabled
-            || self.readonly
+            || self.status.readonly
             || self.ai_prompt.is_some()
             || self.slash_menu.is_some()
             || self.code_language_edit.is_some()
@@ -74,7 +74,7 @@ impl CditorV2View {
         presentation: AiRequestPresentation,
         cx: &mut Context<Self>,
     ) -> bool {
-        if !self.ai_enabled || self.readonly {
+        if !self.ai_enabled || self.status.readonly {
             return false;
         }
         let Some(block_id) = self
@@ -139,7 +139,7 @@ impl CditorV2View {
             }) {
             Ok(dispatch) => dispatch,
             Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error);
+                self.status.save_status = EditorSaveStatus::Failed(error);
                 cx.notify();
                 return false;
             }
@@ -156,7 +156,7 @@ impl CditorV2View {
         }) {
             Some(token) => token,
             None => {
-                self.save_status =
+                self.status.save_status =
                     EditorSaveStatus::Failed("AI stream task could not be registered".to_owned());
                 cx.notify();
                 return false;
@@ -305,7 +305,7 @@ impl CditorV2View {
         match result {
             Ok(outcome) => outcome.status == CommandOutcomeStatus::Applied,
             Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error.to_string());
+                self.status.save_status = EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

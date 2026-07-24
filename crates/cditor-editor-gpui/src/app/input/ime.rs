@@ -294,7 +294,8 @@ impl EntityInputHandler for CditorV2View {
             }
             None => {}
             Some(Err(error)) => {
-                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                self.status.save_status =
+                    crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
             }
         }
@@ -600,7 +601,7 @@ impl EntityInputHandler for CditorV2View {
                 code_language_input_target_allows(self.platform_input_target, edit.block_id)
             });
         }
-        !self.readonly
+        !self.status.readonly
             && matches!(self.state, CditorViewState::Ready(_))
             && self.ready_session().is_none_or(|session| {
                 let Ok(context) = session.input_context() else {

@@ -98,7 +98,7 @@ impl CditorV2View {
         target_block_id: Option<cditor_core::ids::BlockId>,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
-        if self.readonly {
+        if self.status.readonly {
             return false;
         }
         let gutter_block_id = color_action_block_target(has_text_selection, target_block_id);
@@ -146,7 +146,8 @@ impl CditorV2View {
             }
             Err(error) => {
                 trace_block_color("apply.error", &error);
-                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                self.status.save_status =
+                    crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

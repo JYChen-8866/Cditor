@@ -46,6 +46,7 @@ pub(crate) mod text_surface;
 mod whiteboard;
 
 pub(in crate::app) use super::persistence_bridge::save_status_for_mode;
+use super::state::EditorStatusUiState;
 pub use super::state::{CditorViewState, EditorReadonlyReason};
 pub(crate) use crate::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::app) use block_actions::block_focus_offset_after_missed_hit_test;
@@ -67,13 +68,9 @@ pub struct CditorV2View {
     pub(in crate::app) ai_prompt: Option<AiPromptState>,
     pub(in crate::app) ai_preview_scroll_handle: gpui::ScrollHandle,
     pub(in crate::app) show_debug: bool,
-    pub(in crate::app) readonly: bool,
-    pub(in crate::app) requested_readonly: bool,
-    pub(in crate::app) readonly_reason: Option<EditorReadonlyReason>,
-    pub(in crate::app) dirty: bool,
+    pub(in crate::app) status: EditorStatusUiState,
     pub(in crate::app) sdk_focus_observers_registered: bool,
     pub(in crate::app) last_emitted_selection: Option<cditor_api::document::DocumentSelection>,
-    pub(in crate::app) save_status: EditorSaveStatus,
     pub(in crate::app) last_wheel_delta_y: f64,
     pub(in crate::app) scroll_accumulator: ScrollAccumulator,
     pub(in crate::app) editor_viewport_handle: gpui::ScrollHandle,
@@ -409,7 +406,7 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         window.focus(&self.focus, cx);
-        if self.readonly {
+        if self.status.readonly {
             return;
         }
         let result = self.dispatch_command(
@@ -427,7 +424,7 @@ impl CditorV2View {
                 cx.notify();
             }
             Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error.to_string());
+                self.status.save_status = EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
             }
         }

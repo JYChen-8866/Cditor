@@ -107,7 +107,7 @@ impl CditorV2View {
         redo: bool,
         cx: &mut Context<Self>,
     ) -> Result<bool, CditorError> {
-        if self.readonly {
+        if self.status.readonly {
             return Err(CditorError::Readonly);
         }
         let direction = if redo {
@@ -267,9 +267,9 @@ impl CditorV2View {
         revision: u64,
         cx: &mut Context<Self>,
     ) {
-        let was_dirty = self.dirty;
-        self.dirty = true;
-        self.save_status = EditorSaveStatus::Dirty;
+        let was_dirty = self.status.dirty;
+        self.status.dirty = true;
+        self.status.save_status = EditorSaveStatus::Dirty;
         if let Some(session) = self.ready_session() {
             let _ = session.mark_persistence_dirty();
         }
@@ -347,7 +347,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn flush_storage_persistence(&mut self, cx: &mut Context<Self>) {
-        if self.readonly {
+        if self.status.readonly {
             if let Some(session) = self.ready_session() {
                 let _ = session.clear_scheduled_save();
             }
@@ -369,7 +369,7 @@ impl CditorV2View {
             return;
         };
         let revision = batch.revision();
-        self.save_status = EditorSaveStatus::Saving;
+        self.status.save_status = EditorSaveStatus::Saving;
         cx.emit(CditorEvent::SaveStarted { revision });
         let save_task = cx.background_spawn(async move {
             let result = block_on_storage(async {
@@ -398,9 +398,9 @@ impl CditorV2View {
                         })
                         .is_some_and(|apply| apply.should_reschedule);
                     view.trim_persistent_payload_cache();
-                    let became_clean = view.dirty && !should_reschedule;
-                    view.dirty = should_reschedule;
-                    view.save_status = if view.readonly {
+                    let became_clean = view.status.dirty && !should_reschedule;
+                    view.status.dirty = should_reschedule;
+                    view.status.save_status = if view.status.readonly {
                         EditorSaveStatus::Readonly
                     } else if should_reschedule {
                         EditorSaveStatus::Dirty
@@ -432,8 +432,8 @@ impl CditorV2View {
                             session.apply_storage_save_failure(&request, &message).ok()
                         })
                         .unwrap_or(false);
-                    view.dirty = true;
-                    view.save_status = EditorSaveStatus::Failed(message.clone());
+                    view.status.dirty = true;
+                    view.status.save_status = EditorSaveStatus::Failed(message.clone());
                     cx.emit(CditorEvent::SaveFailed {
                         revision,
                         error: CditorError::Persistence(message),
@@ -507,9 +507,9 @@ impl CditorV2View {
                     let _ = session.finish_storage_flush();
                 }
                 if let Err(error) = &state_result {
-                    view.save_status = EditorSaveStatus::Failed(error.to_string());
-                } else if !view.dirty && !view.readonly {
-                    view.save_status = EditorSaveStatus::Clean;
+                    view.status.save_status = EditorSaveStatus::Failed(error.to_string());
+                } else if !view.status.dirty && !view.status.readonly {
+                    view.status.save_status = EditorSaveStatus::Clean;
                 }
                 view.settle_storage_barriers(cx);
                 cx.notify();

@@ -29,7 +29,7 @@ impl CditorV2View {
         has_text_selection: bool,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
-        if self.readonly {
+        if self.status.readonly {
             return false;
         }
         let gutter_block_id = (!has_text_selection).then_some(self.gutter_toolbar_block_id);
@@ -81,7 +81,7 @@ impl CditorV2View {
         action: BlockTransformAction,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
-        if self.readonly {
+        if self.status.readonly {
             return false;
         }
         let focused = self
@@ -108,7 +108,7 @@ impl CditorV2View {
                 Ok(())
             });
         if let Err(error) = focused {
-            self.save_status = crate::persistence::EditorSaveStatus::Failed(error);
+            self.status.save_status = crate::persistence::EditorSaveStatus::Failed(error);
             cx.notify();
             return false;
         }
@@ -119,7 +119,8 @@ impl CditorV2View {
         ) {
             Ok(outcome) => outcome.status == CommandOutcomeStatus::Applied,
             Err(error) => {
-                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                self.status.save_status =
+                    crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

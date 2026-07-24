@@ -34,7 +34,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.readonly {
+        if self.status.readonly {
             return;
         }
         window.focus(&self.focus, cx);
@@ -120,7 +120,7 @@ impl CditorV2View {
             CommandSource::Toolbar,
             cx,
         ) {
-            self.save_status = EditorSaveStatus::Failed(error.to_string());
+            self.status.save_status = EditorSaveStatus::Failed(error.to_string());
         }
         cx.notify();
         true

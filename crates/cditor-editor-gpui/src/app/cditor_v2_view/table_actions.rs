@@ -339,7 +339,7 @@ impl CditorV2View {
         color: TableBackgroundColor,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.readonly {
+        if self.status.readonly {
             return false;
         }
         let Some((block_id, range)) = self.selected_table_range() else {
@@ -368,7 +368,7 @@ impl CditorV2View {
         action: TableMenuAction,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.readonly {
+        if self.status.readonly {
             return false;
         }
         let axis_selection = self.table_interaction_mode.axis_selection();

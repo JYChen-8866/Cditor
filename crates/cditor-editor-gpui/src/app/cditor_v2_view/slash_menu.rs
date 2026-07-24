@@ -135,7 +135,7 @@ impl CditorV2View {
         item: SlashMenuItem,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.readonly {
+        if self.status.readonly {
             return false;
         }
         if item.command == Some(SlashMenuCommand::AskAi) {
@@ -196,7 +196,7 @@ impl CditorV2View {
                 outcome.status == CommandOutcomeStatus::Applied
             }
             Err(error) => {
-                self.save_status = EditorSaveStatus::Failed(error.to_string());
+                self.status.save_status = EditorSaveStatus::Failed(error.to_string());
                 self.slash_menu = None;
                 cx.notify();
                 false

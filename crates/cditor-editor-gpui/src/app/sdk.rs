@@ -144,42 +144,42 @@ impl CditorV2View {
     }
 
     pub fn sdk_is_readonly(&self) -> bool {
-        self.readonly
+        self.status.readonly
     }
 
     pub fn sdk_set_readonly(&mut self, readonly: bool, cx: &mut Context<Self>) {
-        self.requested_readonly = readonly;
-        let effective_readonly = readonly || self.readonly_reason.is_some();
-        if self.readonly == effective_readonly {
+        self.status.requested_readonly = readonly;
+        let effective_readonly = readonly || self.status.readonly_reason.is_some();
+        if self.status.readonly == effective_readonly {
             return;
         }
-        self.readonly = effective_readonly;
+        self.status.readonly = effective_readonly;
         if let Some(session) = self.ready_session() {
             let _ = session.set_readonly(effective_readonly);
         }
-        self.save_status = if effective_readonly {
+        self.status.save_status = if effective_readonly {
             EditorSaveStatus::Readonly
-        } else if self.dirty {
+        } else if self.status.dirty {
             EditorSaveStatus::Dirty
         } else {
             EditorSaveStatus::Clean
         };
-        if !effective_readonly && self.dirty {
+        if !effective_readonly && self.status.dirty {
             schedule_storage_autosave(self, cx);
         }
         cx.notify();
     }
 
     pub fn enforce_newer_schema_readonly(&mut self, written_major: u64, supported_major: u32) {
-        self.readonly_reason = Some(crate::app::EditorReadonlyReason::NewerDocumentSchema {
+        self.status.readonly_reason = Some(crate::app::EditorReadonlyReason::NewerDocumentSchema {
             written_major,
             supported_major,
         });
-        self.readonly = true;
+        self.status.readonly = true;
         if let Some(session) = self.ready_session() {
             let _ = session.set_readonly(true);
         }
-        self.save_status = EditorSaveStatus::Readonly;
+        self.status.save_status = EditorSaveStatus::Readonly;
     }
 
     pub fn enforce_newer_operation_schema_readonly(
@@ -187,15 +187,16 @@ impl CditorV2View {
         written_major: u32,
         supported_major: u32,
     ) {
-        self.readonly_reason = Some(crate::app::EditorReadonlyReason::NewerOperationSchema {
-            written_major,
-            supported_major,
-        });
-        self.readonly = true;
+        self.status.readonly_reason =
+            Some(crate::app::EditorReadonlyReason::NewerOperationSchema {
+                written_major,
+                supported_major,
+            });
+        self.status.readonly = true;
         if let Some(session) = self.ready_session() {
             let _ = session.set_readonly(true);
         }
-        self.save_status = EditorSaveStatus::Readonly;
+        self.status.save_status = EditorSaveStatus::Readonly;
     }
 
     pub fn sdk_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -248,11 +249,11 @@ impl CditorV2View {
     }
 
     pub fn sdk_is_dirty(&self) -> bool {
-        self.dirty
+        self.status.dirty
     }
 
     pub fn sdk_save_status(&self) -> SaveStatus {
-        match &self.save_status {
+        match &self.status.save_status {
             EditorSaveStatus::Clean => SaveStatus::Clean,
             EditorSaveStatus::Dirty => SaveStatus::Dirty,
             EditorSaveStatus::Saving => SaveStatus::Saving,
@@ -266,13 +267,15 @@ impl CditorV2View {
             .ready_session()
             .and_then(|session| session.persistence_snapshot().ok())
             .is_some_and(|snapshot| snapshot.saving);
-        let failed_operations =
-            usize::from(matches!(self.save_status, EditorSaveStatus::Failed(_)));
+        let failed_operations = usize::from(matches!(
+            self.status.save_status,
+            EditorSaveStatus::Failed(_)
+        ));
         CloseGuard {
-            dirty: self.dirty,
+            dirty: self.status.dirty,
             saving,
             failed_operations,
-            can_close_safely: !self.dirty && !saving && failed_operations == 0,
+            can_close_safely: !self.status.dirty && !saving && failed_operations == 0,
         }
     }
 
@@ -289,7 +292,7 @@ impl CditorV2View {
         kind: PersistenceBarrierKind,
         cx: &mut Context<Self>,
     ) -> Task<Result<SaveReport, CditorError>> {
-        if self.readonly {
+        if self.status.readonly {
             return Task::ready(Err(CditorError::Readonly));
         }
         let Some(revision) = self

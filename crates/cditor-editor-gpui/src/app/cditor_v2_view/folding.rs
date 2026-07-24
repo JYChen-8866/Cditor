@@ -13,7 +13,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.readonly {
+        if self.status.readonly {
             return false;
         }
         window.focus(&self.focus, cx);
@@ -63,7 +63,8 @@ impl CditorV2View {
             }
             Ok(_) => false,
             Err(error) => {
-                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                self.status.save_status =
+                    crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
                 false
             }

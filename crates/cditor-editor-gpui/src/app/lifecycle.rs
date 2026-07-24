@@ -5,8 +5,9 @@ use gpui::Context;
 use cditor_core::ids::BlockId;
 
 use crate::app::cditor_v2_view::ai::default_ai_provider;
-use crate::app::cditor_v2_view::{CditorV2View, CditorViewState, save_status_for_mode};
+use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::app::interaction::table_mode::GuiTableInteractionMode;
+use crate::app::state::EditorStatusUiState;
 use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::input::BlockDragSelectionController;
 use crate::overlay::table::TableViewportMeasurement;
@@ -87,13 +88,9 @@ impl CditorV2View {
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
-            readonly,
-            requested_readonly,
-            readonly_reason: None,
-            dirty: false,
+            status: EditorStatusUiState::new(readonly, requested_readonly),
             sdk_focus_observers_registered: false,
             last_emitted_selection: None,
-            save_status: save_status_for_mode(readonly),
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
@@ -163,13 +160,9 @@ impl CditorV2View {
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
-            readonly,
-            requested_readonly: readonly,
-            readonly_reason: None,
-            dirty: false,
+            status: EditorStatusUiState::new(readonly, readonly),
             sdk_focus_observers_registered: false,
             last_emitted_selection: None,
-            save_status: save_status_for_mode(readonly),
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
@@ -242,13 +235,9 @@ impl CditorV2View {
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
-            readonly,
-            requested_readonly: readonly,
-            readonly_reason: None,
-            dirty: false,
+            status: EditorStatusUiState::new(readonly, readonly),
             sdk_focus_observers_registered: false,
             last_emitted_selection: None,
-            save_status: save_status_for_mode(readonly),
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
@@ -298,11 +287,9 @@ impl CditorV2View {
     pub fn apply_loaded_session(&mut self, session: EditorSessionHandle) {
         let session_readonly = session
             .snapshot()
-            .map_or(self.requested_readonly, |snapshot| snapshot.readonly);
+            .map_or(self.status.requested_readonly, |snapshot| snapshot.readonly);
         self.state.apply_loaded_session(session);
-        self.readonly_reason = None;
-        self.readonly = session_readonly;
-        self.dirty = false;
+        self.status.reset_for_session(session_readonly);
         self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
@@ -334,7 +321,6 @@ impl CditorV2View {
         self.table_reorder_drag = None;
         self.table_hscroll_drag = None;
         self.projected_block_rects.clear();
-        self.save_status = save_status_for_mode(self.readonly);
     }
 
     pub fn apply_recovered_session(
@@ -344,19 +330,17 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         self.apply_loaded_session(session);
-        if recovered_transactions == 0 || self.readonly {
+        if recovered_transactions == 0 || self.status.readonly {
             return;
         }
-        self.dirty = true;
-        self.save_status = EditorSaveStatus::Dirty;
+        self.status.dirty = true;
+        self.status.save_status = EditorSaveStatus::Dirty;
         schedule_storage_autosave(self, cx);
     }
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {
         self.state.apply_load_failed(message);
-        self.readonly_reason = None;
-        self.readonly = self.requested_readonly;
-        self.dirty = false;
+        self.status.reset_after_load_failure();
         self.last_emitted_selection = None;
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
@@ -412,10 +396,10 @@ impl CditorV2View {
     }
 
     pub fn save_status(&self) -> &EditorSaveStatus {
-        &self.save_status
+        &self.status.save_status
     }
 
     pub fn apply_save_status(&mut self, status: EditorSaveStatus) {
-        self.save_status = status;
+        self.status.save_status = status;
     }
 }

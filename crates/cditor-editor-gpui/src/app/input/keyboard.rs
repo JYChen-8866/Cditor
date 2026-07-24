@@ -29,7 +29,7 @@ impl CditorV2View {
             self.show_debug = !self.show_debug;
             return;
         }
-        if self.readonly && !matches!(command, GuiInputCommand::CopySelection) {
+        if self.status.readonly && !matches!(command, GuiInputCommand::CopySelection) {
             return;
         }
         if matches!(

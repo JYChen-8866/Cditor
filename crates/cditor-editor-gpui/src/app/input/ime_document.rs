@@ -18,7 +18,7 @@ impl CditorV2View {
         text: &str,
         cx: &mut Context<Self>,
     ) {
-        if self.readonly {
+        if self.status.readonly {
             return;
         }
         let registered_target = self.platform_input_target;
@@ -102,7 +102,8 @@ impl CditorV2View {
                 }
             }
             Err(error) => {
-                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                self.status.save_status =
+                    crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
             }
         }
@@ -115,7 +116,7 @@ impl CditorV2View {
         new_selected_range: Option<Range<usize>>,
         cx: &mut Context<Self>,
     ) {
-        if self.readonly {
+        if self.status.readonly {
             return;
         }
         let registered_target = self.platform_input_target;
@@ -171,7 +172,8 @@ impl CditorV2View {
                 cx.notify();
             }
             Err(error) => {
-                self.save_status = crate::persistence::EditorSaveStatus::Failed(error.to_string());
+                self.status.save_status =
+                    crate::persistence::EditorSaveStatus::Failed(error.to_string());
                 cx.notify();
             }
         }

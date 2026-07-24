@@ -95,6 +95,14 @@ if grep -R -n -E '\.plan_payload_window_load(_if_needed)?\(' \
   exit 1
 fi
 
+if sed -n '/^pub struct CditorV2View {/,/^}/p' \
+  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  | grep -E '^[[:space:]]+pub.*(requested_readonly|readonly_reason|readonly|dirty|save_status)[[:space:]]*:' \
+  | grep -q .; then
+  echo 'error: readonly, dirty, and save status must remain grouped in EditorStatusUiState' >&2
+  exit 1
+fi
+
 if grep -R -n -E 'Ready[[:space:]]*\([[:space:]]*(Box[[:space:]]*<[[:space:]]*)?DocumentRuntime|Ready[[:space:]]*\([[:space:]]*Box::new' \
   --include='*.rs' crates/cditor-editor-gpui/src | grep -q .; then
   echo 'error: CditorViewState::Ready must contain EditorSessionHandle, not DocumentRuntime' >&2

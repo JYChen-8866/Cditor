@@ -22,7 +22,7 @@ impl CditorV2View {
         else {
             return false;
         };
-        let readonly = self.readonly;
+        let readonly = self.status.readonly;
         let style = whiteboard_style_fn(GuiTheme::light());
         let host = cx.entity().downgrade();
         let board = cx.new(|board_cx| {

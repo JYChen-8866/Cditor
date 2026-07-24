@@ -148,7 +148,7 @@ impl CditorV2View {
                     "external_focus.composition_commit_failed",
                     format_args!("error={error}"),
                 );
-                self.save_status = crate::persistence::EditorSaveStatus::Failed(error);
+                self.status.save_status = crate::persistence::EditorSaveStatus::Failed(error);
                 cx.notify();
                 false
             }
@@ -276,7 +276,7 @@ mod tests {
                 .ready_session()
                 .and_then(|session| session.input_context().ok()?.identity);
             assert!(view.commit_document_composition_before_external_focus(cx));
-            assert!(view.dirty);
+            assert!(view.status.dirty);
             let session = view.ready_session().unwrap();
             assert_eq!(
                 session
@@ -306,9 +306,9 @@ mod tests {
                 .target_generation += 1;
 
             assert!(!view.commit_document_composition_before_external_focus(cx));
-            assert!(!view.dirty);
+            assert!(!view.status.dirty);
             assert!(matches!(
-                view.save_status,
+                view.status.save_status,
                 crate::persistence::EditorSaveStatus::Failed(_)
             ));
             let session = view.ready_session().unwrap();
