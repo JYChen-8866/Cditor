@@ -6,7 +6,7 @@ use crate::block::chrome::{block_gutter_left_px, block_gutter_top_px};
 use crate::document::{DEFAULT_DOCUMENT_PAGE_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
 use crate::interaction::geometry::ProjectedBlockRect;
 use crate::menu_metrics::EditorViewport;
-use crate::overlay::{
+use crate::overlays::{
     ActiveColor, BlockTransformAction, BlockTransformAvailability, ColorMenuAction,
     FloatingToolbarState, InlineFormatAction, PaletteColor, block_transform_menu_opens_left,
     block_transform_menu_top_offset, color_menu_geometry, floating_toolbar_position,
@@ -420,7 +420,7 @@ fn mark_matches_action(mark: &InlineMark, action: InlineFormatAction) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::overlay::PaletteColor;
+    use crate::overlays::PaletteColor;
     use cditor_core::rich_text::{
         EmbedPayload, FilePayload, ImagePayload, RichBlockKind, TablePayload, WhiteboardPayload,
     };

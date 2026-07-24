@@ -2,7 +2,7 @@ use cditor_core::ids::BlockId;
 #[cfg(test)]
 use cditor_core::rich_text::InlineMark;
 
-use crate::overlay::{BlockTransformAction, InlineFormatAction};
+use crate::overlays::{BlockTransformAction, InlineFormatAction};
 use cditor_editor_protocol::command::{
     BlockTransform, CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
 };

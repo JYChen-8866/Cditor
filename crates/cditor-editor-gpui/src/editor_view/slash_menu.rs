@@ -4,7 +4,7 @@ use gpui::Context;
 use crate::editor_view::CditorV2View;
 use crate::interaction::geometry::{FallbackViewportOrigin, ProjectedBlockRect};
 use crate::menu_metrics::EditorViewport;
-use crate::overlay::{SlashMenuCommand, SlashMenuItem, SlashMenuState};
+use crate::overlays::{SlashMenuCommand, SlashMenuItem, SlashMenuState};
 use crate::persistence::EditorSaveStatus;
 use crate::text::platform_range_bounds;
 use cditor_runtime::AiRequestPresentation;
@@ -26,7 +26,7 @@ impl CditorV2View {
         };
         let block_id = context.block_id;
         let text = context.text;
-        let Some((trigger_start, query)) = crate::overlay::slash_query_before_caret(&text, caret)
+        let Some((trigger_start, query)) = crate::overlays::slash_query_before_caret(&text, caret)
         else {
             self.overlay.slash_menu = None;
             return;

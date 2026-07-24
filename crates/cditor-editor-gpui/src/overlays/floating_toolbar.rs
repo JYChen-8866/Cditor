@@ -90,7 +90,8 @@ pub fn floating_toolbar_position(
     (x, y)
 }
 
-pub fn left_aligned_floating_toolbar_position(
+#[cfg(test)]
+fn left_aligned_floating_toolbar_position(
     anchor_left: f32,
     anchor_top: f32,
     anchor_bottom: f32,

@@ -4,7 +4,7 @@ use std::time::Duration;
 use cditor_core::rich_text::{InlineColorTarget, InlineMark, InlineSpan};
 
 use crate::diagnostics::block_color::trace as trace_block_color;
-use crate::overlay::{ActiveColor, ColorMenuAction, PaletteColor};
+use crate::overlays::{ActiveColor, ColorMenuAction, PaletteColor};
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 use super::super::CditorV2View;

@@ -43,10 +43,10 @@ impl BlockTransformAvailability {
 }
 
 impl BlockTransformAction {
+    #[cfg(test)]
     pub const TEXT: Self = Self(1);
+    #[cfg(test)]
     pub const HEADING_1: Self = Self(2);
-    pub const HEADING_2: Self = Self(26);
-    pub const HEADING_3: Self = Self(27);
     pub const CODE_BLOCK: Self = Self(9);
 
     pub fn all() -> Vec<Self> {

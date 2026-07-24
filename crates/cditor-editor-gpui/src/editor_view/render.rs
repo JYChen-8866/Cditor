@@ -27,8 +27,8 @@ use crate::interaction::geometry::{
 use crate::interaction::scrollbar::render_scrollbar;
 use crate::interaction::table_scroll::TableScrollSnapshot;
 use crate::menu_metrics::EditorViewport;
-use crate::overlay::table::{table_hscroll_scroll_max, table_hscroll_track_width};
-use crate::overlay::{
+use crate::overlays::table::{table_hscroll_scroll_max, table_hscroll_track_width};
+use crate::overlays::{
     render_ai_preview_overlay, render_ai_prompt, render_floating_toolbar, render_slash_menu,
     render_toast, render_whiteboard_editor,
 };

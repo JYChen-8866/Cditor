@@ -9,7 +9,7 @@ use crate::editor_view::state::{
     OverlayUiState, PlatformInputState, RenderCacheState,
 };
 use crate::editor_view::{CditorV2View, CditorViewState};
-use crate::overlay::table::TableViewportMeasurement;
+use crate::overlays::table::TableViewportMeasurement;
 use crate::persistence::{
     DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline, schedule_storage_autosave,
 };

@@ -20,7 +20,7 @@ use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::interaction::table_reorder::GuiTableReorderDrag;
 use crate::interaction::table_resize::GuiTableResizeDrag;
 use crate::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
-use crate::overlay::{GuiToast, SlashMenuState, WhiteboardEditorSession};
+use crate::overlays::{GuiToast, SlashMenuState, WhiteboardEditorSession};
 use crate::persistence::EditorSaveStatus;
 use crate::scroll::ScrollAccumulator;
 use crate::surfaces::table_cell::TableCellLayoutKey;
@@ -113,7 +113,7 @@ pub(crate) struct OverlayUiState {
     pub(crate) color_menu_open: bool,
     pub(crate) color_menu_hover_generation: u64,
     pub(crate) color_menu_scroll_handle: gpui::ScrollHandle,
-    pub(crate) last_color_action: Option<crate::overlay::ColorMenuAction>,
+    pub(crate) last_color_action: Option<crate::overlays::ColorMenuAction>,
 }
 
 impl OverlayUiState {

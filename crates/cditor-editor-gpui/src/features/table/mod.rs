@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn table_hscrollbar_hidden_when_content_fits_viewport() {
-        use crate::overlay::table::table_hscroll_thumb;
+        use crate::overlays::table::table_hscroll_thumb;
 
         // Content narrower than viewport → no scrollbar.
         assert!(table_hscroll_thumb(800.0, 600.0, 0.0, 0.0).is_none());
@@ -226,7 +226,7 @@ mod tests {
 
     #[test]
     fn table_hscrollbar_thumb_tracks_scroll_progress() {
-        use crate::overlay::table::table_hscroll_thumb;
+        use crate::overlays::table::table_hscroll_thumb;
 
         // Viewport 600 over content 1200 → thumb covers half the track.
         let max_offset = 600.0; // content - viewport
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn table_hscrollbar_thumb_respects_minimum_width() {
-        use crate::overlay::table::table_hscroll_thumb;
+        use crate::overlays::table::table_hscroll_thumb;
 
         // Very wide content would give a tiny thumb; clamp to the minimum.
         let thumb = table_hscroll_thumb(300.0, 6000.0, 5700.0, 0.0).unwrap();
@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn table_hscrollbar_drag_travel_is_viewport_minus_thumb() {
-        use crate::overlay::table::{table_hscroll_thumb, table_hscroll_thumb_travel};
+        use crate::overlays::table::{table_hscroll_thumb, table_hscroll_thumb_travel};
 
         let thumb = table_hscroll_thumb(600.0, 1200.0, 600.0, 0.0).unwrap();
 
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn table_hscrollbar_track_excludes_table_left_gutter() {
-        use crate::overlay::table::table_hscroll_track_width;
+        use crate::overlays::table::table_hscroll_track_width;
 
         assert_eq!(table_hscroll_track_width(628.0, 28.0), 600.0);
         assert_eq!(table_hscroll_track_width(20.0, 28.0), 0.0);
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn table_hscrollbar_reserves_bottom_space_outside_table() {
-        use crate::overlay::table::table_hscroll_block_height;
+        use crate::overlays::table::table_hscroll_block_height;
 
         assert_eq!(table_hscroll_block_height(144.0), 158.0);
     }

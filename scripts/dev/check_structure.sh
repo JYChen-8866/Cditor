@@ -263,7 +263,7 @@ fi
 for legacy_geometry_file in \
   crates/cditor-editor-gpui/src/text/layout.rs \
   crates/cditor-editor-gpui/src/text/fallback_render.rs \
-  crates/cditor-editor-gpui/src/overlay/caret_overlay.rs
+  crates/cditor-editor-gpui/src/overlays/caret_overlay.rs
 do
   if [ -e "$legacy_geometry_file" ]; then
     echo "error: legacy App text geometry file must stay removed: $legacy_geometry_file" >&2
@@ -401,6 +401,15 @@ surface_adapter_location_violations=$(
 if [ -n "$surface_adapter_location_violations" ]; then
   echo 'error: surface layout identity, hit-test, and render projection adapters must live in surfaces/:' >&2
   echo "$surface_adapter_location_violations" >&2
+  exit 1
+fi
+
+if [ ! -f crates/cditor-editor-gpui/src/overlays/mod.rs ] \
+  || [ -d crates/cditor-editor-gpui/src/overlay ] \
+  || [ -e crates/cditor-editor-gpui/src/overlays/command_menu.rs ] \
+  || grep -R -n -E 'crate::overlay([:;]|$)|pub mod overlays' \
+    --include='*.rs' crates/cditor-editor-gpui/src | grep -q .; then
+  echo 'error: overlay controllers and renderers must use the crate-private overlays/ boundary' >&2
   exit 1
 fi
 

@@ -9,7 +9,7 @@ use crate::input::trace::trace_input;
 use crate::interaction::geometry::ProjectedBlockRect;
 use crate::interaction::selection_drag::GuiTextDragSelection;
 use crate::interaction::table_mode::GuiTableInteractionMode;
-use crate::overlay::GuiToast;
+use crate::overlays::GuiToast;
 use crate::persistence::EditorSaveStatus;
 use crate::surfaces::table_cell::TableCellLayoutKey;
 use crate::text::RichTextPlatformLayout;

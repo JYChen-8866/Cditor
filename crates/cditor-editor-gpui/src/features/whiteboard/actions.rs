@@ -5,7 +5,7 @@ use gpui::{AppContext, Context};
 
 use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::features::whiteboard::whiteboard_style_fn;
-use crate::overlay::WhiteboardEditorSession;
+use crate::overlays::WhiteboardEditorSession;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};

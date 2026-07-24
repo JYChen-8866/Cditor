@@ -10,7 +10,7 @@ pub mod image_preview;
 pub mod input;
 pub(crate) mod interaction;
 pub mod menu_metrics;
-pub mod overlay;
+pub(crate) mod overlays;
 pub mod persistence;
 pub mod platform;
 pub mod rich_text;

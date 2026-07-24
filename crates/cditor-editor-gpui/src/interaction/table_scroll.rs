@@ -4,7 +4,7 @@ use gpui::{Context, Pixels, Point, ScrollHandle, Window, point, px};
 
 use crate::editor_view::CditorV2View;
 use crate::interaction::table_mode::GuiTableInteractionMode;
-use crate::overlay::table::{TableViewportMeasurement, table_viewport_measurement_from_handle};
+use crate::overlays::table::{TableViewportMeasurement, table_viewport_measurement_from_handle};
 use cditor_core::ids::BlockId;
 
 #[derive(Debug, Default)]

@@ -25,8 +25,8 @@ use crate::features::table::{
 use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::CodeLanguageEditState;
 use crate::menu_metrics::MenuViewportBounds;
-use crate::overlay::render_editor_overlays;
-use crate::overlay::table::{
+use crate::overlays::render_editor_overlays;
+use crate::overlays::table::{
     render_table_horizontal_scrollbar, render_table_reorder_preview_overlay,
 };
 use crate::theme::GuiTheme;
