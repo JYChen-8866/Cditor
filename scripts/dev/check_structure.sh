@@ -103,6 +103,14 @@ if sed -n '/^pub struct CditorV2View {/,/^}/p' \
   exit 1
 fi
 
+if sed -n '/^pub struct CditorV2View {/,/^}/p' \
+  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  | grep -E '^[[:space:]]+pub.*(code_language_focus|ai_prompt_focus|sdk_focus_observers_registered|last_emitted_selection|platform_input_target|platform_input_session_identity|platform_input_layout_identity|preferred_text_navigation_x)[[:space:]]*:' \
+  | grep -q .; then
+  echo 'error: focus and platform input lifecycle fields must remain grouped UI state' >&2
+  exit 1
+fi
+
 if grep -R -n -E 'Ready[[:space:]]*\([[:space:]]*(Box[[:space:]]*<[[:space:]]*)?DocumentRuntime|Ready[[:space:]]*\([[:space:]]*Box::new' \
   --include='*.rs' crates/cditor-editor-gpui/src | grep -q .; then
   echo 'error: CditorViewState::Ready must contain EditorSessionHandle, not DocumentRuntime' >&2

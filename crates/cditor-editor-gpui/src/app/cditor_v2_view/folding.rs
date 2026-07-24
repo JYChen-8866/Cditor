@@ -16,7 +16,7 @@ impl CditorV2View {
         if self.status.readonly {
             return false;
         }
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         let command = self
             .ready_session()
             .and_then(|session| session.text_block_context(block_id).ok().flatten())

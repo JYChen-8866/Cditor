@@ -44,7 +44,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         self.hovered_block_id = Some(block_id);
         self.action_block_id = Some(block_id);
         self.gutter_toolbar_block_id = Some(block_id);

@@ -32,9 +32,9 @@ impl CditorV2View {
             return None;
         };
         if !platform_input_geometry_allows(
-            self.platform_input_target,
-            self.platform_input_session_identity,
-            self.platform_input_layout_identity,
+            self.input.target,
+            self.input.session_identity,
+            self.input.layout_identity,
             &input_context,
             cache,
         ) {
@@ -53,7 +53,7 @@ impl CditorV2View {
         _cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
         if let Some(selection) = self.table_interaction_mode.axis_selection() {
-            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+            if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return None;
             }
             let range = utf16_range_to_utf8_range(&self.table_menu_ui.query, &range_utf16);
@@ -76,8 +76,8 @@ impl CditorV2View {
                 },
             });
         }
-        if self.ai_prompt_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.ai_prompt.is_focused(_window) {
+            let registered_target = self.input.target;
             let prompt = self.ai_prompt.as_ref()?;
             if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
                 return None;
@@ -102,8 +102,8 @@ impl CditorV2View {
                 },
             });
         }
-        if self.code_language_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.code_language.is_focused(_window) {
+            let registered_target = self.input.target;
             let edit = self.code_language_edit.as_ref()?;
             if !code_language_input_target_allows(registered_target, edit.block_id) {
                 trace_input(
@@ -135,15 +135,15 @@ impl CditorV2View {
         let session = self.ready_session()?;
         let input_context = session.input_context().ok()?;
         if !platform_input_target_allows(
-            self.platform_input_target,
-            self.platform_input_session_identity,
+            self.input.target,
+            self.input.session_identity,
             &input_context,
         ) {
             trace_input(
                 "bounds_for_range.rejected_target",
                 format_args!(
                     "registered={:?} runtime={:?}",
-                    self.platform_input_target, input_context.target
+                    self.input.target, input_context.target
                 ),
             );
             return None;
@@ -166,9 +166,9 @@ impl CditorV2View {
                     return None;
                 };
                 if !platform_input_geometry_allows(
-                    self.platform_input_target,
-                    self.platform_input_session_identity,
-                    self.platform_input_layout_identity,
+                    self.input.target,
+                    self.input.session_identity,
+                    self.input.layout_identity,
                     &input_context,
                     cache,
                 ) {
@@ -185,9 +185,9 @@ impl CditorV2View {
                     return None;
                 };
                 if !platform_input_geometry_allows(
-                    self.platform_input_target,
-                    self.platform_input_session_identity,
-                    self.platform_input_layout_identity,
+                    self.input.target,
+                    self.input.session_identity,
+                    self.input.layout_identity,
                     &input_context,
                     cache,
                 ) {
@@ -207,9 +207,9 @@ impl CditorV2View {
                     return None;
                 };
                 if !platform_input_geometry_allows(
-                    self.platform_input_target,
-                    self.platform_input_session_identity,
-                    self.platform_input_layout_identity,
+                    self.input.target,
+                    self.input.session_identity,
+                    self.input.layout_identity,
                     &input_context,
                     cache,
                 ) {

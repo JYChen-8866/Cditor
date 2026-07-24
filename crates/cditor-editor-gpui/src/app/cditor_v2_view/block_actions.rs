@@ -27,7 +27,7 @@ impl CditorV2View {
         if self.status.readonly {
             return false;
         }
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         match self.dispatch_command(
             CditorCommand::InsertParagraphAfterBlock { block_id },
             CommandSource::Toolbar,

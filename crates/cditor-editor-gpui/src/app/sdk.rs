@@ -200,13 +200,13 @@ impl CditorV2View {
     }
 
     pub fn sdk_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.focus.is_focused(window) {
-            window.focus(&self.focus, cx);
+        if !self.focus.editor.is_focused(window) {
+            window.focus(&self.focus.editor, cx);
         }
     }
 
     pub fn sdk_blur(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
-        if self.focus.is_focused(window) {
+        if self.focus.editor.is_focused(window) {
             window.blur();
         }
     }
@@ -388,7 +388,7 @@ impl CditorV2View {
             ))
             .map_err(|_| CditorError::InvalidSelection)?;
         let applied = self.sdk_selection().ok_or(CditorError::InvalidSelection)?;
-        self.last_emitted_selection = Some(applied);
+        self.focus.last_emitted_selection = Some(applied);
         cx.emit(CditorEvent::SelectionChanged { selection: applied });
         cx.notify();
         Ok(())
@@ -435,11 +435,11 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.sdk_focus_observers_registered {
+        if self.focus.sdk_observers_registered {
             return;
         }
-        self.sdk_focus_observers_registered = true;
-        let focus = self.focus.clone();
+        self.focus.sdk_observers_registered = true;
+        let focus = self.focus.editor.clone();
         let initially_focused = focus.is_focused(window);
         cx.on_focus(&focus, window, |_, _, cx| {
             cx.emit(CditorEvent::FocusChanged { focused: true });
@@ -456,10 +456,10 @@ impl CditorV2View {
 
     pub(in crate::app) fn sdk_emit_selection_if_changed(&mut self, cx: &mut Context<Self>) {
         let selection = self.sdk_selection();
-        if selection == self.last_emitted_selection {
+        if selection == self.focus.last_emitted_selection {
             return;
         }
-        self.last_emitted_selection = selection;
+        self.focus.last_emitted_selection = selection;
         if let Some(selection) = selection {
             cx.emit(CditorEvent::SelectionChanged { selection });
         }

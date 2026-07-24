@@ -42,14 +42,14 @@ impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let frame_started = std::time::Instant::now();
         let theme = GuiTheme::light();
-        let focus = self.focus.clone();
+        let focus = self.focus.editor.clone();
         if self.ai_prompt.is_some() {
-            if !self.ai_prompt_focus.is_focused(window) {
-                window.focus(&self.ai_prompt_focus, cx);
+            if !self.focus.ai_prompt.is_focused(window) {
+                window.focus(&self.focus.ai_prompt, cx);
             }
         } else if self.whiteboard_editor.is_none()
             && !focus.is_focused(window)
-            && !self.code_language_focus.is_focused(window)
+            && !self.focus.code_language.is_focused(window)
         {
             window.focus(&focus, cx);
         }
@@ -115,7 +115,7 @@ impl Render for CditorV2View {
             .overflow_hidden()
             .track_scroll(&self.editor_viewport_handle)
             .key_context(CDITOR_KEY_CONTEXT)
-            .track_focus(&self.focus)
+            .track_focus(&self.focus.editor)
             .on_action(cx.listener(|view, _: &Newline, _window, cx| {
                 view.handle_bound_input_action(BoundInputAction::Newline, cx)
             }))
@@ -486,8 +486,8 @@ impl Render for CditorV2View {
                     .child(document_editor.render(
                         &projection,
                         view.clone(),
-                        self.focus.clone(),
-                        self.code_language_focus.clone(),
+                        self.focus.editor.clone(),
+                        self.focus.code_language.clone(),
                         self.hovered_block_id,
                         drag_overlay,
                         block_action,
@@ -611,7 +611,7 @@ impl Render for CditorV2View {
                 theme,
                 view,
                 self.ai_prompt.as_ref().filter(|_| embedded_ai_prompt),
-                self.ai_prompt_focus.clone(),
+                self.focus.ai_prompt.clone(),
                 &self.color_menu_scroll_handle,
             ));
         }
@@ -629,7 +629,7 @@ impl Render for CditorV2View {
                 prompt,
                 theme,
                 cx.entity(),
-                self.ai_prompt_focus.clone(),
+                self.focus.ai_prompt.clone(),
                 editor_viewport,
             ));
         }

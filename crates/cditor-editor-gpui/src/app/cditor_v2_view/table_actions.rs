@@ -63,7 +63,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         if !self.commit_document_composition_before_external_focus(cx) {
             return;
         }
@@ -102,7 +102,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         self.text_drag_selection = None;
         self.table_interaction_mode = GuiTableInteractionMode::EditingCell { block_id, row, col };
         let text_position = position.and_then(|position| {

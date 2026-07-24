@@ -7,7 +7,7 @@ use cditor_core::ids::BlockId;
 use crate::app::cditor_v2_view::ai::default_ai_provider;
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::app::interaction::table_mode::GuiTableInteractionMode;
-use crate::app::state::EditorStatusUiState;
+use crate::app::state::{EditorStatusUiState, FocusUiState, PlatformInputState};
 use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::input::BlockDragSelectionController;
 use crate::overlay::table::TableViewportMeasurement;
@@ -80,17 +80,14 @@ impl CditorV2View {
             .map_or(requested_readonly, |snapshot| snapshot.readonly);
         Self {
             state: CditorViewState::Ready(session),
-            focus: cx.focus_handle(),
-            code_language_focus: cx.focus_handle(),
-            ai_prompt_focus: cx.focus_handle(),
+            focus: FocusUiState::new(cx),
+            input: PlatformInputState::default(),
             ai_provider: default_ai_provider(),
             ai_enabled: true,
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             status: EditorStatusUiState::new(readonly, requested_readonly),
-            sdk_focus_observers_registered: false,
-            last_emitted_selection: None,
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
@@ -130,10 +127,6 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            platform_input_target: None,
-            platform_input_session_identity: None,
-            platform_input_layout_identity: None,
-            preferred_text_navigation_x: None,
         }
     }
 
@@ -152,17 +145,14 @@ impl CditorV2View {
             state: CditorViewState::Loading {
                 message: message.into(),
             },
-            focus: cx.focus_handle(),
-            code_language_focus: cx.focus_handle(),
-            ai_prompt_focus: cx.focus_handle(),
+            focus: FocusUiState::new(cx),
+            input: PlatformInputState::default(),
             ai_provider: default_ai_provider(),
             ai_enabled: true,
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             status: EditorStatusUiState::new(readonly, readonly),
-            sdk_focus_observers_registered: false,
-            last_emitted_selection: None,
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
@@ -202,10 +192,6 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            platform_input_target: None,
-            platform_input_session_identity: None,
-            platform_input_layout_identity: None,
-            preferred_text_navigation_x: None,
         }
     }
 
@@ -227,17 +213,14 @@ impl CditorV2View {
             state: CditorViewState::LoadFailed {
                 message: message.into(),
             },
-            focus: cx.focus_handle(),
-            code_language_focus: cx.focus_handle(),
-            ai_prompt_focus: cx.focus_handle(),
+            focus: FocusUiState::new(cx),
+            input: PlatformInputState::default(),
             ai_provider: default_ai_provider(),
             ai_enabled: true,
             ai_prompt: None,
             ai_preview_scroll_handle: Default::default(),
             show_debug,
             status: EditorStatusUiState::new(readonly, readonly),
-            sdk_focus_observers_registered: false,
-            last_emitted_selection: None,
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
@@ -277,10 +260,6 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            platform_input_target: None,
-            platform_input_session_identity: None,
-            platform_input_layout_identity: None,
-            preferred_text_navigation_x: None,
         }
     }
 
@@ -290,7 +269,8 @@ impl CditorV2View {
             .map_or(self.status.requested_readonly, |snapshot| snapshot.readonly);
         self.state.apply_loaded_session(session);
         self.status.reset_for_session(session_readonly);
-        self.last_emitted_selection = None;
+        self.focus.reset_session_projection();
+        self.input.reset();
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.text_surface_layouts.clear();
@@ -341,7 +321,8 @@ impl CditorV2View {
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {
         self.state.apply_load_failed(message);
         self.status.reset_after_load_failure();
-        self.last_emitted_selection = None;
+        self.focus.reset_session_projection();
+        self.input.reset();
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.text_surface_layouts.clear();

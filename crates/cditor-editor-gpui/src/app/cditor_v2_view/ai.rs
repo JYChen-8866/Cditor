@@ -97,7 +97,7 @@ impl CditorV2View {
             px(y),
             presentation,
         ));
-        self.platform_input_target = Some(GuiPlatformInputTarget::ai_prompt(block_id));
+        self.input.target = Some(GuiPlatformInputTarget::ai_prompt(block_id));
         cx.notify();
         true
     }
@@ -145,7 +145,7 @@ impl CditorV2View {
             }
         };
         self.ai_prompt = None;
-        self.platform_input_target = None;
+        self.input.target = None;
 
         let provider = self.ai_provider.clone();
         let request_id = dispatch.request.request_id;
@@ -272,7 +272,7 @@ impl CditorV2View {
     pub(crate) fn cancel_ai_prompt(&mut self, cx: &mut Context<Self>) -> bool {
         let had_prompt = self.ai_prompt.take().is_some();
         if had_prompt {
-            self.platform_input_target = None;
+            self.input.target = None;
             cx.notify();
         }
         had_prompt

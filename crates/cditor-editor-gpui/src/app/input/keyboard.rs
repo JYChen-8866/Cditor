@@ -200,7 +200,7 @@ impl CditorV2View {
                     let moved = move_caret_with_parley(
                         &self.text_layouts,
                         &self.text_surface_layouts,
-                        &mut self.preferred_text_navigation_x,
+                        &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::PreviousVisual,
                         extend_selection,
@@ -218,7 +218,7 @@ impl CditorV2View {
                     let moved = move_caret_with_parley(
                         &self.text_layouts,
                         &self.text_surface_layouts,
-                        &mut self.preferred_text_navigation_x,
+                        &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::NextVisual,
                         extend_selection,
@@ -236,7 +236,7 @@ impl CditorV2View {
                     let moved = move_caret_with_parley(
                         &self.text_layouts,
                         &self.text_surface_layouts,
-                        &mut self.preferred_text_navigation_x,
+                        &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::PreviousVisualWord,
                         extend_selection,
@@ -254,7 +254,7 @@ impl CditorV2View {
                     let moved = move_caret_with_parley(
                         &self.text_layouts,
                         &self.text_surface_layouts,
-                        &mut self.preferred_text_navigation_x,
+                        &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::NextVisualWord,
                         extend_selection,
@@ -286,7 +286,7 @@ impl CditorV2View {
                     let moved_in_block = move_caret_with_parley(
                         &self.text_layouts,
                         &self.text_surface_layouts,
-                        &mut self.preferred_text_navigation_x,
+                        &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::PreviousLine,
                         extend_selection,
@@ -304,7 +304,7 @@ impl CditorV2View {
                     let moved_in_block = move_caret_with_parley(
                         &self.text_layouts,
                         &self.text_surface_layouts,
-                        &mut self.preferred_text_navigation_x,
+                        &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::NextLine,
                         extend_selection,
@@ -322,7 +322,7 @@ impl CditorV2View {
                     let moved = move_caret_with_parley(
                         &self.text_layouts,
                         &self.text_surface_layouts,
-                        &mut self.preferred_text_navigation_x,
+                        &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::LineStart,
                         extend_selection,
@@ -340,7 +340,7 @@ impl CditorV2View {
                     let moved = move_caret_with_parley(
                         &self.text_layouts,
                         &self.text_surface_layouts,
-                        &mut self.preferred_text_navigation_x,
+                        &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::LineEnd,
                         extend_selection,

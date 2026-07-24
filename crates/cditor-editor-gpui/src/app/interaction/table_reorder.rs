@@ -38,7 +38,7 @@ impl CditorV2View {
         if track_sizes_px.get(index).is_none() {
             return;
         }
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.clear_gutter_action();

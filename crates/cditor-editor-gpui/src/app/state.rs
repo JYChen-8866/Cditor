@@ -1,6 +1,48 @@
 use cditor_session::EditorSessionHandle;
+use gpui::{Context, FocusHandle};
 
 use crate::persistence::EditorSaveStatus;
+use crate::text::TextPlatformLayoutIdentity;
+
+use super::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
+
+pub(in crate::app) struct FocusUiState {
+    pub(in crate::app) editor: FocusHandle,
+    pub(in crate::app) code_language: FocusHandle,
+    pub(in crate::app) ai_prompt: FocusHandle,
+    pub(in crate::app) sdk_observers_registered: bool,
+    pub(in crate::app) last_emitted_selection: Option<cditor_api::document::DocumentSelection>,
+}
+
+impl FocusUiState {
+    pub(in crate::app) fn new(cx: &mut Context<CditorV2View>) -> Self {
+        Self {
+            editor: cx.focus_handle(),
+            code_language: cx.focus_handle(),
+            ai_prompt: cx.focus_handle(),
+            sdk_observers_registered: false,
+            last_emitted_selection: None,
+        }
+    }
+
+    pub(in crate::app) fn reset_session_projection(&mut self) {
+        self.last_emitted_selection = None;
+    }
+}
+
+#[derive(Default)]
+pub(in crate::app) struct PlatformInputState {
+    pub(in crate::app) target: Option<GuiPlatformInputTarget>,
+    pub(in crate::app) session_identity: Option<cditor_runtime::InputSessionIdentity>,
+    pub(in crate::app) layout_identity: Option<TextPlatformLayoutIdentity>,
+    pub(in crate::app) preferred_navigation_x: Option<(cditor_core::ids::SurfaceId, f32)>,
+}
+
+impl PlatformInputState {
+    pub(in crate::app) fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
 
 pub(in crate::app) struct EditorStatusUiState {
     pub(in crate::app) readonly: bool,
@@ -72,6 +114,21 @@ mod tests {
         assert!(!status.readonly);
         assert!(status.readonly_reason.is_none());
         assert_eq!(status.save_status, EditorSaveStatus::Clean);
+    }
+
+    #[test]
+    fn platform_input_reset_discards_session_bound_navigation_state() {
+        let mut input = PlatformInputState {
+            preferred_navigation_x: Some((cditor_core::ids::SurfaceId::Block(7), 42.0)),
+            ..Default::default()
+        };
+
+        input.reset();
+
+        assert!(input.target.is_none());
+        assert!(input.session_identity.is_none());
+        assert!(input.layout_identity.is_none());
+        assert!(input.preferred_navigation_x.is_none());
     }
 }
 

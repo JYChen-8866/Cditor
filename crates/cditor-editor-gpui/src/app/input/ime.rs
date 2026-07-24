@@ -30,7 +30,7 @@ impl EntityInputHandler for CditorV2View {
         _cx: &mut Context<Self>,
     ) -> Option<String> {
         if let Some(selection) = self.table_interaction_mode.axis_selection() {
-            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+            if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return None;
             }
             let range = utf16_range_to_utf8_range(&self.table_menu_ui.query, &range_utf16);
@@ -38,8 +38,8 @@ impl EntityInputHandler for CditorV2View {
             actual_range.replace(actual);
             return self.table_menu_ui.query.get(range).map(ToOwned::to_owned);
         }
-        if self.ai_prompt_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.ai_prompt.is_focused(_window) {
+            let registered_target = self.input.target;
             let prompt = self.ai_prompt.as_ref()?;
             if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
                 return None;
@@ -49,8 +49,8 @@ impl EntityInputHandler for CditorV2View {
             actual_range.replace(actual);
             return prompt.draft.get(range).map(ToOwned::to_owned);
         }
-        if self.code_language_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.code_language.is_focused(_window) {
+            let registered_target = self.input.target;
             let edit = self.code_language_edit.as_ref()?;
             if !code_language_input_target_allows(registered_target, edit.block_id) {
                 trace_input(
@@ -64,8 +64,8 @@ impl EntityInputHandler for CditorV2View {
             actual_range.replace(actual.clone());
             return edit.draft.get(range).map(ToOwned::to_owned);
         }
-        let registered_target = self.platform_input_target;
-        let registered_identity = self.platform_input_session_identity;
+        let registered_target = self.input.target;
+        let registered_identity = self.input.session_identity;
         let context = self
             .ready_session()
             .and_then(|session| session.input_context().ok())?;
@@ -101,7 +101,7 @@ impl EntityInputHandler for CditorV2View {
         _cx: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
         if let Some(selection) = self.table_interaction_mode.axis_selection() {
-            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+            if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return None;
             }
             let caret =
@@ -111,8 +111,8 @@ impl EntityInputHandler for CditorV2View {
                 reversed: false,
             });
         }
-        if self.ai_prompt_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.ai_prompt.is_focused(_window) {
+            let registered_target = self.input.target;
             let prompt = self.ai_prompt.as_ref()?;
             if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
                 return None;
@@ -123,8 +123,8 @@ impl EntityInputHandler for CditorV2View {
                 reversed: false,
             });
         }
-        if self.code_language_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.code_language.is_focused(_window) {
+            let registered_target = self.input.target;
             let edit = self.code_language_edit.as_ref()?;
             if !code_language_input_target_allows(registered_target, edit.block_id) {
                 trace_input(
@@ -139,8 +139,8 @@ impl EntityInputHandler for CditorV2View {
                 reversed: false,
             });
         }
-        let registered_target = self.platform_input_target;
-        let registered_identity = self.platform_input_session_identity;
+        let registered_target = self.input.target;
+        let registered_identity = self.input.session_identity;
         let context = self
             .ready_session()
             .and_then(|session| session.input_context().ok())?;
@@ -171,7 +171,7 @@ impl EntityInputHandler for CditorV2View {
         _cx: &mut Context<Self>,
     ) -> Option<Range<usize>> {
         if let Some(selection) = self.table_interaction_mode.axis_selection() {
-            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+            if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return None;
             }
             return self
@@ -180,8 +180,8 @@ impl EntityInputHandler for CditorV2View {
                 .as_ref()
                 .map(|range| utf8_range_to_utf16_range(&self.table_menu_ui.query, range));
         }
-        if self.ai_prompt_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.ai_prompt.is_focused(_window) {
+            let registered_target = self.input.target;
             let prompt = self.ai_prompt.as_ref()?;
             if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
                 return None;
@@ -191,8 +191,8 @@ impl EntityInputHandler for CditorV2View {
                 .as_ref()
                 .map(|range| utf8_range_to_utf16_range(&prompt.draft, range));
         }
-        if self.code_language_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.code_language.is_focused(_window) {
+            let registered_target = self.input.target;
             let edit = self.code_language_edit.as_ref()?;
             if !code_language_input_target_allows(registered_target, edit.block_id) {
                 trace_input(
@@ -208,16 +208,12 @@ impl EntityInputHandler for CditorV2View {
         }
         let session = self.ready_session()?;
         let context = session.input_context().ok()?;
-        if !platform_input_target_allows(
-            self.platform_input_target,
-            self.platform_input_session_identity,
-            &context,
-        ) {
+        if !platform_input_target_allows(self.input.target, self.input.session_identity, &context) {
             trace_input(
                 "marked_text_range.rejected_target",
                 format_args!(
                     "registered={:?} runtime={:?}",
-                    self.platform_input_target, context.target
+                    self.input.target, context.target
                 ),
             );
             return None;
@@ -240,14 +236,14 @@ impl EntityInputHandler for CditorV2View {
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(selection) = self.table_interaction_mode.axis_selection() {
-            if table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+            if table_menu_input_target_allows(self.input.target, selection.block_id) {
                 self.table_menu_ui.unmark();
                 cx.notify();
             }
             return;
         }
-        if self.ai_prompt_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.ai_prompt.is_focused(_window) {
+            let registered_target = self.input.target;
             if let Some(prompt) = self.ai_prompt.as_mut()
                 && ai_prompt_input_target_allows(registered_target, prompt.block_id)
             {
@@ -256,8 +252,8 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
-        if self.code_language_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.code_language.is_focused(_window) {
+            let registered_target = self.input.target;
             if let Some(edit) = self.code_language_edit.as_mut() {
                 if !code_language_input_target_allows(registered_target, edit.block_id) {
                     trace_input(
@@ -271,13 +267,13 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
-        let expected = self.platform_input_session_identity;
+        let expected = self.input.session_identity;
         let result = self
             .ready_session()
             .and_then(|runtime| expected.map(|expected| apply_platform_unmark(runtime, expected)));
         match result {
             Some(Ok(outcome)) if outcome.document_changed => {
-                self.platform_input_session_identity = outcome.input_identity;
+                self.input.session_identity = outcome.input_identity;
                 self.mark_dirty_at_revision(
                     cditor_core::edit::ChangeOrigin::Ime,
                     outcome.revision,
@@ -287,7 +283,7 @@ impl EntityInputHandler for CditorV2View {
                 cx.notify();
             }
             Some(Ok(outcome)) => {
-                self.platform_input_session_identity = outcome.input_identity;
+                self.input.session_identity = outcome.input_identity;
                 if outcome.state_changed {
                     cx.notify();
                 }
@@ -309,7 +305,7 @@ impl EntityInputHandler for CditorV2View {
         cx: &mut Context<Self>,
     ) {
         if let Some(selection) = self.table_interaction_mode.axis_selection() {
-            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+            if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return;
             }
             if is_single_line_break_commit(text) {
@@ -324,12 +320,12 @@ impl EntityInputHandler for CditorV2View {
             cx.notify();
             return;
         }
-        if self.ai_prompt_focus.is_focused(_window) {
+        if self.focus.ai_prompt.is_focused(_window) {
             if is_single_line_break_commit(text) {
                 let _ = self.submit_ai_prompt_from_gui(cx);
                 return;
             }
-            let registered_target = self.platform_input_target;
+            let registered_target = self.input.target;
             if let Some(prompt) = self.ai_prompt.as_mut() {
                 if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
                     return;
@@ -343,13 +339,13 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
-        if self.code_language_focus.is_focused(_window) {
+        if self.focus.code_language.is_focused(_window) {
             if is_single_line_break_commit(text) {
                 self.commit_code_language_edit(cx);
                 cx.notify();
                 return;
             }
-            let registered_target = self.platform_input_target;
+            let registered_target = self.input.target;
             if let Some(edit) = self.code_language_edit.as_mut() {
                 if !code_language_input_target_allows(registered_target, edit.block_id) {
                     trace_input(
@@ -387,7 +383,7 @@ impl EntityInputHandler for CditorV2View {
         cx: &mut Context<Self>,
     ) {
         if let Some(selection) = self.table_interaction_mode.axis_selection() {
-            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+            if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return;
             }
             let range = range_utf16
@@ -401,8 +397,8 @@ impl EntityInputHandler for CditorV2View {
             cx.notify();
             return;
         }
-        if self.ai_prompt_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.ai_prompt.is_focused(_window) {
+            let registered_target = self.input.target;
             if let Some(prompt) = self.ai_prompt.as_mut() {
                 if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
                     return;
@@ -417,8 +413,8 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
-        if self.code_language_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.code_language.is_focused(_window) {
+            let registered_target = self.input.target;
             if let Some(edit) = self.code_language_edit.as_mut() {
                 if !code_language_input_target_allows(registered_target, edit.block_id) {
                     trace_input(
@@ -456,7 +452,7 @@ impl EntityInputHandler for CditorV2View {
         _cx: &mut Context<Self>,
     ) -> Option<usize> {
         if let Some(selection) = self.table_interaction_mode.axis_selection() {
-            if !table_menu_input_target_allows(self.platform_input_target, selection.block_id) {
+            if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return None;
             }
             let utf8 = single_line_text_offset_for_x(
@@ -467,8 +463,8 @@ impl EntityInputHandler for CditorV2View {
             );
             return Some(utf8_to_utf16_offset(&self.table_menu_ui.query, utf8));
         }
-        if self.ai_prompt_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.ai_prompt.is_focused(_window) {
+            let registered_target = self.input.target;
             let prompt = self.ai_prompt.as_ref()?;
             if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
                 return None;
@@ -481,8 +477,8 @@ impl EntityInputHandler for CditorV2View {
             );
             return Some(utf8_to_utf16_offset(&prompt.draft, utf8));
         }
-        if self.code_language_focus.is_focused(_window) {
-            let registered_target = self.platform_input_target;
+        if self.focus.code_language.is_focused(_window) {
+            let registered_target = self.input.target;
             let edit = self.code_language_edit.as_ref()?;
             if !code_language_input_target_allows(registered_target, edit.block_id) {
                 trace_input(
@@ -501,16 +497,12 @@ impl EntityInputHandler for CditorV2View {
         }
         let session = self.ready_session()?;
         let context = session.input_context().ok()?;
-        if !platform_input_target_allows(
-            self.platform_input_target,
-            self.platform_input_session_identity,
-            &context,
-        ) {
+        if !platform_input_target_allows(self.input.target, self.input.session_identity, &context) {
             trace_input(
                 "character_index_for_point.rejected_target",
                 format_args!(
                     "registered={:?} runtime={:?}",
-                    self.platform_input_target, context.target
+                    self.input.target, context.target
                 ),
             );
             return None;
@@ -532,9 +524,9 @@ impl EntityInputHandler for CditorV2View {
                     return None;
                 };
                 if !platform_input_geometry_allows(
-                    self.platform_input_target,
-                    self.platform_input_session_identity,
-                    self.platform_input_layout_identity,
+                    self.input.target,
+                    self.input.session_identity,
+                    self.input.layout_identity,
                     &context,
                     cache,
                 ) {
@@ -552,9 +544,9 @@ impl EntityInputHandler for CditorV2View {
                     return None;
                 };
                 if !platform_input_geometry_allows(
-                    self.platform_input_target,
-                    self.platform_input_session_identity,
-                    self.platform_input_layout_identity,
+                    self.input.target,
+                    self.input.session_identity,
+                    self.input.layout_identity,
                     &context,
                     cache,
                 ) {
@@ -589,16 +581,16 @@ impl EntityInputHandler for CditorV2View {
 
     fn accepts_text_input(&self, _window: &mut Window, _cx: &mut Context<Self>) -> bool {
         if let Some(selection) = self.table_interaction_mode.axis_selection() {
-            return table_menu_input_target_allows(self.platform_input_target, selection.block_id);
+            return table_menu_input_target_allows(self.input.target, selection.block_id);
         }
-        if self.ai_prompt_focus.is_focused(_window) {
+        if self.focus.ai_prompt.is_focused(_window) {
             return self.ai_prompt.as_ref().is_some_and(|prompt| {
-                ai_prompt_input_target_allows(self.platform_input_target, prompt.block_id)
+                ai_prompt_input_target_allows(self.input.target, prompt.block_id)
             });
         }
-        if self.code_language_focus.is_focused(_window) {
+        if self.focus.code_language.is_focused(_window) {
             return self.code_language_edit.as_ref().is_some_and(|edit| {
-                code_language_input_target_allows(self.platform_input_target, edit.block_id)
+                code_language_input_target_allows(self.input.target, edit.block_id)
             });
         }
         !self.status.readonly
@@ -608,8 +600,8 @@ impl EntityInputHandler for CditorV2View {
                     return false;
                 };
                 platform_input_target_allows(
-                    self.platform_input_target,
-                    self.platform_input_session_identity,
+                    self.input.target,
+                    self.input.session_identity,
                     &context,
                 )
             })

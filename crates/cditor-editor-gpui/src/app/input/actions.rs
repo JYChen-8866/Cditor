@@ -288,9 +288,9 @@ impl CditorV2View {
             &self.table_cell_layouts,
             table_context.as_ref(),
             action,
-            self.preferred_text_navigation_x,
+            self.input.preferred_navigation_x,
         );
-        self.preferred_text_navigation_x = next_preferred_x;
+        self.input.preferred_navigation_x = next_preferred_x;
         let vertical_selection_target = match action {
             BoundInputAction::MoveUp {
                 extend_selection: true,

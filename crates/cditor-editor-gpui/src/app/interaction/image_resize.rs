@@ -29,7 +29,7 @@ impl CditorV2View {
         if self.status.readonly {
             return;
         }
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         self.text_drag_selection = None;
         self.block_drag_selection = BlockDragSelectionController::default();
         self.clear_gutter_action();

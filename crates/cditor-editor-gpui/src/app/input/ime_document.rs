@@ -21,7 +21,7 @@ impl CditorV2View {
         if self.status.readonly {
             return;
         }
-        let registered_target = self.platform_input_target;
+        let registered_target = self.input.target;
         let empty_line_ai_input = is_empty_line_ai_platform_input(range_utf16.as_ref(), text)
             && self.ready_session().is_some_and(|session| {
                 let Ok(input_context) = session.input_context() else {
@@ -29,7 +29,7 @@ impl CditorV2View {
                 };
                 platform_input_target_allows(
                     registered_target,
-                    self.platform_input_session_identity,
+                    self.input.session_identity,
                     &input_context,
                 ) && session
                     .ai_context()
@@ -49,7 +49,7 @@ impl CditorV2View {
             cx.notify();
             return;
         }
-        let registered_identity = self.platform_input_session_identity;
+        let registered_identity = self.input.session_identity;
         let Some(input_context) = self
             .ready_session()
             .and_then(|session| session.input_context().ok())
@@ -86,7 +86,7 @@ impl CditorV2View {
             text.as_ref(),
         ) {
             Ok(outcome) if outcome.document_changed => {
-                self.platform_input_session_identity = outcome.input_identity;
+                self.input.session_identity = outcome.input_identity;
                 self.mark_dirty_at_revision(
                     cditor_core::edit::ChangeOrigin::User,
                     outcome.revision,
@@ -96,7 +96,7 @@ impl CditorV2View {
                 cx.notify();
             }
             Ok(outcome) => {
-                self.platform_input_session_identity = outcome.input_identity;
+                self.input.session_identity = outcome.input_identity;
                 if outcome.state_changed {
                     cx.notify();
                 }
@@ -119,8 +119,8 @@ impl CditorV2View {
         if self.status.readonly {
             return;
         }
-        let registered_target = self.platform_input_target;
-        let registered_identity = self.platform_input_session_identity;
+        let registered_target = self.input.target;
+        let registered_identity = self.input.session_identity;
         let Some(input_context) = self
             .ready_session()
             .and_then(|session| session.input_context().ok())
@@ -167,7 +167,7 @@ impl CditorV2View {
         });
         match result {
             Ok(outcome) => {
-                self.platform_input_session_identity = outcome.input_identity;
+                self.input.session_identity = outcome.input_identity;
                 self.sync_slash_menu_from_runtime(cx);
                 cx.notify();
             }

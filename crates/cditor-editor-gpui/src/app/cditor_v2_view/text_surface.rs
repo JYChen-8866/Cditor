@@ -71,7 +71,7 @@ impl CditorV2View {
             .map(|state| state.snapshot.len())
             .unwrap_or_default();
 
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         self.table_interaction_mode = Default::default();
         self.table_menu_ui = Default::default();
         self.clear_gutter_action();

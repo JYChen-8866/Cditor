@@ -95,7 +95,7 @@ impl CditorV2View {
         if thumb_travel_px <= 0.0 || max_offset_x <= 0.0 {
             return;
         }
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         self.scrollbar_drag = None;
         self.image_resize_drag = None;
         self.table_resize_drag = None;

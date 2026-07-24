@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gpui::{AppContext, Context, FocusHandle, Pixels, Point, Window};
+use gpui::{AppContext, Context, Pixels, Point, Window};
 
 use cditor_core::block::GutterBlockDragState;
 use cditor_core::ids::{BlockId, SurfaceId};
@@ -27,10 +27,9 @@ use crate::overlay::SlashMenuState;
 use crate::overlay::WhiteboardEditorSession;
 
 use crate::persistence::EditorSaveStatus;
-use crate::text::{RichTextPlatformLayout, TextPlatformLayoutIdentity};
+use crate::text::RichTextPlatformLayout;
 #[cfg(test)]
 use cditor_runtime::DocumentRuntime;
-use cditor_runtime::InputSessionIdentity;
 use cditor_session::EditorSessionHandle;
 
 pub(in crate::app) mod ai;
@@ -46,8 +45,8 @@ pub(crate) mod text_surface;
 mod whiteboard;
 
 pub(in crate::app) use super::persistence_bridge::save_status_for_mode;
-use super::state::EditorStatusUiState;
 pub use super::state::{CditorViewState, EditorReadonlyReason};
+use super::state::{EditorStatusUiState, FocusUiState, PlatformInputState};
 pub(crate) use crate::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::app) use block_actions::block_focus_offset_after_missed_hit_test;
 pub(in crate::app) use formatting::{
@@ -60,17 +59,14 @@ pub(crate) use platform_input::platform_input_registration_allows;
 
 pub struct CditorV2View {
     pub(in crate::app) state: CditorViewState,
-    pub(in crate::app) focus: FocusHandle,
-    pub(in crate::app) code_language_focus: FocusHandle,
-    pub(in crate::app) ai_prompt_focus: FocusHandle,
+    pub(in crate::app) focus: FocusUiState,
+    pub(in crate::app) input: PlatformInputState,
     pub(in crate::app) ai_provider: Arc<dyn cditor_ai::AiProvider>,
     pub(in crate::app) ai_enabled: bool,
     pub(in crate::app) ai_prompt: Option<AiPromptState>,
     pub(in crate::app) ai_preview_scroll_handle: gpui::ScrollHandle,
     pub(in crate::app) show_debug: bool,
     pub(in crate::app) status: EditorStatusUiState,
-    pub(in crate::app) sdk_focus_observers_registered: bool,
-    pub(in crate::app) last_emitted_selection: Option<cditor_api::document::DocumentSelection>,
     pub(in crate::app) last_wheel_delta_y: f64,
     pub(in crate::app) scroll_accumulator: ScrollAccumulator,
     pub(in crate::app) editor_viewport_handle: gpui::ScrollHandle,
@@ -110,10 +106,6 @@ pub struct CditorV2View {
     pub(in crate::app) table_reorder_drag: Option<GuiTableReorderDrag>,
     pub(in crate::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
     pub(in crate::app) projected_block_rects: Vec<ProjectedBlockRect>,
-    pub(in crate::app) platform_input_target: Option<GuiPlatformInputTarget>,
-    pub(in crate::app) platform_input_session_identity: Option<InputSessionIdentity>,
-    pub(in crate::app) platform_input_layout_identity: Option<TextPlatformLayoutIdentity>,
-    pub(in crate::app) preferred_text_navigation_x: Option<(SurfaceId, f32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -209,7 +201,8 @@ impl CditorV2View {
 
     pub(crate) fn update_text_layout_cache(&mut self, cache: RichTextPlatformLayout) -> bool {
         let pinned_surface = self
-            .platform_input_layout_identity
+            .input
+            .layout_identity
             .map(|identity| identity.surface_id);
         if let Some(position) = cache.table_cell_position {
             trace_table(
@@ -286,7 +279,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         if self.table_interaction_mode.block_id().is_some() {
             self.table_interaction_mode = GuiTableInteractionMode::Idle;
             self.table_menu_ui = Default::default();
@@ -405,7 +398,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        window.focus(&self.focus, cx);
+        window.focus(&self.focus.editor, cx);
         if self.status.readonly {
             return;
         }

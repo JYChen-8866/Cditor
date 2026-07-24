@@ -24,7 +24,7 @@ impl CditorV2View {
             .is_some_and(|edit| edit.block_id == block_id)
         {
             self.cancel_code_language_edit(cx);
-            window.focus(&self.focus, cx);
+            window.focus(&self.focus.editor, cx);
         } else {
             self.start_code_language_edit_from_gui(block_id, language, pointer_y_px, window, cx);
         }
@@ -37,7 +37,7 @@ impl CditorV2View {
     ) -> bool {
         let dismissed = self.cancel_code_language_edit(cx);
         if dismissed {
-            window.focus(&self.focus, cx);
+            window.focus(&self.focus.editor, cx);
         }
         dismissed
     }
@@ -54,8 +54,8 @@ impl CditorV2View {
         if !self.commit_document_composition_before_external_focus(cx) {
             return;
         }
-        window.focus(&self.code_language_focus, cx);
-        self.platform_input_target = Some(GuiPlatformInputTarget::code_language(block_id));
+        window.focus(&self.focus.code_language, cx);
+        self.input.target = Some(GuiPlatformInputTarget::code_language(block_id));
         let viewport = EditorViewport::from_measurement(
             self.editor_viewport_handle.bounds(),
             window.viewport_size(),
@@ -71,9 +71,8 @@ impl CditorV2View {
         let Some(edit) = self.code_language_edit.take() else {
             return false;
         };
-        if self.platform_input_target == Some(GuiPlatformInputTarget::code_language(edit.block_id))
-        {
-            self.platform_input_target = None;
+        if self.input.target == Some(GuiPlatformInputTarget::code_language(edit.block_id)) {
+            self.input.target = None;
         }
         matches!(
             self.dispatch_command(
@@ -108,7 +107,7 @@ impl CditorV2View {
             caret_offset: 0,
             marked_range: None,
         });
-        self.platform_input_target = Some(GuiPlatformInputTarget::code_language(block_id));
+        self.input.target = Some(GuiPlatformInputTarget::code_language(block_id));
         self.commit_code_language_edit(cx);
         cx.notify();
     }
@@ -139,10 +138,11 @@ impl CditorV2View {
         let had_edit = self.code_language_edit.take().is_some();
         if had_edit {
             if self
-                .platform_input_target
+                .input
+                .target
                 .is_some_and(|target| target.is_code_language_for(target.block_id()))
             {
-                self.platform_input_target = None;
+                self.input.target = None;
             }
             cx.notify();
         }

@@ -112,7 +112,7 @@ impl CditorV2View {
         &mut self,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
-        let expected = self.platform_input_session_identity;
+        let expected = self.input.session_identity;
         let has_pending_composition = self
             .ready_session()
             .and_then(|session| session.input_context().ok())
@@ -134,7 +134,7 @@ impl CditorV2View {
         match result {
             Some(Ok(Some(outcome))) if outcome.document_changed => {
                 trace_input("external_focus.composition_committed", "changed=true");
-                self.platform_input_session_identity = outcome.input_identity;
+                self.input.session_identity = outcome.input_identity;
                 self.mark_dirty_at_revision(
                     cditor_core::edit::ChangeOrigin::Ime,
                     outcome.revision,
@@ -156,9 +156,9 @@ impl CditorV2View {
     }
 
     pub(in crate::app) fn begin_platform_input_registration_frame(&mut self) {
-        self.platform_input_session_identity = None;
-        self.platform_input_layout_identity = None;
-        self.platform_input_target = self
+        self.input.session_identity = None;
+        self.input.layout_identity = None;
+        self.input.target = self
             .ai_prompt
             .as_ref()
             .map(|prompt| GuiPlatformInputTarget::ai_prompt(prompt.block_id))
@@ -190,27 +190,27 @@ impl CditorV2View {
         let Ok(input_context) = session.input_context() else {
             return false;
         };
-        if !platform_input_registration_allows(self.platform_input_target, target, &input_context) {
+        if !platform_input_registration_allows(self.input.target, target, &input_context) {
             trace_input(
                 "register_platform_input_target.rejected",
                 format_args!(
                     "current={:?} target={:?} runtime={:?}",
-                    self.platform_input_target, target, input_context.target
+                    self.input.target, target, input_context.target
                 ),
             );
             return false;
         }
         let input_session_identity = input_context.identity;
-        self.platform_input_target = Some(target);
-        self.platform_input_session_identity = input_session_identity;
-        self.platform_input_layout_identity = Some(layout_identity);
+        self.input.target = Some(target);
+        self.input.session_identity = input_session_identity;
+        self.input.layout_identity = Some(layout_identity);
         true
     }
 
     pub(crate) fn registered_platform_input_session_identity(
         &self,
     ) -> Option<cditor_runtime::InputSessionIdentity> {
-        self.platform_input_session_identity
+        self.input.session_identity
     }
 }
 
@@ -272,7 +272,7 @@ mod tests {
         let view = cx.new(|cx| CditorV2View::from_runtime(composing_runtime(), false, cx));
 
         view.update(cx, |view, cx| {
-            view.platform_input_session_identity = view
+            view.input.session_identity = view
                 .ready_session()
                 .and_then(|session| session.input_context().ok()?.identity);
             assert!(view.commit_document_composition_before_external_focus(cx));
@@ -297,10 +297,11 @@ mod tests {
         let view = cx.new(|cx| CditorV2View::from_runtime(composing_runtime(), false, cx));
 
         view.update(cx, |view, cx| {
-            view.platform_input_session_identity = view
+            view.input.session_identity = view
                 .ready_session()
                 .and_then(|session| session.input_context().ok()?.identity);
-            view.platform_input_session_identity
+            view.input
+                .session_identity
                 .as_mut()
                 .unwrap()
                 .target_generation += 1;
