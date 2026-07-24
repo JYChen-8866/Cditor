@@ -567,7 +567,10 @@ mod tests {
         }
 
         fn capabilities(&self) -> StorageCapabilities {
-            StorageCapabilities::SQLITE
+            StorageCapabilities {
+                emergency_log: false,
+                ..StorageCapabilities::SQLITE
+            }
         }
 
         async fn load_document(

@@ -6,6 +6,7 @@ use cditor_core::document::BlockIndexRecord;
 use cditor_core::edit::{EditTransaction, ExternalUndoBlobRef};
 use cditor_core::ids::{BlockId, DocumentId};
 use cditor_core::rich_text::{BlockAttrs, BlockPayloadRecord};
+use cditor_core::schema::VersionedEnvelope;
 
 use crate::error::StorageResult;
 use crate::layout_cache::LayoutCacheKey;
@@ -34,6 +35,7 @@ pub struct StorageCapabilities {
     pub full_text_search: bool,
     pub cloud_sync: bool,
     pub server_authoritative: bool,
+    pub emergency_log: bool,
 }
 
 impl StorageCapabilities {
@@ -42,6 +44,7 @@ impl StorageCapabilities {
         full_text_search: false,
         cloud_sync: false,
         server_authoritative: false,
+        emergency_log: true,
     };
 
     pub const POSTGRES: Self = Self {
@@ -49,7 +52,21 @@ impl StorageCapabilities {
         full_text_search: true,
         cloud_sync: false,
         server_authoritative: true,
+        emergency_log: false,
     };
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmergencyLogEntry {
+    pub sequence: u64,
+    pub transaction_id: u64,
+    pub envelope: VersionedEnvelope,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EmergencyLogAppendOutcome {
+    pub appended: usize,
+    pub through_sequence: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,6 +182,32 @@ pub trait DocumentStorage: Send + Sync {
         &self,
         _document_id: DocumentId,
         _keep_recent: usize,
+    ) -> StorageResult<u64> {
+        Ok(0)
+    }
+
+    async fn append_emergency_transactions(
+        &self,
+        _document_id: DocumentId,
+        _transactions: &[EditTransaction],
+    ) -> StorageResult<EmergencyLogAppendOutcome> {
+        Err(crate::error::StorageError::Backend {
+            backend: self.backend_kind(),
+            message: "durable emergency log is not supported by this backend".to_owned(),
+        })
+    }
+
+    async fn load_emergency_transactions(
+        &self,
+        _document_id: DocumentId,
+    ) -> StorageResult<Vec<EmergencyLogEntry>> {
+        Ok(Vec::new())
+    }
+
+    async fn acknowledge_emergency_transactions(
+        &self,
+        _document_id: DocumentId,
+        _through_sequence: u64,
     ) -> StorageResult<u64> {
         Ok(0)
     }
@@ -285,6 +328,30 @@ impl StorageSession {
     pub async fn prune_undo_blobs(&self, keep_recent: usize) -> StorageResult<u64> {
         self.storage
             .prune_undo_blobs(self.document_id, keep_recent)
+            .await
+    }
+
+    pub async fn append_emergency_transactions(
+        &self,
+        transactions: &[EditTransaction],
+    ) -> StorageResult<EmergencyLogAppendOutcome> {
+        self.storage
+            .append_emergency_transactions(self.document_id, transactions)
+            .await
+    }
+
+    pub async fn load_emergency_transactions(&self) -> StorageResult<Vec<EmergencyLogEntry>> {
+        self.storage
+            .load_emergency_transactions(self.document_id)
+            .await
+    }
+
+    pub async fn acknowledge_emergency_transactions(
+        &self,
+        through_sequence: u64,
+    ) -> StorageResult<u64> {
+        self.storage
+            .acknowledge_emergency_transactions(self.document_id, through_sequence)
             .await
     }
 

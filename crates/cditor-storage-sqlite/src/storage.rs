@@ -7,9 +7,9 @@ use cditor_core::edit::{EditTransaction, ExternalUndoBlobRef};
 use cditor_core::layout::BlockLayoutMeta;
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind};
 use cditor_storage::{
-    DocumentStorage, LoadDocumentRequest, LoadedDocument, LoadedPayloadBatch, StorageBackendKind,
-    StorageCapabilities, StorageDocumentMetadata, StorageError, StorageResult, StorageSaveBatch,
-    StorageSaveOutcome,
+    DocumentStorage, EmergencyLogAppendOutcome, EmergencyLogEntry, LoadDocumentRequest,
+    LoadedDocument, LoadedPayloadBatch, StorageBackendKind, StorageCapabilities,
+    StorageDocumentMetadata, StorageError, StorageResult, StorageSaveBatch, StorageSaveOutcome,
 };
 
 use crate::codec::{decode_attrs, encode_attrs, encode_transaction};
@@ -307,6 +307,32 @@ impl DocumentStorage for SqliteDocumentStorage {
             transaction,
         )
         .await
+    }
+
+    async fn append_emergency_transactions(
+        &self,
+        document_id: cditor_core::ids::DocumentId,
+        transactions: &[EditTransaction],
+    ) -> StorageResult<EmergencyLogAppendOutcome> {
+        self.append_emergency_transaction_batch(document_id, transactions)
+            .await
+    }
+
+    async fn load_emergency_transactions(
+        &self,
+        document_id: cditor_core::ids::DocumentId,
+    ) -> StorageResult<Vec<EmergencyLogEntry>> {
+        self.load_unmaterialized_emergency_transactions(document_id)
+            .await
+    }
+
+    async fn acknowledge_emergency_transactions(
+        &self,
+        document_id: cditor_core::ids::DocumentId,
+        through_sequence: u64,
+    ) -> StorageResult<u64> {
+        self.acknowledge_emergency_transaction_batch(document_id, through_sequence)
+            .await
     }
 
     async fn load_undo_blob(

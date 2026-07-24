@@ -8,6 +8,7 @@ use cditor_core::edit::{
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
 use cditor_core::schema::{SchemaDomain, SchemaVersion};
 use cditor_runtime::DocumentRuntime;
+use cditor_storage::DocumentStorage;
 use cditor_storage_sqlite::{
     OutboxState, SqliteDocumentStorage, SqliteStorageOptions, StartupRecovery,
 };
@@ -39,6 +40,67 @@ fn sample_transaction(id: u64, text: &str) -> EditTransaction {
 fn envelope_json(transaction: &EditTransaction) -> String {
     let envelope = encode_transaction(transaction).expect("encode");
     serde_json::to_string(&envelope).expect("serialize envelope")
+}
+
+#[tokio::test]
+async fn emergency_log_batch_is_ordered_idempotent_and_acknowledgeable() {
+    let dir = TempDir::new().unwrap();
+    let store = open_store(&dir).await;
+    let transactions = vec![sample_transaction(11, "a"), sample_transaction(12, "b")];
+
+    let first = store
+        .append_emergency_transactions(7, &transactions)
+        .await
+        .expect("append emergency batch");
+    assert_eq!(first.appended, 2);
+    let through_sequence = first.through_sequence.expect("sequence");
+
+    let retry = store
+        .append_emergency_transactions(7, &transactions)
+        .await
+        .expect("deduplicate emergency batch");
+    assert_eq!(retry.appended, 0);
+    assert_eq!(retry.through_sequence, Some(through_sequence));
+
+    let entries = store
+        .load_emergency_transactions(7)
+        .await
+        .expect("load emergency log");
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry.transaction_id)
+            .collect::<Vec<_>>(),
+        vec![11, 12]
+    );
+    assert!(
+        entries
+            .windows(2)
+            .all(|pair| pair[0].sequence < pair[1].sequence)
+    );
+    for (entry, expected) in entries.iter().zip(&transactions) {
+        let decoded = decode_transaction(&entry.envelope)
+            .expect("decode")
+            .transaction()
+            .expect("compatible transaction")
+            .clone();
+        assert_eq!(&decoded, expected);
+    }
+
+    assert_eq!(
+        store
+            .acknowledge_emergency_transactions(7, through_sequence)
+            .await
+            .expect("acknowledge"),
+        2
+    );
+    assert!(
+        store
+            .load_emergency_transactions(7)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]

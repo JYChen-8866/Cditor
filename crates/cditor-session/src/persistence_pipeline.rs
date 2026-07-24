@@ -316,18 +316,39 @@ impl PersistencePipeline {
 pub async fn save_storage_batch(
     request: &StorageSaveRequest,
 ) -> Result<StorageSaveOutcome, String> {
-    request
+    let emergency_sequence =
+        if request.session.capabilities().emergency_log && !request.batch.transactions.is_empty() {
+            request
+                .session
+                .append_emergency_transactions(&request.batch.transactions)
+                .await
+                .map_err(|error| format!("cannot write durable emergency log: {error}"))?
+                .through_sequence
+        } else {
+            None
+        };
+    let outcome = request
         .session
         .commit(request.batch.clone())
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    if let Some(sequence) = emergency_sequence {
+        // A failed cleanup is harmless: adapters filter materialized
+        // transactions on recovery and a later compaction can remove the row.
+        let _ = request
+            .session
+            .acknowledge_emergency_transactions(sequence)
+            .await;
+    }
+    Ok(outcome)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use async_trait::async_trait;
+    use cditor_core::edit::{EditOperation, EditTransaction, EditTransactionKind};
     use cditor_storage::{
         DocumentStorage, LoadDocumentRequest, LoadedDocument, LoadedPayloadBatch,
         StorageBackendKind, StorageCapabilities, StorageError, StorageResult,
@@ -371,6 +392,123 @@ mod tests {
             Err(StorageError::InvalidConfiguration(
                 "test storage".to_owned(),
             ))
+        }
+    }
+
+    #[derive(Debug)]
+    struct DurableTestStorage {
+        events: Mutex<Vec<&'static str>>,
+        fail_commit: bool,
+    }
+
+    impl DurableTestStorage {
+        fn new(fail_commit: bool) -> Self {
+            Self {
+                events: Mutex::new(Vec::new()),
+                fail_commit,
+            }
+        }
+
+        fn events(&self) -> Vec<&'static str> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl DocumentStorage for DurableTestStorage {
+        fn backend_kind(&self) -> StorageBackendKind {
+            StorageBackendKind::Custom
+        }
+
+        fn capabilities(&self) -> StorageCapabilities {
+            StorageCapabilities {
+                emergency_log: true,
+                ..StorageCapabilities::POSTGRES
+            }
+        }
+
+        async fn load_document(
+            &self,
+            _request: LoadDocumentRequest,
+        ) -> StorageResult<LoadedDocument> {
+            Err(StorageError::InvalidConfiguration(
+                "test storage".to_owned(),
+            ))
+        }
+
+        async fn load_payloads(
+            &self,
+            _document_id: cditor_core::ids::DocumentId,
+            _block_ids: &[cditor_core::ids::BlockId],
+        ) -> StorageResult<LoadedPayloadBatch> {
+            Err(StorageError::InvalidConfiguration(
+                "test storage".to_owned(),
+            ))
+        }
+
+        async fn append_emergency_transactions(
+            &self,
+            _document_id: cditor_core::ids::DocumentId,
+            transactions: &[EditTransaction],
+        ) -> StorageResult<cditor_storage::EmergencyLogAppendOutcome> {
+            self.events.lock().unwrap().push("append");
+            Ok(cditor_storage::EmergencyLogAppendOutcome {
+                appended: transactions.len(),
+                through_sequence: Some(9),
+            })
+        }
+
+        async fn acknowledge_emergency_transactions(
+            &self,
+            _document_id: cditor_core::ids::DocumentId,
+            _through_sequence: u64,
+        ) -> StorageResult<u64> {
+            self.events.lock().unwrap().push("ack");
+            Ok(1)
+        }
+
+        async fn commit(&self, batch: StorageSaveBatch) -> StorageResult<StorageSaveOutcome> {
+            self.events.lock().unwrap().push("commit");
+            if self.fail_commit {
+                Err(StorageError::Io("forced commit failure".to_owned()))
+            } else {
+                Ok(StorageSaveOutcome {
+                    saved_structure_version: batch.saved_structure_version(),
+                    saved_payload_versions: Vec::new(),
+                })
+            }
+        }
+    }
+
+    fn durable_save_request(storage: Arc<DurableTestStorage>) -> StorageSaveRequest {
+        let transaction = EditTransaction::new(
+            1,
+            EditTransactionKind::Typing,
+            1,
+            vec![EditOperation::InsertText {
+                block_id: 1,
+                offset: 0,
+                text: "saved".to_owned(),
+            }],
+            vec![EditOperation::DeleteText {
+                block_id: 1,
+                range: 0..5,
+            }],
+        );
+        StorageSaveRequest {
+            session: StorageSession::new(storage, 1),
+            batch: StorageSaveBatch {
+                document_id: 1,
+                layout_key: None,
+                payloads: Vec::new(),
+                index_records: Vec::new(),
+                structure_version: 1,
+                transactions: vec![transaction],
+                block_attrs: Vec::new(),
+                page_layout_snapshot: None,
+            },
+            generation: 1,
+            revision: 1,
         }
     }
 
@@ -454,5 +592,22 @@ mod tests {
             .into_iter()
             .for_each(|barrier| barrier.resolve(Ok(())));
         assert_eq!(receiver.await.unwrap().unwrap().revision, 4);
+    }
+
+    #[tokio::test]
+    async fn durable_log_wraps_primary_commit_and_is_acked_only_after_success() {
+        let successful = Arc::new(DurableTestStorage::new(false));
+        save_storage_batch(&durable_save_request(successful.clone()))
+            .await
+            .unwrap();
+        assert_eq!(successful.events(), vec!["append", "commit", "ack"]);
+
+        let failed = Arc::new(DurableTestStorage::new(true));
+        assert!(
+            save_storage_batch(&durable_save_request(failed.clone()))
+                .await
+                .is_err()
+        );
+        assert_eq!(failed.events(), vec!["append", "commit"]);
     }
 }

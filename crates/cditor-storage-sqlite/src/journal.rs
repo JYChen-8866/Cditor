@@ -9,10 +9,10 @@
 //! - crash marker：启动置 dirty，干净退出置 clean；下次启动读取判定是否
 //!   需要 replay。
 
-use cditor_core::edit::ChangeOrigin;
-use cditor_core::schema::SchemaVersion;
+use cditor_core::edit::{ChangeOrigin, EditTransaction, encode_transaction};
+use cditor_core::schema::{SchemaVersion, VersionedEnvelope};
 use cditor_storage::backend::StorageBackendKind;
-use cditor_storage::{StorageError, StorageResult};
+use cditor_storage::{EmergencyLogAppendOutcome, EmergencyLogEntry, StorageError, StorageResult};
 use sqlx::Row;
 
 use crate::ids::document_id_to_sqlite;
@@ -84,6 +84,134 @@ pub enum StartupRecovery {
 }
 
 impl SqliteDocumentStorage {
+    pub(crate) async fn append_emergency_transaction_batch(
+        &self,
+        document_id: DocumentId,
+        transactions: &[EditTransaction],
+    ) -> StorageResult<EmergencyLogAppendOutcome> {
+        if transactions.is_empty() {
+            return Ok(EmergencyLogAppendOutcome {
+                appended: 0,
+                through_sequence: None,
+            });
+        }
+        let _writer = self.writer_gate().acquire().await?;
+        let document_uuid = document_id_to_sqlite(document_id);
+        let now = unix_millis()?;
+        let mut database_transaction = self.pool.begin().await.map_err(map_sqlx)?;
+        let mut appended = 0;
+        let mut through_sequence = None;
+
+        for edit in transactions {
+            let existing: Option<i64> = sqlx::query_scalar(
+                "SELECT id FROM operation_journal \
+                 WHERE document_id = ? AND transaction_id = ? \
+                 ORDER BY id DESC LIMIT 1",
+            )
+            .bind(document_uuid)
+            .bind(edit.id as i64)
+            .fetch_optional(&mut *database_transaction)
+            .await
+            .map_err(map_sqlx)?;
+            let sequence = if let Some(existing) = existing {
+                existing
+            } else {
+                let envelope = encode_transaction(edit).map_err(|error| {
+                    StorageError::CorruptData(format!(
+                        "cannot encode emergency transaction {}: {error}",
+                        edit.id
+                    ))
+                })?;
+                let envelope_json = serde_json::to_string(&envelope)
+                    .map_err(|error| StorageError::CorruptData(error.to_string()))?;
+                appended += 1;
+                sqlx::query(
+                    "INSERT INTO operation_journal \
+                     (document_id, transaction_id, schema_major, schema_minor, envelope_json, origin, created_at) \
+                     VALUES (?, ?, ?, ?, ?, ?, ?)",
+                )
+                .bind(document_uuid)
+                .bind(edit.id as i64)
+                .bind(i64::from(envelope.version.major))
+                .bind(i64::from(envelope.version.minor))
+                .bind(envelope_json)
+                .bind(edit.origin.as_str())
+                .bind(now)
+                .execute(&mut *database_transaction)
+                .await
+                .map_err(map_sqlx)?
+                .last_insert_rowid()
+            };
+            through_sequence = Some(through_sequence.unwrap_or(sequence).max(sequence));
+        }
+
+        database_transaction.commit().await.map_err(map_sqlx)?;
+        Ok(EmergencyLogAppendOutcome {
+            appended,
+            through_sequence: through_sequence.map(|sequence| sequence as u64),
+        })
+    }
+
+    pub(crate) async fn load_unmaterialized_emergency_transactions(
+        &self,
+        document_id: DocumentId,
+    ) -> StorageResult<Vec<EmergencyLogEntry>> {
+        let rows = sqlx::query(
+            "SELECT journal.id, journal.transaction_id, journal.envelope_json \
+             FROM operation_journal AS journal \
+             LEFT JOIN edit_transactions AS materialized \
+               ON materialized.document_id = journal.document_id \
+              AND materialized.transaction_id = CAST(journal.transaction_id AS TEXT) \
+             WHERE journal.document_id = ? AND materialized.transaction_id IS NULL \
+             ORDER BY journal.id ASC",
+        )
+        .bind(document_id_to_sqlite(document_id))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+
+        rows.into_iter()
+            .map(|row| {
+                let sequence = row.get::<i64, _>(0);
+                let transaction_id = row.get::<i64, _>(1);
+                if sequence < 0 || transaction_id < 0 {
+                    return Err(StorageError::CorruptData(
+                        "emergency log identity cannot be negative".to_owned(),
+                    ));
+                }
+                let envelope_json = row.get::<String, _>(2);
+                let envelope: VersionedEnvelope = serde_json::from_str(&envelope_json)
+                    .map_err(|error| StorageError::CorruptData(error.to_string()))?;
+                Ok(EmergencyLogEntry {
+                    sequence: sequence as u64,
+                    transaction_id: transaction_id as u64,
+                    envelope,
+                })
+            })
+            .collect()
+    }
+
+    pub(crate) async fn acknowledge_emergency_transaction_batch(
+        &self,
+        document_id: DocumentId,
+        through_sequence: u64,
+    ) -> StorageResult<u64> {
+        let through_sequence = i64::try_from(through_sequence).map_err(|_| {
+            StorageError::CorruptData("emergency log sequence exceeds SQLite range".to_owned())
+        })?;
+        let _writer = self.writer_gate().acquire().await?;
+        let result = sqlx::query(
+            "DELETE FROM operation_journal WHERE document_id = ? AND id <= ? \
+             AND NOT EXISTS (SELECT 1 FROM sync_outbox WHERE sync_outbox.journal_id = operation_journal.id)",
+        )
+        .bind(document_id_to_sqlite(document_id))
+        .bind(through_sequence)
+        .execute(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        Ok(result.rows_affected())
+    }
+
     /// 原子追加：journal + （可选）outbox 同一事务。返回 journal id。
     ///
     /// `enqueue_outbox` 为 false 时用于不需要上行同步的来源（remote 回放、
