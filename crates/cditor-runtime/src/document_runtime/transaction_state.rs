@@ -20,6 +20,8 @@ impl Default for TransactionState {
 
 #[cfg(test)]
 mod tests {
+    use cditor_core::edit::{ChangeOrigin, EditOperation, EditTransactionKind};
+
     use super::*;
 
     #[test]
@@ -45,5 +47,32 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![first[0].id, second_id]
         );
+    }
+
+    #[test]
+    fn external_replay_advances_the_next_local_transaction_identity() {
+        let mut runtime = DocumentRuntime::empty();
+        let transaction = EditTransaction::new(
+            20,
+            EditTransactionKind::Typing,
+            20,
+            vec![EditOperation::InsertText {
+                block_id: 1,
+                offset: 0,
+                text: "a".to_owned(),
+            }],
+            vec![EditOperation::DeleteText {
+                block_id: 1,
+                range: 0..1,
+            }],
+        );
+        runtime
+            .apply_external_transaction(&transaction, ChangeOrigin::Host)
+            .unwrap();
+
+        runtime.focus_block_at_offset(1, 1).unwrap();
+        runtime.insert_char('b').unwrap();
+
+        assert!(runtime.last_committed_transaction_id().unwrap() > 20);
     }
 }

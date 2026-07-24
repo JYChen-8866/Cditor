@@ -418,6 +418,10 @@ impl DocumentRuntime {
             self.transactions.pending.push(persistent);
         }
         self.transactions.last_committed_id = Some(transaction.id);
+        self.transactions.next_id = self
+            .transactions
+            .next_id
+            .max(transaction.id.saturating_add(1));
 
         Ok(AppliedTransaction {
             transaction_id: transaction.id,

@@ -10,7 +10,9 @@ use crate::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::input::BlockDragSelectionController;
 use crate::overlay::table::TableViewportMeasurement;
-use crate::persistence::{DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline};
+use crate::persistence::{
+    DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline, schedule_storage_autosave,
+};
 use cditor_runtime::DocumentRuntime;
 use cditor_storage::StorageSession;
 
@@ -356,6 +358,23 @@ impl CditorV2View {
             );
         }
         self.save_status = save_status_for_mode(self.readonly);
+    }
+
+    pub fn apply_recovered_runtime_with_storage(
+        &mut self,
+        runtime: DocumentRuntime,
+        storage_session: Option<StorageSession>,
+        recovered_transactions: usize,
+        cx: &mut Context<Self>,
+    ) {
+        self.apply_loaded_runtime_with_storage(runtime, storage_session);
+        if recovered_transactions == 0 || self.readonly {
+            return;
+        }
+        self.dirty = true;
+        self.save_status = EditorSaveStatus::Dirty;
+        self.storage_persistence.mark_dirty();
+        schedule_storage_autosave(&mut self.storage_persistence, cx);
     }
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {

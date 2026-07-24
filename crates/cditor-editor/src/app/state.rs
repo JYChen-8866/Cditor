@@ -6,6 +6,10 @@ pub enum EditorReadonlyReason {
         written_major: u64,
         supported_major: u32,
     },
+    NewerOperationSchema {
+        written_major: u32,
+        supported_major: u32,
+    },
 }
 
 impl EditorReadonlyReason {
@@ -16,6 +20,12 @@ impl EditorReadonlyReason {
                 supported_major,
             } => format!(
                 "只读：文档格式 v{written_major} 高于当前支持的 v{supported_major}，请升级 Cditor 后编辑。"
+            ),
+            Self::NewerOperationSchema {
+                written_major,
+                supported_major,
+            } => format!(
+                "只读：恢复日志格式 v{written_major} 高于当前支持的 v{supported_major}，请升级 Cditor 后恢复。"
             ),
         }
     }

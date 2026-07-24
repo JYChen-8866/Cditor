@@ -176,6 +176,19 @@ impl CditorV2View {
         self.save_status = EditorSaveStatus::Readonly;
     }
 
+    pub fn enforce_newer_operation_schema_readonly(
+        &mut self,
+        written_major: u32,
+        supported_major: u32,
+    ) {
+        self.readonly_reason = Some(crate::app::EditorReadonlyReason::NewerOperationSchema {
+            written_major,
+            supported_major,
+        });
+        self.readonly = true;
+        self.save_status = EditorSaveStatus::Readonly;
+    }
+
     pub fn sdk_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.focus.is_focused(window) {
             window.focus(&self.focus, cx);

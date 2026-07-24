@@ -7,6 +7,7 @@ pub use cditor_storage_sqlite as storage_sqlite;
 
 pub mod backends;
 pub mod storage_host;
+mod storage_recovery;
 pub mod wiring;
 
 pub use backends::CditorStorageExt;

@@ -1,6 +1,40 @@
 use super::*;
 
 impl DocumentRuntime {
+    pub fn plan_emergency_payload_load(
+        &mut self,
+        block_ids: &[BlockId],
+    ) -> Result<Option<PayloadWindowLoadRequest>, String> {
+        let mut missing = Vec::new();
+        for block_id in block_ids {
+            if self.document.index.index_of(*block_id).is_none() {
+                continue;
+            }
+            if !self.document.payload_window.payloads.contains_key(block_id)
+                && !missing.contains(block_id)
+            {
+                missing.push(*block_id);
+            }
+        }
+        if missing.is_empty() {
+            return Ok(None);
+        }
+
+        self.layout.payload_window_generation =
+            self.layout.payload_window_generation.saturating_add(1);
+        let generation = self.layout.payload_window_generation;
+        for block_id in &missing {
+            self.document
+                .payload_window
+                .mark_loading(*block_id, generation);
+        }
+        Ok(Some(PayloadWindowLoadRequest {
+            generation,
+            block_range: self.document.payload_window.block_range.clone(),
+            block_ids: missing,
+        }))
+    }
+
     pub fn activate_payload_window_if_resident(&mut self, block_range: Range<usize>) -> bool {
         let bounded_range = self.bounded_payload_window_range(block_range);
         if self.document.payload_window.block_range == bounded_range {

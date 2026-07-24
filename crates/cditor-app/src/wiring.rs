@@ -144,9 +144,12 @@ fn spawn_storage_cold_start(
         Ok(Some(loaded)) => {
             let _ = view.update(cx, |view, cx| {
                 let schema_access = loaded.schema_access;
-                view.apply_loaded_runtime_with_storage(
+                let recovered_transactions = loaded.recovered_transactions;
+                view.apply_recovered_runtime_with_storage(
                     loaded.runtime,
                     Some(loaded.storage_session),
+                    recovered_transactions,
+                    cx,
                 );
                 if let DocumentSchemaAccess::ReadOnlyNewerMajor {
                     written_major,
@@ -154,6 +157,13 @@ fn spawn_storage_cold_start(
                 } = schema_access
                 {
                     view.enforce_newer_schema_readonly(written_major, supported_major);
+                }
+                if let DocumentSchemaAccess::ReadOnlyNewerOperationMajor {
+                    written_major,
+                    supported_major,
+                } = schema_access
+                {
+                    view.enforce_newer_operation_schema_readonly(written_major, supported_major);
                 }
                 if let Some(document) = view.sdk_document_info() {
                     cx.emit(CditorEvent::Ready { document });

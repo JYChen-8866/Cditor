@@ -7,6 +7,12 @@ use cditor_runtime::DocumentRuntime;
 use cditor_runtime::document_runtime::{
     DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport, DocumentRuntimeIndexSource,
 };
+use cditor_session::{
+    EmergencyRecoveryDecision, EmergencyRecoveryPlan, plan_emergency_recovery,
+    project_emergency_recovery,
+};
+
+use crate::storage_recovery::hydrate_emergency_payloads;
 use cditor_storage::layout_cache::LayoutCacheKey;
 use cditor_storage::{
     DOCUMENT_INDEX_VISIBLE_VERSION, DocumentStorage, LoadDocumentRequest, LoadedDocument,
@@ -76,6 +82,7 @@ pub struct CditorRuntimeLoadResult {
     pub report: DocumentRuntimeColdStartReport,
     pub storage_session: StorageSession,
     pub schema_access: DocumentSchemaAccess,
+    pub recovered_transactions: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +90,10 @@ pub enum DocumentSchemaAccess {
     ReadWrite,
     ReadOnlyNewerMajor {
         written_major: u64,
+        supported_major: u32,
+    },
+    ReadOnlyNewerOperationMajor {
+        written_major: u32,
         supported_major: u32,
     },
 }
@@ -158,15 +169,54 @@ async fn load_runtime_from_storage(
             page_policy_version: options.page_policy_version,
         })
         .await?;
-    let schema_access = document_schema_access(loaded.metadata.schema_version, backend_kind)?;
+    let mut schema_access = document_schema_access(loaded.metadata.schema_version, backend_kind)?;
+    let emergency_decision = if storage.capabilities().emergency_log {
+        plan_emergency_recovery(storage.load_emergency_transactions(document_id).await?)
+            .map_err(cditor_storage::StorageError::CorruptData)?
+    } else {
+        EmergencyRecoveryDecision::Replay(EmergencyRecoveryPlan {
+            transactions: Vec::new(),
+            affected_block_ids: Vec::new(),
+            through_sequence: None,
+        })
+    };
+    let recovery_plan = match emergency_decision {
+        EmergencyRecoveryDecision::Replay(plan)
+            if matches!(schema_access, DocumentSchemaAccess::ReadWrite) =>
+        {
+            Some(plan)
+        }
+        EmergencyRecoveryDecision::Replay(_) => None,
+        EmergencyRecoveryDecision::ReadOnlyNewerMajor { written_major, .. } => {
+            schema_access = DocumentSchemaAccess::ReadOnlyNewerOperationMajor {
+                written_major,
+                supported_major: cditor_core::schema::SchemaDomain::Operation
+                    .current_version()
+                    .major,
+            };
+            None
+        }
+    };
     let viewport_height = options.viewport_height;
-    let (runtime, report) = runtime_from_loaded(loaded, viewport_height, &options)?;
+    let (mut runtime, report) = runtime_from_loaded(loaded, viewport_height, &options)?;
+    let recovered_transactions = if let Some(plan) = recovery_plan {
+        hydrate_emergency_payloads(storage.as_ref(), &mut runtime, &plan).await?;
+        Some(
+            project_emergency_recovery(&mut runtime, plan)
+                .map(|report| report.replayed_transactions)
+                .map_err(cditor_storage::StorageError::CorruptData)?,
+        )
+    } else {
+        None
+    }
+    .unwrap_or(0);
     Ok(CditorRuntimeLoadResult {
         storage_session: StorageSession::new(storage, runtime.document_id())
             .with_layout_key(options.layout_key),
         runtime,
         report,
         schema_access,
+        recovered_transactions,
     })
 }
 
@@ -249,9 +299,15 @@ mod tests {
     use crate::Cditor;
     use crate::CditorStorageExt;
     use cditor_core::document::BlockIndexRecord;
+    use cditor_core::edit::{ChangeOrigin, EditOperation, EditTransaction, EditTransactionKind};
     use cditor_core::layout::{HeightConfidence, PageLayout, PageLayoutIndex};
     use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind};
-    use cditor_storage::{StorageBackendKind, StorageDocumentMetadata, StoragePageLayoutSnapshot};
+    use cditor_session::{
+        PersistencePipeline, project_persistence_save_success, save_storage_batch,
+    };
+    use cditor_storage::{
+        StorageBackendKind, StorageDocumentMetadata, StoragePageLayoutSnapshot, StorageSaveBatch,
+    };
     use cditor_storage_postgres::{
         DocumentRow, PostgresDocumentStorage, PostgresDocumentStore, PostgresPayloadStore,
         PostgresPoolConfig, create_pg_pool, pg_document_id_from_runtime, run_migrations,
@@ -340,6 +396,131 @@ mod tests {
                 written_major: newer_major,
                 supported_major: CURRENT_DOCUMENT_FORMAT.major,
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite_cold_start_replays_durable_emergency_log_into_dirty_runtime() {
+        let temp = TempDir::new().unwrap();
+        let storage = Arc::new(
+            SqliteDocumentStorage::open(SqliteStorageOptions::file(
+                temp.path().join("emergency-recovery.cditor.db"),
+            ))
+            .await
+            .unwrap(),
+        );
+        let options = StorageRuntimeLoadOptions::default();
+        storage
+            .load_document(LoadDocumentRequest {
+                document_id: 42,
+                workspace_id: 1,
+                initial_payload_window_blocks: options.initial_payload_window_blocks,
+                visible_index_version: options.visible_index_version,
+                layout_key: options.layout_key,
+                page_policy_version: options.page_policy_version,
+            })
+            .await
+            .unwrap();
+        let records = (1..=100)
+            .map(|block_id| {
+                BlockIndexRecord::new(
+                    block_id,
+                    None,
+                    0,
+                    kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                    0,
+                )
+            })
+            .collect::<Vec<_>>();
+        let payloads = (1..=100)
+            .map(|block_id| {
+                BlockPayloadRecord::rich_text(
+                    block_id,
+                    RichBlockKind::Paragraph,
+                    block_id.to_string(),
+                )
+            })
+            .collect::<Vec<_>>();
+        storage
+            .commit(StorageSaveBatch {
+                document_id: 42,
+                layout_key: None,
+                payloads,
+                index_records: records,
+                structure_version: 2,
+                transactions: Vec::new(),
+                block_attrs: Vec::new(),
+                page_layout_snapshot: None,
+            })
+            .await
+            .unwrap();
+        let transaction = EditTransaction::new(
+            10,
+            EditTransactionKind::Typing,
+            10,
+            vec![EditOperation::InsertText {
+                block_id: 100,
+                offset: 3,
+                text: " recovered".to_owned(),
+            }],
+            vec![EditOperation::DeleteText {
+                block_id: 100,
+                range: 3..13,
+            }],
+        )
+        .with_origin(ChangeOrigin::User);
+        storage
+            .append_emergency_transactions(42, &[transaction])
+            .await
+            .unwrap();
+
+        let loaded = load_runtime_from_storage(storage.clone(), 42, 1, options.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(loaded.recovered_transactions, 1);
+        assert_eq!(
+            loaded
+                .runtime
+                .block_payload_record(100)
+                .unwrap()
+                .plain_text(),
+            "100 recovered"
+        );
+        assert_eq!(loaded.runtime.pending_structure_transaction_count(), 1);
+        assert_eq!(
+            storage.load_emergency_transactions(42).await.unwrap().len(),
+            1
+        );
+
+        let mut runtime = loaded.runtime;
+        let mut pipeline = PersistencePipeline::for_session(loaded.storage_session, None);
+        pipeline.mark_loaded_structure_version(runtime.structure_version());
+        pipeline.mark_dirty();
+        let request = pipeline.begin_batch(&mut runtime).expect("recovery save");
+        let outcome = save_storage_batch(&request).await.unwrap();
+        assert!(!pipeline.finish_success(&request, outcome.saved_structure_version));
+        project_persistence_save_success(&mut runtime, &outcome, true, false);
+        assert!(
+            storage
+                .load_emergency_transactions(42)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        let reopened = load_runtime_from_storage(storage, 42, 1, options)
+            .await
+            .unwrap();
+        assert_eq!(reopened.recovered_transactions, 0);
+        let persisted = reopened
+            .storage_session
+            .load_payloads(&[100])
+            .await
+            .unwrap();
+        assert_eq!(
+            persisted.records.first().unwrap().plain_text(),
+            "100 recovered"
         );
     }
 

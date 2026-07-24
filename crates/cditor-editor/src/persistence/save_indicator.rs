@@ -137,5 +137,14 @@ mod tests {
             reason.message(),
             "只读：文档格式 v3 高于当前支持的 v1，请升级 Cditor 后编辑。"
         );
+
+        let recovery = EditorReadonlyReason::NewerOperationSchema {
+            written_major: 4,
+            supported_major: 1,
+        };
+        assert_eq!(
+            recovery.message(),
+            "只读：恢复日志格式 v4 高于当前支持的 v1，请升级 Cditor 后恢复。"
+        );
     }
 }

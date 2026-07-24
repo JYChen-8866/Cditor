@@ -3,8 +3,12 @@ use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
 use cditor_runtime::document_runtime::{
     DocumentRuntimeColdStartData, DocumentRuntimeColdStartReport,
 };
+use cditor_storage::EmergencyLogEntry;
 
-use crate::{EditorSession, EditorSessionHandle};
+use crate::{
+    EditorSession, EditorSessionHandle, EmergencyRecoveryDecision, EmergencyRecoveryReport,
+    plan_emergency_recovery, project_emergency_recovery,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionColdStartRequest {
@@ -12,12 +16,15 @@ pub struct SessionColdStartRequest {
     pub viewport_height: f64,
     pub cached_page_layout: Option<PageLayoutIndex>,
     pub readonly: bool,
+    pub emergency_log_entries: Vec<EmergencyLogEntry>,
 }
 
 #[derive(Debug)]
 pub struct SessionColdStartResult {
     pub session: EditorSessionHandle,
     pub report: DocumentRuntimeColdStartReport,
+    pub emergency_recovery: Option<EmergencyRecoveryReport>,
+    pub emergency_newer_major: Option<u32>,
 }
 
 /// Opens a session from storage-neutral document data.
@@ -43,9 +50,28 @@ pub fn open_editor_session(
         report.page_layout_cache_hit = true;
     }
 
+    let (emergency_recovery, emergency_newer_major) =
+        match plan_emergency_recovery(request.emergency_log_entries).map_err(|message| {
+            ProtocolError::new(ProtocolErrorCode::ApplyFailed, message).with_document(document_id)
+        })? {
+            EmergencyRecoveryDecision::Replay(plan) => {
+                let report = project_emergency_recovery(&mut runtime, plan).map_err(|message| {
+                    ProtocolError::new(ProtocolErrorCode::ApplyFailed, message)
+                        .with_document(document_id)
+                })?;
+                (Some(report), None)
+            }
+            EmergencyRecoveryDecision::ReadOnlyNewerMajor { written_major, .. } => {
+                (None, Some(written_major))
+            }
+        };
+    let readonly = request.readonly || emergency_newer_major.is_some();
+
     Ok(SessionColdStartResult {
-        session: EditorSession::new(runtime, request.readonly).into_handle(),
+        session: EditorSession::new(runtime, readonly).into_handle(),
         report,
+        emergency_recovery,
+        emergency_newer_major,
     })
 }
 
@@ -53,6 +79,9 @@ pub fn open_editor_session(
 mod tests {
     use cditor_core::{
         document::BlockIndexRecord,
+        edit::{
+            ChangeOrigin, EditOperation, EditTransaction, EditTransactionKind, encode_transaction,
+        },
         layout::{HeightConfidence, PageLayout, PageLayoutIndex, PagePolicy},
         rich_text::{BlockAttrs, BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind},
     };
@@ -114,6 +143,29 @@ mod tests {
         .unwrap()
     }
 
+    fn emergency_entry() -> EmergencyLogEntry {
+        let transaction = EditTransaction::new(
+            10,
+            EditTransactionKind::Typing,
+            10,
+            vec![EditOperation::InsertText {
+                block_id: 1,
+                offset: 1,
+                text: " recovered".to_owned(),
+            }],
+            vec![EditOperation::DeleteText {
+                block_id: 1,
+                range: 1..11,
+            }],
+        )
+        .with_origin(ChangeOrigin::User);
+        EmergencyLogEntry {
+            sequence: 3,
+            transaction_id: transaction.id,
+            envelope: encode_transaction(&transaction).unwrap(),
+        }
+    }
+
     #[test]
     fn cold_start_hydrates_initial_payloads_and_returns_the_runtime_owner() {
         let result = open_editor_session(SessionColdStartRequest {
@@ -121,6 +173,7 @@ mod tests {
             viewport_height: 720.0,
             cached_page_layout: Some(cached_page_layout(PagePolicy::default())),
             readonly: false,
+            emergency_log_entries: Vec::new(),
         })
         .unwrap();
 
@@ -143,6 +196,7 @@ mod tests {
             viewport_height: 720.0,
             cached_page_layout: None,
             readonly: false,
+            emergency_log_entries: Vec::new(),
         })
         .unwrap_err();
 
@@ -160,6 +214,7 @@ mod tests {
             viewport_height: 720.0,
             cached_page_layout: Some(cached_page_layout(incompatible_policy)),
             readonly: true,
+            emergency_log_entries: Vec::new(),
         })
         .unwrap();
 
@@ -170,5 +225,30 @@ mod tests {
         };
         assert!(summary.readonly);
         assert!(!result.report.page_layout_cache_hit);
+    }
+
+    #[test]
+    fn cold_start_replays_compatible_emergency_transactions_before_exposure() {
+        let result = open_editor_session(SessionColdStartRequest {
+            data: cold_start_data(2),
+            viewport_height: 720.0,
+            cached_page_layout: None,
+            readonly: false,
+            emergency_log_entries: vec![emergency_entry()],
+        })
+        .unwrap();
+
+        assert_eq!(
+            result.session.block_plain_text(1).unwrap().as_deref(),
+            Some("1 recovered")
+        );
+        assert_eq!(
+            result
+                .emergency_recovery
+                .expect("recovery report")
+                .replayed_transactions,
+            1
+        );
+        assert!(result.session.snapshot().unwrap().dirty);
     }
 }

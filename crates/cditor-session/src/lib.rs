@@ -8,6 +8,7 @@ mod ai_port;
 mod cold_start;
 mod diagnostics_snapshot;
 mod document_snapshot;
+mod emergency_log;
 mod history_port;
 mod input_port;
 mod layout_port;
@@ -28,6 +29,12 @@ pub use document_snapshot::{
     SessionDocumentSnapshot, TextBlockContextSnapshot, project_block_attrs,
     project_document_snapshot, project_focused_text_block_context, project_selected_text,
     project_text_block_context, project_visible_block_subset, project_whiteboard_scene,
+};
+pub use emergency_log::{
+    EmergencyRecoveryDecision, EmergencyRecoveryPlan, EmergencyRecoveryReport,
+    MAX_EMERGENCY_AFFECTED_BLOCKS, MAX_EMERGENCY_LOG_BYTES, MAX_EMERGENCY_LOG_ENTRIES,
+    plan_emergency_recovery, project_emergency_payload_request, project_emergency_payload_result,
+    project_emergency_recovery,
 };
 pub use history_port::{
     HistoryActionSnapshot, HistoryDirection, UndoBlobSpillApplySnapshot, UndoBlobWriteResult,
