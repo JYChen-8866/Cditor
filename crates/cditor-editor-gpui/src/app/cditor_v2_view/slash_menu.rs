@@ -17,23 +17,24 @@ impl CditorV2View {
             .ready_session()
             .and_then(|session| session.focused_text_block_context().ok().flatten())
         else {
-            self.slash_menu = None;
+            self.overlay.slash_menu = None;
             return;
         };
         let Some(caret) = context.caret else {
-            self.slash_menu = None;
+            self.overlay.slash_menu = None;
             return;
         };
         let block_id = context.block_id;
         let text = context.text;
         let Some((trigger_start, query)) = crate::overlay::slash_query_before_caret(&text, caret)
         else {
-            self.slash_menu = None;
+            self.overlay.slash_menu = None;
             return;
         };
         let (x, y) = self.slash_menu_anchor(block_id, caret);
         let mut next = SlashMenuState::new(block_id, trigger_start, query, x, y);
         if let Some(previous) = self
+            .overlay
             .slash_menu
             .as_ref()
             .filter(|menu| menu.block_id == block_id && menu.trigger_start == trigger_start)
@@ -43,7 +44,7 @@ impl CditorV2View {
                 .min(next.visible_items().len().saturating_sub(1));
             next.scroll_start = previous.scroll_start;
         }
-        self.slash_menu = Some(next);
+        self.overlay.slash_menu = Some(next);
         cx.notify();
     }
 
@@ -52,7 +53,7 @@ impl CditorV2View {
         index: usize,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(mut menu) = self.slash_menu.clone() else {
+        let Some(mut menu) = self.overlay.slash_menu.clone() else {
             return false;
         };
         let Some(item) = menu.visible_items().get(index).cloned() else {
@@ -66,7 +67,7 @@ impl CditorV2View {
         &mut self,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(menu) = self.slash_menu.clone() else {
+        let Some(menu) = self.overlay.slash_menu.clone() else {
             return false;
         };
         let Some(item) = menu.selected_item() else {
@@ -80,7 +81,7 @@ impl CditorV2View {
         delta: isize,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(menu) = self.slash_menu.as_mut() else {
+        let Some(menu) = self.overlay.slash_menu.as_mut() else {
             return false;
         };
         let changed = menu.move_selection(delta);
@@ -95,7 +96,7 @@ impl CditorV2View {
         delta_rows: isize,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(menu) = self.slash_menu.as_mut() else {
+        let Some(menu) = self.overlay.slash_menu.as_mut() else {
             return false;
         };
         let changed = menu.scroll(delta_rows);
@@ -110,7 +111,7 @@ impl CditorV2View {
         index: usize,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(menu) = self.slash_menu.as_mut() else {
+        let Some(menu) = self.overlay.slash_menu.as_mut() else {
             return false;
         };
         if index >= menu.visible_items().len() || menu.selected_index == index {
@@ -122,7 +123,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn cancel_slash_menu(&mut self, cx: &mut Context<Self>) -> bool {
-        let had_menu = self.slash_menu.take().is_some();
+        let had_menu = self.overlay.slash_menu.take().is_some();
         if had_menu {
             cx.notify();
         }
@@ -154,7 +155,7 @@ impl CditorV2View {
                     Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied
                 )
             });
-            self.slash_menu = None;
+            self.overlay.slash_menu = None;
             if !changed {
                 return false;
             }
@@ -188,7 +189,7 @@ impl CditorV2View {
         );
         match result {
             Ok(outcome) => {
-                self.slash_menu = None;
+                self.overlay.slash_menu = None;
                 if outcome.status == CommandOutcomeStatus::Applied && opens_whiteboard {
                     self.open_whiteboard_editor_from_gui(menu.block_id, cx);
                 }
@@ -197,7 +198,7 @@ impl CditorV2View {
             }
             Err(error) => {
                 self.status.save_status = EditorSaveStatus::Failed(error.to_string());
-                self.slash_menu = None;
+                self.overlay.slash_menu = None;
                 cx.notify();
                 false
             }

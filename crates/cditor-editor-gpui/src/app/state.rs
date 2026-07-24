@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cditor_session::EditorSessionHandle;
 use gpui::{Context, FocusHandle};
 
@@ -12,12 +14,65 @@ use crate::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::app::interaction::table_reorder::GuiTableReorderDrag;
 use crate::app::interaction::table_resize::GuiTableResizeDrag;
 use crate::app::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
+use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::input::BlockDragSelectionController;
+use crate::input::{AiPromptState, CodeLanguageEditState};
+use crate::overlay::{GuiToast, SlashMenuState, WhiteboardEditorSession};
 use crate::persistence::EditorSaveStatus;
 use crate::scroll::ScrollAccumulator;
 use crate::text::TextPlatformLayoutIdentity;
 
-use super::cditor_v2_view::{CditorV2View, GuiPlatformInputTarget};
+use super::cditor_v2_view::{
+    CditorV2View, GuiPlatformInputTarget, SelectionToolbarDelay, ai::default_ai_provider,
+};
+
+pub(in crate::app) struct FeatureUiState {
+    pub(in crate::app) ai_provider: Arc<dyn cditor_ai::AiProvider>,
+    pub(in crate::app) ai_enabled: bool,
+    pub(in crate::app) code_highlight_theme: &'static str,
+    pub(in crate::app) whiteboard_editor: Option<WhiteboardEditorSession>,
+}
+
+impl Default for FeatureUiState {
+    fn default() -> Self {
+        Self {
+            ai_provider: default_ai_provider(),
+            ai_enabled: true,
+            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
+            whiteboard_editor: None,
+        }
+    }
+}
+
+impl FeatureUiState {
+    pub(in crate::app) fn reset_session(&mut self) {
+        self.whiteboard_editor = None;
+    }
+}
+
+#[derive(Default)]
+pub(in crate::app) struct OverlayUiState {
+    pub(in crate::app) ai_prompt: Option<AiPromptState>,
+    pub(in crate::app) ai_preview_scroll_handle: gpui::ScrollHandle,
+    pub(in crate::app) code_language_edit: Option<CodeLanguageEditState>,
+    pub(in crate::app) code_theme_menu_block_id: Option<BlockId>,
+    pub(in crate::app) slash_menu: Option<SlashMenuState>,
+    pub(in crate::app) toast: Option<GuiToast>,
+    pub(in crate::app) table_menu_ui: crate::block::table::menu::TableMenuUiState,
+    pub(in crate::app) gutter_toolbar_block_id: Option<BlockId>,
+    pub(in crate::app) selection_toolbar_delay: SelectionToolbarDelay,
+    pub(in crate::app) block_transform_menu_open: bool,
+    pub(in crate::app) color_menu_open: bool,
+    pub(in crate::app) color_menu_hover_generation: u64,
+    pub(in crate::app) color_menu_scroll_handle: gpui::ScrollHandle,
+    pub(in crate::app) last_color_action: Option<crate::overlay::ColorMenuAction>,
+}
+
+impl OverlayUiState {
+    pub(in crate::app) fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
 
 pub(in crate::app) struct FocusUiState {
     pub(in crate::app) editor: FocusHandle,
@@ -224,6 +279,47 @@ mod tests {
             GuiTableInteractionMode::Idle
         ));
         assert!(interaction.projected_block_rects.is_empty());
+    }
+
+    #[test]
+    fn overlay_reset_discards_document_bound_transient_state() {
+        let mut overlay = OverlayUiState {
+            code_theme_menu_block_id: Some(7),
+            gutter_toolbar_block_id: Some(8),
+            block_transform_menu_open: true,
+            color_menu_open: true,
+            color_menu_hover_generation: 9,
+            ..Default::default()
+        };
+        overlay.table_menu_ui.query = "status".to_owned();
+        overlay.table_menu_ui.caret_offset = 6;
+        overlay.table_menu_ui.marked_range = Some(0..6);
+
+        overlay.reset();
+
+        assert!(overlay.code_theme_menu_block_id.is_none());
+        assert!(overlay.gutter_toolbar_block_id.is_none());
+        assert!(!overlay.block_transform_menu_open);
+        assert!(!overlay.color_menu_open);
+        assert_eq!(overlay.color_menu_hover_generation, 0);
+        assert!(overlay.table_menu_ui.query.is_empty());
+        assert_eq!(overlay.table_menu_ui.caret_offset, 0);
+        assert!(overlay.table_menu_ui.marked_range.is_none());
+    }
+
+    #[test]
+    fn feature_session_reset_preserves_host_configuration() {
+        let mut features = FeatureUiState {
+            ai_enabled: false,
+            code_highlight_theme: "host-theme",
+            ..Default::default()
+        };
+
+        features.reset_session();
+
+        assert!(!features.ai_enabled);
+        assert_eq!(features.code_highlight_theme, "host-theme");
+        assert!(features.whiteboard_editor.is_none());
     }
 }
 

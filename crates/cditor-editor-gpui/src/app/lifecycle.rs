@@ -4,12 +4,11 @@ use gpui::Context;
 
 use cditor_core::ids::BlockId;
 
-use crate::app::cditor_v2_view::ai::default_ai_provider;
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::app::state::{
-    EditorStatusUiState, FocusUiState, InteractionUiState, PlatformInputState,
+    EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState, OverlayUiState,
+    PlatformInputState,
 };
-use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::overlay::table::TableViewportMeasurement;
 use crate::persistence::{
     DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline, schedule_storage_autosave,
@@ -82,10 +81,8 @@ impl CditorV2View {
             state: CditorViewState::Ready(session),
             focus: FocusUiState::new(cx),
             input: PlatformInputState::default(),
-            ai_provider: default_ai_provider(),
-            ai_enabled: true,
-            ai_prompt: None,
-            ai_preview_scroll_handle: Default::default(),
+            features: FeatureUiState::default(),
+            overlay: OverlayUiState::default(),
             show_debug,
             status: EditorStatusUiState::new(readonly, requested_readonly),
             interaction: InteractionUiState::default(),
@@ -96,20 +93,6 @@ impl CditorV2View {
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
-            whiteboard_editor: None,
-            code_language_edit: None,
-            code_theme_menu_block_id: None,
-            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
-            slash_menu: None,
-            toast: None,
-            table_menu_ui: Default::default(),
-            gutter_toolbar_block_id: None,
-            selection_toolbar_delay: Default::default(),
-            block_transform_menu_open: false,
-            color_menu_open: false,
-            color_menu_hover_generation: 0,
-            color_menu_scroll_handle: Default::default(),
-            last_color_action: None,
         }
     }
 
@@ -130,10 +113,8 @@ impl CditorV2View {
             },
             focus: FocusUiState::new(cx),
             input: PlatformInputState::default(),
-            ai_provider: default_ai_provider(),
-            ai_enabled: true,
-            ai_prompt: None,
-            ai_preview_scroll_handle: Default::default(),
+            features: FeatureUiState::default(),
+            overlay: OverlayUiState::default(),
             show_debug,
             status: EditorStatusUiState::new(readonly, readonly),
             interaction: InteractionUiState::default(),
@@ -144,20 +125,6 @@ impl CditorV2View {
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
-            whiteboard_editor: None,
-            code_language_edit: None,
-            code_theme_menu_block_id: None,
-            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
-            slash_menu: None,
-            toast: None,
-            table_menu_ui: Default::default(),
-            gutter_toolbar_block_id: None,
-            selection_toolbar_delay: Default::default(),
-            block_transform_menu_open: false,
-            color_menu_open: false,
-            color_menu_hover_generation: 0,
-            color_menu_scroll_handle: Default::default(),
-            last_color_action: None,
         }
     }
 
@@ -181,10 +148,8 @@ impl CditorV2View {
             },
             focus: FocusUiState::new(cx),
             input: PlatformInputState::default(),
-            ai_provider: default_ai_provider(),
-            ai_enabled: true,
-            ai_prompt: None,
-            ai_preview_scroll_handle: Default::default(),
+            features: FeatureUiState::default(),
+            overlay: OverlayUiState::default(),
             show_debug,
             status: EditorStatusUiState::new(readonly, readonly),
             interaction: InteractionUiState::default(),
@@ -195,20 +160,6 @@ impl CditorV2View {
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
-            whiteboard_editor: None,
-            code_language_edit: None,
-            code_theme_menu_block_id: None,
-            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
-            slash_menu: None,
-            toast: None,
-            table_menu_ui: Default::default(),
-            gutter_toolbar_block_id: None,
-            selection_toolbar_delay: Default::default(),
-            block_transform_menu_open: false,
-            color_menu_open: false,
-            color_menu_hover_generation: 0,
-            color_menu_scroll_handle: Default::default(),
-            last_color_action: None,
         }
     }
 
@@ -221,6 +172,8 @@ impl CditorV2View {
         self.focus.reset_session_projection();
         self.input.reset();
         self.interaction.reset();
+        self.features.reset_session();
+        self.overlay.reset();
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.text_surface_layouts.clear();
@@ -228,16 +181,6 @@ impl CditorV2View {
         self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
-        self.whiteboard_editor = None;
-        self.code_language_edit = None;
-        self.code_theme_menu_block_id = None;
-        self.slash_menu = None;
-        self.toast = None;
-        self.table_menu_ui = Default::default();
-        self.gutter_toolbar_block_id = None;
-        self.selection_toolbar_delay = Default::default();
-        self.block_transform_menu_open = false;
-        self.color_menu_open = false;
     }
 
     pub fn apply_recovered_session(
@@ -261,21 +204,14 @@ impl CditorV2View {
         self.focus.reset_session_projection();
         self.input.reset();
         self.interaction.reset();
+        self.features.reset_session();
+        self.overlay.reset();
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.text_surface_layouts.clear();
         self.code_highlights.clear();
         self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
-        self.code_language_edit = None;
-        self.code_theme_menu_block_id = None;
-        self.slash_menu = None;
-        self.toast = None;
-        self.table_menu_ui = Default::default();
-        self.gutter_toolbar_block_id = None;
-        self.selection_toolbar_delay = Default::default();
-        self.block_transform_menu_open = false;
-        self.color_menu_open = false;
     }
 
     /// Return the persistent horizontal `ScrollHandle` for a table block.

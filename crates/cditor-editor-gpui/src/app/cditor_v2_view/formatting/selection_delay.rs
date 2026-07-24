@@ -47,7 +47,7 @@ impl SelectionToolbarDelay {
 
 impl CditorV2View {
     pub(in crate::app) fn sync_selection_toolbar_delay(&mut self, cx: &mut Context<Self>) -> bool {
-        let target = (self.gutter_toolbar_block_id.is_none())
+        let target = (self.overlay.gutter_toolbar_block_id.is_none())
             .then(|| {
                 self.ready_session().and_then(|session| {
                     let snapshot = session.document_snapshot().ok()?;
@@ -59,12 +59,12 @@ impl CditorV2View {
             })
             .flatten();
 
-        if let Some(generation) = self.selection_toolbar_delay.observe(target) {
+        if let Some(generation) = self.overlay.selection_toolbar_delay.observe(target) {
             let delay = cx.background_executor().timer(SELECTION_TOOLBAR_DELAY);
             cx.spawn(async move |view, cx| {
                 delay.await;
                 let _ = view.update(cx, |view, cx| {
-                    if view.selection_toolbar_delay.reveal(generation) {
+                    if view.overlay.selection_toolbar_delay.reveal(generation) {
                         cx.notify();
                     }
                 });
@@ -72,7 +72,7 @@ impl CditorV2View {
             .detach();
         }
 
-        self.selection_toolbar_delay.is_ready_for(target)
+        self.overlay.selection_toolbar_delay.is_ready_for(target)
     }
 }
 

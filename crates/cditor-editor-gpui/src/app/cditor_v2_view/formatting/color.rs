@@ -53,19 +53,22 @@ pub(super) fn selected_spans_color(
 
 impl CditorV2View {
     pub(crate) fn set_color_menu_hovered(&mut self, hovered: bool, cx: &mut gpui::Context<Self>) {
-        self.color_menu_hover_generation = self.color_menu_hover_generation.wrapping_add(1);
+        self.overlay.color_menu_hover_generation =
+            self.overlay.color_menu_hover_generation.wrapping_add(1);
         if hovered {
             self.open_color_menu_from_gui(cx);
             return;
         }
 
-        let generation = self.color_menu_hover_generation;
+        let generation = self.overlay.color_menu_hover_generation;
         let delay = cx.background_executor().timer(Duration::from_millis(140));
         cx.spawn(async move |view, cx| {
             delay.await;
             let _ = view.update(cx, |view, cx| {
-                if view.color_menu_hover_generation == generation && view.color_menu_open {
-                    view.color_menu_open = false;
+                if view.overlay.color_menu_hover_generation == generation
+                    && view.overlay.color_menu_open
+                {
+                    view.overlay.color_menu_open = false;
                     cx.notify();
                 }
             });
@@ -74,18 +77,19 @@ impl CditorV2View {
     }
 
     pub(crate) fn open_color_menu_from_gui(&mut self, cx: &mut gpui::Context<Self>) -> bool {
-        let has_target = self.gutter_toolbar_block_id.is_some()
+        let has_target = self.overlay.gutter_toolbar_block_id.is_some()
             || self.ready_session().is_some_and(|session| {
                 session
                     .document_snapshot()
                     .is_ok_and(|snapshot| snapshot.has_document_text_selection)
             });
-        if self.color_menu_open || !has_target {
+        if self.overlay.color_menu_open || !has_target {
             return false;
         }
-        self.color_menu_open = true;
-        self.block_transform_menu_open = false;
-        self.color_menu_scroll_handle
+        self.overlay.color_menu_open = true;
+        self.overlay.block_transform_menu_open = false;
+        self.overlay
+            .color_menu_scroll_handle
             .set_offset(gpui::point(gpui::px(0.0), gpui::px(0.0)));
         cx.notify();
         true
@@ -106,7 +110,7 @@ impl CditorV2View {
             "apply.begin",
             format_args!(
                 "live_toolbar_block={:?} captured_block={target_block_id:?} resolved_gutter_block={gutter_block_id:?} has_text_selection={has_text_selection} target={:?} value={:?}",
-                self.gutter_toolbar_block_id,
+                self.overlay.gutter_toolbar_block_id,
                 action.target,
                 action.value(),
             ),
@@ -138,9 +142,10 @@ impl CditorV2View {
                     "apply.finish",
                     format_args!("changed={changed} before={before:?} after={after:?}"),
                 );
-                self.last_color_action = Some(action);
-                self.color_menu_open = false;
-                self.color_menu_hover_generation = self.color_menu_hover_generation.wrapping_add(1);
+                self.overlay.last_color_action = Some(action);
+                self.overlay.color_menu_open = false;
+                self.overlay.color_menu_hover_generation =
+                    self.overlay.color_menu_hover_generation.wrapping_add(1);
                 cx.notify();
                 changed
             }

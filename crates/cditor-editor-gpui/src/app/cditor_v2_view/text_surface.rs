@@ -73,7 +73,7 @@ impl CditorV2View {
 
         window.focus(&self.focus.editor, cx);
         self.interaction.table_interaction_mode = Default::default();
-        self.table_menu_ui = Default::default();
+        self.overlay.table_menu_ui = Default::default();
         self.clear_gutter_action();
         if let Some(session) = self.ready_session() {
             let command = if let Some(selection) = click_selection {

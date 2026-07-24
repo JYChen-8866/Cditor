@@ -13,9 +13,9 @@ impl CditorV2View {
         };
         if drag.exceeded_threshold {
             clear_committed_gutter_action(&mut self.interaction.action_block_id, drag.block_id);
-            self.gutter_toolbar_block_id = None;
-            self.block_transform_menu_open = false;
-            self.color_menu_open = false;
+            self.overlay.gutter_toolbar_block_id = None;
+            self.overlay.block_transform_menu_open = false;
+            self.overlay.color_menu_open = false;
         }
         self.interaction.gutter_drag_auto_scroll_scheduled = false;
         let Some(target) = drag.target.filter(|_| drag.exceeded_threshold) else {

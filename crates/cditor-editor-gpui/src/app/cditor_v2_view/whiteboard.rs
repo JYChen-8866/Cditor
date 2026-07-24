@@ -63,13 +63,13 @@ impl CditorV2View {
             }
             board
         });
-        self.whiteboard_editor = Some(WhiteboardEditorSession { block_id, board });
+        self.features.whiteboard_editor = Some(WhiteboardEditorSession { block_id, board });
         cx.notify();
         true
     }
 
     pub(crate) fn close_whiteboard_editor_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(session) = self.whiteboard_editor.take() else {
+        let Some(session) = self.features.whiteboard_editor.take() else {
             return false;
         };
         // Flush the final scene state back to the runtime payload before dropping

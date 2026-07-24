@@ -55,13 +55,24 @@ impl CditorV2View {
     fn payload_cache_ui_pins(&self) -> Vec<BlockId> {
         let mut pins = HashSet::new();
         pins.extend(self.interaction.action_block_id);
-        pins.extend(self.gutter_toolbar_block_id);
-        pins.extend(self.code_theme_menu_block_id);
-        pins.extend(self.ai_prompt.as_ref().map(|prompt| prompt.block_id));
-        pins.extend(self.slash_menu.as_ref().map(|menu| menu.block_id));
-        pins.extend(self.code_language_edit.as_ref().map(|edit| edit.block_id));
+        pins.extend(self.overlay.gutter_toolbar_block_id);
+        pins.extend(self.overlay.code_theme_menu_block_id);
         pins.extend(
-            self.whiteboard_editor
+            self.overlay
+                .ai_prompt
+                .as_ref()
+                .map(|prompt| prompt.block_id),
+        );
+        pins.extend(self.overlay.slash_menu.as_ref().map(|menu| menu.block_id));
+        pins.extend(
+            self.overlay
+                .code_language_edit
+                .as_ref()
+                .map(|edit| edit.block_id),
+        );
+        pins.extend(
+            self.features
+                .whiteboard_editor
                 .as_ref()
                 .map(|session| session.block_id),
         );

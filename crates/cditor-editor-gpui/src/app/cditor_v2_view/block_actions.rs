@@ -34,7 +34,7 @@ impl CditorV2View {
             cx,
         ) {
             Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied => {
-                self.slash_menu = None;
+                self.overlay.slash_menu = None;
                 cx.notify();
                 true
             }
@@ -61,10 +61,10 @@ impl CditorV2View {
             cx,
         ) {
             Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied => {
-                if self.gutter_toolbar_block_id == Some(block_id) {
-                    self.gutter_toolbar_block_id = None;
-                    self.block_transform_menu_open = false;
-                    self.color_menu_open = false;
+                if self.overlay.gutter_toolbar_block_id == Some(block_id) {
+                    self.overlay.gutter_toolbar_block_id = None;
+                    self.overlay.block_transform_menu_open = false;
+                    self.overlay.color_menu_open = false;
                 }
                 if self.interaction.action_block_id == Some(block_id) {
                     self.interaction.action_block_id = None;

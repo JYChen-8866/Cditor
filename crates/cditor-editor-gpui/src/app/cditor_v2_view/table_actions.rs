@@ -31,7 +31,7 @@ impl CditorV2View {
                 col: selection.col,
             })
             .unwrap_or(GuiTableInteractionMode::Idle);
-        self.table_menu_ui = Default::default();
+        self.overlay.table_menu_ui = Default::default();
         cx.notify();
         true
     }
@@ -92,7 +92,7 @@ impl CditorV2View {
         }
         self.interaction.table_interaction_mode =
             GuiTableInteractionMode::CellMenu(TableCellSelection::new(block_id, row, col));
-        self.table_menu_ui = Default::default();
+        self.overlay.table_menu_ui = Default::default();
         cx.notify();
     }
 
@@ -284,11 +284,12 @@ impl CditorV2View {
         let Some(selection) = self.interaction.table_interaction_mode.axis_selection() else {
             return false;
         };
-        let Some(action) =
-            filter_table_menu_items(&table_axis_menu_items(selection), &self.table_menu_ui.query)
-                .first()
-                .map(|item| item.action)
-        else {
+        let Some(action) = filter_table_menu_items(
+            &table_axis_menu_items(selection),
+            &self.overlay.table_menu_ui.query,
+        )
+        .first()
+        .map(|item| item.action) else {
             return true;
         };
         let _ = self.apply_selected_table_menu_action_from_gui(action, cx);
@@ -322,7 +323,7 @@ impl CditorV2View {
         {
             return false;
         }
-        self.table_menu_ui.delete_backward();
+        self.overlay.table_menu_ui.delete_backward();
         cx.notify();
         true
     }
@@ -335,10 +336,10 @@ impl CditorV2View {
         if self.selected_table_range().is_none() {
             return false;
         }
-        if self.table_menu_ui.color_submenu_open == open {
+        if self.overlay.table_menu_ui.color_submenu_open == open {
             return false;
         }
-        self.table_menu_ui.color_submenu_open = open;
+        self.overlay.table_menu_ui.color_submenu_open = open;
         cx.notify();
         true
     }

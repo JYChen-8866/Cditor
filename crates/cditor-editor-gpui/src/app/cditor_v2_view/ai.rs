@@ -25,11 +25,11 @@ pub(in crate::app) fn default_ai_provider() -> Arc<dyn AiProvider> {
 
 impl CditorV2View {
     pub(crate) fn invoke_empty_line_ai_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        if !self.ai_enabled
+        if !self.features.ai_enabled
             || self.status.readonly
-            || self.ai_prompt.is_some()
-            || self.slash_menu.is_some()
-            || self.code_language_edit.is_some()
+            || self.overlay.ai_prompt.is_some()
+            || self.overlay.slash_menu.is_some()
+            || self.overlay.code_language_edit.is_some()
             || self.ready_session().is_some_and(|session| {
                 session
                     .ai_context()
@@ -59,7 +59,7 @@ impl CditorV2View {
         y: f32,
         cx: &mut Context<Self>,
     ) -> bool {
-        let presentation = if self.gutter_toolbar_block_id.is_some() {
+        let presentation = if self.overlay.gutter_toolbar_block_id.is_some() {
             AiRequestPresentation::AssistantPanel
         } else {
             AiRequestPresentation::Automatic
@@ -74,7 +74,7 @@ impl CditorV2View {
         presentation: AiRequestPresentation,
         cx: &mut Context<Self>,
     ) -> bool {
-        if !self.ai_enabled || self.status.readonly {
+        if !self.features.ai_enabled || self.status.readonly {
             return false;
         }
         let Some(block_id) = self
@@ -89,9 +89,9 @@ impl CditorV2View {
         if let Some(session) = self.ready_session() {
             let _ = session.request_ai_session(AiSessionRequest::Cancel);
         }
-        self.slash_menu = None;
-        self.code_language_edit = None;
-        self.ai_prompt = Some(AiPromptState::with_presentation(
+        self.overlay.slash_menu = None;
+        self.overlay.code_language_edit = None;
+        self.overlay.ai_prompt = Some(AiPromptState::with_presentation(
             block_id,
             px(x),
             px(y),
@@ -107,16 +107,17 @@ impl CditorV2View {
         instruction: impl Into<String>,
         cx: &mut Context<Self>,
     ) -> bool {
-        if !self.ai_enabled {
+        if !self.features.ai_enabled {
             return false;
         }
         let instruction = instruction.into();
         let presentation = self
+            .overlay
             .ai_prompt
             .as_ref()
             .map(|prompt| prompt.presentation)
             .unwrap_or_else(|| {
-                if self.gutter_toolbar_block_id.is_some() {
+                if self.overlay.gutter_toolbar_block_id.is_some() {
                     AiRequestPresentation::AssistantPanel
                 } else {
                     AiRequestPresentation::Automatic
@@ -144,10 +145,10 @@ impl CditorV2View {
                 return false;
             }
         };
-        self.ai_prompt = None;
+        self.overlay.ai_prompt = None;
         self.input.target = None;
 
-        let provider = self.ai_provider.clone();
+        let provider = self.features.ai_provider.clone();
         let request_id = dispatch.request.request_id;
         let stream_token = match self.ready_session().and_then(|session| {
             session
@@ -240,7 +241,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn submit_ai_prompt_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(prompt) = self.ai_prompt.as_ref() else {
+        let Some(prompt) = self.overlay.ai_prompt.as_ref() else {
             return false;
         };
         let instruction = prompt.draft.trim().to_owned();
@@ -255,7 +256,7 @@ impl CditorV2View {
         action: AiPromptEditAction,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(prompt) = self.ai_prompt.as_mut() else {
+        let Some(prompt) = self.overlay.ai_prompt.as_mut() else {
             return false;
         };
         match apply_ai_prompt_action(prompt, action) {
@@ -270,7 +271,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn cancel_ai_prompt(&mut self, cx: &mut Context<Self>) -> bool {
-        let had_prompt = self.ai_prompt.take().is_some();
+        let had_prompt = self.overlay.ai_prompt.take().is_some();
         if had_prompt {
             self.input.target = None;
             cx.notify();

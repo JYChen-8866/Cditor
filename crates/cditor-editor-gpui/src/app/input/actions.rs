@@ -53,12 +53,12 @@ impl CditorV2View {
             ),
         );
 
-        if self.ai_prompt.is_some() {
+        if self.overlay.ai_prompt.is_some() {
             self.handle_bound_ai_prompt_action(action, cx);
             cx.stop_propagation();
             return;
         }
-        if self.code_language_edit.is_some() {
+        if self.overlay.code_language_edit.is_some() {
             self.handle_bound_code_language_action(action, cx);
             cx.stop_propagation();
             return;
@@ -112,27 +112,27 @@ impl CditorV2View {
                     self.delete_table_menu_query_backward_from_gui(cx)
                 }
                 BoundInputAction::DeleteForward => {
-                    self.table_menu_ui.delete_forward();
+                    self.overlay.table_menu_ui.delete_forward();
                     cx.notify();
                     true
                 }
                 BoundInputAction::MoveLeft { .. } => {
-                    self.table_menu_ui.move_left();
+                    self.overlay.table_menu_ui.move_left();
                     cx.notify();
                     true
                 }
                 BoundInputAction::MoveRight { .. } => {
-                    self.table_menu_ui.move_right();
+                    self.overlay.table_menu_ui.move_right();
                     cx.notify();
                     true
                 }
                 BoundInputAction::MoveToLineStart { .. } => {
-                    self.table_menu_ui.move_to_start();
+                    self.overlay.table_menu_ui.move_to_start();
                     cx.notify();
                     true
                 }
                 BoundInputAction::MoveToLineEnd { .. } => {
-                    self.table_menu_ui.move_to_end();
+                    self.overlay.table_menu_ui.move_to_end();
                     cx.notify();
                     true
                 }
@@ -142,8 +142,10 @@ impl CditorV2View {
                         .and_then(|item| item.text())
                         .map(|text| normalize_external_line_endings(&text).replace('\n', " "))
                     {
-                        self.table_menu_ui
-                            .replace_range(self.table_menu_ui.input_replacement_range(), &text);
+                        self.overlay.table_menu_ui.replace_range(
+                            self.overlay.table_menu_ui.input_replacement_range(),
+                            &text,
+                        );
                         cx.notify();
                     }
                     true
@@ -158,7 +160,7 @@ impl CditorV2View {
             return;
         }
 
-        if self.slash_menu.is_some() {
+        if self.overlay.slash_menu.is_some() {
             let handled = match action {
                 BoundInputAction::Cancel => self.cancel_slash_menu(cx),
                 BoundInputAction::MoveUp { .. } => self.move_slash_menu_selection(-1, cx),
@@ -233,7 +235,7 @@ impl CditorV2View {
                 .and_then(|item| item.text())
                 .map(|text| normalize_external_line_endings(&text).replace('\n', " "));
             if let Some(text) = text
-                && let Some(prompt) = self.ai_prompt.as_mut()
+                && let Some(prompt) = self.overlay.ai_prompt.as_mut()
             {
                 prompt.replace_range(prompt.input_replacement_range(), &text);
                 cx.notify();
@@ -278,7 +280,7 @@ impl CditorV2View {
                 .and_then(|item| item.text())
                 .map(|text| normalize_external_line_endings(&text).replace('\n', " "));
             if let Some(text) = text
-                && let Some(edit) = self.code_language_edit.as_mut()
+                && let Some(edit) = self.overlay.code_language_edit.as_mut()
             {
                 edit.replace_range(edit.input_replacement_range(), &text);
                 cx.notify();
@@ -456,7 +458,7 @@ impl CditorV2View {
                 .unwrap_or(false),
             _ => return false,
         };
-        self.slash_menu = None;
+        self.overlay.slash_menu = None;
         true
     }
 

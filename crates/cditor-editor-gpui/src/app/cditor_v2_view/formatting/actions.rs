@@ -14,11 +14,12 @@ impl CditorV2View {
         &mut self,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
-        if self.block_transform_menu_open || self.gutter_toolbar_block_id.is_none() {
+        if self.overlay.block_transform_menu_open || self.overlay.gutter_toolbar_block_id.is_none()
+        {
             return false;
         }
-        self.block_transform_menu_open = true;
-        self.color_menu_open = false;
+        self.overlay.block_transform_menu_open = true;
+        self.overlay.color_menu_open = false;
         cx.notify();
         true
     }
@@ -32,7 +33,7 @@ impl CditorV2View {
         if self.status.readonly {
             return false;
         }
-        let gutter_block_id = (!has_text_selection).then_some(self.gutter_toolbar_block_id);
+        let gutter_block_id = (!has_text_selection).then_some(self.overlay.gutter_toolbar_block_id);
         if let Some(block_id) = gutter_block_id.flatten() {
             let prepared = self
                 .ready_session()

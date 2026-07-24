@@ -113,6 +113,14 @@ fi
 
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
   crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  | grep -E '^[[:space:]]+pub.*(ai_provider|ai_enabled|ai_prompt|ai_preview_scroll_handle|whiteboard_editor|code_language_edit|code_theme_menu_block_id|code_highlight_theme|slash_menu|toast|table_menu_ui|gutter_toolbar_block_id|selection_toolbar_delay|block_transform_menu_open|color_menu_open|color_menu_hover_generation|color_menu_scroll_handle|last_color_action)[[:space:]]*:' \
+  | grep -q .; then
+  echo 'error: feature configuration and transient overlays must remain grouped in FeatureUiState and OverlayUiState' >&2
+  exit 1
+fi
+
+if sed -n '/^pub struct CditorV2View {/,/^}/p' \
+  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
   | grep -E '^[[:space:]]+pub.*(code_language_focus|ai_prompt_focus|sdk_focus_observers_registered|last_emitted_selection|platform_input_target|platform_input_session_identity|platform_input_layout_identity|preferred_text_navigation_x)[[:space:]]*:' \
   | grep -q .; then
   echo 'error: focus and platform input lifecycle fields must remain grouped UI state' >&2

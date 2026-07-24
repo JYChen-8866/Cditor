@@ -159,11 +159,13 @@ impl CditorV2View {
         self.input.session_identity = None;
         self.input.layout_identity = None;
         self.input.target = self
+            .overlay
             .ai_prompt
             .as_ref()
             .map(|prompt| GuiPlatformInputTarget::ai_prompt(prompt.block_id))
             .or_else(|| {
-                self.code_language_edit
+                self.overlay
+                    .code_language_edit
                     .as_ref()
                     .map(|edit| GuiPlatformInputTarget::code_language(edit.block_id))
             })

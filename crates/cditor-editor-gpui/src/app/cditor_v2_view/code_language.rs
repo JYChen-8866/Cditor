@@ -19,6 +19,7 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         if self
+            .overlay
             .code_language_edit
             .as_ref()
             .is_some_and(|edit| edit.block_id == block_id)
@@ -50,7 +51,7 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.code_theme_menu_block_id = None;
+        self.overlay.code_theme_menu_block_id = None;
         if !self.commit_document_composition_before_external_focus(cx) {
             return;
         }
@@ -61,14 +62,14 @@ impl CditorV2View {
             window.viewport_size(),
         );
         let placement = code_language_popup_placement(pointer_y_px, viewport);
-        self.code_language_edit = Some(CodeLanguageEditState::new_dropdown_with_placement(
+        self.overlay.code_language_edit = Some(CodeLanguageEditState::new_dropdown_with_placement(
             block_id, language, placement,
         ));
         cx.notify();
     }
 
     pub(crate) fn commit_code_language_edit(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(edit) = self.code_language_edit.take() else {
+        let Some(edit) = self.overlay.code_language_edit.take() else {
             return false;
         };
         if self.input.target == Some(GuiPlatformInputTarget::code_language(edit.block_id)) {
@@ -96,7 +97,7 @@ impl CditorV2View {
         if !self.commit_document_composition_before_external_focus(cx) {
             return;
         }
-        self.code_language_edit = Some(CodeLanguageEditState {
+        self.overlay.code_language_edit = Some(CodeLanguageEditState {
             block_id,
             original: String::new(),
             draft: language,
@@ -117,7 +118,7 @@ impl CditorV2View {
         action: CodeLanguageEditAction,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(edit) = self.code_language_edit.as_mut() else {
+        let Some(edit) = self.overlay.code_language_edit.as_mut() else {
             return false;
         };
         match apply_code_language_action(edit, action) {
@@ -135,7 +136,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn cancel_code_language_edit(&mut self, cx: &mut Context<Self>) -> bool {
-        let had_edit = self.code_language_edit.take().is_some();
+        let had_edit = self.overlay.code_language_edit.take().is_some();
         if had_edit {
             if self
                 .input
@@ -154,7 +155,7 @@ impl CditorV2View {
         delta_rows: isize,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(edit) = self.code_language_edit.as_mut() else {
+        let Some(edit) = self.overlay.code_language_edit.as_mut() else {
             return false;
         };
         let changed = edit.scroll_suggestions(delta_rows);

@@ -10,12 +10,13 @@ impl CditorV2View {
         block_id: BlockId,
         cx: &mut Context<Self>,
     ) {
-        self.code_language_edit = None;
-        self.code_theme_menu_block_id = if self.code_theme_menu_block_id == Some(block_id) {
-            None
-        } else {
-            Some(block_id)
-        };
+        self.overlay.code_language_edit = None;
+        self.overlay.code_theme_menu_block_id =
+            if self.overlay.code_theme_menu_block_id == Some(block_id) {
+                None
+            } else {
+                Some(block_id)
+            };
         cx.notify();
     }
 
@@ -27,15 +28,15 @@ impl CditorV2View {
         if !CODE_THEME_ITEMS.iter().any(|item| item.id == theme_name) {
             return false;
         }
-        let changed = self.code_highlight_theme != theme_name;
-        self.code_highlight_theme = theme_name;
-        self.code_theme_menu_block_id = None;
+        let changed = self.features.code_highlight_theme != theme_name;
+        self.features.code_highlight_theme = theme_name;
+        self.overlay.code_theme_menu_block_id = None;
         cx.notify();
         changed
     }
 
     pub(crate) fn dismiss_code_theme_menu(&mut self, cx: &mut Context<Self>) -> bool {
-        let dismissed = self.code_theme_menu_block_id.take().is_some();
+        let dismissed = self.overlay.code_theme_menu_block_id.take().is_some();
         if dismissed {
             cx.notify();
         }

@@ -134,9 +134,9 @@ impl CditorV2View {
         enabled: bool,
     ) {
         if let Some(provider) = provider {
-            self.ai_provider = provider;
+            self.features.ai_provider = provider;
         }
-        self.ai_enabled = enabled;
+        self.features.ai_enabled = enabled;
     }
 
     pub fn sdk_is_ready(&self) -> bool {

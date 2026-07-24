@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use gpui::{AppContext, Context, Pixels, Point, Window};
 
@@ -15,11 +12,7 @@ use crate::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::app::platform_layout_cache::PlatformLayoutCache;
 use crate::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
 
-use crate::input::{AiPromptState, CodeLanguageEditState};
 use crate::overlay::GuiToast;
-use crate::overlay::SlashMenuState;
-use crate::overlay::WhiteboardEditorSession;
-
 use crate::persistence::EditorSaveStatus;
 use crate::text::RichTextPlatformLayout;
 #[cfg(test)]
@@ -40,7 +33,10 @@ mod whiteboard;
 
 pub(in crate::app) use super::persistence_bridge::save_status_for_mode;
 pub use super::state::{CditorViewState, EditorReadonlyReason};
-use super::state::{EditorStatusUiState, FocusUiState, InteractionUiState, PlatformInputState};
+use super::state::{
+    EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState, OverlayUiState,
+    PlatformInputState,
+};
 pub(crate) use crate::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::app) use block_actions::block_focus_offset_after_missed_hit_test;
 pub(in crate::app) use formatting::{
@@ -55,10 +51,8 @@ pub struct CditorV2View {
     pub(in crate::app) state: CditorViewState,
     pub(in crate::app) focus: FocusUiState,
     pub(in crate::app) input: PlatformInputState,
-    pub(in crate::app) ai_provider: Arc<dyn cditor_ai::AiProvider>,
-    pub(in crate::app) ai_enabled: bool,
-    pub(in crate::app) ai_prompt: Option<AiPromptState>,
-    pub(in crate::app) ai_preview_scroll_handle: gpui::ScrollHandle,
+    pub(in crate::app) features: FeatureUiState,
+    pub(in crate::app) overlay: OverlayUiState,
     pub(in crate::app) show_debug: bool,
     pub(in crate::app) status: EditorStatusUiState,
     pub(in crate::app) interaction: InteractionUiState,
@@ -69,20 +63,6 @@ pub struct CditorV2View {
     pub(in crate::app) mermaid_renders: MermaidRenderCache,
     pub(in crate::app) mermaid_source_blocks: std::collections::HashSet<BlockId>,
     pub(in crate::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
-    pub(in crate::app) whiteboard_editor: Option<WhiteboardEditorSession>,
-    pub(in crate::app) code_language_edit: Option<CodeLanguageEditState>,
-    pub(in crate::app) code_theme_menu_block_id: Option<BlockId>,
-    pub(in crate::app) code_highlight_theme: &'static str,
-    pub(in crate::app) slash_menu: Option<SlashMenuState>,
-    pub(in crate::app) toast: Option<GuiToast>,
-    pub(in crate::app) table_menu_ui: crate::block::table::menu::TableMenuUiState,
-    pub(in crate::app) gutter_toolbar_block_id: Option<BlockId>,
-    pub(in crate::app) selection_toolbar_delay: SelectionToolbarDelay,
-    pub(in crate::app) block_transform_menu_open: bool,
-    pub(in crate::app) color_menu_open: bool,
-    pub(in crate::app) color_menu_hover_generation: u64,
-    pub(in crate::app) color_menu_scroll_handle: gpui::ScrollHandle,
-    pub(in crate::app) last_color_action: Option<crate::overlay::ColorMenuAction>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -139,7 +119,7 @@ impl CditorV2View {
         duration: Duration,
         cx: &mut Context<Self>,
     ) {
-        self.toast = Some(GuiToast::new(message, duration));
+        self.overlay.toast = Some(GuiToast::new(message, duration));
         let dismiss_after = cx.background_spawn(async move {
             std::thread::sleep(duration);
         });
@@ -147,11 +127,12 @@ impl CditorV2View {
             let _ = dismiss_after.await;
             let _ = view.update(cx, |view, cx| {
                 let should_clear = view
+                    .overlay
                     .toast
                     .as_ref()
                     .is_some_and(|toast| !toast.is_alive(Instant::now()));
                 if should_clear {
-                    view.toast = None;
+                    view.overlay.toast = None;
                     cx.notify();
                 }
             });
@@ -259,7 +240,7 @@ impl CditorV2View {
         window.focus(&self.focus.editor, cx);
         if self.interaction.table_interaction_mode.block_id().is_some() {
             self.interaction.table_interaction_mode = GuiTableInteractionMode::Idle;
-            self.table_menu_ui = Default::default();
+            self.overlay.table_menu_ui = Default::default();
         }
         self.clear_gutter_action();
         let position = position.into();
@@ -425,16 +406,17 @@ impl CditorV2View {
 
     pub(in crate::app) fn clear_gutter_action(&mut self) {
         self.interaction.action_block_id = None;
-        self.gutter_toolbar_block_id = None;
-        self.block_transform_menu_open = false;
-        self.color_menu_open = false;
-        self.color_menu_hover_generation = self.color_menu_hover_generation.wrapping_add(1);
+        self.overlay.gutter_toolbar_block_id = None;
+        self.overlay.block_transform_menu_open = false;
+        self.overlay.color_menu_open = false;
+        self.overlay.color_menu_hover_generation =
+            self.overlay.color_menu_hover_generation.wrapping_add(1);
         self.interaction.gutter_block_drag = None;
         self.interaction.gutter_drag_auto_scroll_scheduled = false;
     }
 
     pub(crate) fn dismiss_gutter_toolbar_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.gutter_toolbar_block_id.is_none() {
+        if self.overlay.gutter_toolbar_block_id.is_none() {
             return false;
         }
         self.clear_gutter_action();

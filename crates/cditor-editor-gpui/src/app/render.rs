@@ -43,11 +43,11 @@ impl Render for CditorV2View {
         let frame_started = std::time::Instant::now();
         let theme = GuiTheme::light();
         let focus = self.focus.editor.clone();
-        if self.ai_prompt.is_some() {
+        if self.overlay.ai_prompt.is_some() {
             if !self.focus.ai_prompt.is_focused(window) {
                 window.focus(&self.focus.ai_prompt, cx);
             }
-        } else if self.whiteboard_editor.is_none()
+        } else if self.features.whiteboard_editor.is_none()
             && !focus.is_focused(window)
             && !self.focus.code_language.is_focused(window)
         {
@@ -63,14 +63,14 @@ impl Render for CditorV2View {
         );
 
         let view = cx.entity();
-        let code_language_edit = self.code_language_edit.clone();
-        let code_theme_menu_block_id = self.code_theme_menu_block_id;
-        let code_highlight_theme = self.code_highlight_theme;
+        let code_language_edit = self.overlay.code_language_edit.clone();
+        let code_theme_menu_block_id = self.overlay.code_theme_menu_block_id;
+        let code_highlight_theme = self.features.code_highlight_theme;
         let mermaid_source_blocks = self.mermaid_source_blocks.clone();
         let formatting_context =
-            formatting_toolbar_context(self.ready_session(), self.gutter_toolbar_block_id);
-        let embedded_ai_prompt = self.ai_prompt.as_ref().is_some_and(|prompt| {
-            self.gutter_toolbar_block_id == Some(prompt.block_id)
+            formatting_toolbar_context(self.ready_session(), self.overlay.gutter_toolbar_block_id);
+        let embedded_ai_prompt = self.overlay.ai_prompt.as_ref().is_some_and(|prompt| {
+            self.overlay.gutter_toolbar_block_id == Some(prompt.block_id)
                 || (prompt.presentation == AiRequestPresentation::Automatic
                     && formatting_context
                         .as_ref()
@@ -81,19 +81,19 @@ impl Render for CditorV2View {
             formatting_context.as_ref(),
             &self.text_layouts,
             self.status.readonly,
-            self.slash_menu.is_some()
+            self.overlay.slash_menu.is_some()
                 || code_language_edit.is_some()
                 || code_theme_menu_block_id.is_some()
-                || (self.ai_prompt.is_some() && !embedded_ai_prompt),
+                || (self.overlay.ai_prompt.is_some() && !embedded_ai_prompt),
             editor_viewport,
-            self.gutter_toolbar_block_id.filter(|_| {
+            self.overlay.gutter_toolbar_block_id.filter(|_| {
                 self.interaction
                     .gutter_block_drag
                     .is_none_or(|drag| !drag.exceeded_threshold)
             }),
-            self.block_transform_menu_open,
-            self.color_menu_open,
-            self.last_color_action,
+            self.overlay.block_transform_menu_open,
+            self.overlay.color_menu_open,
+            self.overlay.last_color_action,
             &self.interaction.projected_block_rects,
         );
         if formatting_toolbar.as_ref().is_some_and(|toolbar| {
@@ -105,10 +105,10 @@ impl Render for CditorV2View {
             formatting_toolbar = None;
         }
         if let Some(toolbar) = formatting_toolbar.as_mut() {
-            toolbar.ai_enabled &= self.ai_enabled;
+            toolbar.ai_enabled &= self.features.ai_enabled;
         }
         if formatting_toolbar.is_none() {
-            self.color_menu_open = false;
+            self.overlay.color_menu_open = false;
         }
         let mut root = div()
             .id("cditor-v2-root")
@@ -414,7 +414,7 @@ impl Render for CditorV2View {
                 }
                 self.code_highlights.sync_visible_window(
                     &projection,
-                    self.code_highlight_theme,
+                    self.features.code_highlight_theme,
                     cx,
                 );
                 self.mermaid_renders
@@ -501,7 +501,7 @@ impl Render for CditorV2View {
                         table_axis_selection,
                         table_axis_menu_selection,
                         table_cell_selection,
-                        &self.table_menu_ui,
+                        &self.overlay.table_menu_ui,
                         editor_viewport.width,
                         editor_viewport.height,
                         self.status.readonly,
@@ -512,7 +512,7 @@ impl Render for CditorV2View {
                         code_language_edit.as_ref(),
                         code_theme_menu_block_id,
                         code_highlight_theme,
-                        self.ai_prompt.is_some(),
+                        self.overlay.ai_prompt.is_some(),
                         &table_scroll_snapshots,
                         &self.code_highlights,
                         &self.mermaid_renders,
@@ -551,7 +551,7 @@ impl Render for CditorV2View {
                     ai_preview_block_anchor,
                     theme,
                     view.clone(),
-                    &self.ai_preview_scroll_handle,
+                    &self.overlay.ai_preview_scroll_handle,
                     editor_viewport,
                 ) {
                     root = root.child(ai_preview);
@@ -617,9 +617,12 @@ impl Render for CditorV2View {
                 toolbar,
                 theme,
                 view,
-                self.ai_prompt.as_ref().filter(|_| embedded_ai_prompt),
+                self.overlay
+                    .ai_prompt
+                    .as_ref()
+                    .filter(|_| embedded_ai_prompt),
                 self.focus.ai_prompt.clone(),
-                &self.color_menu_scroll_handle,
+                &self.overlay.color_menu_scroll_handle,
             ));
         }
         if let Some(reason) = self.status.readonly_reason.as_ref() {
@@ -628,10 +631,10 @@ impl Render for CditorV2View {
         if let Some(preview_overlay) = render_image_preview_overlay(window, cx) {
             root = root.child(preview_overlay);
         }
-        if let Some(menu) = self.slash_menu.as_ref() {
+        if let Some(menu) = self.overlay.slash_menu.as_ref() {
             root = root.child(render_slash_menu(menu, theme, cx.entity(), editor_viewport));
         }
-        if !embedded_ai_prompt && let Some(prompt) = self.ai_prompt.as_ref() {
+        if !embedded_ai_prompt && let Some(prompt) = self.overlay.ai_prompt.as_ref() {
             root = root.child(render_ai_prompt(
                 prompt,
                 theme,
@@ -641,13 +644,14 @@ impl Render for CditorV2View {
             ));
         }
         if let Some(toast) = self
+            .overlay
             .toast
             .as_ref()
             .filter(|toast| toast.is_alive(std::time::Instant::now()))
         {
             root = root.child(render_toast(toast, theme));
         }
-        if let Some(session) = self.whiteboard_editor.as_ref() {
+        if let Some(session) = self.features.whiteboard_editor.as_ref() {
             root = root.child(render_whiteboard_editor(session, theme, cx.entity()));
         }
 

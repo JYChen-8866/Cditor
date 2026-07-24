@@ -56,11 +56,11 @@ impl CditorV2View {
             if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return None;
             }
-            let range = utf16_range_to_utf8_range(&self.table_menu_ui.query, &range_utf16);
+            let range = utf16_range_to_utf8_range(&self.overlay.table_menu_ui.query, &range_utf16);
             let x_range = single_line_visible_range_x(
-                &self.table_menu_ui.query,
+                &self.overlay.table_menu_ui.query,
                 range,
-                self.table_menu_ui.caret_offset,
+                self.overlay.table_menu_ui.caret_offset,
                 px(TABLE_MENU_SEARCH_FONT_SIZE_PX),
                 element_bounds,
                 _window,
@@ -78,7 +78,7 @@ impl CditorV2View {
         }
         if self.focus.ai_prompt.is_focused(_window) {
             let registered_target = self.input.target;
-            let prompt = self.ai_prompt.as_ref()?;
+            let prompt = self.overlay.ai_prompt.as_ref()?;
             if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
                 return None;
             }
@@ -104,7 +104,7 @@ impl CditorV2View {
         }
         if self.focus.code_language.is_focused(_window) {
             let registered_target = self.input.target;
-            let edit = self.code_language_edit.as_ref()?;
+            let edit = self.overlay.code_language_edit.as_ref()?;
             if !code_language_input_target_allows(registered_target, edit.block_id) {
                 trace_input(
                     "bounds_for_range.code_language_rejected_target",
