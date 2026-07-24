@@ -20,7 +20,7 @@ crates/
   cditor-core/                          # WhiteboardPayload and layout rule
   cditor-runtime/                       # payload/window/undo orchestration; no GPUI
   cditor-storage-postgres/              # opaque scene_json persistence
-  cditor-editor/src/block/whiteboard/   # Cditor-specific GPUI adapter
+  cditor-editor-gpui/src/block/whiteboard/   # Cditor-specific GPUI adapter
     cache.rs                            # visible-window thumbnail lifecycle
     render.rs                           # stable frame + thumbnail view
     style.rs                            # GuiTheme -> WhiteboardStyle mapping

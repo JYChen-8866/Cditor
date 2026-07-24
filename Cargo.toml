@@ -10,7 +10,7 @@ members = [
     "crates/cditor-runtime",
     "crates/cditor-session",
     "crates/cditor-viewport",
-    "crates/cditor-editor",
+    "crates/cditor-editor-gpui",
     "crates/cditor-import-export",
     "crates/cditor-api",
     "crates/cditor-app",

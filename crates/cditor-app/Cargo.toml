@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 cditor-api = { path = "../cditor-api" }
-cditor-editor = { path = "../cditor-editor" }
+cditor-editor-gpui = { path = "../cditor-editor-gpui" }
 cditor-core = { path = "../cditor-core" }
 cditor-runtime = { path = "../cditor-runtime" }
 cditor-session = { path = "../cditor-session" }

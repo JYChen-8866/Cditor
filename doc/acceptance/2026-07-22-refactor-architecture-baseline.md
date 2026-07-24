@@ -62,12 +62,12 @@ cargo metadata --no-deps --format-version=1 \
 sed -n '/pub struct DocumentRuntime {/,/^}/p' \
   crates/cditor-runtime/src/document_runtime/state.rs | rg '^\s*pub.*:' | wc -l
 sed -n '/pub struct CditorV2View {/,/^}/p' \
-  crates/cditor-editor/src/app/cditor_v2_view.rs | rg '^\s*pub.*:' | wc -l
+  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs | rg '^\s*pub.*:' | wc -l
 rg '^\s*pub (async )?fn ' crates/cditor-runtime/src/document_runtime | wc -l
 rg '^\s*pub (async )?fn ' crates/cditor-runtime/src | wc -l
-rg '\bruntime\.' crates/cditor-editor/src | wc -l
-rg -l '\bruntime\.' crates/cditor-editor/src | wc -l
-rg 'dispatch_command' crates/cditor-editor/src | wc -l
+rg '\bruntime\.' crates/cditor-editor-gpui/src | wc -l
+rg -l '\bruntime\.' crates/cditor-editor-gpui/src | wc -l
+rg 'dispatch_command' crates/cditor-editor-gpui/src | wc -l
 ```
 
 ## 4. 文件规模基线

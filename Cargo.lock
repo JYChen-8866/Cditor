@@ -976,7 +976,7 @@ version = "0.2.6"
 dependencies = [
  "cditor-api",
  "cditor-core",
- "cditor-editor",
+ "cditor-editor-gpui",
  "cditor-runtime",
  "cditor-session",
  "cditor-storage",
@@ -1001,7 +1001,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cditor-editor"
+name = "cditor-editor-gpui"
 version = "0.2.6"
 dependencies = [
  "async-trait",

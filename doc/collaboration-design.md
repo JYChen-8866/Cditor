@@ -919,7 +919,7 @@ pub enum PresenceChange {
 ### 渲染方案
 
 ```
-cditor-editor 中新增 overlay 层：
+cditor-editor-gpui 中新增 overlay 层：
   ├─ RemoteCursors：在文本行上绘制其他用户的彩色光标
   │    - 光标颜色 = user.color
   │    - 光标上方浮动用户名标签
@@ -1036,7 +1036,7 @@ crates/
 │       └── document_runtime/
 │           └── collaboration.rs    # CollaborationSession, sync_collaboration_frame
 │
-├── cditor-editor/                  # ★ 修改：新增远程光标/选择渲染
+├── cditor-editor-gpui/             # ★ 修改：新增远程光标/选择渲染
 │   └── src/
 │       └── overlay/
 │           └── remote_presence.rs  # RemoteCursors overlay
@@ -1053,7 +1053,7 @@ cditor-collab-server  ← 服务端，只依赖 collaboration + tokio + sqlx
     ↑
 cditor-runtime        ← 集成 CollaborationSession
     ↑
-cditor-editor         ← 渲染远程光标/选择
+cditor-editor-gpui    ← 渲染远程光标/选择
 ```
 
 ---

@@ -51,7 +51,7 @@ See the full design specification in [Architecture for 100,000-Block Large Docum
 │   ├── cditor-storage-postgres/ # PostgreSQL adapter, migrations, and integration tests
 │   ├── cditor-storage-sqlite/   # SQLite adapter, local journal, and recovery
 │   ├── cditor-text/             # GPUI-free Parley text layout adapter
-│   ├── cditor-editor/           # GPUI rendering, input, overlays, and persistence bridge
+│   ├── cditor-editor-gpui/      # GPUI rendering, input, overlays, and persistence bridge
 │   ├── cditor-api/              # Stable SDK types, commands, events, options, and handles
 │   ├── cditor-app/              # Desktop composition root and executable
 │   ├── cditor-import-export/    # Clipboard, Markdown, HTML, and import security
@@ -86,7 +86,7 @@ For a detailed breakdown, refer to [Cditor Project Structure](doc/architecture/p
 | `crates/cditor-storage-postgres` | `cditor-storage-postgres` | PostgreSQL pools, migrations, adapters, sync queues, type mapping | Editor interaction logic and UI state |
 | `crates/cditor-storage-sqlite` | `cditor-storage-sqlite` | Local storage, journal recovery, snapshots, and undo blobs | Editor interaction logic and UI state |
 | `crates/cditor-text` | `cditor-text` | Parley shaping, geometry, caches, and text snapshots | GPUI and document mutation |
-| `crates/cditor-editor` | `cditor-editor` | GPUI Block rendering, input handling, overlays, persistence bridge | Source-of-truth document state |
+| `crates/cditor-editor-gpui` | `cditor-editor-gpui` | GPUI Block rendering, input handling, overlays, persistence bridge | Source-of-truth document state |
 | `crates/cditor-api` | `cditor-api` | SDK options, commands, events, component and handle contracts | Concrete rendering implementation |
 | `crates/cditor-app` | `cditor-app` | Desktop executable and dependency assembly | Reusable domain logic |
 | `crates/cditor-ai` | `cditor-ai` | AI provider integrations, config parsing, streaming results, request cancellation | Document structure and UI rendering logic |
@@ -94,7 +94,7 @@ For a detailed breakdown, refer to [Cditor Project Structure](doc/architecture/p
 
 ### Dependency Graph
 ```text
-cditor-app ──> cditor-editor ──> cditor-runtime ──> cditor-viewport ──> cditor-core
+cditor-app ──> cditor-editor-gpui ──> cditor-session ──> cditor-runtime ──> cditor-viewport ──> cditor-core
      │               ├──> cditor-text ────────────────────────────────> cditor-core
      │               └──> cditor-api
      ├──> cditor-storage-postgres ──> cditor-storage ────────────────> cditor-core
@@ -105,7 +105,7 @@ Arrows point from dependent crates to the crates they consume. For example:
 `cditor-runtime` consumes domain and algorithm crates but no GPUI or concrete storage adapter.
 `cditor-app` is the final assembly layer and depends only on crates used by the executable.
 
-`cditor-viewport` is the reusable, framework-independent algorithm layer. `cditor-editor` is the GPUI adapter and view layer. `cditor-app` only assembles the executable.
+`cditor-viewport` is the reusable, framework-independent algorithm layer. `cditor-editor-gpui` is the GPUI adapter and view layer. `cditor-app` only assembles the executable.
 
 PostgreSQL cold-start and payload-window I/O live in `cditor-app`, the composition root. The app converts database rows into storage-neutral runtime inputs, so new storage backends do not propagate concrete database types into `cditor-runtime`.
 
@@ -194,7 +194,7 @@ The editor keeps document line endings as LF internally. Windows TSF and clipboa
 Applications embedding `CditorV2View` directly must install the keymap once during GPUI startup before opening the window:
 
 ```rust
-cditor_editor::input::bind_cditor_keys(cx);
+cditor_editor_gpui::input::bind_cditor_keys(cx);
 ```
 
 ### 2. Local PostgreSQL Deployment
@@ -338,7 +338,7 @@ cargo test --workspace
 Test individual crates:
 ```bash
 cargo test -p cditor-core
-cargo test -p cditor-editor
+cargo test -p cditor-editor-gpui
 cargo test -p cditor-runtime
 cargo test -p cditor-app --lib
 ```
@@ -396,11 +396,11 @@ Many ignored integration tests generate or load 100,000-Block datasets, resultin
 | Task scheduling & performance budgeting | `crates/cditor-runtime/src/scheduling` |
 | Storage abstractions & caching logic | `crates/cditor-storage/src` |
 | PostgreSQL tables & query implementations | `crates/cditor-storage-postgres/migrations`, `crates/cditor-storage-postgres/src/stores` |
-| GPUI Block visual rendering | `crates/cditor-editor/src/block` |
-| Keyboard, mouse, and IME input | `crates/cditor-editor/src/input`, `crates/cditor-editor/src/app/input` |
-| Floating overlays & popup interactions | `crates/cditor-editor/src/overlay` |
+| GPUI Block visual rendering | `crates/cditor-editor-gpui/src/block` |
+| Keyboard, mouse, and IME input | `crates/cditor-editor-gpui/src/input`, `crates/cditor-editor-gpui/src/app/input` |
+| Floating overlays & popup interactions | `crates/cditor-editor-gpui/src/overlay` |
 | AI provider implementations | `crates/cditor-ai/src` |
-| Cditor integration with whiteboard | `crates/cditor-editor/src/block/whiteboard` |
+| Cditor integration with whiteboard | `crates/cditor-editor-gpui/src/block/whiteboard` |
 
 All new functionality must include accompanying unit tests. Any feature touching database logic, cross-crate transactions, or state recovery workflows additionally requires integration tests.
 
@@ -438,13 +438,13 @@ All content under `doc/archive/` exists solely to preserve historical migration 
 The current project layout is logically organized:
 - Workspace crates are cleanly separated by responsibility: core data models, viewport algorithms, runtime state, storage layers, UI rendering, AI services, and standalone whiteboard functionality.
 - The `runtime` source directory aligns with its matching `cditor-runtime` crate.
-- All GPUI UI code is isolated within the `app` crate; core data models have no reverse UI dependencies.
+- All GPUI UI code is isolated within `cditor-editor-gpui`; core data models have no reverse UI dependencies.
 - PostgreSQL persistence logic is decoupled from generic storage abstractions.
 - PostgreSQL cold start and window loading are assembled by `cditor-app`; `cditor-runtime` receives storage-neutral records.
 - Documentation, utility scripts, and test suites are grouped by functional purpose.
 - A strict 700-line source file limit enforces modular code organization for all non-whiteboard modules.
 
-`cditor-editor` implements pure UI-agnostic viewport algorithms despite its name; all visual editing and platform input remain in `cditor-app`. The structure check protects the more important dependency boundaries automatically.
+`cditor-viewport` owns framework-independent viewport algorithms, `cditor-session` owns the document application service, and `cditor-editor-gpui` owns visual editing and platform input. The structure check enforces these dependency boundaries automatically.
 
 ## License
 Project licensing terms and third-party dependency notices:

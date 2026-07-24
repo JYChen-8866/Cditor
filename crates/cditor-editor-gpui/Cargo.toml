@@ -1,11 +1,11 @@
 [package]
-name = "cditor-editor"
+name = "cditor-editor-gpui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "cditor_editor"
+name = "cditor_editor_gpui"
 
 [features]
 runtime-shaders = ["gpui_platform/runtime_shaders"]

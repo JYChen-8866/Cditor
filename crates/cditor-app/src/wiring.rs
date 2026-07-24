@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::storage_host::{CditorColdStartPlan, DocumentSchemaAccess, load_session_from_options};
 use cditor_api::event::CditorEvent;
 use cditor_api::{Cditor, CditorComponent, CditorError, CditorOptions, CditorViewFactory};
-use cditor_editor::app::CditorV2View;
+use cditor_editor_gpui::app::CditorV2View;
 use cditor_storage::{StorageError, block_on_storage};
 use gpui::{
     App, AppContext, Bounds, Context, IntoElement, Render, TitlebarOptions, Window, WindowBounds,
@@ -57,7 +57,7 @@ pub fn build_component(
 pub fn run_desktop(cditor: Cditor) {
     let app = gpui_platform::application();
     app.run(move |cx: &mut App| {
-        cditor_editor::input::actions::bind_cditor_keys(cx);
+        cditor_editor_gpui::input::actions::bind_cditor_keys(cx);
         cx.activate(true);
         let component = build_component(cditor.clone(), cx).expect("build Cditor component");
         let window_options = default_window_options(cx);

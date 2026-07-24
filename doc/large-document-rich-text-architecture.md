@@ -3658,7 +3658,7 @@ crates/
   cditor-core/
   cditor-storage/
   cditor-runtime/
-  cditor-editor/
+  cditor-editor-gpui/
   cditor-app/
 ```
 
@@ -3668,8 +3668,8 @@ crates/
 cditor-core：无 UI / 无 DB。
 cditor-storage -> cditor-core。
 cditor-runtime -> cditor-core + cditor-storage。
-cditor-editor -> cditor-core + cditor-runtime + GPUI。
-cditor-app -> cditor-editor。
+cditor-editor-gpui -> cditor-session + cditor-text + cditor-viewport + GPUI。
+cditor-app -> cditor-editor-gpui。
 ```
 
 拆 crate 的时机：
