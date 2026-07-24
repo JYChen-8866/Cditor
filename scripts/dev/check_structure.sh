@@ -56,6 +56,11 @@ if grep -R -n -E 'Arc[[:space:]]*<[[:space:]]*Mutex[[:space:]]*<[[:space:]]*Docu
   exit 1
 fi
 
+if grep -R -n -E 'StoragePersistenceState' --include='*.rs' crates/cditor-editor/src crates/cditor-session/src | grep -q .; then
+  echo 'error: legacy Editor-owned StoragePersistenceState must not return' >&2
+  exit 1
+fi
+
 if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])cditor-runtime[[:space:]]*=|(^|[[:space:]])cditor-editor[[:space:]]*=|(^|[[:space:]])cditor-whiteboard[[:space:]]*=|(^|[[:space:]])sqlx[[:space:]]*=' crates/cditor-api/Cargo.toml; then
   echo 'error: API contracts must not depend on concrete storage, runtime, editor, whiteboard engine, or SQLx' >&2
   exit 1

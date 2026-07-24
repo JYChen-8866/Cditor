@@ -11,6 +11,7 @@ mod document_snapshot;
 mod history_port;
 mod input_port;
 mod layout_port;
+mod persistence_pipeline;
 mod persistence_port;
 mod render_port;
 mod selection_materialization_port;
@@ -43,6 +44,11 @@ pub use layout_port::{
     project_drag_scrollbar, project_finish_scrollbar_drag, project_layout_viewport,
     project_measured_block_height, project_scroll_by_delta, project_scroll_focused_block_into_view,
     project_scroll_input_frame, project_scroll_to_block,
+};
+pub use persistence_pipeline::{
+    DEFAULT_STORAGE_SAVE_DEBOUNCE, PersistenceBarrierKind, PersistenceBarrierReport,
+    PersistencePipeline, PersistencePipelineError, ReadyPersistenceBarrier, StorageSaveRequest,
+    save_storage_batch,
 };
 pub use persistence_port::{
     PersistenceCaptureRequest, PersistenceRuntimeSnapshot, PersistenceSaveCapture,

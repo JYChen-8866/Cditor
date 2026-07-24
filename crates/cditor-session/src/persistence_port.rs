@@ -181,6 +181,19 @@ mod tests {
 
     use super::*;
 
+    fn layout_key() -> LayoutCacheKey {
+        LayoutCacheKey {
+            width_bucket: 10,
+            exact_width_px: 800,
+            content_version: 1,
+            attrs_version: 0,
+            style_version: 0,
+            font_version: 0,
+            theme_version: 0,
+            scale_factor_milli: 1_000,
+        }
+    }
+
     fn structural_runtime() -> DocumentRuntime {
         let mut runtime = DocumentRuntime::from_payloads(
             1,
@@ -262,5 +275,23 @@ mod tests {
 
         assert!(after.revision > before.revision);
         assert_eq!(after.structure_version, before.structure_version);
+    }
+
+    #[test]
+    fn structural_capture_persists_page_boundaries_with_layout_identity() {
+        let mut runtime = structural_runtime();
+        let capture = project_persistence_save_capture(
+            &mut runtime,
+            PersistenceCaptureRequest {
+                last_saved_structure_version: Some(0),
+                layout_key: Some(layout_key()),
+            },
+        )
+        .unwrap();
+        let snapshot = capture.batch.page_layout_snapshot.unwrap();
+
+        assert_eq!(snapshot.structure_version, capture.structure_version);
+        assert_eq!(snapshot.pages[0].first_block_id, 2);
+        assert_eq!(snapshot.pages.last().unwrap().last_block_id, 3);
     }
 }

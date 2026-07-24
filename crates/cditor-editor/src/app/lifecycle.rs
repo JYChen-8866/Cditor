@@ -10,9 +10,7 @@ use crate::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::input::BlockDragSelectionController;
 use crate::overlay::table::TableViewportMeasurement;
-use crate::persistence::{
-    DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, StoragePersistenceState,
-};
+use crate::persistence::{DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline};
 use cditor_runtime::DocumentRuntime;
 use cditor_storage::StorageSession;
 
@@ -120,8 +118,8 @@ impl CditorV2View {
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
             storage_persistence: storage_session
-                .map(|session| StoragePersistenceState::for_session(session, autosave_interval))
-                .unwrap_or_else(StoragePersistenceState::disabled),
+                .map(|session| PersistencePipeline::for_session(session, autosave_interval))
+                .unwrap_or_else(PersistencePipeline::disabled),
             undo_spill_in_flight: false,
             history_hydration_in_flight: None,
             selection_materialization_in_flight: None,
@@ -204,7 +202,7 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            storage_persistence: StoragePersistenceState::disabled(),
+            storage_persistence: PersistencePipeline::disabled(),
             undo_spill_in_flight: false,
             history_hydration_in_flight: None,
             selection_materialization_in_flight: None,
@@ -290,7 +288,7 @@ impl CditorV2View {
             table_reorder_drag: None,
             table_hscroll_drag: None,
             projected_block_rects: Vec::new(),
-            storage_persistence: StoragePersistenceState::disabled(),
+            storage_persistence: PersistencePipeline::disabled(),
             undo_spill_in_flight: false,
             history_hydration_in_flight: None,
             selection_materialization_in_flight: None,

@@ -1066,12 +1066,14 @@ dependencies = [
 name = "cditor-session"
 version = "0.2.6"
 dependencies = [
+ "async-trait",
  "cditor-ai",
  "cditor-core",
  "cditor-editor-protocol",
  "cditor-runtime",
  "cditor-storage",
  "cditor-viewport",
+ "tokio",
 ]
 
 [[package]]

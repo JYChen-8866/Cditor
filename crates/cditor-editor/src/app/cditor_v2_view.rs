@@ -27,7 +27,7 @@ use crate::overlay::SlashMenuState;
 use crate::overlay::WhiteboardEditorSession;
 
 use crate::input::GuiInputCommand;
-use crate::persistence::{EditorSaveStatus, PayloadWindowLoadScheduler, StoragePersistenceState};
+use crate::persistence::{EditorSaveStatus, PayloadWindowLoadScheduler, PersistencePipeline};
 use crate::text::{RichTextPlatformLayout, TextPlatformLayoutIdentity};
 use cditor_runtime::{DocumentRuntime, InputSessionIdentity, SelectionMaterializationRequest};
 
@@ -111,7 +111,7 @@ pub struct CditorV2View {
     pub(in crate::app) table_reorder_drag: Option<GuiTableReorderDrag>,
     pub(in crate::app) table_hscroll_drag: Option<GuiTableHScrollDrag>,
     pub(in crate::app) projected_block_rects: Vec<ProjectedBlockRect>,
-    pub(in crate::app) storage_persistence: StoragePersistenceState,
+    pub(in crate::app) storage_persistence: PersistencePipeline,
     pub(in crate::app) undo_spill_in_flight: bool,
     pub(in crate::app) history_hydration_in_flight: Option<(u64, bool)>,
     pub(in crate::app) selection_materialization_in_flight:

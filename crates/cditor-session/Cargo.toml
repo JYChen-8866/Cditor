@@ -10,6 +10,9 @@ cditor-editor-protocol = { path = "../cditor-editor-protocol" }
 cditor-runtime = { path = "../cditor-runtime" }
 cditor-storage = { path = "../cditor-storage" }
 cditor-viewport = { path = "../cditor-viewport" }
+tokio = { version = "1", features = ["sync"] }
 
 [dev-dependencies]
+async-trait = "0.1"
 cditor-ai = { path = "../cditor-ai" }
+tokio = { version = "1", features = ["macros", "rt"] }

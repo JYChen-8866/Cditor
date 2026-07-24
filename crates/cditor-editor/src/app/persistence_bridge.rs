@@ -15,8 +15,8 @@ use cditor_storage::{StorageError, StorageSession, block_on_storage};
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::input::GuiInputCommand;
 use crate::persistence::{
-    EditorSaveStatus, STORAGE_VIEWPORT_LOAD_TIMEOUT, mark_dirty_and_schedule_save,
-    save_storage_batch,
+    EditorSaveStatus, PersistencePipelineError, STORAGE_VIEWPORT_LOAD_TIMEOUT,
+    mark_dirty_and_schedule_save, save_storage_batch, schedule_storage_autosave,
 };
 use cditor_api::CditorError;
 use cditor_api::event::CditorEvent;
@@ -388,7 +388,7 @@ impl CditorV2View {
                         cx.emit(CditorEvent::DirtyChanged { dirty: false });
                     }
                     if should_reschedule {
-                        view.storage_persistence.schedule(cx);
+                        schedule_storage_autosave(&mut view.storage_persistence, cx);
                     }
                     view.settle_storage_barriers(cx);
                     cx.notify();
@@ -408,7 +408,7 @@ impl CditorV2View {
                         error: CditorError::Persistence(message),
                     });
                     if should_reschedule {
-                        view.storage_persistence.schedule(cx);
+                        schedule_storage_autosave(&mut view.storage_persistence, cx);
                     }
                     cx.notify();
                 });
@@ -427,7 +427,7 @@ impl CditorV2View {
             return;
         }
         let Some(session) = self.storage_persistence.session().cloned() else {
-            let error = CditorError::Unsupported(
+            let error = PersistencePipelineError::Unavailable(
                 "save and flush require a persistent storage backend".to_owned(),
             );
             for barrier in flush_barriers {
@@ -446,7 +446,7 @@ impl CditorV2View {
             .and_then(|result| result.map_err(|error| error.to_string()))
         });
         cx.spawn(async move |view, cx| {
-            let result = flush_task.await.map_err(CditorError::Persistence);
+            let result = flush_task.await.map_err(PersistencePipelineError::Storage);
             let state_result = result.clone();
             let _ = view.update(cx, |view, cx| {
                 view.storage_persistence.finish_backend_flush();

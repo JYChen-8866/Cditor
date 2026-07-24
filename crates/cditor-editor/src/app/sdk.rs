@@ -1,7 +1,9 @@
 use gpui::{AppContext, Context, EventEmitter, Task, Window};
 
 use crate::app::CditorV2View;
-use crate::persistence::{EditorSaveStatus, PersistenceBarrierKind};
+use crate::persistence::{
+    EditorSaveStatus, PersistenceBarrierKind, PersistencePipelineError, schedule_storage_autosave,
+};
 use cditor_api::CditorViewContract;
 use cditor_api::diagnostics::CditorDiagnostics;
 use cditor_api::document::{
@@ -160,7 +162,7 @@ impl CditorV2View {
             EditorSaveStatus::Clean
         };
         if !effective_readonly && self.dirty {
-            self.storage_persistence.schedule(cx);
+            schedule_storage_autosave(&mut self.storage_persistence, cx);
         }
         cx.notify();
     }
@@ -275,9 +277,17 @@ impl CditorV2View {
 
         let receiver = self.storage_persistence.request_barrier(kind, revision);
         self.flush_storage_persistence(cx);
-        cx.background_spawn(
-            async move { receiver.await.unwrap_or(Err(CditorError::ComponentDropped)) },
-        )
+        cx.background_spawn(async move {
+            match receiver.await {
+                Ok(Ok(report)) => Ok(SaveReport {
+                    revision: report.revision,
+                    saved_blocks: report.saved_blocks,
+                    duration: report.duration,
+                }),
+                Ok(Err(error)) => Err(persistence_pipeline_error(error)),
+                Err(_) => Err(CditorError::ComponentDropped),
+            }
+        })
     }
 
     pub fn sdk_diagnostics(&self) -> Result<CditorDiagnostics, CditorError> {
@@ -412,6 +422,14 @@ impl CditorV2View {
         if let Some(selection) = selection {
             cx.emit(CditorEvent::SelectionChanged { selection });
         }
+    }
+}
+
+fn persistence_pipeline_error(error: PersistencePipelineError) -> CditorError {
+    match error {
+        PersistencePipelineError::Cancelled => CditorError::Cancelled,
+        PersistencePipelineError::Unavailable(message) => CditorError::Unsupported(message),
+        PersistencePipelineError::Storage(message) => CditorError::Persistence(message),
     }
 }
 
