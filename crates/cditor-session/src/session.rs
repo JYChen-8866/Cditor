@@ -90,6 +90,7 @@ pub struct EditorSession {
     pub(crate) id: SessionId,
     pub(crate) runtime: DocumentRuntime,
     pub(crate) readonly: bool,
+    pub(crate) persistence: crate::PersistencePipeline,
 }
 
 impl EditorSession {
@@ -98,6 +99,20 @@ impl EditorSession {
             id: SessionId(NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)),
             runtime,
             readonly,
+            persistence: crate::PersistencePipeline::disabled(),
+        }
+    }
+
+    pub fn with_persistence(
+        runtime: DocumentRuntime,
+        readonly: bool,
+        persistence: crate::PersistencePipeline,
+    ) -> Self {
+        Self {
+            id: SessionId(NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)),
+            runtime,
+            readonly,
+            persistence,
         }
     }
 
@@ -279,7 +294,7 @@ impl EditorSessionHandle {
     }
 }
 
-fn busy_error() -> ProtocolError {
+pub(crate) fn busy_error() -> ProtocolError {
     ProtocolError::new(
         ProtocolErrorCode::Busy,
         "editor session is already processing a synchronous request",

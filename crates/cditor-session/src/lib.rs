@@ -14,6 +14,7 @@ mod input_port;
 mod layout_port;
 mod persistence_pipeline;
 mod persistence_port;
+mod persistence_session;
 mod render_port;
 mod selection_materialization_port;
 mod session;
@@ -62,6 +63,9 @@ pub use persistence_port::{
     project_note_content_changed, project_persistence_runtime_snapshot,
     project_persistence_save_capture, project_persistence_save_failure,
     project_persistence_save_success,
+};
+pub use persistence_session::{
+    PersistenceSaveApply, PersistenceSessionSnapshot, StorageFlushRequest, execute_storage_flush,
 };
 pub use render_port::{
     RenderFrameRequest, RenderFrameSnapshot, RenderFrameWarnings, activate_resident_payload_window,
