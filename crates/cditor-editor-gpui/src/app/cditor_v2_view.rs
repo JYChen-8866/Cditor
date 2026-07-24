@@ -9,9 +9,6 @@ use crate::app::input_trace::trace_input;
 #[cfg(test)]
 use crate::app::interaction::geometry::ProjectedBlockRect;
 use crate::app::interaction::table_mode::GuiTableInteractionMode;
-use crate::app::platform_layout_cache::PlatformLayoutCache;
-use crate::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
-
 use crate::overlay::GuiToast;
 use crate::persistence::EditorSaveStatus;
 use crate::text::RichTextPlatformLayout;
@@ -34,8 +31,8 @@ mod whiteboard;
 pub(in crate::app) use super::persistence_bridge::save_status_for_mode;
 pub use super::state::{CditorViewState, EditorReadonlyReason};
 use super::state::{
-    EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState, OverlayUiState,
-    PlatformInputState,
+    EditorDiagnosticsState, EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState,
+    OverlayUiState, PlatformInputState, RenderCacheState,
 };
 pub(crate) use crate::app::interaction::table_scroll::TableScrollSnapshot;
 pub(in crate::app) use block_actions::block_focus_offset_after_missed_hit_test;
@@ -53,16 +50,10 @@ pub struct CditorV2View {
     pub(in crate::app) input: PlatformInputState,
     pub(in crate::app) features: FeatureUiState,
     pub(in crate::app) overlay: OverlayUiState,
-    pub(in crate::app) show_debug: bool,
+    pub(in crate::app) diagnostics: EditorDiagnosticsState,
     pub(in crate::app) status: EditorStatusUiState,
     pub(in crate::app) interaction: InteractionUiState,
-    pub(in crate::app) text_layouts: PlatformLayoutCache<BlockId>,
-    pub(in crate::app) table_cell_layouts: PlatformLayoutCache<TableCellLayoutKey>,
-    pub(in crate::app) text_surface_layouts: PlatformLayoutCache<SurfaceId>,
-    pub(in crate::app) code_highlights: CodeHighlightCache,
-    pub(in crate::app) mermaid_renders: MermaidRenderCache,
-    pub(in crate::app) mermaid_source_blocks: std::collections::HashSet<BlockId>,
-    pub(in crate::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
+    pub(in crate::app) cache: RenderCacheState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -94,8 +85,8 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         crate::block::media::invalidate_rendered_media_height_report(block_id);
-        if !self.mermaid_source_blocks.remove(&block_id) {
-            self.mermaid_source_blocks.insert(block_id);
+        if !self.cache.mermaid_source_blocks.remove(&block_id) {
+            self.cache.mermaid_source_blocks.insert(block_id);
         }
         cx.notify();
     }
@@ -180,7 +171,7 @@ impl CditorV2View {
                     cache.accessibility.is_some()
                 ),
             );
-            self.table_cell_layouts.insert(
+            self.cache.table_cell_layouts.insert(
                 TableCellLayoutKey {
                     block_id: cache.block_id,
                     row: position.row,
@@ -192,14 +183,17 @@ impl CditorV2View {
             return false;
         }
         if !matches!(cache.surface_id, SurfaceId::Block(_)) {
-            self.text_surface_layouts
+            self.cache
+                .text_surface_layouts
                 .insert(cache.surface_id, cache, pinned_surface);
             return false;
         }
         let block_id = cache.block_id;
         let content_version = cache.content_version;
         let measured_height = cache.measured_height;
-        self.text_layouts.insert(block_id, cache, pinned_surface);
+        self.cache
+            .text_layouts
+            .insert(block_id, cache, pinned_surface);
         if self.ready_session().is_some_and(|session| {
             session
                 .text_block_context(block_id)

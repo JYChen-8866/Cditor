@@ -6,8 +6,8 @@ use cditor_core::ids::BlockId;
 
 use crate::app::cditor_v2_view::{CditorV2View, CditorViewState};
 use crate::app::state::{
-    EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState, OverlayUiState,
-    PlatformInputState,
+    EditorDiagnosticsState, EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState,
+    OverlayUiState, PlatformInputState, RenderCacheState,
 };
 use crate::overlay::table::TableViewportMeasurement;
 use crate::persistence::{
@@ -83,16 +83,10 @@ impl CditorV2View {
             input: PlatformInputState::default(),
             features: FeatureUiState::default(),
             overlay: OverlayUiState::default(),
-            show_debug,
+            diagnostics: EditorDiagnosticsState::new(show_debug),
             status: EditorStatusUiState::new(readonly, requested_readonly),
             interaction: InteractionUiState::default(),
-            text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
-            table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
-            text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
-            code_highlights: Default::default(),
-            mermaid_renders: Default::default(),
-            mermaid_source_blocks: Default::default(),
-            whiteboard_thumbnails: Default::default(),
+            cache: RenderCacheState::default(),
         }
     }
 
@@ -115,16 +109,10 @@ impl CditorV2View {
             input: PlatformInputState::default(),
             features: FeatureUiState::default(),
             overlay: OverlayUiState::default(),
-            show_debug,
+            diagnostics: EditorDiagnosticsState::new(show_debug),
             status: EditorStatusUiState::new(readonly, readonly),
             interaction: InteractionUiState::default(),
-            text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
-            table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
-            text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
-            code_highlights: Default::default(),
-            mermaid_renders: Default::default(),
-            mermaid_source_blocks: Default::default(),
-            whiteboard_thumbnails: Default::default(),
+            cache: RenderCacheState::default(),
         }
     }
 
@@ -150,16 +138,10 @@ impl CditorV2View {
             input: PlatformInputState::default(),
             features: FeatureUiState::default(),
             overlay: OverlayUiState::default(),
-            show_debug,
+            diagnostics: EditorDiagnosticsState::new(show_debug),
             status: EditorStatusUiState::new(readonly, readonly),
             interaction: InteractionUiState::default(),
-            text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
-            table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
-            text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
-            code_highlights: Default::default(),
-            mermaid_renders: Default::default(),
-            mermaid_source_blocks: Default::default(),
-            whiteboard_thumbnails: Default::default(),
+            cache: RenderCacheState::default(),
         }
     }
 
@@ -174,13 +156,7 @@ impl CditorV2View {
         self.interaction.reset();
         self.features.reset_session();
         self.overlay.reset();
-        self.text_layouts.clear();
-        self.table_cell_layouts.clear();
-        self.text_surface_layouts.clear();
-        self.code_highlights.clear();
-        self.mermaid_renders.clear();
-        self.mermaid_source_blocks.clear();
-        self.whiteboard_thumbnails.clear();
+        self.cache.reset_session();
     }
 
     pub fn apply_recovered_session(
@@ -206,12 +182,7 @@ impl CditorV2View {
         self.interaction.reset();
         self.features.reset_session();
         self.overlay.reset();
-        self.text_layouts.clear();
-        self.table_cell_layouts.clear();
-        self.text_surface_layouts.clear();
-        self.code_highlights.clear();
-        self.mermaid_renders.clear();
-        self.mermaid_source_blocks.clear();
+        self.cache.reset_session();
     }
 
     /// Return the persistent horizontal `ScrollHandle` for a table block.

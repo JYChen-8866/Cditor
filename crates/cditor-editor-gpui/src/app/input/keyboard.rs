@@ -26,7 +26,7 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         if matches!(command, GuiInputCommand::ToggleDebugOverlay) {
-            self.show_debug = !self.show_debug;
+            self.diagnostics.show_debug = !self.diagnostics.show_debug;
             return;
         }
         if self.status.readonly && !matches!(command, GuiInputCommand::CopySelection) {
@@ -198,8 +198,8 @@ impl CditorV2View {
                 }
                 GuiInputCommand::MoveCaretLeft { extend_selection } => {
                     let moved = move_caret_with_parley(
-                        &self.text_layouts,
-                        &self.text_surface_layouts,
+                        &self.cache.text_layouts,
+                        &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::PreviousVisual,
@@ -216,8 +216,8 @@ impl CditorV2View {
                 }
                 GuiInputCommand::MoveCaretRight { extend_selection } => {
                     let moved = move_caret_with_parley(
-                        &self.text_layouts,
-                        &self.text_surface_layouts,
+                        &self.cache.text_layouts,
+                        &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::NextVisual,
@@ -234,8 +234,8 @@ impl CditorV2View {
                 }
                 GuiInputCommand::MoveCaretToPreviousWord { extend_selection } => {
                     let moved = move_caret_with_parley(
-                        &self.text_layouts,
-                        &self.text_surface_layouts,
+                        &self.cache.text_layouts,
+                        &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::PreviousVisualWord,
@@ -252,8 +252,8 @@ impl CditorV2View {
                 }
                 GuiInputCommand::MoveCaretToNextWord { extend_selection } => {
                     let moved = move_caret_with_parley(
-                        &self.text_layouts,
-                        &self.text_surface_layouts,
+                        &self.cache.text_layouts,
+                        &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::NextVisualWord,
@@ -284,8 +284,8 @@ impl CditorV2View {
                 }
                 GuiInputCommand::MoveCaretUp { extend_selection } => {
                     let moved_in_block = move_caret_with_parley(
-                        &self.text_layouts,
-                        &self.text_surface_layouts,
+                        &self.cache.text_layouts,
+                        &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::PreviousLine,
@@ -302,8 +302,8 @@ impl CditorV2View {
                 }
                 GuiInputCommand::MoveCaretDown { extend_selection } => {
                     let moved_in_block = move_caret_with_parley(
-                        &self.text_layouts,
-                        &self.text_surface_layouts,
+                        &self.cache.text_layouts,
+                        &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::NextLine,
@@ -320,8 +320,8 @@ impl CditorV2View {
                 }
                 GuiInputCommand::MoveCaretToLineStart { extend_selection } => {
                     let moved = move_caret_with_parley(
-                        &self.text_layouts,
-                        &self.text_surface_layouts,
+                        &self.cache.text_layouts,
+                        &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::LineStart,
@@ -338,8 +338,8 @@ impl CditorV2View {
                 }
                 GuiInputCommand::MoveCaretToLineEnd { extend_selection } => {
                     let moved = move_caret_with_parley(
-                        &self.text_layouts,
-                        &self.text_surface_layouts,
+                        &self.cache.text_layouts,
+                        &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         ParleyMoveCommand::LineEnd,

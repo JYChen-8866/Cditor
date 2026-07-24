@@ -60,9 +60,9 @@ impl CditorV2View {
                     FrameEntitySnapshot {
                         rendered_blocks: self.interaction.projected_block_rects.len(),
                         loaded_payloads: snapshot.loaded_payloads,
-                        block_layouts: self.text_layouts.len(),
-                        table_cell_layouts: self.table_cell_layouts.len(),
-                        auxiliary_layouts: self.text_surface_layouts.len(),
+                        block_layouts: self.cache.text_layouts.len(),
+                        table_cell_layouts: self.cache.table_cell_layouts.len(),
+                        auxiliary_layouts: self.cache.text_surface_layouts.len(),
                     },
                     snapshot.payload_and_undo_bytes,
                     snapshot.payload_cache_over_budget,
@@ -70,10 +70,11 @@ impl CditorV2View {
             })
             .unwrap_or_default();
         let platform_layout_bytes = self
+            .cache
             .text_layouts
             .estimated_bytes()
-            .saturating_add(self.table_cell_layouts.estimated_bytes())
-            .saturating_add(self.text_surface_layouts.estimated_bytes());
+            .saturating_add(self.cache.table_cell_layouts.estimated_bytes())
+            .saturating_add(self.cache.text_surface_layouts.estimated_bytes());
         record_app_frame(AppFrameTelemetryInput {
             elapsed,
             interaction,
@@ -84,9 +85,9 @@ impl CditorV2View {
                 payload_and_undo_bytes,
                 platform_layout_bytes,
                 payload_cache_over_budget: payload_over_budget,
-                platform_layout_cache_over_budget: self.text_layouts.is_over_budget()
-                    || self.table_cell_layouts.is_over_budget()
-                    || self.text_surface_layouts.is_over_budget(),
+                platform_layout_cache_over_budget: self.cache.text_layouts.is_over_budget()
+                    || self.cache.table_cell_layouts.is_over_budget()
+                    || self.cache.text_surface_layouts.is_over_budget(),
             },
             text_geometry_fallback_rate: crate::text::text_geometry_telemetry().fallback_rate(),
         });

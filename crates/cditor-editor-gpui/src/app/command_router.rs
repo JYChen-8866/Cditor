@@ -17,7 +17,7 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         if matches!(command, GuiInputCommand::ToggleDebugOverlay) {
-            self.show_debug = !self.show_debug;
+            self.diagnostics.show_debug = !self.diagnostics.show_debug;
             return;
         }
         let Some(command) = command.cditor_command() else {

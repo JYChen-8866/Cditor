@@ -44,10 +44,12 @@ impl CditorV2View {
             return;
         };
         for block_id in report.evicted_block_ids {
-            self.text_layouts.remove(&block_id);
-            self.table_cell_layouts
+            self.cache.text_layouts.remove(&block_id);
+            self.cache
+                .table_cell_layouts
                 .retain(|key, _| key.block_id != block_id);
-            self.text_surface_layouts
+            self.cache
+                .text_surface_layouts
                 .retain(|surface_id, _| surface_id.block_id() != Some(block_id));
         }
     }

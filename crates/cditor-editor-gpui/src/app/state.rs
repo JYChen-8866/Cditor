@@ -14,7 +14,9 @@ use crate::app::interaction::table_mode::GuiTableInteractionMode;
 use crate::app::interaction::table_reorder::GuiTableReorderDrag;
 use crate::app::interaction::table_resize::GuiTableResizeDrag;
 use crate::app::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
+use crate::app::platform_layout_cache::PlatformLayoutCache;
 use crate::block::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
+use crate::block::{CodeHighlightCache, MermaidRenderCache, WhiteboardThumbnailCache};
 use crate::input::BlockDragSelectionController;
 use crate::input::{AiPromptState, CodeLanguageEditState};
 use crate::overlay::{GuiToast, SlashMenuState, WhiteboardEditorSession};
@@ -23,8 +25,55 @@ use crate::scroll::ScrollAccumulator;
 use crate::text::TextPlatformLayoutIdentity;
 
 use super::cditor_v2_view::{
-    CditorV2View, GuiPlatformInputTarget, SelectionToolbarDelay, ai::default_ai_provider,
+    CditorV2View, GuiPlatformInputTarget, SelectionToolbarDelay, TableCellLayoutKey,
+    ai::default_ai_provider,
 };
+
+pub(in crate::app) struct RenderCacheState {
+    pub(in crate::app) text_layouts: PlatformLayoutCache<BlockId>,
+    pub(in crate::app) table_cell_layouts: PlatformLayoutCache<TableCellLayoutKey>,
+    pub(in crate::app) text_surface_layouts: PlatformLayoutCache<cditor_core::ids::SurfaceId>,
+    pub(in crate::app) code_highlights: CodeHighlightCache,
+    pub(in crate::app) mermaid_renders: MermaidRenderCache,
+    pub(in crate::app) mermaid_source_blocks: std::collections::HashSet<BlockId>,
+    pub(in crate::app) whiteboard_thumbnails: WhiteboardThumbnailCache,
+}
+
+impl Default for RenderCacheState {
+    fn default() -> Self {
+        Self {
+            text_layouts: crate::app::platform_layout_cache::block_layout_cache(),
+            table_cell_layouts: crate::app::platform_layout_cache::table_layout_cache(),
+            text_surface_layouts: crate::app::platform_layout_cache::auxiliary_layout_cache(),
+            code_highlights: Default::default(),
+            mermaid_renders: Default::default(),
+            mermaid_source_blocks: Default::default(),
+            whiteboard_thumbnails: Default::default(),
+        }
+    }
+}
+
+impl RenderCacheState {
+    pub(in crate::app) fn reset_session(&mut self) {
+        self.text_layouts.clear();
+        self.table_cell_layouts.clear();
+        self.text_surface_layouts.clear();
+        self.code_highlights.clear();
+        self.mermaid_renders.clear();
+        self.mermaid_source_blocks.clear();
+        self.whiteboard_thumbnails.clear();
+    }
+}
+
+pub(in crate::app) struct EditorDiagnosticsState {
+    pub(in crate::app) show_debug: bool,
+}
+
+impl EditorDiagnosticsState {
+    pub(in crate::app) const fn new(show_debug: bool) -> Self {
+        Self { show_debug }
+    }
+}
 
 pub(in crate::app) struct FeatureUiState {
     pub(in crate::app) ai_provider: Arc<dyn cditor_ai::AiProvider>,
@@ -320,6 +369,28 @@ mod tests {
         assert!(!features.ai_enabled);
         assert_eq!(features.code_highlight_theme, "host-theme");
         assert!(features.whiteboard_editor.is_none());
+    }
+
+    #[test]
+    fn render_cache_reset_discards_document_bound_cache_state() {
+        let mut cache = RenderCacheState::default();
+        cache.mermaid_source_blocks.insert(17);
+
+        cache.reset_session();
+
+        assert!(cache.text_layouts.is_empty());
+        assert!(cache.table_cell_layouts.is_empty());
+        assert!(cache.text_surface_layouts.is_empty());
+        assert_eq!(cache.text_layouts.estimated_bytes(), 0);
+        assert_eq!(cache.table_cell_layouts.estimated_bytes(), 0);
+        assert_eq!(cache.text_surface_layouts.estimated_bytes(), 0);
+        assert!(cache.mermaid_source_blocks.is_empty());
+    }
+
+    #[test]
+    fn diagnostics_state_preserves_the_host_debug_choice() {
+        assert!(EditorDiagnosticsState::new(true).show_debug);
+        assert!(!EditorDiagnosticsState::new(false).show_debug);
     }
 }
 

@@ -297,7 +297,7 @@ impl CditorV2View {
             .ready_session()
             .and_then(|session| session.table_interaction(None).ok());
         let (parley_target, next_preferred_x) = table_cell_parley_target(
-            &self.table_cell_layouts,
+            &self.cache.table_cell_layouts,
             table_context.as_ref(),
             action,
             self.input.preferred_navigation_x,
@@ -307,14 +307,14 @@ impl CditorV2View {
             BoundInputAction::MoveUp {
                 extend_selection: true,
             } => table_cell_vertical_selection_target(
-                &self.table_cell_layouts,
+                &self.cache.table_cell_layouts,
                 table_context.as_ref(),
                 -1,
             ),
             BoundInputAction::MoveDown {
                 extend_selection: true,
             } => table_cell_vertical_selection_target(
-                &self.table_cell_layouts,
+                &self.cache.table_cell_layouts,
                 table_context.as_ref(),
                 1,
             ),
@@ -473,7 +473,7 @@ impl CditorV2View {
         else {
             return false;
         };
-        !self.mermaid_source_blocks.contains(&block_id)
+        !self.cache.mermaid_source_blocks.contains(&block_id)
             && session.text_block_context(block_id).is_ok_and(|context| {
                 context.is_some_and(|context| {
                     matches!(context.kind, cditor_core::rich_text::RichBlockKind::Mermaid)

@@ -355,9 +355,9 @@ impl CditorV2View {
             memory_estimate_bytes: u64::try_from(
                 diagnostics
                     .payload_and_undo_bytes
-                    .saturating_add(self.text_layouts.estimated_bytes())
-                    .saturating_add(self.table_cell_layouts.estimated_bytes())
-                    .saturating_add(self.text_surface_layouts.estimated_bytes()),
+                    .saturating_add(self.cache.text_layouts.estimated_bytes())
+                    .saturating_add(self.cache.table_cell_layouts.estimated_bytes())
+                    .saturating_add(self.cache.text_surface_layouts.estimated_bytes()),
             )
             .unwrap_or(u64::MAX),
         })

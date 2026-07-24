@@ -206,7 +206,7 @@ impl CditorV2View {
     }
 
     pub(super) fn slash_menu_anchor(&self, block_id: BlockId, caret: usize) -> (f32, f32) {
-        if let Some(cache) = self.text_layouts.get(&block_id) {
+        if let Some(cache) = self.cache.text_layouts.get(&block_id) {
             let bounds = platform_range_bounds(cache, caret..caret);
             return self.window_anchor_to_editor_local(
                 f32::from(bounds.left()),
@@ -234,7 +234,7 @@ impl CditorV2View {
     }
 
     pub(super) fn ai_prompt_line_anchor(&self, block_id: BlockId, caret: usize) -> (f32, f32) {
-        if let Some(cache) = self.text_layouts.get(&block_id) {
+        if let Some(cache) = self.cache.text_layouts.get(&block_id) {
             let bounds = platform_range_bounds(cache, caret..caret);
             return self
                 .window_anchor_to_editor_local(f32::from(bounds.left()), f32::from(bounds.top()));

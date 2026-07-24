@@ -31,7 +31,7 @@ impl CditorV2View {
         current: SurfaceVersionSnapshot,
         block_id: BlockId,
     ) -> Option<&RichTextPlatformLayout> {
-        let cache = self.text_layouts.get(&block_id)?;
+        let cache = self.cache.text_layouts.get(&block_id)?;
         layout_cache_is_current(cache, current).then_some(cache)
     }
 
@@ -42,9 +42,10 @@ impl CditorV2View {
         row: usize,
         col: usize,
     ) -> Option<&RichTextPlatformLayout> {
-        let cache = self
-            .table_cell_layouts
-            .get(&TableCellLayoutKey { block_id, row, col })?;
+        let cache =
+            self.cache
+                .table_cell_layouts
+                .get(&TableCellLayoutKey { block_id, row, col })?;
         layout_cache_is_current(cache, current).then_some(cache)
     }
 
@@ -60,7 +61,7 @@ impl CditorV2View {
                 column,
             } => self.current_table_cell_layout_cache(current, block_id, row, column),
             SurfaceId::ImageCaption { .. } | SurfaceId::CollectionTitle { .. } => {
-                let cache = self.text_surface_layouts.get(&current.surface_id)?;
+                let cache = self.cache.text_surface_layouts.get(&current.surface_id)?;
                 layout_cache_is_current(cache, current).then_some(cache)
             }
             SurfaceId::Ephemeral { .. } => None,
@@ -196,7 +197,7 @@ impl CditorV2View {
                 viewport_origin_for_block(
                     session,
                     &self.interaction.projected_block_rects,
-                    &self.text_layouts,
+                    &self.cache.text_layouts,
                     block_id,
                 )
             });
@@ -208,7 +209,7 @@ impl CditorV2View {
                     viewport_origin_for_block(
                         session,
                         &self.interaction.projected_block_rects,
-                        &self.text_layouts,
+                        &self.cache.text_layouts,
                         rect.block_id,
                     )
                 })

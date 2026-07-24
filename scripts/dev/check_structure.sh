@@ -121,6 +121,14 @@ fi
 
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
   crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
+  | grep -E '^[[:space:]]+pub.*(text_layouts|table_cell_layouts|text_surface_layouts|code_highlights|mermaid_renders|mermaid_source_blocks|whiteboard_thumbnails|show_debug)[[:space:]]*:' \
+  | grep -q .; then
+  echo 'error: presentation caches and diagnostics must remain grouped in RenderCacheState and EditorDiagnosticsState' >&2
+  exit 1
+fi
+
+if sed -n '/^pub struct CditorV2View {/,/^}/p' \
+  crates/cditor-editor-gpui/src/app/cditor_v2_view.rs \
   | grep -E '^[[:space:]]+pub.*(code_language_focus|ai_prompt_focus|sdk_focus_observers_registered|last_emitted_selection|platform_input_target|platform_input_session_identity|platform_input_layout_identity|preferred_text_navigation_x)[[:space:]]*:' \
   | grep -q .; then
   echo 'error: focus and platform input lifecycle fields must remain grouped UI state' >&2

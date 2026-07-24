@@ -51,12 +51,13 @@ impl CditorV2View {
         let result = self.dispatch_command(command, CommandSource::Toolbar, cx);
         match result {
             Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied => {
-                let cached_block_ids = self.text_layouts.keys().copied().collect::<Vec<_>>();
+                let cached_block_ids = self.cache.text_layouts.keys().copied().collect::<Vec<_>>();
                 let visible_blocks = self
                     .ready_session()
                     .and_then(|session| session.visible_block_subset(&cached_block_ids).ok())
                     .unwrap_or_default();
-                self.text_layouts
+                self.cache
+                    .text_layouts
                     .retain(|candidate, _| visible_blocks.contains(candidate));
                 cx.notify();
                 true

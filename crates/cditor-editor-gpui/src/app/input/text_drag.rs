@@ -33,7 +33,7 @@ impl CditorV2View {
             .or_else(|| {
                 current_layout_block_at_viewport_y(
                     &self.interaction.projected_block_rects,
-                    &self.text_layouts,
+                    &self.cache.text_layouts,
                     session,
                     position.y,
                 )

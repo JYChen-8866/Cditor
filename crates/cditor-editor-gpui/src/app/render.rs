@@ -66,7 +66,7 @@ impl Render for CditorV2View {
         let code_language_edit = self.overlay.code_language_edit.clone();
         let code_theme_menu_block_id = self.overlay.code_theme_menu_block_id;
         let code_highlight_theme = self.features.code_highlight_theme;
-        let mermaid_source_blocks = self.mermaid_source_blocks.clone();
+        let mermaid_source_blocks = self.cache.mermaid_source_blocks.clone();
         let formatting_context =
             formatting_toolbar_context(self.ready_session(), self.overlay.gutter_toolbar_block_id);
         let embedded_ai_prompt = self.overlay.ai_prompt.as_ref().is_some_and(|prompt| {
@@ -79,7 +79,7 @@ impl Render for CditorV2View {
         let selection_toolbar_ready = self.sync_selection_toolbar_delay(cx);
         let mut formatting_toolbar = formatting_toolbar_state(
             formatting_context.as_ref(),
-            &self.text_layouts,
+            &self.cache.text_layouts,
             self.status.readonly,
             self.overlay.slash_menu.is_some()
                 || code_language_edit.is_some()
@@ -399,7 +399,7 @@ impl Render for CditorV2View {
                 let frame = session
                     .render_frame(RenderFrameRequest {
                         viewport_height,
-                        include_diagnostics: self.show_debug,
+                        include_diagnostics: self.diagnostics.show_debug,
                         height_correction_priority,
                         min_scrollbar_thumb_height: 24.0,
                     })
@@ -412,14 +412,16 @@ impl Render for CditorV2View {
                     pending_payload_window_range =
                         Some(projection.payload_prefetch_block_range.clone());
                 }
-                self.code_highlights.sync_visible_window(
+                self.cache.code_highlights.sync_visible_window(
                     &projection,
                     self.features.code_highlight_theme,
                     cx,
                 );
-                self.mermaid_renders
+                self.cache
+                    .mermaid_renders
                     .sync_visible_window(&projection, theme, cx);
-                self.whiteboard_thumbnails
+                self.cache
+                    .whiteboard_thumbnails
                     .sync_visible_window(&projection, theme, cx);
                 let scrollbar_visual = frame.scrollbar_visual;
                 self.interaction.projected_block_rects =
@@ -514,10 +516,10 @@ impl Render for CditorV2View {
                         code_highlight_theme,
                         self.overlay.ai_prompt.is_some(),
                         &table_scroll_snapshots,
-                        &self.code_highlights,
-                        &self.mermaid_renders,
+                        &self.cache.code_highlights,
+                        &self.cache.mermaid_renders,
                         &mermaid_source_blocks,
-                        &self.whiteboard_thumbnails,
+                        &self.cache.whiteboard_thumbnails,
                         cx,
                     ))
                     .child(render_scrollbar(
@@ -547,7 +549,7 @@ impl Render for CditorV2View {
                 });
                 if let Some(ai_preview) = render_ai_preview_overlay(
                     projection.ai_preview.as_ref(),
-                    &self.text_layouts,
+                    &self.cache.text_layouts,
                     ai_preview_block_anchor,
                     theme,
                     view.clone(),

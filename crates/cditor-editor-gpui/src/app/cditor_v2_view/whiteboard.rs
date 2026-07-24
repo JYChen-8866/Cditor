@@ -87,7 +87,9 @@ impl CditorV2View {
             if let Ok(snapshot) = result
                 && snapshot.outcome.changed()
             {
-                self.whiteboard_thumbnails.invalidate(session.block_id);
+                self.cache
+                    .whiteboard_thumbnails
+                    .invalidate(session.block_id);
                 self.mark_dirty_at_revision(
                     cditor_core::edit::ChangeOrigin::User,
                     snapshot.revision,
