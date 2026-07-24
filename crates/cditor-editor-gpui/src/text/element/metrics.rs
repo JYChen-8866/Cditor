@@ -14,7 +14,7 @@ use super::super::{
     ParleyTextStyleConfig, RichTextLayoutInput,
 };
 use super::RichTextTypography;
-use crate::rich_text::NOTION_MONO_FONT_FAMILY;
+use crate::presentation::rich_text::NOTION_MONO_FONT_FAMILY;
 use crate::theme::GuiTheme;
 
 pub(in crate::text) fn plain_text_from_spans(spans: &[InlineSpan]) -> String {

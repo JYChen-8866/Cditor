@@ -1,6 +1,5 @@
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::RichBlockKind;
-use cditor_core::schema::builtin_block_registry;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled,
     deferred, div, px, rgb,
@@ -8,6 +7,7 @@ use gpui::{
 
 use crate::editor_view::CditorV2View;
 use crate::menu_metrics::EditorViewport;
+use crate::presentation::block_registry::slash_block_presentations;
 use crate::theme::GuiTheme;
 
 pub const SLASH_MENU_VISIBLE_ITEMS: usize = 8;
@@ -122,19 +122,15 @@ pub fn slash_menu_items() -> Vec<SlashMenuItem> {
         command: Some(SlashMenuCommand::AskAi),
     }];
     items.extend(
-        builtin_block_registry()
-            .slash_descriptors()
+        slash_block_presentations()
             .into_iter()
-            .map(|descriptor| {
-                let metadata = descriptor.menu.slash.expect("slash descriptor metadata");
-                SlashMenuItem {
-                    icon: metadata.icon,
-                    label: metadata.label,
-                    description: metadata.description,
-                    keywords: metadata.keywords,
-                    kind: descriptor.default_kind.clone(),
-                    command: None,
-                }
+            .map(|presentation| SlashMenuItem {
+                icon: presentation.icon,
+                label: presentation.label,
+                description: presentation.description,
+                keywords: presentation.keywords,
+                kind: presentation.kind,
+                command: None,
             }),
     );
     items

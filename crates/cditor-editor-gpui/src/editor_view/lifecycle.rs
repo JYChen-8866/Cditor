@@ -4,9 +4,10 @@ use gpui::Context;
 
 use cditor_core::ids::BlockId;
 
+use crate::cache::RenderCacheState;
 use crate::editor_view::state::{
     EditorDiagnosticsState, EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState,
-    OverlayUiState, PlatformInputState, RenderCacheState,
+    OverlayUiState, PlatformInputState,
 };
 use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::overlays::table::TableViewportMeasurement;

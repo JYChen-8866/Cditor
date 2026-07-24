@@ -16,7 +16,7 @@ use crate::features::table::{
 use crate::features::text::collection::render_collection_block;
 use crate::features::whiteboard::{WhiteboardThumbnailCache, render_whiteboard_thumbnail};
 use crate::text::{RichTextElement, RichTextLayoutInput};
-use crate::{rich_text::render_payload_text, theme::GuiTheme};
+use crate::{presentation::rich_text::render_payload_text, theme::GuiTheme};
 use cditor_core::edit::SelectionRange;
 use cditor_core::rich_text::{BlockPayload, BlockPayloadView};
 use cditor_runtime::ViewBlockSnapshot;
@@ -59,7 +59,7 @@ pub(crate) fn render_block_content(
                 );
             }
             if let BlockPayload::Table(_table) = &payload.payload {
-                return crate::rich_text::render_payload_text(payload, theme);
+                return crate::presentation::rich_text::render_payload_text(payload, theme);
             }
             if let BlockPayload::Image(image) = &payload.payload {
                 return render_image_block(

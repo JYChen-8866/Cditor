@@ -1,5 +1,6 @@
 pub(crate) mod app;
 pub mod block;
+pub(crate) mod cache;
 pub mod clipboard_assets;
 pub mod diagnostics;
 pub mod document;
@@ -13,7 +14,7 @@ pub mod menu_metrics;
 pub(crate) mod overlays;
 pub mod persistence;
 pub mod platform;
-pub mod rich_text;
+pub(crate) mod presentation;
 pub mod scroll;
 pub mod skeleton;
 pub(crate) mod surfaces;

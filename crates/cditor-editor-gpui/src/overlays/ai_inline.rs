@@ -14,7 +14,7 @@ use crate::features::text::heading::render_heading;
 use crate::features::text::list::{render_bulleted, render_numbered, render_todo};
 use crate::input::{AiPromptState, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement};
 use crate::menu_metrics::EditorViewport;
-use crate::rich_text::render_wrapped_payload_text;
+use crate::presentation::rich_text::render_wrapped_payload_text;
 use crate::text::{RichTextPlatformLayout, platform_range_bounds};
 use crate::theme::GuiTheme;
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};

@@ -6,10 +6,13 @@ use gpui::{
 
 use crate::editor_view::CditorV2View;
 use crate::menu_metrics::SECONDARY_MENU_WIDTH_PX;
+use crate::presentation::block_registry::{
+    TransformBlockPresentation, transform_block_presentations, transform_presentation_by_tag,
+    transform_presentation_for_kind,
+};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::{RichBlockKind, kind_tag_for_rich_block_kind};
-use cditor_core::schema::{TransformMenuMetadata, builtin_block_registry};
+use cditor_core::rich_text::RichBlockKind;
 
 pub const BLOCK_TRANSFORM_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
 const BLOCK_TRANSFORM_MENU_HEIGHT_PX: f32 = 372.0;
@@ -50,33 +53,22 @@ impl BlockTransformAction {
     pub const CODE_BLOCK: Self = Self(9);
 
     pub fn all() -> Vec<Self> {
-        builtin_block_registry()
-            .transform_descriptors()
+        transform_block_presentations()
             .into_iter()
-            .map(|descriptor| Self(descriptor.kind_tag))
+            .map(|presentation| Self(presentation.kind_tag))
             .collect()
     }
 
     pub fn from_kind(kind: &RichBlockKind) -> Option<Self> {
-        builtin_block_registry()
-            .descriptor_for_kind(kind)
-            .menu
-            .transform
-            .map(|_| Self(kind_tag_for_rich_block_kind(kind)))
+        transform_presentation_for_kind(kind).map(|presentation| Self(presentation.kind_tag))
     }
 
     pub fn kind(self) -> RichBlockKind {
-        builtin_block_registry()
-            .descriptor_by_tag(self.0)
-            .default_kind
-            .clone()
+        self.metadata().kind
     }
 
-    fn metadata(self) -> TransformMenuMetadata {
-        builtin_block_registry()
-            .descriptor_by_tag(self.0)
-            .menu
-            .transform
+    fn metadata(self) -> TransformBlockPresentation {
+        transform_presentation_by_tag(self.0)
             .expect("transform action must reference registered metadata")
     }
 

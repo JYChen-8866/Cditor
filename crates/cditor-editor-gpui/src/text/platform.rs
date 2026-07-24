@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn platform_layout_cache_evicts_oldest_unpinned_surface() {
-        let mut cache = crate::app::platform_layout_cache::PlatformLayoutCache::new(2, usize::MAX);
+        let mut cache = crate::cache::PlatformLayoutCache::new(2, usize::MAX);
         let mut first = platform_layout("first", TextAlign::Start);
         first.block_id = 1;
         first.surface_id = TextLayoutSurfaceId::Block(1);
@@ -279,7 +279,7 @@ mod tests {
         let budget = first_bytes
             .max(std::mem::size_of::<RichTextPlatformLayout>() + second.snapshot.estimated_bytes())
             + 256;
-        let mut cache = crate::app::platform_layout_cache::PlatformLayoutCache::new(8, budget);
+        let mut cache = crate::cache::PlatformLayoutCache::new(8, budget);
 
         cache.insert(1, first, None);
         cache.insert(2, second, None);

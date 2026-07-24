@@ -4,6 +4,7 @@ use gpui::{AppContext, Context, Pixels, Point, Window};
 
 use cditor_core::ids::{BlockId, SurfaceId};
 
+use crate::cache::RenderCacheState;
 use crate::input::trace::trace_input;
 #[cfg(test)]
 use crate::interaction::geometry::ProjectedBlockRect;
@@ -30,7 +31,7 @@ mod state;
 pub use self::state::{CditorViewState, EditorReadonlyReason};
 use self::state::{
     EditorDiagnosticsState, EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState,
-    OverlayUiState, PlatformInputState, RenderCacheState,
+    OverlayUiState, PlatformInputState,
 };
 pub(crate) use crate::app::persistence_bridge::save_status_for_mode;
 pub(crate) use crate::interaction::table_scroll::TableScrollSnapshot;

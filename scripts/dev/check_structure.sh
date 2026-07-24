@@ -413,6 +413,27 @@ if [ ! -f crates/cditor-editor-gpui/src/overlays/mod.rs ] \
   exit 1
 fi
 
+if [ ! -f crates/cditor-editor-gpui/src/cache/platform_layout.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/cache/state.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/presentation/block_registry.rs ] \
+  || [ ! -f crates/cditor-editor-gpui/src/presentation/rich_text.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/app/platform_layout_cache.rs ] \
+  || [ -e crates/cditor-editor-gpui/src/rich_text.rs ]; then
+  echo 'error: render cache and UI presentation adapters must live in cache/ and presentation/' >&2
+  exit 1
+fi
+
+presentation_registry_violations=$(
+  grep -R -n -E 'builtin_block_registry|SlashMenuMetadata|TransformMenuMetadata' \
+    --include='*.rs' crates/cditor-editor-gpui/src \
+    --exclude='block_registry.rs' || true
+)
+if [ -n "$presentation_registry_violations" ]; then
+  echo 'error: GPUI consumers must access Core menu metadata through presentation/block_registry.rs:' >&2
+  echo "$presentation_registry_violations" >&2
+  exit 1
+fi
+
 if [ ! -f crates/cditor-editor-gpui/src/features/text/mod.rs ] \
   || [ ! -f crates/cditor-editor-gpui/src/features/code/mod.rs ] \
   || [ ! -f crates/cditor-editor-gpui/src/features/table/mod.rs ] \
