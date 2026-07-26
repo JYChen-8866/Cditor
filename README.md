@@ -44,21 +44,26 @@ See the full design specification in [Architecture for 100,000-Block Large Docum
 ├── assets/                      # Shared static assets used across the Cditor application
 ├── config/                      # Committed non-sensitive runtime configuration files
 ├── crates/
+│   ├── cditor-editor-protocol/  # Framework-free command, query, event, and projection protocol
 │   ├── cditor-core/             # Domain model, transactions, selections, and layout indexes
-│   ├── cditor-viewport/      # GPUI-free scroll, window, command, and hit-test algorithms
+│   ├── cditor-viewport/         # GPUI-free scroll, window, anchor, and hit-test algorithms
 │   ├── cditor-runtime/          # Live document state, editing, projection, and scheduling
+│   ├── cditor-session/          # Application service, persistence, import, AI, and task coordination
 │   ├── cditor-storage/          # Storage contracts, caches, and persistence policies
 │   ├── cditor-storage-postgres/ # PostgreSQL adapter, migrations, and integration tests
 │   ├── cditor-storage-sqlite/   # SQLite adapter, local journal, and recovery
 │   ├── cditor-text/             # GPUI-free Parley text layout adapter
 │   ├── cditor-editor-gpui/      # GPUI rendering, input, overlays, and persistence bridge
-│   ├── cditor-api/              # Stable SDK types, commands, events, options, and handles
-│   ├── cditor-app/              # Desktop composition root and executable
-│   ├── cditor-import-export/    # Clipboard, Markdown, HTML, and import security
+│   ├── cditor-sdk/              # Framework-free SDK options, commands, events, and provider contracts
+│   ├── cditor-import-export/    # External format parsing, planning, validation, and security
 │   ├── cditor-theme/            # Tokens, palettes, typography, metrics, and resolver
-│   ├── cditor-ai/               # AI provider abstraction and implementations
+│   ├── cditor-ai/               # AI provider contract and deterministic mock
+│   ├── cditor-ai-openai/        # OpenAI-compatible HTTP adapter
 │   └── cditor-test-support/     # Cross-crate acceptance fixtures and harnesses
+├── apps/
+│   └── cditor-desktop/          # Desktop composition root and executable
 ├── components/
+│   ├── cditor-component/        # Shared GPUI presentation components
 │   └── cditor-whiteboard/       # Standalone embeddable whiteboard component
 ├── doc/
 │   ├── architecture/            # Current system and subsystem architecture documentation
@@ -82,32 +87,33 @@ For a detailed breakdown, refer to [Cditor Project Structure](doc/architecture/p
 | `crates/cditor-core` | `cditor-core` | Base models: Blocks, DocumentIndex, RichText, Selections, Transactions, Layout | GPUI, SQLx, concrete database implementations |
 | `crates/cditor-viewport` | `cditor-viewport` | VirtualScroll, ScrollAnchor, WindowPlanner, HitTest, Trace Replay | GPUI views and storage logic |
 | `crates/cditor-runtime` | `cditor-runtime` | DocumentRuntime, editing sessions, projection, payload windows, task scheduling | Application windows and visual UI components |
+| `crates/cditor-session` | `cditor-session` | Serial Runtime ownership, persistence orchestration, import planning, AI task coordination | GPUI and concrete storage/network adapters |
 | `crates/cditor-storage` | `cditor-storage` | Storage contracts, layout cache, debouncing, optimistic persistence | Editor algorithms, concrete SQL implementations, GPUI |
 | `crates/cditor-storage-postgres` | `cditor-storage-postgres` | PostgreSQL pools, migrations, adapters, sync queues, type mapping | Editor interaction logic and UI state |
 | `crates/cditor-storage-sqlite` | `cditor-storage-sqlite` | Local storage, journal recovery, snapshots, and undo blobs | Editor interaction logic and UI state |
 | `crates/cditor-text` | `cditor-text` | Parley shaping, geometry, caches, and text snapshots | GPUI and document mutation |
 | `crates/cditor-editor-gpui` | `cditor-editor-gpui` | GPUI Block rendering, input handling, overlays, persistence bridge | Source-of-truth document state |
-| `crates/cditor-api` | `cditor-api` | SDK options, commands, events, component and handle contracts | Concrete rendering implementation |
-| `crates/cditor-app` | `cditor-app` | Desktop executable and dependency assembly | Reusable domain logic |
-| `crates/cditor-ai` | `cditor-ai` | AI provider integrations, config parsing, streaming results, request cancellation | Document structure and UI rendering logic |
+| `crates/cditor-sdk` | `cditor-sdk` | Framework-free SDK options, commands, events, providers, and diagnostics | GPUI views and concrete adapters |
+| `apps/cditor-desktop` | `cditor-desktop` | Desktop executable and dependency assembly | Reusable domain logic |
+| `crates/cditor-ai` | `cditor-ai` | AI provider contract, stream DTOs, and deterministic mock | HTTP, environment, and UI logic |
 | `components/cditor-whiteboard` | `cditor-whiteboard` | Standalone whiteboard models, rendering, input handling, asset management | Direct dependencies on Cditor core |
 
 ### Dependency Graph
 ```text
-cditor-app ──> cditor-editor-gpui ──> cditor-session ──> cditor-runtime ──> cditor-viewport ──> cditor-core
-     │               ├──> cditor-text ────────────────────────────────> cditor-core
-     │               └──> cditor-api
+cditor-desktop ──> cditor-editor-gpui ──> cditor-session ──> cditor-runtime ──> cditor-viewport ──> cditor-core
+     │               ├──> cditor-text ───────────────────────────────────────────────> cditor-core
+     │               └──> cditor-sdk ──> cditor-editor-protocol ────────────────────> cditor-core
      ├──> cditor-storage-postgres ──> cditor-storage ────────────────> cditor-core
      └──> cditor-storage-sqlite ────> cditor-storage
 ```
 
 Arrows point from dependent crates to the crates they consume. For example:
 `cditor-runtime` consumes domain and algorithm crates but no GPUI or concrete storage adapter.
-`cditor-app` is the final assembly layer and depends only on crates used by the executable.
+`cditor-desktop` is the final assembly layer and depends only on crates used by the executable.
 
-`cditor-viewport` is the reusable, framework-independent algorithm layer. `cditor-editor-gpui` is the GPUI adapter and view layer. `cditor-app` only assembles the executable.
+`cditor-viewport` is the reusable, framework-independent algorithm layer. `cditor-editor-gpui` is the GPUI adapter and view layer. `cditor-desktop` only assembles the executable.
 
-PostgreSQL cold-start and payload-window I/O live in `cditor-app`, the composition root. The app converts database rows into storage-neutral runtime inputs, so new storage backends do not propagate concrete database types into `cditor-runtime`.
+PostgreSQL cold-start and payload-window I/O live in `cditor-desktop`, the composition root. The app converts database rows into storage-neutral runtime inputs, so new storage backends do not propagate concrete database types into `cditor-runtime`.
 
 ## Environment Prerequisites
 ### Mandatory
@@ -147,26 +153,26 @@ cargo --version
 
 ## Quick Start
 ### 1. Run Without a Database
-If `CDITOR_DATABASE_URL` is unset, the binary defaults to an in-memory backend with no PostgreSQL required:
+If both `CDITOR_DATABASE_URL` and `CDITOR_SQLITE_PATH` are unset, the binary opens the built-in demo without requiring a database:
 ```bash
-cargo run -p cditor-app
+cargo run -p cditor-desktop
 ```
 
 Launch a small demo document:
 ```bash
-CDITOR_SMALL_DEMO=1 cargo run -p cditor-app
+CDITOR_SMALL_DEMO=1 cargo run -p cditor-desktop
 ```
 
 PowerShell uses this equivalent syntax on Windows:
 
 ```powershell
 $env:CDITOR_SMALL_DEMO = "1"
-cargo run -p cditor-app
+cargo run -p cditor-desktop
 ```
 
 Launch a large demo document with 100,000 Blocks:
 ```bash
-CDITOR_LARGE_DEMO=1 cargo run -p cditor-app
+CDITOR_LARGE_DEMO=1 cargo run -p cditor-desktop
 ```
 The large demo constructs performance-testing large documents, resulting in longer startup times and higher memory usage than standard mode.
 
@@ -205,7 +211,7 @@ docker compose up -d postgres
 
 Launch the editor with default development database credentials:
 ```bash
-./scripts/dev/run_editor.sh
+./scripts/dev/run_editor_postgres.sh
 ```
 This script injects the default dev connection string:
 ```text
@@ -228,7 +234,7 @@ Database data persists in Docker volumes. Run `docker compose down -v` to delete
 ```bash
 export CDITOR_DATABASE_URL='postgres://user:password@host:5432/database'
 export CDITOR_DOCUMENT_ID=42
-cargo run -p cditor-app
+cargo run -p cditor-desktop
 ```
 
 Remote PostgreSQL tooling documentation: [scripts/README.md](scripts/README.md) and [Remote PostgreSQL Guide](doc/architecture/remote-postgres.md)
@@ -238,6 +244,7 @@ Remote PostgreSQL tooling documentation: [scripts/README.md](scripts/README.md) 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `CDITOR_DATABASE_URL` | Unset | Enables PostgreSQL when defined; falls back to in-memory/demo backends if empty |
+| `CDITOR_SQLITE_PATH` | Unset | Enables SQLite at the configured file path; mutually exclusive with `CDITOR_DATABASE_URL` |
 | `CDITOR_DOCUMENT_ID` | `1` (database mode only) | Target document ID to open |
 | `CDITOR_WORKSPACE_ID` | Unset | Workspace identifier |
 | `CDITOR_SMALL_DEMO` | `false` | Load small demo document when running without a database |
@@ -278,7 +285,7 @@ Compatible legacy environment variables:
 AI configuration priority order: process environment variables → local `.env` file → config file → hardcoded built-in defaults. The application runs normally without an API key, falling back to a mock AI provider.
 
 ## Building the Project
-Default target crate: `cditor-app`
+Default target crate: `cditor-desktop`
 ```bash
 cargo build
 ```
@@ -297,13 +304,35 @@ Check individual crates:
 ```bash
 cargo check -p cditor-core
 cargo check -p cditor-runtime
-cargo check -p cditor-app
+cargo check -p cditor-desktop
 ```
 
 Launch editor with GPUI runtime shader feature enabled:
 ```bash
-cargo run -p cditor-app --features runtime-shaders
+cargo run -p cditor-desktop --features runtime-shaders
 ```
+
+For day-to-day large-document work, use one of the database launch scripts. They
+default to the `editor-dev` profile, which optimizes the GPUI, Taffy, and text
+layout hot paths while retaining incremental compilation, debug assertions,
+overflow checks, and limited debug information:
+
+```bash
+./scripts/dev/run_editor_sqlite.sh
+./scripts/dev/run_editor_postgres.sh
+```
+
+An explicit Cargo profile overrides the script default without adding a second
+profile argument:
+
+```bash
+./scripts/dev/run_editor_sqlite.sh --release
+./scripts/dev/run_editor_postgres.sh --profile editor-dev
+```
+
+Plain `cargo run` still uses Cargo's unoptimized `dev` profile and is intended
+for debugging rather than frame-time measurements. Release artifacts continue
+to use the separate performance-first `release` profile described below.
 
 ### GitHub Desktop Artifacts
 
@@ -340,7 +369,7 @@ Test individual crates:
 cargo test -p cditor-core
 cargo test -p cditor-editor-gpui
 cargo test -p cditor-runtime
-cargo test -p cditor-app --lib
+cargo test -p cditor-desktop --lib
 ```
 
 Structural validation script:
@@ -354,9 +383,11 @@ Full local CI quality gate suite:
 ```
 The full gate executes these steps sequentially:
 1. Project directory structure validation
-2. `cargo fmt --all -- --check` (format compliance)
-3. `cargo check --workspace` (static analysis)
-4. `cargo test --workspace` (unit test suite)
+2. Workspace dependency graph and release-profile validation
+3. `cargo fmt --all -- --check` (format compliance)
+4. Default, no-default-features, and all-features checks
+5. Strict workspace Clippy with all targets/features
+6. `cargo test --workspace` (unit test suite)
 
 ### PostgreSQL Integration Tests
 Spin up an isolated test database instance:
@@ -368,14 +399,14 @@ export CDITOR_TEST_DATABASE_URL='postgres://cditor:cditor@localhost:5433/cditor_
 PostgreSQL integration tests are marked `ignored` by default to avoid external service dependencies during standard unit test runs. Execute them per crate explicitly:
 ```bash
 cargo test -p cditor-storage-postgres -- --ignored
-cargo test -p cditor-app --lib -- --ignored
+cargo test -p cditor-desktop --lib -- --ignored
 ```
 
 Many ignored integration tests generate or load 100,000-Block datasets, resulting in longer execution times and increased database resource consumption.
 
 ## Development Standards
 ### File & Directory Rules
-- All Rust source files (excluding whiteboard modules) must stay under 700 lines of code.
+- All Rust source files must stay under 700 lines of code.
 - Files exceeding the line limit must be split by functional domain: models, input handling, rendering, persistence, geometry, or test logic.
 - Unit tests belong in sibling `*_tests.rs` files or module-local `tests/` subdirectories.
 - One-off migration scripts reside in `scripts/archive/` and are not used for daily development workflows.
@@ -407,17 +438,17 @@ All new functionality must include accompanying unit tests. Any feature touching
 ## Debugging Workflows
 Full debug trace bundle (small demo, layout overlay, input logging):
 ```bash
-CDITOR_SMALL_DEMO=1 CDITOR_DEBUG_OVERLAY=1 CDITOR_TRACE_INPUT=1 cargo run -p cditor-app
+CDITOR_SMALL_DEMO=1 CDITOR_DEBUG_OVERLAY=1 CDITOR_TRACE_INPUT=1 cargo run -p cditor-desktop
 ```
 
 Table interaction debugging:
 ```bash
-CDITOR_SMALL_DEMO=1 CDITOR_TRACE_TABLE=1 cargo run -p cditor-app
+CDITOR_SMALL_DEMO=1 CDITOR_TRACE_TABLE=1 cargo run -p cditor-desktop
 ```
 
 Markdown parsing & clipboard issue debugging:
 ```bash
-CDITOR_SMALL_DEMO=1 CDITOR_TRACE_MARKDOWN=1 cargo run -p cditor-app
+CDITOR_SMALL_DEMO=1 CDITOR_TRACE_MARKDOWN=1 cargo run -p cditor-desktop
 ```
 
 ## Documentation Index
@@ -440,7 +471,7 @@ The current project layout is logically organized:
 - The `runtime` source directory aligns with its matching `cditor-runtime` crate.
 - All GPUI UI code is isolated within `cditor-editor-gpui`; core data models have no reverse UI dependencies.
 - PostgreSQL persistence logic is decoupled from generic storage abstractions.
-- PostgreSQL cold start and window loading are assembled by `cditor-app`; `cditor-runtime` receives storage-neutral records.
+- PostgreSQL cold start and window loading are assembled by `cditor-desktop`; `cditor-runtime` receives storage-neutral records.
 - Documentation, utility scripts, and test suites are grouped by functional purpose.
 - A strict 700-line source file limit enforces modular code organization for all non-whiteboard modules.
 

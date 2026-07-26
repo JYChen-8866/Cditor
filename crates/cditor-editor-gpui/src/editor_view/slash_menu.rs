@@ -2,16 +2,42 @@ use cditor_core::ids::BlockId;
 use gpui::Context;
 
 use crate::editor_view::CditorV2View;
-use crate::interaction::geometry::{FallbackViewportOrigin, ProjectedBlockRect};
 use crate::menu_metrics::EditorViewport;
 use crate::overlays::{SlashMenuCommand, SlashMenuItem, SlashMenuState};
 use crate::persistence::EditorSaveStatus;
-use crate::text::platform_range_bounds;
 use cditor_runtime::AiRequestPresentation;
 
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 
 impl CditorV2View {
+    pub(crate) fn refresh_text_overlay_anchors(&mut self) {
+        let slash_target = self.overlay.slash_menu.as_ref().and_then(|menu| {
+            self.ready_session()
+                .and_then(|session| session.text_block_context(menu.block_id).ok().flatten())
+                .and_then(|context| context.caret)
+                .map(|caret| (menu.block_id, caret))
+        });
+        let prompt_target = self.overlay.ai_prompt.as_ref().and_then(|prompt| {
+            self.ready_session()
+                .and_then(|session| session.text_block_context(prompt.block_id).ok().flatten())
+                .and_then(|context| context.caret)
+                .map(|caret| (prompt.block_id, caret))
+        });
+        let slash_anchor = slash_target
+            .and_then(|(block_id, caret)| self.resolved_slash_menu_anchor(block_id, caret));
+        let prompt_anchor = prompt_target
+            .and_then(|(block_id, caret)| self.resolved_ai_prompt_line_anchor(block_id, caret));
+
+        if let (Some(menu), Some((x, y))) = (self.overlay.slash_menu.as_mut(), slash_anchor) {
+            menu.x = x;
+            menu.y = y;
+        }
+        if let (Some(prompt), Some((x, y))) = (self.overlay.ai_prompt.as_mut(), prompt_anchor) {
+            prompt.x = gpui::px(x);
+            prompt.y = gpui::px(y);
+        }
+    }
+
     pub(crate) fn sync_slash_menu_from_runtime(&mut self, cx: &mut Context<Self>) {
         let Some(context) = self
             .ready_session()
@@ -97,6 +123,21 @@ impl CditorV2View {
             return false;
         };
         let changed = menu.scroll(delta_rows);
+        if changed {
+            cx.notify();
+        }
+        changed
+    }
+
+    pub(crate) fn set_slash_menu_scroll_start_from_gui(
+        &mut self,
+        scroll_start: usize,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(menu) = self.overlay.slash_menu.as_mut() else {
+            return false;
+        };
+        let changed = menu.set_scroll_start(scroll_start);
         if changed {
             cx.notify();
         }
@@ -203,57 +244,27 @@ impl CditorV2View {
     }
 
     pub(super) fn slash_menu_anchor(&self, block_id: BlockId, caret: usize) -> (f32, f32) {
-        if let Some(cache) = self.cache.text_layouts.get(&block_id) {
-            let bounds = platform_range_bounds(cache, caret..caret);
-            return self.window_anchor_to_editor_local(
-                f32::from(bounds.left()),
-                f32::from(bounds.bottom()) + 4.0,
-            );
-        }
-        let Some(viewport_origin) = self.infer_document_viewport_origin() else {
-            return (120.0, 120.0);
-        };
-        let Some(scroll_top) = self
-            .ready_session()
-            .and_then(|session| session.layout_viewport().ok())
-            .map(|snapshot| snapshot.global_scroll_top)
-        else {
-            return (120.0, 120.0);
-        };
-        let anchor = self
-            .interaction
-            .projected_block_rects
-            .iter()
-            .find(|rect| rect.block_id == block_id)
-            .map(|rect| slash_menu_fallback_anchor(rect, viewport_origin, scroll_top))
-            .unwrap_or((120.0, 120.0));
-        self.window_anchor_to_editor_local(anchor.0, anchor.1)
+        self.resolved_slash_menu_anchor(block_id, caret)
+            .unwrap_or((120.0, 120.0))
     }
 
     pub(super) fn ai_prompt_line_anchor(&self, block_id: BlockId, caret: usize) -> (f32, f32) {
-        if let Some(cache) = self.cache.text_layouts.get(&block_id) {
-            let bounds = platform_range_bounds(cache, caret..caret);
-            return self
-                .window_anchor_to_editor_local(f32::from(bounds.left()), f32::from(bounds.top()));
-        }
-        let Some(viewport_origin) = self.infer_document_viewport_origin() else {
-            return (120.0, 120.0);
-        };
-        let Some(scroll_top) = self
-            .ready_session()
-            .and_then(|session| session.layout_viewport().ok())
-            .map(|snapshot| snapshot.global_scroll_top)
-        else {
-            return (120.0, 120.0);
-        };
-        let anchor = self
-            .interaction
-            .projected_block_rects
-            .iter()
-            .find(|rect| rect.block_id == block_id)
-            .map(|rect| ai_prompt_fallback_line_anchor(rect, viewport_origin, scroll_top))
-            .unwrap_or((120.0, 120.0));
-        self.window_anchor_to_editor_local(anchor.0, anchor.1)
+        self.resolved_ai_prompt_line_anchor(block_id, caret)
+            .unwrap_or((120.0, 120.0))
+    }
+
+    fn resolved_slash_menu_anchor(&self, block_id: BlockId, caret: usize) -> Option<(f32, f32)> {
+        let anchor = slash_menu_window_anchor(self.text_caret_bounds_for_block(block_id, caret)?);
+        Some(self.window_anchor_to_editor_local(anchor.0, anchor.1))
+    }
+
+    fn resolved_ai_prompt_line_anchor(
+        &self,
+        block_id: BlockId,
+        caret: usize,
+    ) -> Option<(f32, f32)> {
+        let anchor = ai_prompt_window_anchor(self.text_caret_bounds_for_block(block_id, caret)?);
+        Some(self.window_anchor_to_editor_local(anchor.0, anchor.1))
     }
 
     fn window_anchor_to_editor_local(&self, x: f32, y: f32) -> (f32, f32) {
@@ -266,28 +277,12 @@ fn slash_ai_presentation() -> AiRequestPresentation {
     AiRequestPresentation::AssistantPanel
 }
 
-fn slash_menu_fallback_anchor(
-    rect: &ProjectedBlockRect,
-    viewport_origin: FallbackViewportOrigin,
-    scroll_top: f64,
-) -> (f32, f32) {
-    (
-        (viewport_origin.x + rect.text_origin_x_in_block_px) as f32,
-        (viewport_origin.y + rect.document_top - scroll_top + rect.text_origin_y_in_block_px + 24.0)
-            as f32,
-    )
+fn slash_menu_window_anchor(bounds: gpui::Bounds<gpui::Pixels>) -> (f32, f32) {
+    (f32::from(bounds.left()), f32::from(bounds.bottom()) + 4.0)
 }
 
-fn ai_prompt_fallback_line_anchor(
-    rect: &ProjectedBlockRect,
-    viewport_origin: FallbackViewportOrigin,
-    scroll_top: f64,
-) -> (f32, f32) {
-    (
-        (viewport_origin.x + rect.text_origin_x_in_block_px) as f32,
-        (viewport_origin.y + rect.document_top - scroll_top + rect.text_origin_y_in_block_px)
-            as f32,
-    )
+fn ai_prompt_window_anchor(bounds: gpui::Bounds<gpui::Pixels>) -> (f32, f32) {
+    (f32::from(bounds.left()), f32::from(bounds.top()))
 }
 
 #[cfg(test)]
@@ -303,48 +298,20 @@ mod tests {
     }
 
     #[test]
-    fn fallback_anchor_projects_document_coordinates_into_viewport() {
-        let rect = ProjectedBlockRect {
-            block_id: 1,
-            visible_index: 0,
-            depth: 0,
-            document_top: 620.0,
-            document_bottom: 652.0,
-            indent_px: 0.0,
-            text_origin_x_in_block_px: 42.0,
-            text_origin_y_in_block_px: 4.0,
-            text_width_px: 720.0,
-            supports_children: false,
-        };
-
-        assert_eq!(
-            slash_menu_fallback_anchor(&rect, FallbackViewportOrigin { x: 100.0, y: 30.0 }, 500.0,),
-            (142.0, 178.0),
+    fn slash_menu_opens_below_the_projected_caret() {
+        let bounds = gpui::Bounds::new(
+            gpui::point(gpui::px(142.0), gpui::px(154.0)),
+            gpui::size(gpui::px(1.0), gpui::px(20.0)),
         );
+        assert_eq!(slash_menu_window_anchor(bounds), (142.0, 178.0),);
     }
 
     #[test]
-    fn ai_prompt_fallback_anchor_uses_current_text_line_top() {
-        let rect = ProjectedBlockRect {
-            block_id: 1,
-            visible_index: 0,
-            depth: 0,
-            document_top: 620.0,
-            document_bottom: 652.0,
-            indent_px: 0.0,
-            text_origin_x_in_block_px: 42.0,
-            text_origin_y_in_block_px: 6.0,
-            text_width_px: 720.0,
-            supports_children: false,
-        };
-
-        assert_eq!(
-            ai_prompt_fallback_line_anchor(
-                &rect,
-                FallbackViewportOrigin { x: 100.0, y: 0.0 },
-                300.0,
-            ),
-            (142.0, 326.0),
+    fn ai_prompt_uses_the_projected_caret_line_top() {
+        let bounds = gpui::Bounds::new(
+            gpui::point(gpui::px(142.0), gpui::px(326.0)),
+            gpui::size(gpui::px(1.0), gpui::px(20.0)),
         );
+        assert_eq!(ai_prompt_window_anchor(bounds), (142.0, 326.0),);
     }
 }

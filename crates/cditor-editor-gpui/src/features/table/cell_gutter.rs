@@ -13,8 +13,8 @@ use super::chrome::TableOverlayRect;
 use super::selection::TableAxis;
 use super::style::{
     TABLE_AXIS_HANDLE_RADIUS_PX, TABLE_CELL_GUTTER_INDICATOR_LONG_EDGE_PX,
-    TABLE_CELL_GUTTER_SIZE_PX, TABLE_CELL_GUTTER_THICKNESS_PX, table_axis_handle_foreground,
-    table_axis_handle_hover_background,
+    TABLE_CELL_GUTTER_SIZE_PX, TABLE_CELL_GUTTER_THICKNESS_PX, table_active_border_color,
+    table_axis_handle_foreground, table_axis_handle_hover_background,
 };
 use super::toolbar::TableToolbarEditorOrigin;
 
@@ -97,7 +97,6 @@ fn active_cell_gutter_geometries(
             hitbox,
             indicator: TableOverlayRect {
                 x: (hitbox.width - TABLE_CELL_GUTTER_INDICATOR_LONG_EDGE_PX) / 2.0,
-                // The gutter replaces the inward segment of the active border.
                 y: hitbox.height / 2.0,
                 width: TABLE_CELL_GUTTER_INDICATOR_LONG_EDGE_PX,
                 height: TABLE_CELL_GUTTER_THICKNESS_PX,
@@ -166,7 +165,7 @@ fn render_active_cell_gutter(
                 .top(px(geometry.indicator.y))
                 .w(px(geometry.indicator.width))
                 .h(px(geometry.indicator.height))
-                .bg(rgb(theme.muted))
+                .bg(rgb(table_active_border_color(theme)))
                 .rounded(px(TABLE_CELL_GUTTER_THICKNESS_PX))
                 .group_hover(HOVER_GROUP, |style| style.opacity(0.0)),
         )
@@ -230,10 +229,15 @@ mod tests {
             column_gutter.hitbox.y + column_gutter.indicator.y,
             active_border.y
         );
+        assert_eq!(
+            column_gutter.hitbox.y + column_gutter.hitbox.height / 2.0,
+            active_border.y
+        );
         assert_eq!(row_gutter.axis, TableAxis::Row);
         assert_eq!(row_gutter.index, 0);
         assert_eq!(row_gutter.orientation, TableCellGutterOrientation::Vertical);
         assert_eq!(row_gutter.hitbox.x + row_gutter.indicator.x, 0.0);
+        assert_eq!(row_gutter.hitbox.x + row_gutter.hitbox.width / 2.0, 0.0);
     }
 
     #[test]
@@ -244,21 +248,18 @@ mod tests {
             width: 120.0,
             height: 36.0,
         };
-        let gutters = active_cell_gutter_geometries(
-            TableCellPosition { row: 1, col: 1 },
-            active_border,
-            -24.0,
-        );
+        let gutters =
+            active_cell_gutter_geometries(TableCellPosition { row: 1, col: 1 }, active_border, 0.0);
 
         assert_eq!(gutters.len(), 1);
         let gutter = gutters[0];
         assert_eq!(gutter.axis, TableAxis::Row);
         assert_eq!(gutter.index, 1);
         assert_eq!(gutter.orientation, TableCellGutterOrientation::Vertical);
-        assert_eq!(gutter.hitbox.x + gutter.indicator.x, -24.0);
+        assert_eq!(gutter.hitbox.x + gutter.indicator.x, 0.0);
         assert_eq!(
             gutter.hitbox.x + gutter.indicator.x + gutter.indicator.width,
-            -24.0 + TABLE_CELL_GUTTER_THICKNESS_PX
+            TABLE_CELL_GUTTER_THICKNESS_PX
         );
     }
 

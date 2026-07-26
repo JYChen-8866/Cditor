@@ -1,4 +1,4 @@
-pub use cditor_import_export::clipboard::{CditorClipboardEnvelope, ClipboardSelection};
+pub use cditor_core::clipboard::{CditorClipboardEnvelope, ClipboardSelection};
 
 pub fn envelope_for_selection(
     source_document: Option<cditor_core::ids::DocumentId>,

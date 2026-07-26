@@ -1,10 +1,10 @@
 use std::time::{Duration, Instant};
 
+use cditor_core::clipboard::ClipboardSelection;
 use cditor_core::ids::SurfaceId;
 use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, ImagePayload, InlineMark, InlineSpan, RichBlockKind,
 };
-use cditor_import_export::clipboard::ClipboardSelection;
 
 use super::*;
 
@@ -387,7 +387,7 @@ fn structure_undo_redo_restore_whole_block_selection() {
     assert!(
         runtime
             .paste_clipboard_selection(&ClipboardSelection::Blocks {
-                blocks: vec![cditor_import_export::clipboard::ClipboardBlock {
+                blocks: vec![cditor_core::clipboard::ClipboardBlock {
                     source_id: 99,
                     parent_source_id: None,
                     depth: 0,

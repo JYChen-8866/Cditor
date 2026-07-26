@@ -3,12 +3,13 @@ use std::sync::OnceLock;
 
 use crate::editor_view::CditorV2View;
 use crate::input::GuiInputCommand;
-use cditor_api::{CditorError, command::CommandState, event::CditorEvent};
 use cditor_core::edit::ChangeOrigin;
+use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{
     CaretDirection, CditorCommand, CommandCatalog, CommandEnvelope, CommandOutcome,
     CommandQueryState, CommandSource, CommandUnavailableReason,
 };
+use cditor_sdk::{CditorError, command::CommandState, event::CditorEvent};
 
 impl CditorV2View {
     pub(crate) fn apply_input_command(&mut self, command: GuiInputCommand, cx: &mut Context<Self>) {
@@ -36,6 +37,8 @@ impl CditorV2View {
         source: CommandSource,
         cx: &mut Context<Self>,
     ) -> Result<CommandOutcome, CditorError> {
+        let code_line_break_target = code_line_break_target(self, &command);
+        let reveal_focused_block = keyboard_command_reveals_focused_block(&command, source);
         let invocation = command.invocation(source);
         command_catalog()
             .validate_invocation(&invocation)
@@ -80,12 +83,24 @@ impl CditorV2View {
                 );
             }
             let outcome = dispatched.outcome;
+            if outcome.changed()
+                && let Some(block_id) = code_line_break_target
+            {
+                self.request_code_caret_reveal_after_line_break(block_id);
+            }
+            let document_scroll_changed = if outcome.changed() && reveal_focused_block {
+                self.ready_session()
+                    .and_then(|session| session.ensure_focused_block_visible().ok())
+                    .is_some_and(|snapshot| snapshot.changed)
+            } else {
+                false
+            };
             if outcome.selection_changed
                 && let Some(selection) = self.sdk_selection()
             {
                 cx.emit(CditorEvent::SelectionChanged { selection });
             }
-            if outcome.request_repaint {
+            if outcome.request_repaint || document_scroll_changed {
                 cx.notify();
             }
             return Ok(outcome);
@@ -131,6 +146,31 @@ impl CditorV2View {
             CommandQueryState::disabled(CommandUnavailableReason::RuntimeNotReady)
         })
     }
+}
+
+fn code_line_break_target(view: &CditorV2View, command: &CditorCommand) -> Option<BlockId> {
+    if !matches!(
+        command,
+        CditorCommand::HandleEnter | CditorCommand::InsertSoftLineBreak
+    ) {
+        return None;
+    }
+    let (block_id, kind) = view.ready_session()?.focused_block_kind().ok().flatten()?;
+    matches!(kind, cditor_core::rich_text::RichBlockKind::Code { .. }).then_some(block_id)
+}
+
+fn keyboard_command_reveals_focused_block(command: &CditorCommand, source: CommandSource) -> bool {
+    source == CommandSource::Keyboard
+        && matches!(
+            command,
+            CditorCommand::InsertParagraphAfterFocused
+                | CditorCommand::InsertSoftLineBreak
+                | CditorCommand::HandleEnter
+                | CditorCommand::IndentBlock
+                | CditorCommand::OutdentBlock
+                | CditorCommand::DeleteBackward
+                | CditorCommand::DeleteForward
+        )
 }
 
 fn runtime_dispatches(command: &CditorCommand) -> bool {

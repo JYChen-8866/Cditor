@@ -169,6 +169,7 @@ pub enum CommandArgs {
         block_id: BlockId,
         axis: TableAxis,
         index: usize,
+        count: usize,
     },
     MediaWidthRatio {
         block_id: BlockId,

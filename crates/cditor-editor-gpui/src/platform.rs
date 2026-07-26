@@ -1,5 +1,9 @@
 use std::borrow::Cow;
 
+/// GPUI's native macOS system UI family. The platform resolves this to the
+/// appropriate SF Pro optical variant and falls back to the system CJK face.
+pub(crate) const EDITOR_UI_FONT_FAMILY: &str = ".SystemUIFont";
+
 /// A concrete monospace family that ships with the host operating system.
 ///
 /// GPUI expects a real font family name here; CSS-style generic families are

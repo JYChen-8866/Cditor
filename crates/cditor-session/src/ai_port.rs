@@ -1,3 +1,4 @@
+use cditor_ai::AiProviderRequest;
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
 use cditor_runtime::{
@@ -54,12 +55,61 @@ pub fn project_ai_session_request(
         );
     }
 
-    runtime
+    let mut outcome = runtime
         .apply_ai_session_request(request)
         .map_err(|message| {
             ProtocolError::new(ProtocolErrorCode::ApplyFailed, message)
                 .with_document(runtime.document_id())
+        })?;
+    if let AiSessionOutcome::Started(dispatch) = &mut outcome {
+        dispatch.redacted_fields = redact_ai_provider_request(&mut dispatch.request);
+    }
+    Ok(outcome)
+}
+
+fn redact_ai_provider_request(request: &mut AiProviderRequest) -> usize {
+    let mut redacted = 0;
+    for value in [
+        &mut request.instruction,
+        &mut request.selected_text,
+        &mut request.prefix,
+        &mut request.suffix,
+    ] {
+        let (next, count) = redact_sensitive_text(value);
+        *value = next;
+        redacted += count;
+    }
+    redacted
+}
+
+fn redact_sensitive_text(text: &str) -> (String, usize) {
+    const MARKERS: [&str; 6] = [
+        "authorization:",
+        "bearer ",
+        "api_key=",
+        "api-key=",
+        "password=",
+        "secret=",
+    ];
+    let mut count = 0;
+    let lines = text
+        .split_inclusive('\n')
+        .map(|line| {
+            let lower = line.to_ascii_lowercase();
+            let Some((start, marker_len)) = MARKERS
+                .iter()
+                .filter_map(|marker| lower.find(marker).map(|start| (start, marker.len())))
+                .min_by_key(|(start, _)| *start)
+            else {
+                return line.to_owned();
+            };
+            count += 1;
+            let end = start + marker_len;
+            let newline = if line.ends_with('\n') { "\n" } else { "" };
+            format!("{}[REDACTED]{newline}", &line[..end])
         })
+        .collect();
+    (lines, count)
 }
 
 impl EditorSessionHandle {
@@ -96,7 +146,9 @@ impl EditorSessionHandle {
 mod tests {
     use cditor_ai::AiStreamEvent;
     use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
-    use cditor_runtime::{AiRequestPresentation, AiStreamApplyResult};
+    use cditor_runtime::{
+        AiRequestPresentation, AiStreamApplyResult, RealtimeInput, RealtimeInputRequest,
+    };
 
     use super::*;
     use crate::EditorSession;
@@ -243,5 +295,48 @@ mod tests {
         assert!(active.session_active);
         assert_eq!(active.prompt_block_id, Some(1));
         assert_eq!(active.apply_mode, Some(AiApplyMode::InsertAfter));
+    }
+
+    #[test]
+    fn provider_dispatch_redacts_sensitive_document_context_before_leaving_session() {
+        let mut runtime = DocumentRuntime::empty();
+        runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::FocusBlock { block_id: 1 },
+                CommandSource::Sdk,
+            ))
+            .unwrap();
+        let identity = runtime.input_session_identity().unwrap();
+        runtime
+            .apply_realtime_input(RealtimeInputRequest {
+                expected: identity,
+                input: RealtimeInput::ReplaceText {
+                    range: None,
+                    text: "authorization: Bearer document-token",
+                },
+            })
+            .unwrap();
+        let handle = EditorSession::new(runtime, false).into_handle();
+        let outcome = handle
+            .request_ai_session(AiSessionRequest::Begin {
+                instruction: "password=prompt-secret\nrewrite".to_owned(),
+                presentation: AiRequestPresentation::Automatic,
+            })
+            .unwrap();
+        let AiSessionOutcome::Started(dispatch) = outcome else {
+            panic!("AI begin must return provider dispatch");
+        };
+
+        assert!(dispatch.redacted_fields >= 2);
+        let provider_text = format!(
+            "{}{}{}{}",
+            dispatch.request.instruction,
+            dispatch.request.selected_text,
+            dispatch.request.prefix,
+            dispatch.request.suffix
+        );
+        assert!(!provider_text.contains("prompt-secret"));
+        assert!(!provider_text.contains("document-token"));
+        assert!(provider_text.contains("[REDACTED]"));
     }
 }

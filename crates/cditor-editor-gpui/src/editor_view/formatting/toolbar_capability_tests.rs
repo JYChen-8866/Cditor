@@ -25,12 +25,13 @@ fn complex_block_gutter_menu_disables_unsupported_text_and_ai_actions() {
         text_origin_y_in_block_px: 0.0,
         text_width_px: 500.0,
         supports_children: false,
+        ..ProjectedBlockRect::default()
     };
 
     let context = formatting_toolbar_context(Some(&runtime), Some(1)).unwrap();
     let state = formatting_toolbar_state(
         Some(&context),
-        &HashMap::new(),
+        None,
         false,
         false,
         crate::menu_metrics::EditorViewport::from_size(size(px(900.0), px(700.0))),

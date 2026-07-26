@@ -2,10 +2,10 @@
 
 > 任务：P0-008
 >
-> Harness：`crates/runtime/benches/frame_baseline.rs`（`frame-baseline-v1`，
+> Harness：`crates/cditor-test-support/benches/frame_baseline.rs`（`frame-baseline-v1`，
 > 无外部 benchmark framework，bench profile）
 >
-> 运行：`cargo bench -p cditor-runtime --bench frame_baseline -- --full`
+> 运行：`cargo bench -p cditor-test-support --bench frame_baseline -- --full`
 >
 > 报告 JSON：`target/benchmark-reports/frame-baseline-full.json`（含本表全部数据）
 

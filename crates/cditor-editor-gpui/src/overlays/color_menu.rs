@@ -1,3 +1,4 @@
+use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
 use cditor_core::rich_text::InlineColorTarget;
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -458,26 +459,22 @@ fn render_scrollbar(
 ) -> AnyElement {
     let max_offset = f32::from(scroll_handle.max_offset().y)
         .max((COLOR_MENU_ESTIMATED_CONTENT_HEIGHT_PX - track_height).max(0.0));
-    let thumb_height =
-        (track_height * track_height / (track_height + max_offset)).clamp(28.0, track_height);
-    let progress = (-f32::from(scroll_handle.offset().y) / max_offset.max(1.0)).clamp(0.0, 1.0);
-    let thumb_top = (track_height - thumb_height) * progress;
+    if max_offset <= 0.5 || track_height <= 0.5 {
+        return div().into_any_element();
+    }
     div()
         .absolute()
         .top(px(6.0))
-        .right(px(3.0))
-        .w(px(5.0))
+        .right_0()
+        .w(px(10.0))
         .h(px(track_height))
-        .child(
-            div()
-                .absolute()
-                .top(px(thumb_top))
-                .w_full()
-                .h(px(thumb_height))
-                .rounded(px(3.0))
-                .bg(rgb(theme.scrollbar))
-                .hover(|style| style.bg(rgb(theme.scrollbar_hover))),
-        )
+        .child(InteractiveScrollbar::for_scroll_handle(
+            ScrollbarAxis::Vertical,
+            scroll_handle.clone(),
+            track_height,
+            COLOR_MENU_ESTIMATED_CONTENT_HEIGHT_PX,
+            InteractiveScrollbarStyle::notion(theme.scrollbar, theme.scrollbar_hover),
+        ))
         .into_any_element()
 }
 

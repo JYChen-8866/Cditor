@@ -121,7 +121,7 @@ mod tests {
             header: false,
             align: cditor_core::rich_text::TableCellAlign::Left,
             background_color: None,
-            spans: Vec::new(),
+            spans: Default::default(),
         }];
 
         let lines = table_grid_lines(&table_view);
@@ -160,7 +160,7 @@ mod tests {
             header: false,
             align: cditor_core::rich_text::TableCellAlign::Left,
             background_color: None,
-            spans: Vec::new(),
+            spans: Default::default(),
         }
     }
 }

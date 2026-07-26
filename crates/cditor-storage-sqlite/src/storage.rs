@@ -5,23 +5,32 @@ use uuid::Uuid;
 use cditor_core::document::BlockIndexRecord;
 use cditor_core::edit::{EditTransaction, ExternalUndoBlobRef};
 use cditor_core::layout::BlockLayoutMeta;
-use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind};
+use cditor_storage::query_index::{
+    BacklinkRecord, FtsApplyResult, LocalIndexRebuildRequest, LocalSearchHit, LocalSearchRequest,
+};
 use cditor_storage::{
+    AssetManifestRecord, AssetReference, AssetUploadMutation, DocumentLoadProgress,
     DocumentStorage, EmergencyLogAppendOutcome, EmergencyLogEntry, LoadDocumentRequest,
-    LoadedDocument, LoadedPayloadBatch, StorageBackendKind, StorageCapabilities,
-    StorageDocumentMetadata, StorageError, StorageResult, StorageSaveBatch, StorageSaveOutcome,
+    LoadedDocument, LoadedPayloadBatch, MaterializedCheckpoint, MaterializedRebuildPlan,
+    ProvisionalAssetRequest, StorageBackendKind, StorageCapabilities, StorageDocumentMetadata,
+    StorageError, StorageResult, StorageSaveBatch, StorageSaveOutcome,
 };
 
+mod document_load;
+
+use crate::asset_manifest::materialize_asset_operations;
 use crate::codec::{decode_attrs, encode_attrs, encode_transaction};
-use crate::config::SqliteStorageOptions;
+use crate::config::{SqliteStorageOptions, prepare_path};
 use crate::error::sqlite_error;
 use crate::ids::{
     block_id_from_sqlite, block_id_to_sqlite, document_id_from_sqlite, document_id_to_sqlite,
 };
+use crate::journal::materialize_transaction_in_journal;
 use crate::layout::save_block_layouts;
 use crate::migration::{MIGRATOR, SqliteMigrationManager, connect_pool};
-use crate::page_layout::save_page_layout_snapshot;
+use crate::page_layout::{save_page_layout_snapshot, validate_page_layout_batch};
 use crate::payload::insert_payload;
+use crate::query_index::{prune_deleted_query_projection, update_query_projection_batch};
 use crate::snapshot::save_index_snapshot;
 use crate::util::{
     checked_i64, checked_u16, checked_u32, checked_u64, row_version, sort_key, unix_millis,
@@ -37,6 +46,17 @@ pub struct SqliteDocumentStorage {
 }
 
 impl SqliteDocumentStorage {
+    pub(crate) fn from_recovery_pool(pool: SqlitePool, options: SqliteStorageOptions) -> Self {
+        let writer = SqliteWriterGate::for_path(&options.path, options.busy_timeout)
+            .expect("validated recovery path must have a writer identity");
+        Self {
+            pool,
+            options,
+            writer,
+            last_migration_report: None,
+        }
+    }
+
     pub(crate) fn writer_gate(&self) -> &SqliteWriterGate {
         &self.writer
     }
@@ -62,7 +82,14 @@ impl SqliteDocumentStorage {
         })
     }
 
-    pub fn pool(&self) -> &SqlitePool {
+    #[cfg(test)]
+    pub(crate) fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    pub fn test_pool(&self) -> &SqlitePool {
         &self.pool
     }
 
@@ -75,71 +102,7 @@ impl SqliteDocumentStorage {
         self.last_migration_report.as_ref()
     }
 
-    async fn ensure_minimal_document(&self, request: &LoadDocumentRequest) -> StorageResult<()> {
-        let _writer_guard = self.writer.acquire().await?;
-        let now = unix_millis()?;
-        let workspace_id = Uuid::from_u128(request.workspace_id as u128);
-        let document_id = document_id_to_sqlite(request.document_id);
-        let block_id = block_id_to_sqlite(1);
-        let mut transaction = self.pool.begin().await.map_err(sqlite_error)?;
-
-        sqlx::query(
-            "INSERT OR IGNORE INTO workspaces (id, name, created_at, updated_at) VALUES (?, 'Default Workspace', ?, ?)",
-        )
-        .bind(workspace_id)
-        .bind(now)
-        .bind(now)
-        .execute(&mut *transaction)
-        .await
-        .map_err(sqlite_error)?;
-        sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO documents (
-                id, workspace_id, title, structure_version, content_version,
-                layout_version, schema_version, created_at, updated_at
-            ) VALUES (?, ?, 'Untitled', 1, 1, 0, 1, ?, ?)
-            "#,
-        )
-        .bind(document_id)
-        .bind(workspace_id)
-        .bind(now)
-        .bind(now)
-        .execute(&mut *transaction)
-        .await
-        .map_err(sqlite_error)?;
-
-        let block_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM blocks WHERE document_id = ? AND deleted_at IS NULL",
-        )
-        .bind(document_id)
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(sqlite_error)?;
-        if block_count == 0 {
-            let kind = RichBlockKind::Paragraph;
-            let payload = BlockPayloadRecord::rich_text(1, kind.clone(), "");
-            sqlx::query(
-                r#"
-                INSERT INTO blocks (
-                    id, document_id, parent_id, sort_key, depth, kind_tag, flags,
-                    content_version, structure_version, updated_at
-                ) VALUES (?, ?, NULL, ?, 0, ?, 0, 1, 1, ?)
-                "#,
-            )
-            .bind(block_id)
-            .bind(document_id)
-            .bind(sort_key(0))
-            .bind(i64::from(kind_tag_for_rich_block_kind(&kind)))
-            .bind(now)
-            .execute(&mut *transaction)
-            .await
-            .map_err(sqlite_error)?;
-            insert_payload(&mut transaction, document_id, &payload, now).await?;
-        }
-        transaction.commit().await.map_err(sqlite_error)
-    }
-
-    async fn load_metadata(
+    pub(crate) async fn load_metadata(
         &self,
         document_id: cditor_core::ids::DocumentId,
     ) -> StorageResult<StorageDocumentMetadata> {
@@ -180,7 +143,7 @@ impl SqliteDocumentStorage {
         })
     }
 
-    async fn load_records(
+    pub(crate) async fn load_records(
         &self,
         document_id: cditor_core::ids::DocumentId,
     ) -> StorageResult<Vec<BlockIndexRecord>> {
@@ -247,7 +210,7 @@ impl SqliteDocumentStorage {
             .collect()
     }
 
-    async fn load_attrs(
+    pub(crate) async fn load_attrs(
         &self,
         document_id: cditor_core::ids::DocumentId,
     ) -> StorageResult<
@@ -335,6 +298,80 @@ impl DocumentStorage for SqliteDocumentStorage {
             .await
     }
 
+    async fn create_materialized_checkpoint(
+        &self,
+        document_id: cditor_core::ids::DocumentId,
+    ) -> StorageResult<MaterializedCheckpoint> {
+        SqliteDocumentStorage::create_materialized_checkpoint(self, document_id).await
+    }
+
+    async fn load_materialized_rebuild_plan(
+        &self,
+        document_id: cditor_core::ids::DocumentId,
+    ) -> StorageResult<Option<MaterializedRebuildPlan>> {
+        SqliteDocumentStorage::load_materialized_rebuild_plan(self, document_id).await
+    }
+
+    async fn search_local(
+        &self,
+        request: LocalSearchRequest,
+    ) -> StorageResult<Vec<LocalSearchHit>> {
+        SqliteDocumentStorage::search_local(self, request).await
+    }
+
+    async fn backlinks(
+        &self,
+        target_document_id: cditor_core::ids::DocumentId,
+        target_block_id: Option<cditor_core::ids::BlockId>,
+        limit: usize,
+    ) -> StorageResult<Vec<BacklinkRecord>> {
+        SqliteDocumentStorage::backlinks(self, target_document_id, target_block_id, limit).await
+    }
+
+    async fn rebuild_local_query_index(
+        &self,
+        request: LocalIndexRebuildRequest,
+    ) -> StorageResult<FtsApplyResult> {
+        SqliteDocumentStorage::rebuild_local_query_index(self, request).await
+    }
+
+    async fn create_provisional_asset(
+        &self,
+        request: ProvisionalAssetRequest,
+    ) -> StorageResult<AssetManifestRecord> {
+        SqliteDocumentStorage::create_provisional_asset(self, request).await
+    }
+
+    async fn asset_manifest(
+        &self,
+        asset_id: cditor_core::ids::AssetId,
+    ) -> StorageResult<Option<AssetManifestRecord>> {
+        SqliteDocumentStorage::asset_manifest(self, asset_id).await
+    }
+
+    async fn update_asset_upload(
+        &self,
+        asset_id: cditor_core::ids::AssetId,
+        mutation: AssetUploadMutation,
+    ) -> StorageResult<AssetManifestRecord> {
+        SqliteDocumentStorage::update_asset_upload(self, asset_id, mutation).await
+    }
+
+    async fn pending_asset_uploads(
+        &self,
+        workspace_id: u64,
+        limit: usize,
+    ) -> StorageResult<Vec<AssetManifestRecord>> {
+        SqliteDocumentStorage::pending_asset_uploads(self, workspace_id, limit).await
+    }
+
+    async fn asset_references(
+        &self,
+        asset_id: cditor_core::ids::AssetId,
+    ) -> StorageResult<Vec<AssetReference>> {
+        SqliteDocumentStorage::asset_references(self, asset_id).await
+    }
+
     async fn load_undo_blob(
         &self,
         document_id: cditor_core::ids::DocumentId,
@@ -360,60 +397,15 @@ impl DocumentStorage for SqliteDocumentStorage {
     }
 
     async fn load_document(&self, request: LoadDocumentRequest) -> StorageResult<LoadedDocument> {
-        self.ensure_minimal_document(&request).await?;
-        let metadata = self.load_metadata(request.document_id).await?;
-        let snapshot = self
-            .load_index_snapshot(
-                request.document_id,
-                request.visible_index_version,
-                metadata.structure_version,
-            )
-            .await?;
-        let (mut records, index_from_snapshot) = match snapshot {
-            Some(records) => (records, true),
-            None => (self.load_records(request.document_id).await?, false),
-        };
-        let layout_cache_hits = self
-            .apply_block_layout_cache(request.document_id, &mut records, request.layout_key)
-            .await?;
-        let page_layout_snapshot = self
-            .load_page_layout_snapshot(
-                request.document_id,
-                request.visible_index_version,
-                metadata.structure_version,
-                request.layout_key,
-                request.page_policy_version,
-            )
-            .await?;
-        let block_attrs = self.load_attrs(request.document_id).await?;
-        let initial_payload_window_end = records.len().min(request.initial_payload_window_blocks);
-        let loaded = self
-            .load_payloads_inner(
-                request.document_id,
-                &records
-                    .iter()
-                    .take(initial_payload_window_end)
-                    .map(|record| record.id)
-                    .collect::<Vec<_>>(),
-            )
-            .await?;
-        if !loaded.missing_block_ids.is_empty() {
-            return Err(StorageError::CorruptData(format!(
-                "document {} is missing {} payloads in its initial window",
-                request.document_id,
-                loaded.missing_block_ids.len()
-            )));
-        }
-        Ok(LoadedDocument {
-            metadata,
-            records,
-            block_attrs,
-            initial_payloads: loaded.records,
-            initial_payload_window_end,
-            index_from_snapshot,
-            layout_cache_hits,
-            page_layout_snapshot,
-        })
+        self.load_document_inner(request, &mut |_| {}).await
+    }
+
+    async fn load_document_with_progress(
+        &self,
+        request: LoadDocumentRequest,
+        progress: &mut (dyn FnMut(DocumentLoadProgress) + Send),
+    ) -> StorageResult<LoadedDocument> {
+        self.load_document_inner(request, progress).await
     }
 
     async fn load_payloads(
@@ -436,6 +428,8 @@ impl DocumentStorage for SqliteDocumentStorage {
             .collect();
         let structure_version = checked_i64(batch.structure_version)?;
         let mut transaction = self.pool.begin().await.map_err(sqlite_error)?;
+        #[cfg(test)]
+        crate::fault_injection::pause_at_commit_point("transaction_opened");
 
         if let Some(snapshot) = &batch.page_layout_snapshot {
             validate_page_layout_batch(&batch, snapshot)?;
@@ -559,6 +553,10 @@ impl DocumentStorage for SqliteDocumentStorage {
         for payload in &batch.payloads {
             insert_payload(&mut transaction, document_id, payload, now).await?;
         }
+        update_query_projection_batch(&mut transaction, batch.document_id, &batch.payloads).await?;
+        if !batch.index_records.is_empty() {
+            prune_deleted_query_projection(&mut transaction, batch.document_id).await?;
+        }
         if let Some(max_content_version) = batch
             .payloads
             .iter()
@@ -575,7 +573,11 @@ impl DocumentStorage for SqliteDocumentStorage {
             .await
             .map_err(sqlite_error)?;
         }
+        #[cfg(test)]
+        crate::fault_injection::pause_at_commit_point("materialized_written");
         for edit in &batch.transactions {
+            materialize_transaction_in_journal(&mut transaction, batch.document_id, edit, now)
+                .await?;
             sqlx::query(
                 r#"
                 INSERT OR REPLACE INTO edit_transactions (
@@ -592,8 +594,19 @@ impl DocumentStorage for SqliteDocumentStorage {
             .await
             .map_err(sqlite_error)?;
         }
+        materialize_asset_operations(
+            &mut transaction,
+            batch.document_id,
+            &batch.transactions,
+            now,
+        )
+        .await?;
+        #[cfg(test)]
+        crate::fault_injection::pause_at_commit_point("journal_outbox_written");
 
         transaction.commit().await.map_err(sqlite_error)?;
+        #[cfg(test)]
+        crate::fault_injection::pause_at_commit_point("sqlite_commit_returned");
         Ok(StorageSaveOutcome {
             saved_structure_version,
             saved_payload_versions,
@@ -608,58 +621,4 @@ impl DocumentStorage for SqliteDocumentStorage {
             .map_err(sqlite_error)?;
         Ok(())
     }
-}
-
-fn validate_page_layout_batch(
-    batch: &StorageSaveBatch,
-    snapshot: &cditor_storage::StoragePageLayoutSnapshot,
-) -> StorageResult<()> {
-    if snapshot.visible_index_version < 0 {
-        return Err(StorageError::CorruptData(
-            "page layout visible index version cannot be negative".to_owned(),
-        ));
-    }
-    if snapshot.structure_version != batch.structure_version {
-        return Err(StorageError::CorruptData(format!(
-            "page layout structure version {} does not match save batch {}",
-            snapshot.structure_version, batch.structure_version
-        )));
-    }
-    if batch
-        .layout_key
-        .is_none_or(|key| key.hash_key() != snapshot.layout_key_hash)
-    {
-        return Err(StorageError::CorruptData(
-            "page layout key does not match save batch layout key".to_owned(),
-        ));
-    }
-    Ok(())
-}
-
-pub(crate) fn prepare_path(options: &SqliteStorageOptions) -> StorageResult<()> {
-    if options.path.as_os_str().is_empty() {
-        return Err(StorageError::InvalidConfiguration(
-            "SQLite database path cannot be empty".to_owned(),
-        ));
-    }
-    if !options.create_if_missing && !options.path.exists() {
-        return Err(StorageError::InvalidConfiguration(format!(
-            "SQLite database does not exist: {}",
-            options.path.display()
-        )));
-    }
-    if !(1..=8).contains(&options.max_connections) {
-        return Err(StorageError::InvalidConfiguration(format!(
-            "SQLite max_connections must be between 1 and 8, got {}",
-            options.max_connections
-        )));
-    }
-    if let Some(parent) = options
-        .path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent).map_err(|error| StorageError::Io(error.to_string()))?;
-    }
-    Ok(())
 }

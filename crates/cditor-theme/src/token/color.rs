@@ -39,6 +39,7 @@ pub enum ColorToken {
     TableActiveBorder,
     Skeleton,
     Danger,
+    ScrollbarTrack,
     Scrollbar,
     ScrollbarHover,
 }

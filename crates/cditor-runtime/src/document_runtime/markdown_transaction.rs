@@ -1,5 +1,3 @@
-use cditor_core::edit::ChangeOrigin;
-
 use super::markdown_paste::trace_markdown;
 use super::*;
 
@@ -13,17 +11,9 @@ struct MarkdownApplyPlan {
 }
 
 impl DocumentRuntime {
-    pub(super) fn insert_ai_markdown_content(&mut self, markdown: &str) -> Result<bool, String> {
-        self.insert_markdown_content_transaction(
-            markdown,
-            EditTransactionKind::AiApply,
-            ChangeOrigin::Ai,
-        )
-    }
-
-    pub(super) fn insert_markdown_content_transaction(
+    pub(super) fn insert_imported_markdown_content_transaction(
         &mut self,
-        markdown: &str,
+        imported: ImportedBlockDocument,
         kind: EditTransactionKind,
         origin: ChangeOrigin,
     ) -> Result<bool, String> {
@@ -52,13 +42,8 @@ impl DocumentRuntime {
             .cloned()
             .ok_or_else(|| format!("missing payload for block {current_block_id}"))?;
         if !before_current.kind.supports_rich_text_title() {
-            trace_markdown(
-                "parse.blocked",
-                format_args!("block={current_block_id} kind={:?}", before_current.kind),
-            );
             return Ok(false);
         }
-
         let current_spans = editable_payload_spans(&before_current.payload)?;
         let current_text = plain_text_from_spans(&current_spans);
         let (prefix, suffix) = if let Some(plan) = &cross_plan {
@@ -98,22 +83,10 @@ impl DocumentRuntime {
                 slice_rich_text_spans(&current_spans, range.end..current_text.len()),
             )
         };
-
-        let options = MarkdownImportOptions {
-            document_id: self.document_id,
-            first_block_id: self.next_available_block_id(),
-        };
-        let imported = import_markdown_block_incremental(markdown, options)
-            .map(|block| ParsedMarkdownDocument {
-                root_blocks: vec![block.id],
-                blocks: vec![block],
-            })
-            .unwrap_or_else(|| parse_markdown_document(markdown, options));
         trace_markdown(
             "parse.result",
             format_args!(
-                "block={current_block_id} input_bytes={} blocks={} roots={} kinds={:?}",
-                markdown.len(),
+                "block={current_block_id} blocks={} roots={} kinds={:?}",
                 imported.blocks.len(),
                 imported.root_blocks.len(),
                 imported
@@ -247,7 +220,7 @@ fn build_text_plan(
     insert_at: usize,
     prefix: Vec<InlineSpan>,
     suffix: Vec<InlineSpan>,
-    mut imported: ParsedMarkdownDocument,
+    mut imported: ImportedBlockDocument,
 ) -> Result<MarkdownApplyPlan, String> {
     let imported_first_id = imported.blocks[0].id;
     let mut remap = HashMap::new();
@@ -306,7 +279,7 @@ fn build_table_plan(
     current_kind: RichBlockKind,
     prefix: Vec<InlineSpan>,
     suffix: Vec<InlineSpan>,
-    imported: ParsedMarkdownDocument,
+    imported: ImportedBlockDocument,
 ) -> MarkdownApplyPlan {
     let mut blocks = imported.blocks;
     let prefix_empty = plain_text_from_spans(&prefix).is_empty();
@@ -469,3 +442,4 @@ pub(super) fn payload_replace_operation(
         after_payload,
     })
 }
+use cditor_core::edit::ChangeOrigin;

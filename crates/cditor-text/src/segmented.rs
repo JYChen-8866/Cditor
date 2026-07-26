@@ -1,19 +1,15 @@
-//! 超长 text surface 的分段布局（P6-015）。
-//!
-//! 10MiB/100k 行级别的 code/text surface 禁止整块同步 layout（P2-018 基准证
-//! 明整块 full build p95 秒级）。本模块把文本按硬行边界切成段：
-//!
+//! 超长 text surface 的分段布局（P6-015）。10MiB/100k 行级别的 surface
+//! 禁止整块同步 layout；本模块把文本按硬行边界切成段：
 //! - 构建只做 O(n) 换行扫描，不做任何 shaping；
 //! - 每段独立 layout，只有可见窗口的段被真正测量（caller 提供 builder）；
+//! - 超过 byte cap 的单硬行按 UTF-8 边界确定性降级切片，禁止整行同步 shaping；
 //! - 未测量段用自适应行高估计高度，测量后全局估计随之修正；
 //! - 编辑只失效受影响的段，宽度变化丢弃测量但保留分段索引；
 //! - 内部滚动锚点以字节偏移标识，测高修正后可稳定还原视口。
-//!
-//! 与 App 渲染管线/cache identity 的接线属于 Phase 6 集成边界。
 
 use std::ops::Range;
 
-use crate::snapshot::ParleyLayoutSnapshot;
+use crate::snapshot::TextLayoutSnapshot;
 
 /// 超过该字节数的 surface 必须走分段布局，禁止整块同步 layout。
 pub const LARGE_TEXT_SEGMENTATION_THRESHOLD_BYTES: usize = 256 * 1024;
@@ -28,7 +24,7 @@ pub const fn requires_segmentation(text_len: usize) -> bool {
 pub struct SegmentedLayoutConfig {
     /// 每段最多硬行数。
     pub max_hard_lines_per_segment: usize,
-    /// 每段目标最大字节数；单行超限时独占一段，绝不拆行。
+    /// 每段目标最大字节数；单硬行超限时按 UTF-8 边界确定性降级切片。
     pub max_bytes_per_segment: usize,
     /// 未测量段的初始行高估计（逻辑像素）。
     pub estimated_line_height_px: f32,
@@ -48,8 +44,10 @@ impl Default for SegmentedLayoutConfig {
 struct TextSegment {
     byte_range: Range<usize>,
     hard_line_count: usize,
+    forced_line_fragment: bool,
     height_px: f32,
-    measured: Option<ParleyLayoutSnapshot>,
+    height_is_measured: bool,
+    measured: Option<TextLayoutSnapshot>,
 }
 
 /// 内部滚动锚点：以段首字节偏移 + 段内像素偏移标识视口位置。
@@ -70,6 +68,8 @@ pub struct SegmentedTextLayout {
     generation: u64,
     measured_line_total: u64,
     measured_height_total: f64,
+    measured_forced_fragment_total: u64,
+    measured_forced_height_total: f64,
 }
 
 impl SegmentedTextLayout {
@@ -82,6 +82,8 @@ impl SegmentedTextLayout {
             generation: 0,
             measured_line_total: 0,
             measured_height_total: 0.0,
+            measured_forced_fragment_total: 0,
+            measured_forced_height_total: 0.0,
             config,
             text,
         };
@@ -114,18 +116,32 @@ impl SegmentedTextLayout {
     pub fn is_measured(&self, index: usize) -> bool {
         self.segments
             .get(index)
-            .is_some_and(|segment| segment.measured.is_some())
+            .is_some_and(|segment| segment.height_is_measured)
     }
 
     pub fn measured_count(&self) -> usize {
+        self.segments
+            .iter()
+            .filter(|segment| segment.height_is_measured)
+            .count()
+    }
+
+    pub fn cached_snapshot_count(&self) -> usize {
         self.segments
             .iter()
             .filter(|segment| segment.measured.is_some())
             .count()
     }
 
-    pub fn segment_snapshot(&self, index: usize) -> Option<&ParleyLayoutSnapshot> {
+    pub fn segment_snapshot(&self, index: usize) -> Option<&TextLayoutSnapshot> {
         self.segments.get(index)?.measured.as_ref()
+    }
+
+    /// 是否存在为避免超大单硬行同步 shaping 而生成的确定性降级切片。
+    pub fn has_forced_line_fragments(&self) -> bool {
+        self.segments
+            .iter()
+            .any(|segment| segment.forced_line_fragment)
     }
 
     /// 全文档高度：测量段用真实高度，其余用自适应估计。
@@ -172,7 +188,7 @@ impl SegmentedTextLayout {
     /// 未测量段的估计。
     pub fn measure_segments<F>(&mut self, indices: Range<usize>, mut build: F)
     where
-        F: FnMut(&str, Range<usize>) -> ParleyLayoutSnapshot,
+        F: FnMut(&str, Range<usize>) -> TextLayoutSnapshot,
     {
         let indices = indices.start.min(self.segments.len())..indices.end.min(self.segments.len());
         let mut measured_any = false;
@@ -185,10 +201,20 @@ impl SegmentedTextLayout {
             let snapshot = build(&self.text[layout_range], range);
             let height = snapshot.height();
             let segment = &mut self.segments[index];
+            if segment.forced_line_fragment && segment.height_is_measured {
+                self.measured_forced_height_total += f64::from(height - segment.height_px);
+            } else if segment.forced_line_fragment {
+                self.measured_forced_fragment_total += 1;
+                self.measured_forced_height_total += f64::from(height);
+            } else if segment.height_is_measured {
+                self.measured_height_total += f64::from(height - segment.height_px);
+            } else {
+                self.measured_line_total += segment.hard_line_count as u64;
+                self.measured_height_total += f64::from(height);
+            }
             segment.height_px = height;
+            segment.height_is_measured = true;
             segment.measured = Some(snapshot);
-            self.measured_line_total += segment.hard_line_count as u64;
-            self.measured_height_total += f64::from(height);
             measured_any = true;
         }
         if measured_any {
@@ -196,7 +222,21 @@ impl SegmentedTextLayout {
         }
     }
 
+    /// Drop shaped snapshots outside the active window but retain exact heights for scrolling.
+    pub fn retain_segment_snapshots(&mut self, retained: &[usize]) {
+        for (index, segment) in self.segments.iter_mut().enumerate() {
+            if segment.measured.is_some() && retained.binary_search(&index).is_err() {
+                segment.measured = None;
+            }
+        }
+    }
+
     /// 段的布局文本范围：非最终段剥掉段尾换行符（见 `measure_segments`）。
+    pub fn segment_layout_byte_range(&self, index: usize) -> Option<Range<usize>> {
+        self.segments.get(index)?;
+        Some(self.layout_text_range(index))
+    }
+
     fn layout_text_range(&self, index: usize) -> Range<usize> {
         let segment = &self.segments[index];
         let mut range = segment.byte_range.clone();
@@ -240,9 +280,14 @@ impl SegmentedTextLayout {
             .position(|segment| segment.byte_range.start >= old_region_end)
             .unwrap_or(self.segments.len());
         for segment in self.segments.drain(insert_at..removed_end_index) {
-            if segment.measured.is_some() {
-                self.measured_line_total -= segment.hard_line_count as u64;
-                self.measured_height_total -= f64::from(segment.height_px);
+            if segment.height_is_measured {
+                if segment.forced_line_fragment {
+                    self.measured_forced_fragment_total -= 1;
+                    self.measured_forced_height_total -= f64::from(segment.height_px);
+                } else {
+                    self.measured_line_total -= segment.hard_line_count as u64;
+                    self.measured_height_total -= f64::from(segment.height_px);
+                }
             }
         }
 
@@ -272,13 +317,25 @@ impl SegmentedTextLayout {
             return;
         }
         self.width = width;
+        self.invalidate_measurements();
+    }
+
+    /// Invalidate shaping and exact heights while preserving text segmentation and width.
+    pub fn invalidate_measurements(&mut self) {
         self.generation += 1;
         self.measured_line_total = 0;
         self.measured_height_total = 0.0;
+        self.measured_forced_fragment_total = 0;
+        self.measured_forced_height_total = 0.0;
         let estimate = self.config.estimated_line_height_px;
         for segment in &mut self.segments {
             segment.measured = None;
-            segment.height_px = segment.hard_line_count as f32 * estimate;
+            segment.height_is_measured = false;
+            segment.height_px = if segment.forced_line_fragment {
+                estimate
+            } else {
+                segment.hard_line_count as f32 * estimate
+            };
         }
     }
 
@@ -312,8 +369,11 @@ impl SegmentedTextLayout {
         Some(self.segment_top(index) + offset)
     }
 
-    fn segment_index_at_byte(&self, byte: usize) -> Option<usize> {
-        if byte >= self.text.len() {
+    pub fn segment_index_at_byte(&self, byte: usize) -> Option<usize> {
+        if byte == self.text.len() && !self.segments.is_empty() {
+            return Some(self.segments.len() - 1);
+        }
+        if byte > self.text.len() {
             return None;
         }
         self.segments
@@ -330,31 +390,59 @@ impl SegmentedTextLayout {
         let mut segment_bytes = 0usize;
         let mut segment_lines = 0usize;
 
-        let mut flush = |start: &mut usize, bytes: &mut usize, lines: &mut usize| {
-            if *bytes > 0 {
-                segments.push(TextSegment {
-                    byte_range: *start..*start + *bytes,
-                    hard_line_count: (*lines).max(1),
-                    height_px: (*lines).max(1) as f32 * estimate,
-                    measured: None,
-                });
-                *start += *bytes;
-                *bytes = 0;
-                *lines = 0;
-            }
-        };
-
         for line in slice.split_inclusive('\n') {
             let line_len = line.len();
             let would_overflow = segment_lines + 1 > self.config.max_hard_lines_per_segment
                 || segment_bytes + line_len > self.config.max_bytes_per_segment;
             if would_overflow && segment_bytes > 0 {
-                flush(&mut segment_start, &mut segment_bytes, &mut segment_lines);
+                push_pending_segment(
+                    &mut segments,
+                    &mut segment_start,
+                    &mut segment_bytes,
+                    &mut segment_lines,
+                    estimate,
+                );
+            }
+            if line_len > self.config.max_bytes_per_segment {
+                let mut consumed = 0usize;
+                while line_len - consumed > self.config.max_bytes_per_segment {
+                    let chunk_len =
+                        utf8_chunk_len(&line[consumed..], self.config.max_bytes_per_segment.max(1));
+                    segments.push(TextSegment {
+                        byte_range: segment_start..segment_start + chunk_len,
+                        hard_line_count: 1,
+                        forced_line_fragment: true,
+                        height_px: estimate,
+                        height_is_measured: false,
+                        measured: None,
+                    });
+                    segment_start += chunk_len;
+                    consumed += chunk_len;
+                }
+                let tail_len = line_len - consumed;
+                if tail_len > 0 {
+                    segments.push(TextSegment {
+                        byte_range: segment_start..segment_start + tail_len,
+                        hard_line_count: 1,
+                        forced_line_fragment: true,
+                        height_px: estimate,
+                        height_is_measured: false,
+                        measured: None,
+                    });
+                    segment_start += tail_len;
+                }
+                continue;
             }
             segment_bytes += line_len;
             segment_lines += 1;
         }
-        flush(&mut segment_start, &mut segment_bytes, &mut segment_lines);
+        push_pending_segment(
+            &mut segments,
+            &mut segment_start,
+            &mut segment_bytes,
+            &mut segment_lines,
+            estimate,
+        );
         segments
     }
 
@@ -367,11 +455,24 @@ impl SegmentedTextLayout {
         }
     }
 
+    fn adaptive_forced_fragment_height(&self) -> f32 {
+        if self.measured_forced_fragment_total > 0 {
+            (self.measured_forced_height_total / self.measured_forced_fragment_total as f64) as f32
+        } else {
+            self.config.estimated_line_height_px
+        }
+    }
+
     fn refresh_estimates(&mut self) {
-        let estimate = self.adaptive_line_height();
+        let line_estimate = self.adaptive_line_height();
+        let forced_estimate = self.adaptive_forced_fragment_height();
         for segment in &mut self.segments {
-            if segment.measured.is_none() {
-                segment.height_px = segment.hard_line_count as f32 * estimate;
+            if !segment.height_is_measured {
+                segment.height_px = if segment.forced_line_fragment {
+                    forced_estimate
+                } else {
+                    segment.hard_line_count as f32 * line_estimate
+                };
             }
         }
     }
@@ -386,6 +487,43 @@ impl SegmentedTextLayout {
         }
         cursor == self.text.len()
     }
+}
+
+fn push_pending_segment(
+    segments: &mut Vec<TextSegment>,
+    start: &mut usize,
+    bytes: &mut usize,
+    lines: &mut usize,
+    estimated_line_height_px: f32,
+) {
+    if *bytes == 0 {
+        return;
+    }
+    let hard_line_count = (*lines).max(1);
+    segments.push(TextSegment {
+        byte_range: *start..*start + *bytes,
+        hard_line_count,
+        forced_line_fragment: false,
+        height_px: hard_line_count as f32 * estimated_line_height_px,
+        height_is_measured: false,
+        measured: None,
+    });
+    *start += *bytes;
+    *bytes = 0;
+    *lines = 0;
+}
+
+fn utf8_chunk_len(text: &str, target: usize) -> usize {
+    let mut end = target.min(text.len());
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end > 0 {
+        return end;
+    }
+    text.char_indices()
+        .nth(1)
+        .map_or(text.len(), |(offset, _)| offset)
 }
 
 #[cfg(test)]
@@ -418,16 +556,23 @@ mod tests {
     }
 
     #[test]
-    fn oversized_single_line_gets_its_own_segment_unsplit() {
-        let text = format!("short\n{}\nshort2\n", "x".repeat(100));
+    fn oversized_single_line_uses_bounded_deterministic_utf8_fragments() {
+        let text = format!("short\n{}终\nshort2\n", "x".repeat(100));
         let layout = SegmentedTextLayout::new(text, config(usize::MAX, 32));
         assert!(layout.segments_are_contiguous());
-        // 巨行独占一段且未被拆开。
-        let oversized = (0..layout.segment_count())
-            .map(|index| layout.segment_byte_range(index).unwrap())
-            .find(|range| range.len() > 32)
-            .expect("oversized line keeps one segment");
-        assert!(layout.text()[oversized].starts_with('x'));
+        assert!(layout.has_forced_line_fragments());
+        assert!((0..layout.segment_count()).all(|index| {
+            let range = layout.segment_byte_range(index).unwrap();
+            layout.text().is_char_boundary(range.start)
+                && layout.text().is_char_boundary(range.end)
+                && range.len() <= 32
+        }));
+        assert_eq!(
+            (0..layout.segment_count())
+                .map(|index| layout.segment_byte_range(index).unwrap().len())
+                .sum::<usize>(),
+            layout.text().len()
+        );
     }
 
     #[test]

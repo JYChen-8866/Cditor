@@ -1,10 +1,11 @@
-use cditor_core::ids::{BlockId, SurfaceId};
+use cditor_core::ids::BlockId;
 use cditor_core::rich_text::TableRange;
 use gpui::{Context, Pixels, Point, Window};
 
 use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::features::table::menu::{
-    TableBackgroundColor, TableMenuAction, filter_table_menu_items, table_axis_menu_items,
+    TableBackgroundColor, TableMenuAction, TableRowInsertDirection, filter_table_menu_items,
+    table_axis_menu_items,
 };
 use crate::features::table::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
@@ -170,27 +171,15 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pause_caret_blink(cx);
         let position = pointer.map(|(position, _)| position);
         let click_count = pointer.map(|(_, click_count)| click_count).unwrap_or(1);
         self.focus_table_cell_from_gui(block_id, row, col, position, window, cx);
-        let surface_version = self.ready_session().and_then(|session| {
-            session
-                .surface_version(SurfaceId::TableCell {
-                    block_id,
-                    row,
-                    column: col,
-                })
-                .ok()
-                .flatten()
-        });
         if let Some(kind) = crate::surfaces::text::selection_kind_for_click_count(click_count)
             && let Some(position) = position
-            && let Some(current) = surface_version
-            && let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col)
+            && let Some(selection) =
+                self.text_selection_for_table_cell_at_position(block_id, row, col, position, kind)
         {
-            let local_x = f32::from(position.x - cache.bounds.left());
-            let local_y = f32::from(position.y - cache.bounds.top());
-            let selection = cache.snapshot.selection_at_point(local_x, local_y, kind);
             if let Some(session) = self.ready_session() {
                 let _ = session.dispatch_with_snapshot(CommandEnvelope::new(
                     CditorCommand::SetTableCellSelection {
@@ -228,6 +217,7 @@ impl CditorV2View {
         position: Point<Pixels>,
         cx: &mut Context<Self>,
     ) {
+        self.pause_caret_blink(cx);
         let GuiTableInteractionMode::SelectingCellText {
             block_id: anchor_block_id,
             row: anchor_row,
@@ -340,6 +330,29 @@ impl CditorV2View {
         true
     }
 
+    pub(crate) fn adjust_table_row_insert_count_from_gui(
+        &mut self,
+        direction: TableRowInsertDirection,
+        delta: isize,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let changed = if delta < 0 {
+            self.overlay
+                .table_menu_ui
+                .decrement_row_insert_count(direction)
+        } else if delta > 0 {
+            self.overlay
+                .table_menu_ui
+                .increment_row_insert_count(direction)
+        } else {
+            false
+        };
+        if changed {
+            cx.notify();
+        }
+        changed
+    }
+
     pub(crate) fn set_selected_table_background_from_gui(
         &mut self,
         color: TableBackgroundColor,
@@ -396,6 +409,10 @@ impl CditorV2View {
                     block_id: selection.block_id,
                     axis: CommandTableAxis::Row,
                     index: selection.index,
+                    count: self
+                        .overlay
+                        .table_menu_ui
+                        .row_insert_count(TableRowInsertDirection::Above),
                 })
             }
             TableMenuAction::InsertRowBelow
@@ -406,6 +423,10 @@ impl CditorV2View {
                     block_id: selection.block_id,
                     axis: CommandTableAxis::Row,
                     index: selection.index.saturating_add(1),
+                    count: self
+                        .overlay
+                        .table_menu_ui
+                        .row_insert_count(TableRowInsertDirection::Below),
                 })
             }
             TableMenuAction::DeleteRow
@@ -436,6 +457,7 @@ impl CditorV2View {
                     block_id: selection.block_id,
                     axis: CommandTableAxis::Column,
                     index: selection.index,
+                    count: 1,
                 })
             }
             TableMenuAction::InsertColumnRight
@@ -446,6 +468,7 @@ impl CditorV2View {
                     block_id: selection.block_id,
                     axis: CommandTableAxis::Column,
                     index: selection.index.saturating_add(1),
+                    count: 1,
                 })
             }
             TableMenuAction::DeleteColumn

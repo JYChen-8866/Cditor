@@ -43,7 +43,6 @@ impl CditorV2View {
         self.clear_gutter_action();
         self.interaction.scrollbar_drag = None;
         self.interaction.image_resize_drag = None;
-        self.interaction.table_hscroll_drag = None;
         self.interaction.table_interaction_mode = GuiTableInteractionMode::Resizing {
             block_id,
             axis,
@@ -98,7 +97,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn commit_table_resize_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.interaction.table_resize_drag.take() else {
+        let Some(drag) = super::take_drag(&mut self.interaction.table_resize_drag) else {
             return false;
         };
         clear_committed_table_resize_action(&mut self.interaction.action_block_id, drag.block_id);

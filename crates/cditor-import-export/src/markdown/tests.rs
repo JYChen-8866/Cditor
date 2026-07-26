@@ -201,3 +201,103 @@ fn incremental_multiline_callout_is_supported() {
         }
     ));
 }
+
+#[test]
+fn commonmark_wrapped_paragraph_is_one_typed_block() {
+    let parsed = parse_markdown_document(
+        "first visual line\ncontinues in the same paragraph",
+        MarkdownImportOptions::default(),
+    );
+
+    assert_eq!(parsed.blocks.len(), 1);
+    assert_eq!(parsed.blocks[0].kind, RichBlockKind::Paragraph);
+    assert_eq!(
+        parsed.blocks[0].payload.plain_text(),
+        "first visual line\ncontinues in the same paragraph"
+    );
+}
+
+#[test]
+fn unsupported_commonmark_blocks_preserve_exact_raw_source() {
+    for source in [
+        "<section data-x=\"1\">raw</section>",
+        "[^note]: footnote **body**",
+        "term\n: definition",
+        "# heading {#stable-id}",
+        "~~~rust\nfn main() {}\n~~~",
+    ] {
+        let parsed = parse_markdown_document(source, MarkdownImportOptions::default());
+        assert_eq!(parsed.blocks.len(), 1, "{source:?}");
+        assert_eq!(parsed.blocks[0].kind, RichBlockKind::RawMarkdown);
+        assert_eq!(parsed.blocks[0].raw_fallback.as_deref(), Some(source));
+        assert_eq!(export_plain_markdown(&parsed_to_document(parsed)), source);
+    }
+}
+
+#[test]
+fn gfm_table_and_task_list_remain_typed() {
+    let parsed = parse_markdown_document(
+        "- [x] shipped\n\n| A | B |\n|---|---|\n| 1 | 2 |",
+        MarkdownImportOptions::default(),
+    );
+
+    assert!(matches!(
+        parsed.blocks.first().map(|block| &block.kind),
+        Some(RichBlockKind::Todo { checked: true })
+    ));
+    assert!(
+        parsed
+            .blocks
+            .iter()
+            .any(|block| block.kind == RichBlockKind::Table)
+    );
+}
+
+#[test]
+fn commonmark_gfm_fixture_matrix_is_typed_or_losslessly_preserved() {
+    let typed = [
+        ("# heading", RichBlockKind::Heading { level: 1 }),
+        ("paragraph", RichBlockKind::Paragraph),
+        ("> quote\n> continued", RichBlockKind::Quote),
+        ("- item", RichBlockKind::BulletedList),
+        ("1. item", RichBlockKind::NumberedList),
+        (
+            "```rust\nfn main() {}\n```",
+            RichBlockKind::Code {
+                language: Some("rust".to_owned()),
+            },
+        ),
+        ("---", RichBlockKind::Separator),
+        ("| A |\n|---|\n| 1 |", RichBlockKind::Table),
+    ];
+    for (source, expected) in typed {
+        let parsed = parse_markdown_document(source, MarkdownImportOptions::default());
+        assert_eq!(parsed.blocks[0].kind, expected, "{source:?}");
+    }
+
+    for source in [
+        "setext heading\n===",
+        "![alt](image.png)",
+        "[reference][id]\n\n[id]: https://example.com",
+        "inline <kbd>html</kbd>",
+        "$inline-math$",
+    ] {
+        let parsed = parse_markdown_document(source, MarkdownImportOptions::default());
+        assert!(
+            parsed
+                .blocks
+                .iter()
+                .all(|block| block.kind == RichBlockKind::RawMarkdown),
+            "{source:?}: {:?}",
+            parsed.blocks
+        );
+        assert_eq!(export_plain_markdown(&parsed_to_document(parsed)), source);
+    }
+}
+
+fn parsed_to_document(parsed: ParsedMarkdownDocument) -> RichTextDocument {
+    let mut document = RichTextDocument::empty(1);
+    document.root_blocks = parsed.root_blocks;
+    document.blocks = parsed.blocks;
+    document
+}

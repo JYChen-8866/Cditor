@@ -1,7 +1,5 @@
-use gpui::{
-    AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, ScrollHandle,
-    Styled, div, px, rgb,
-};
+use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
+use gpui::{AnyElement, Entity, IntoElement, ParentElement, ScrollHandle, Styled, div, px};
 
 use crate::editor_view::CditorV2View;
 use crate::features::table::TableToolbarEditorOrigin;
@@ -18,9 +16,11 @@ const TABLE_HSCROLLBAR_TOP_GAP_PX: f32 = 4.0;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TableViewportMeasurement {
     pub viewport_width_px: f32,
+    pub viewport_height_px: f32,
 }
 
 /// Geometry of the horizontal scrollbar thumb, in viewport-local pixels.
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TableHScrollThumb {
     pub width_px: f32,
@@ -30,8 +30,13 @@ pub(crate) struct TableHScrollThumb {
 pub(crate) fn table_viewport_measurement_from_handle(
     handle: &ScrollHandle,
 ) -> Option<TableViewportMeasurement> {
-    let viewport_width_px = f32::from(handle.bounds().size.width);
-    (viewport_width_px > 0.5).then_some(TableViewportMeasurement { viewport_width_px })
+    let bounds = handle.bounds();
+    let viewport_width_px = f32::from(bounds.size.width);
+    let viewport_height_px = f32::from(bounds.size.height);
+    (viewport_width_px > 0.5 && viewport_height_px > 0.5).then_some(TableViewportMeasurement {
+        viewport_width_px,
+        viewport_height_px,
+    })
 }
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
@@ -47,9 +52,11 @@ pub(crate) fn render_table_horizontal_scrollbar(
 ) -> Option<AnyElement> {
     let track_width_px = table_hscroll_track_width(measurement.viewport_width_px, table_gutter_px);
     let max_offset_x = table_hscroll_scroll_max(table_view.width_px, track_width_px);
-    let thumb = table_hscroll_thumb(track_width_px, table_view.width_px, max_offset_x, offset_x)?;
-    let thumb_travel_px = table_hscroll_thumb_travel(track_width_px, thumb.width_px);
-    let top_px = origin.y_px + table_view.height_px + TABLE_HSCROLLBAR_TOP_GAP_PX;
+    if max_offset_x <= 0.5 || track_width_px <= 0.5 {
+        return None;
+    }
+    let top_px = origin.y_px + measurement.viewport_height_px + TABLE_HSCROLLBAR_TOP_GAP_PX;
+    let visible_fraction = (track_width_px / table_view.width_px).clamp(0.0, 1.0);
 
     Some(
         div()
@@ -58,31 +65,26 @@ pub(crate) fn render_table_horizontal_scrollbar(
             .top(px(top_px))
             .w(px(track_width_px))
             .h(px(TABLE_HSCROLLBAR_HEIGHT_PX))
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .left(px(thumb.left_px))
-                    .w(px(thumb.width_px))
-                    .h(px(TABLE_HSCROLLBAR_HEIGHT_PX))
-                    .rounded(px(TABLE_HSCROLLBAR_HEIGHT_PX / 2.0))
-                    .cursor_pointer()
-                    .bg(rgb(theme.scrollbar))
-                    .hover(move |style| style.bg(rgb(theme.scrollbar_hover)))
-                    .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-                        view.update(cx, |view, cx| {
-                            view.start_table_hscroll_drag_from_gui(
-                                block_id,
-                                event.position,
-                                max_offset_x,
-                                thumb_travel_px,
-                                window,
-                                cx,
-                            );
-                        });
-                        cx.stop_propagation();
-                    }),
-            )
+            .child(InteractiveScrollbar::for_callback(
+                ScrollbarAxis::Horizontal,
+                (-offset_x).clamp(0.0, max_offset_x),
+                max_offset_x,
+                visible_fraction,
+                InteractiveScrollbarStyle {
+                    idle_thickness_px: 6.0,
+                    active_thickness_px: TABLE_HSCROLLBAR_HEIGHT_PX,
+                    hit_thickness_px: 12.0,
+                    min_thumb_extent_px: TABLE_HSCROLLBAR_MIN_THUMB_PX,
+                    track_inset_px: 0.0,
+                    thumb: theme.scrollbar,
+                    thumb_hover: theme.scrollbar_hover,
+                },
+                move |offset_px, _window, cx| {
+                    view.update(cx, |view, cx| {
+                        view.set_table_hscroll_offset_from_component(block_id, offset_px, cx);
+                    });
+                },
+            ))
             .into_any_element(),
     )
 }
@@ -95,6 +97,7 @@ pub(crate) fn table_hscroll_scroll_max(content_width: f32, track_width: f32) -> 
     (content_width - track_width).max(0.0)
 }
 
+#[cfg(test)]
 pub(crate) fn table_hscroll_thumb(
     track_width: f32,
     content_width: f32,
@@ -118,6 +121,7 @@ pub(crate) fn table_hscroll_block_height(table_height: f32) -> f32 {
     table_height + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX as f32
 }
 
+#[cfg(test)]
 pub(crate) fn table_hscroll_thumb_travel(track_width: f32, thumb_width: f32) -> f32 {
     (track_width - thumb_width).max(0.0)
 }
@@ -142,6 +146,7 @@ mod tests {
     fn table_hscrollbar_thumb_survives_zero_handle_measurement_when_cached() {
         let cached = TableViewportMeasurement {
             viewport_width_px: 628.0,
+            viewport_height_px: 320.0,
         };
         let track_width = table_hscroll_track_width(cached.viewport_width_px, 28.0);
         let max_offset = table_hscroll_scroll_max(1200.0, track_width);

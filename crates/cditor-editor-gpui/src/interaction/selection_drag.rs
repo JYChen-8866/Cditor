@@ -3,7 +3,7 @@ use std::time::Duration;
 use gpui::{AppContext, Context, Pixels, Point};
 
 use crate::editor_view::{CditorV2View, CditorViewState};
-use crate::text::ParleyTextPosition;
+use crate::text::TextLayoutPosition as LayoutPosition;
 use cditor_core::edit::{DocumentSelection, TextPosition};
 use cditor_core::ids::BlockId;
 
@@ -12,31 +12,18 @@ const TEXT_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct GuiTextDragSelection {
     pub(crate) anchor_block_id: BlockId,
-    pub(crate) anchor_position: ParleyTextPosition,
+    pub(crate) anchor_position: LayoutPosition,
     pub(crate) pointer_position: Point<Pixels>,
 }
 
 impl CditorV2View {
-    fn text_position_at_point(
-        &self,
-        position: Point<Pixels>,
-    ) -> Option<(BlockId, ParleyTextPosition)> {
-        let session = self.ready_session()?;
-        let viewport = session.layout_viewport().ok()?;
+    fn text_position_at_point(&self, position: Point<Pixels>) -> Option<(BlockId, LayoutPosition)> {
         let block_id = self
-            .infer_document_viewport_origin()
+            .document_viewport_origin()
             .and_then(|viewport_origin| {
-                let document_y =
-                    f32::from(position.y) as f64 - viewport_origin.y + viewport.global_scroll_top;
+                let document_y = f32::from(position.y) as f64 - viewport_origin.y
+                    + self.interaction.presented_scroll_top;
                 projected_block_at_document_y(&self.interaction.projected_block_rects, document_y)
-            })
-            .or_else(|| {
-                current_layout_block_at_viewport_y(
-                    &self.interaction.projected_block_rects,
-                    &self.cache.text_layouts,
-                    session,
-                    position.y,
-                )
             })?;
         self.text_position_for_block_at_position(block_id, position)
             .map(|position| (block_id, position))
@@ -98,7 +85,7 @@ impl CditorV2View {
             return;
         };
         let pointer_y = self
-            .infer_document_viewport_origin()
+            .document_viewport_origin()
             .map(|origin| text_drag_pointer_viewport_y(drag.pointer_position.y, origin.y))
             .unwrap_or(f64::NAN);
         let delta = crate::interaction::gutter_drag_metrics::gutter_drag_auto_scroll_delta(
@@ -112,12 +99,16 @@ impl CditorV2View {
             return;
         }
         self.interaction.text_drag_auto_scroll_scheduled = true;
+        let document_epoch = self.focus.document_epoch().current();
         let tick = cx.background_spawn(async move {
             std::thread::sleep(Duration::from_millis(TEXT_DRAG_AUTO_SCROLL_TICK_MS));
         });
         cx.spawn(async move |view, cx| {
             let _ = tick.await;
             let _ = view.update(cx, |view, cx| {
+                if !view.focus.document_epoch().matches(document_epoch) {
+                    return;
+                }
                 view.interaction.text_drag_auto_scroll_scheduled = false;
                 if view.tick_text_drag_auto_scroll(cx) {
                     cx.notify();
@@ -132,7 +123,7 @@ impl CditorV2View {
             return false;
         };
         let Some(pointer_y) = self
-            .infer_document_viewport_origin()
+            .document_viewport_origin()
             .map(|origin| text_drag_pointer_viewport_y(drag.pointer_position.y, origin.y))
         else {
             return false;
@@ -177,34 +168,11 @@ fn projected_block_at_document_y(
         .map(|rect| rect.block_id)
 }
 
-fn current_layout_block_at_viewport_y(
-    rects: &[crate::interaction::geometry::ProjectedBlockRect],
-    layouts: &std::collections::HashMap<BlockId, crate::text::RichTextPlatformLayout>,
-    session: &cditor_session::EditorSessionHandle,
-    viewport_y: Pixels,
-) -> Option<BlockId> {
-    rects.iter().find_map(|rect| {
-        let layout = layouts.get(&rect.block_id)?;
-        if session
-            .surface_version(cditor_core::ids::SurfaceId::Block(rect.block_id))
-            .ok()
-            .flatten()?
-            .content_version
-            != layout.content_version
-        {
-            return None;
-        }
-        (layout.bounds.top() <= viewport_y && viewport_y < layout.bounds.bottom())
-            .then_some(rect.block_id)
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::interaction::geometry::ProjectedBlockRect;
-    use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
-    use gpui::{Bounds, Size, point, px};
+    use gpui::px;
 
     fn rect(block_id: BlockId, top: f64, bottom: f64) -> ProjectedBlockRect {
         ProjectedBlockRect {
@@ -218,6 +186,7 @@ mod tests {
             text_origin_y_in_block_px: 0.0,
             text_width_px: 600.0,
             supports_children: false,
+            ..ProjectedBlockRect::default()
         }
     }
 
@@ -237,44 +206,6 @@ mod tests {
 
         assert_eq!(projected_block_at_document_y(&rects, 99.0), None);
         assert_eq!(projected_block_at_document_y(&rects, 260.0), None);
-    }
-
-    #[test]
-    fn overlapping_layout_caches_follow_projection_order_not_hashmap_order() {
-        let runtime = cditor_runtime::DocumentRuntime::from_payloads(
-            1,
-            vec![
-                BlockPayloadRecord::rich_text(10, RichBlockKind::Paragraph, "first"),
-                BlockPayloadRecord::rich_text(20, RichBlockKind::Paragraph, "second"),
-            ],
-            720.0,
-        );
-        let rects = [rect(10, 100.0, 130.0), rect(20, 130.0, 160.0)];
-        let mut layouts = std::collections::HashMap::new();
-        for (block_id, text) in [(20, "second"), (10, "first")] {
-            layouts.insert(
-                block_id,
-                crate::text::test_platform_layout(
-                    block_id,
-                    runtime.block_content_version(block_id).unwrap(),
-                    text,
-                    Bounds {
-                        origin: point(px(100.0), px(200.0)),
-                        size: Size {
-                            width: px(500.0),
-                            height: px(24.0),
-                        },
-                    },
-                    None,
-                ),
-            );
-        }
-
-        let session = cditor_session::EditorSession::new(runtime, false).into_handle();
-        assert_eq!(
-            current_layout_block_at_viewport_y(&rects, &layouts, &session, px(210.0)),
-            Some(10)
-        );
     }
 
     #[test]

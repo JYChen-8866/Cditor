@@ -9,7 +9,7 @@ use parley::{
 use crate::TextTheme;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ParleyBrush {
+pub struct TextBrush {
     pub foreground: u32,
     pub background: Option<u32>,
     pub background_padding_x: u8,
@@ -18,7 +18,7 @@ pub struct ParleyBrush {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ParleyFontSlant {
+pub enum TextFontSlant {
     #[default]
     Normal,
     Italic,
@@ -26,18 +26,18 @@ pub enum ParleyFontSlant {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ParleyLineHeight {
+pub enum TextLineHeight {
     FontSizeRelative(f32),
     Absolute(f32),
 }
 
-impl Default for ParleyLineHeight {
+impl Default for TextLineHeight {
     fn default() -> Self {
         Self::FontSizeRelative(1.5)
     }
 }
 
-impl ParleyLineHeight {
+impl TextLineHeight {
     fn as_parley(self) -> LineHeight {
         match self {
             Self::FontSizeRelative(value) => LineHeight::FontSizeRelative(value),
@@ -47,25 +47,25 @@ impl ParleyLineHeight {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ParleyTextStyleConfig {
+pub struct TextStyleConfig {
     pub font_family: String,
     pub font_size: f32,
     pub font_width: f32,
-    pub font_slant: ParleyFontSlant,
+    pub font_slant: TextFontSlant,
     pub font_weight: f32,
     pub font_variations: String,
     pub font_features: String,
     pub locale: Option<String>,
-    pub brush: ParleyBrush,
+    pub brush: TextBrush,
     pub underline: bool,
     pub underline_offset: Option<f32>,
     pub underline_size: Option<f32>,
-    pub underline_brush: Option<ParleyBrush>,
+    pub underline_brush: Option<TextBrush>,
     pub strikethrough: bool,
     pub strikethrough_offset: Option<f32>,
     pub strikethrough_size: Option<f32>,
-    pub strikethrough_brush: Option<ParleyBrush>,
-    pub line_height: ParleyLineHeight,
+    pub strikethrough_brush: Option<TextBrush>,
+    pub line_height: TextLineHeight,
     pub word_spacing: f32,
     pub letter_spacing: f32,
     pub word_break: WordBreak,
@@ -73,18 +73,18 @@ pub struct ParleyTextStyleConfig {
     pub text_wrap_mode: TextWrapMode,
 }
 
-impl Default for ParleyTextStyleConfig {
+impl Default for TextStyleConfig {
     fn default() -> Self {
         Self {
             font_family: "system-ui".to_owned(),
             font_size: 16.0,
             font_width: 1.0,
-            font_slant: ParleyFontSlant::Normal,
+            font_slant: TextFontSlant::Normal,
             font_weight: 400.0,
             font_variations: String::new(),
             font_features: String::new(),
             locale: None,
-            brush: ParleyBrush::default(),
+            brush: TextBrush::default(),
             underline: false,
             underline_offset: None,
             underline_size: None,
@@ -93,7 +93,7 @@ impl Default for ParleyTextStyleConfig {
             strikethrough_offset: None,
             strikethrough_size: None,
             strikethrough_brush: None,
-            line_height: ParleyLineHeight::default(),
+            line_height: TextLineHeight::default(),
             word_spacing: 0.0,
             letter_spacing: 0.0,
             word_break: WordBreak::Normal,
@@ -103,8 +103,8 @@ impl Default for ParleyTextStyleConfig {
     }
 }
 
-impl ParleyTextStyleConfig {
-    pub(crate) fn as_parley_style(&self) -> TextStyle<'_, '_, ParleyBrush> {
+impl TextStyleConfig {
+    pub(crate) fn as_parley_style(&self) -> TextStyle<'_, '_, TextBrush> {
         let font_variations = if self.font_variations.is_empty() {
             FontVariations::empty()
         } else {
@@ -120,9 +120,9 @@ impl ParleyTextStyleConfig {
             font_size: self.font_size,
             font_width: FontWidth::from_ratio(self.font_width),
             font_style: match self.font_slant {
-                ParleyFontSlant::Normal => FontStyle::Normal,
-                ParleyFontSlant::Italic => FontStyle::Italic,
-                ParleyFontSlant::Oblique => FontStyle::Oblique(None),
+                TextFontSlant::Normal => FontStyle::Normal,
+                TextFontSlant::Italic => FontStyle::Italic,
+                TextFontSlant::Oblique => FontStyle::Oblique(None),
             },
             font_weight: FontWeight::new(self.font_weight),
             font_variations,
@@ -153,17 +153,15 @@ impl ParleyTextStyleConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextStyleRun {
     pub range: Range<usize>,
-    pub style: ParleyTextStyleConfig,
+    pub style: TextStyleConfig,
 }
 
-pub type ParleyStyleRun = TextStyleRun;
-
-pub fn parley_style_runs(
+pub fn text_style_runs(
     spans: &[InlineSpan],
     kind: &RichBlockKind,
     theme: TextTheme,
     base_text_color: u32,
-    base_style: &ParleyTextStyleConfig,
+    base_style: &TextStyleConfig,
     mono_font_family: &str,
 ) -> Vec<TextStyleRun> {
     let completed_todo = matches!(kind, RichBlockKind::Todo { checked: true });
@@ -177,7 +175,7 @@ pub fn parley_style_runs(
         }
         let visual = inline_mark_visual_style(&span.marks, theme, base_text_color);
         let mut style = base_style.clone();
-        style.brush = ParleyBrush {
+        style.brush = TextBrush {
             foreground: visual.text_color,
             background: visual.background_color,
             background_padding_x: if visual.code { 3 } else { 1 },
@@ -188,7 +186,7 @@ pub fn parley_style_runs(
             style.font_weight = style.font_weight.max(700.0);
         }
         if visual.italic {
-            style.font_slant = ParleyFontSlant::Italic;
+            style.font_slant = TextFontSlant::Italic;
         }
         if visual.code {
             style.font_family = mono_font_family.to_owned();

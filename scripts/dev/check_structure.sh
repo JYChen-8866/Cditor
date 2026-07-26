@@ -40,15 +40,172 @@ do
   fi
 done
 
+for manifest in $(find crates components apps -name Cargo.toml -print)
+do
+  if sed -n '/^\[dependencies\]/,/^\[/p' "$manifest" | grep -q 'cditor-test-support'; then
+    echo "error: production dependency must not reference cditor-test-support: $manifest" >&2
+    exit 1
+  fi
+done
+
+if [ ! -d crates/cditor-test-support/src/acceptance ] \
+  || [ ! -f crates/cditor-test-support/src/storage.rs ] \
+  || [ ! -f crates/cditor-test-support/benches/frame_baseline.rs ]; then
+  echo 'error: Test Support must retain acceptance, fixture/contract, and benchmark ownership' >&2
+  exit 1
+fi
+
+if grep -R -n -E 'cditor-app|cditor_api|cditor-api' \
+  --include='*.yml' --include='*.yaml' --include='*.sh' --exclude='check_structure.sh' \
+  .github scripts/packaging scripts/dev | grep -q . \
+  || ! grep -q 'target/${target_triple}/release/cditor-desktop' scripts/packaging/package_macos.sh \
+  || ! grep -q 'cargo build --locked --release -p cditor-desktop' .github/workflows/desktop-builds.yml; then
+  echo 'error: Desktop workflows and packaging must target cditor-desktop exclusively' >&2
+  exit 1
+fi
+
 if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])sqlx[[:space:]]*=|(^|[[:space:]])gpui[[:space:]]*=' crates/cditor-runtime/Cargo.toml; then
   echo 'error: runtime must not depend on PostgreSQL, SQLx, or GPUI' >&2
   exit 1
 fi
 
+if grep -Eq '^[[:space:]]*cditor-import-export[[:space:]]*=' crates/cditor-runtime/Cargo.toml \
+  || grep -R -n -E 'cditor_import_export|decode_metadata|parse_markdown_document|looks_like_markdown_paste|parse_(csv|tsv)_rows' \
+    --include='*.rs' crates/cditor-runtime/src | grep -q .; then
+  echo 'error: Runtime must apply typed import plans and must not depend on external format parsers' >&2
+  exit 1
+fi
+
+if [ ! -f crates/cditor-core/src/import_plan.rs ] \
+  || [ ! -f crates/cditor-import-export/src/import_plan.rs ] \
+  || [ ! -f crates/cditor-session/src/import_port.rs ] \
+  || ! grep -q 'pub fn apply_import_plan' crates/cditor-runtime/src/document_runtime/import_plan.rs \
+  || ! grep -q 'plan_clipboard_import' crates/cditor-session/src/import_port.rs; then
+  echo 'error: typed ImportPlan must flow from Import/Export through Session into Runtime' >&2
+  exit 1
+fi
+
+for required_import_test in \
+  planning_rejects_input_before_dispatch_when_limits_are_exceeded \
+  malformed_metadata_is_reported_and_plain_text_still_applies \
+  readonly_and_stale_clipboard_targets_are_rejected_before_apply \
+  session_plans_markdown_and_applies_it_as_one_undo_unit \
+  session_dispatches_preparsed_tsv_to_the_focused_table
+do
+  if ! grep -R -q "$required_import_test" \
+    crates/cditor-import-export/src crates/cditor-session/src; then
+    echo "error: required typed import test is missing: $required_import_test" >&2
+    exit 1
+  fi
+done
+
 if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])sqlx[[:space:]]*=|(^|[[:space:]])gpui[[:space:]]*=' crates/cditor-session/Cargo.toml; then
   echo 'error: session must depend on ports, not GPUI or concrete storage adapters' >&2
   exit 1
 fi
+
+if grep -Eq '^[[:space:]]*tokio[[:space:]]*=' crates/cditor-storage/Cargo.toml \
+  || grep -R -n -E 'StorageSession|block_on_storage|tokio::' \
+    --include='*.rs' crates/cditor-storage/src | grep -q .; then
+  echo 'error: storage must remain a runtime-free port/DTO/error crate' >&2
+  exit 1
+fi
+
+if ! grep -q -E '^pub struct DocumentPersistence' \
+  crates/cditor-session/src/document_persistence.rs \
+  || ! grep -q -E '^pub struct SessionIoExecutor' \
+    crates/cditor-session/src/io_executor.rs; then
+  echo 'error: Session must own document persistence policy and the async host bridge' >&2
+  exit 1
+fi
+
+if grep -R -n -E 'StorageSession|block_on_storage' --include='*.rs' \
+  crates/cditor-session/src apps/cditor-desktop/src crates/cditor-editor-gpui/src \
+  | grep -q .; then
+  echo 'error: removed storage session/runtime compatibility names must not return' >&2
+  exit 1
+fi
+
+for adapter_contract in \
+  crates/cditor-storage-sqlite/tests/shared_contract.rs \
+  crates/cditor-storage-postgres/src/postgres_integration.rs
+do
+  if ! grep -q 'run_document_storage_contract' "$adapter_contract"; then
+    echo "error: storage adapter must run the shared contract suite: $adapter_contract" >&2
+    exit 1
+  fi
+done
+
+if grep -R -n -E '^([[:space:]]*)pub[[:space:]]+(struct|enum|type|fn|async fn).*(SqliteRow|SqlitePool|SqliteConnection|SqliteWriter)' \
+  --include='*.rs' crates/cditor-storage-sqlite/src \
+  | grep -v 'test_pool' | grep -q . \
+  || grep -q -E '^[[:space:]]*pub[[:space:]]+fn[[:space:]]+pool\(' \
+    crates/cditor-storage-sqlite/src/storage.rs; then
+  echo 'error: SQLite rows, codecs, connections, and writer internals must stay crate-private' >&2
+  exit 1
+fi
+
+if sed -n '/^\[dependencies\]/,/^\[/p' apps/cditor-desktop/Cargo.toml \
+  | grep -q 'features[[:space:]]*=[[:space:]]*\[[^]]*"test-support"'; then
+  echo 'error: Desktop production dependencies must not enable SQLite test support' >&2
+  exit 1
+fi
+
+if grep -Eq '^pub mod (adapter|demo_seed|queue|runtime|stores|types);|^pub use (adapter|demo_seed|queue|runtime|stores|types)::' \
+  crates/cditor-storage-postgres/src/lib.rs \
+  || grep -R -n -E '^pub (struct|enum|type) Db' \
+    --include='*.rs' crates/cditor-storage-postgres/src/types | grep -q . \
+  || [ -e crates/cditor-storage-postgres/src/demo_seed.rs ] \
+  || [ -e crates/cditor-storage-postgres/src/runtime.rs ]; then
+  echo 'error: PostgreSQL rows, codecs, repositories, runtime, and demo policy must stay out of its public API' >&2
+  exit 1
+fi
+
+if grep -R -n -E 'DocumentRow|PostgresDocument(Store|Storage)|PostgresPayloadStore|pg_document_id_from_runtime' \
+  --include='*.rs' apps/cditor-desktop/src | grep -q .; then
+  echo 'error: Desktop must compose the PostgreSQL provider, not adapter row/repository internals' >&2
+  exit 1
+fi
+
+if grep -Eq '(^|[[:space:]])(reqwest|dotenvy|toml|serde_json)[[:space:]]*=|^\[features\]|openai' \
+  crates/cditor-ai/Cargo.toml \
+  || grep -R -n -E 'reqwest::|dotenvy::|std::env|std::fs|OpenAi' \
+    --include='*.rs' crates/cditor-ai/src | grep -q .; then
+  echo 'error: AI contract crate must remain provider/mock-only and environment/network-free' >&2
+  exit 1
+fi
+
+if [ ! -f crates/cditor-ai-openai/src/openai.rs ] \
+  || ! grep -q 'impl AiProvider for OpenAiCompatibleProvider' \
+    crates/cditor-ai-openai/src/openai.rs; then
+  echo 'error: OpenAI-compatible network adapter must remain in cditor-ai-openai' >&2
+  exit 1
+fi
+
+if ! grep -q 'OpenAiCompatibleProvider::from_env' apps/cditor-desktop/src/main.rs; then
+  echo 'error: Desktop composition root must own OpenAI-compatible provider selection' >&2
+  exit 1
+fi
+
+if grep -Eq 'cditor-ai-openai|reqwest' crates/cditor-runtime/Cargo.toml \
+  crates/cditor-session/Cargo.toml crates/cditor-editor-gpui/Cargo.toml; then
+  echo 'error: Runtime, Session, and Editor must depend on the AI contract, not OpenAI/HTTP' >&2
+  exit 1
+fi
+
+for required_security_test in \
+  envelope_rejects_oversize_malformed_unknown_schema_and_bad_checksum \
+  provider_dispatch_redacts_sensitive_document_context_before_leaving_session \
+  matching_and_stale_stream_events_preserve_runtime_request_identity \
+  cancellation_between_formal_migrations_automatically_restores_backup
+do
+  if ! grep -R -q "$required_security_test" \
+    crates/cditor-core/src crates/cditor-import-export/src crates/cditor-session/src \
+    crates/cditor-storage-sqlite/tests; then
+    echo "error: required import/AI/migration security test is missing: $required_security_test" >&2
+    exit 1
+  fi
+done
 
 if [ ! -f crates/cditor-session/tests/session_integration.rs ]; then
   echo 'error: cditor-session must retain its headless integration test target' >&2
@@ -80,6 +237,22 @@ legacy_editor_task_state_violations=$(
 if [ -n "$legacy_editor_task_state_violations" ]; then
   echo 'error: GPUI Editor background task policy must remain owned by cditor-session:' >&2
   echo "$legacy_editor_task_state_violations" >&2
+  exit 1
+fi
+
+if grep -Eq '^[[:space:]]*(cditor-storage|reqwest|tokio)[[:space:]]*=|cditor-ai[^#]*features[[:space:]]*=[[:space:]]*\[[^]]*"openai"' \
+  crates/cditor-editor-gpui/Cargo.toml; then
+  echo 'error: GPUI Editor must not depend on Storage, Tokio, reqwest, or a concrete AI adapter' >&2
+  exit 1
+fi
+
+editor_infrastructure_violations=$(
+  grep -R -n -E 'cditor_storage|reqwest::|tokio::|OpenAiCompatibleProvider|block_on_storage' \
+    --include='*.rs' crates/cditor-editor-gpui/src || true
+)
+if [ -n "$editor_infrastructure_violations" ]; then
+  echo 'error: GPUI Editor source crossed the Session, AI-provider, or host-network boundary:' >&2
+  echo "$editor_infrastructure_violations" >&2
   exit 1
 fi
 
@@ -165,13 +338,13 @@ fi
 if sed -n '/^pub struct CditorV2View {/,/^}/p' \
   crates/cditor-editor-gpui/src/editor_view/mod.rs \
   | grep -E '^[[:space:]]+pub.*[[:space:]]+[a-zA-Z0-9_]+[[:space:]]*:' \
-  | grep -v -E '^[[:space:]]+pub.*[[:space:]]+(state|focus|input|features|overlay|diagnostics|status|interaction|cache)[[:space:]]*:' \
+  | grep -v -E '^[[:space:]]+pub.*[[:space:]]+(state|focus|input|features|overlay|diagnostics|status|interaction|cache|scheduling)[[:space:]]*:' \
   | grep -q .; then
   echo 'error: CditorV2View top-level fields must remain explicit lifecycle-owned UI substates' >&2
   exit 1
 fi
 
-for field in state focus input features overlay diagnostics status interaction cache; do
+for field in state focus input features overlay diagnostics status interaction cache scheduling; do
   if ! sed -n '/^pub struct CditorV2View {/,/^}/p' \
     crates/cditor-editor-gpui/src/editor_view/mod.rs \
     | grep -E "^[[:space:]]+pub.*[[:space:]]+${field}[[:space:]]*:" \
@@ -197,28 +370,67 @@ if grep -n -E 'StorageSession' \
 fi
 
 if grep -n -E 'CditorRuntimeLoadResult|load_runtime_from_|pub[[:space:]]+(runtime|storage_session)[[:space:]]*:' \
-  crates/cditor-app/src/storage_host.rs crates/cditor-app/src/wiring.rs | grep -q .; then
+  apps/cditor-desktop/src/storage_host.rs apps/cditor-desktop/src/wiring.rs | grep -q .; then
   echo 'error: App cold start must return a prepared EditorSession, not Runtime or StorageSession ownership' >&2
   exit 1
 fi
 
 if grep -n -E 'apply_(loaded|recovered)_runtime' \
-  crates/cditor-editor-gpui/src/editor_view/lifecycle.rs crates/cditor-app/src/wiring.rs | grep -q .; then
+  crates/cditor-editor-gpui/src/editor_view/lifecycle.rs apps/cditor-desktop/src/wiring.rs | grep -q .; then
   echo 'error: GPUI Editor loading must adopt EditorSessionHandle instead of DocumentRuntime' >&2
   exit 1
 fi
 
-if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])cditor-runtime[[:space:]]*=|(^|[[:space:]])cditor-editor[[:space:]]*=|(^|[[:space:]])cditor-whiteboard[[:space:]]*=|(^|[[:space:]])sqlx[[:space:]]*=' crates/cditor-api/Cargo.toml; then
-  echo 'error: API contracts must not depend on concrete storage, runtime, editor, whiteboard engine, or SQLx' >&2
+if grep -Eq 'cditor-storage-postgres|cditor-storage-sqlite|(^|[[:space:]])cditor-runtime[[:space:]]*=|(^|[[:space:]])cditor-editor[[:space:]]*=|(^|[[:space:]])cditor-whiteboard[[:space:]]*=|(^|[[:space:]])(sqlx|gpui)[[:space:]]*=' crates/cditor-sdk/Cargo.toml; then
+  echo 'error: SDK contracts must remain framework-free and independent from concrete adapters' >&2
+  exit 1
+fi
+
+if [ ! -f crates/cditor-sdk/tests/public_api.rs ] \
+  || ! grep -q 'framework_free_sdk_surface_compiles_for_external_consumers' \
+    crates/cditor-sdk/tests/public_api.rs \
+  || find crates -maxdepth 1 -type d \( -name cditor-api -o -name cditor-app \) | grep -q . \
+  || [ ! -f apps/cditor-desktop/Cargo.toml ]; then
+  echo 'error: SDK compile contract and Desktop target layout must remain in the Phase 8 target state' >&2
+  exit 1
+fi
+
+if [ -e crates/cditor-sdk/src/builder.rs ] \
+  || grep -R -n -E 'CditorBuilder|pub mod builder' --include='*.rs' crates/cditor-sdk/src | grep -q .; then
+  echo 'error: removed SDK builder compatibility alias must not return' >&2
+  exit 1
+fi
+
+for removed_import_facade in clipboard media_resource table_clipboard
+do
+  if [ -e "crates/cditor-import-export/src/$removed_import_facade.rs" ]; then
+    echo "error: Core-owned import facade must not return: $removed_import_facade" >&2
+    exit 1
+  fi
+done
+
+if [ -e scripts/dev/run_editor.sh ]; then
+  echo 'error: ambiguous compatibility launch script must not return' >&2
+  exit 1
+fi
+
+if [ -e doc/architecture-v2.md ]; then
+  echo 'error: superseded architecture-v2 migration plan must remain archived' >&2
+  exit 1
+fi
+
+if grep -q -E '^pub use cditor_(core|editor_gpui|runtime|sdk|storage)' \
+  apps/cditor-desktop/src/lib.rs; then
+  echo 'error: Desktop must not act as a compatibility re-export facade' >&2
   exit 1
 fi
 
 api_backend_violations=$(
   grep -R -n -E 'cditor_storage_(postgres|sqlite)|(^|[^[:alnum:]_])sqlx([^[:alnum:]_]|$)' \
-    --include='*.rs' crates/cditor-api/src || true
+    --include='*.rs' crates/cditor-sdk/src || true
 )
 if [ -n "$api_backend_violations" ]; then
-  echo 'error: API source crossed the concrete storage boundary:' >&2
+  echo 'error: SDK source crossed the concrete storage boundary:' >&2
   echo "$api_backend_violations" >&2
   exit 1
 fi
@@ -233,13 +445,35 @@ if [ -n "$core_runtime_boundary_violations" ]; then
   exit 1
 fi
 
+core_presentation_violations=$(
+  grep -R -n -E \
+    'SlashMenuMetadata|TransformMenuMetadata|BlockMenuMetadata|slash_descriptors|transform_descriptors|menu[[:space:]]*:[[:space:]]*BlockMenuMetadata|\.menu\.(slash|transform|create_from_text)' \
+    --include='*.rs' crates/cditor-core/src || true
+)
+if [ -n "$core_presentation_violations" ]; then
+  echo 'error: Core must not own block menu labels, icons, or ordering metadata:' >&2
+  echo "$core_presentation_violations" >&2
+  exit 1
+fi
+
+legacy_presentation_adapter_violations=$(
+  grep -R -n -E 'slash_block_presentations|transform_block_presentations|transform_presentation_(for_kind|by_tag)' \
+    --include='*.rs' crates/cditor-editor-gpui/src || true
+)
+if [ -n "$legacy_presentation_adapter_violations" ]; then
+  echo 'error: Editor block menus must consume BlockPresentationRegistry directly:' >&2
+  echo "$legacy_presentation_adapter_violations" >&2
+  exit 1
+fi
+
 if grep -Eq '(^|[[:space:]])gpui[[:space:]]*=' crates/cditor-text/Cargo.toml; then
   echo 'error: cditor-text must not depend on GPUI' >&2
   exit 1
 fi
 
 text_gpui_violations=$(
-  grep -R -n -E '(^|[^[:alnum:]_])gpui([^[:alnum:]_]|$)' --include='*.rs' crates/cditor-text/src || true
+  grep -R -n -E '^[[:space:]]*((pub|pub\([^)]*\))[[:space:]]+)?use[[:space:]]+gpui(::|[[:space:]]|;)|^[[:space:]]*extern[[:space:]]+crate[[:space:]]+gpui' \
+    --include='*.rs' crates/cditor-text/src || true
 )
 if [ -n "$text_gpui_violations" ]; then
   echo 'error: cditor-text source crossed the GPUI adapter boundary:' >&2
@@ -257,6 +491,25 @@ if [ -n "$parley_manifest_violations$parley_source_violations" ]; then
   echo 'error: Parley may only be used directly by cditor-text:' >&2
   [ -z "$parley_manifest_violations" ] || echo "$parley_manifest_violations" >&2
   [ -z "$parley_source_violations" ] || echo "$parley_source_violations" >&2
+  exit 1
+fi
+
+editor_parley_name_violations=$(
+  grep -R -n -i 'parley' --include='*.rs' crates/cditor-editor-gpui/src || true
+)
+text_public_parley_violations=$(
+  grep -R -n -E '^[[:space:]]*pub[[:space:]][^/].*Parley|^[[:space:]]*pub[[:space:]]+use.*Parley' \
+    --include='*.rs' crates/cditor-text/src || true
+)
+if [ -n "$editor_parley_name_violations$text_public_parley_violations" ]; then
+  echo 'error: Text public API and Editor call sites must not expose the Parley engine:' >&2
+  [ -z "$editor_parley_name_violations" ] || echo "$editor_parley_name_violations" >&2
+  [ -z "$text_public_parley_violations" ] || echo "$text_public_parley_violations" >&2
+  exit 1
+fi
+
+if [ -e crates/cditor-editor-gpui/src/text/parley_adapter ]; then
+  echo 'error: legacy Parley-named GPUI adapter directory must not return' >&2
   exit 1
 fi
 
@@ -279,6 +532,25 @@ legacy_app_geometry_violations=$(
 if [ -n "$legacy_app_geometry_violations" ]; then
   echo 'error: App text geometry must come from the cditor-text Parley snapshot:' >&2
   echo "$legacy_app_geometry_violations" >&2
+  exit 1
+fi
+
+editor_range_geometry_violations=$(
+  grep -R -n -E '\.selection_rects\(' --include='*.rs' crates/cditor-editor-gpui/src || true
+)
+if [ -n "$editor_range_geometry_violations" ]; then
+  echo 'error: Editor range geometry must use the normalized cditor-text snapshot API:' >&2
+  echo "$editor_range_geometry_violations" >&2
+  exit 1
+fi
+
+duplicate_editor_text_cache_violations=$(
+  grep -R -n -E 'struct PlatformLayoutCache|snapshot\.estimated_bytes\(' \
+    --include='*.rs' crates/cditor-editor-gpui/src || true
+)
+if [ -n "$duplicate_editor_text_cache_violations" ]; then
+  echo 'error: Text snapshot memory and eviction policy belong exclusively to cditor-text:' >&2
+  echo "$duplicate_editor_text_cache_violations" >&2
   exit 1
 fi
 
@@ -457,7 +729,7 @@ done
 for legacy_editor_path in \
   crates/cditor-editor-gpui/src/block/code_toolbar \
   crates/cditor-editor-gpui/src/native_menu \
-  crates/cditor-editor-gpui/src/text/parley_adapter/exact_raster/fixtures
+  crates/cditor-editor-gpui/src/text/layout_adapter/exact_raster/fixtures
 do
   if [ -e "$legacy_editor_path" ]; then
     echo "error: removed GPUI Editor path must not return: $legacy_editor_path" >&2
@@ -571,7 +843,7 @@ fi
 direct_runtime_state_violations=$(
   grep -R -n -E \
     'runtime\.(document|layout|editing|selection|history|transactions|ai_session|next_ai_request_id)(\.|[[:space:]]|,|;)|runtime\.document_id([[:space:]]*[,;.)]|$)' \
-    --include='*.rs' crates/cditor-editor-gpui/src crates/cditor-app/src || true
+    --include='*.rs' crates/cditor-editor-gpui/src apps/cditor-desktop/src || true
 )
 if [ -n "$direct_runtime_state_violations" ]; then
   echo 'error: Editor/App must use Runtime queries, projections, commands, or narrow realtime ports instead of child state fields:' >&2
@@ -585,6 +857,24 @@ printable_keydown_violations=$(
 if [ -n "$printable_keydown_violations" ]; then
   echo 'error: printable text must enter through GPUI EntityInputHandler, not a keydown command:' >&2
   echo "$printable_keydown_violations" >&2
+  exit 1
+fi
+
+for delayed_interaction in \
+  crates/cditor-editor-gpui/src/editor_view/formatting/selection_delay.rs \
+  crates/cditor-editor-gpui/src/editor_view/formatting/color.rs \
+  crates/cditor-editor-gpui/src/interaction/selection_drag.rs \
+  crates/cditor-editor-gpui/src/interaction/gutter_drag.rs
+do
+  if ! grep -q 'document_epoch' "$delayed_interaction"; then
+    echo "error: delayed document interaction must reject callbacks from an older document epoch: $delayed_interaction" >&2
+    exit 1
+  fi
+done
+
+if ! grep -q 'session_identity' crates/cditor-editor-gpui/src/input/ime/adapter.rs \
+  || ! grep -q 'epoch' crates/cditor-editor-gpui/src/text/caret_blink.rs; then
+  echo 'error: IME callbacks and caret blink must retain their stale callback identities' >&2
   exit 1
 fi
 
@@ -609,13 +899,13 @@ if grep -Eq '(^|[[:space:]])gpui[[:space:]]*=|(^|[[:space:]])sqlx[[:space:]]*=' 
 fi
 
 oversized=$(
-  find crates \
-    -path 'components/cditor-whiteboard' -prune -o \
+  find crates components apps \
+    -path 'components/cditor-whiteboard-drafft' -prune -o \
     -type f -name '*.rs' -exec wc -l {} + \
     | awk '$2 != "total" && $1 > 700 { print $1 " " $2 }'
 )
 if [ -n "$oversized" ]; then
-  echo 'error: non-whiteboard Rust files must not exceed 700 lines:' >&2
+  echo 'error: Rust files must not exceed 700 lines:' >&2
   echo "$oversized" >&2
   exit 1
 fi
@@ -624,11 +914,10 @@ system_files=$(
   find . \
     -path './.git' -prune -o \
     -path './target' -prune -o \
-    -path './components/cditor-whiteboard' -prune -o \
     -name '.DS_Store' -print
 )
 if [ -n "$system_files" ]; then
-  echo 'error: system metadata found outside the excluded whiteboard crate:' >&2
+  echo 'error: system metadata found in the repository:' >&2
   echo "$system_files" >&2
   exit 1
 fi

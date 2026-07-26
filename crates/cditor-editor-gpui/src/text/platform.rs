@@ -1,13 +1,14 @@
 use std::ops::Range;
 
-use cditor_core::edit::{InternalTextOffset, TextAffinity, TextOffsetMap};
+use cditor_core::edit::{InternalTextOffset, TextOffsetMap};
 use cditor_core::ids::{BlockId, SurfaceId};
+use cditor_core::rich_text::TextAlign;
 use cditor_runtime::{InputSessionIdentity, TableCellPosition};
 use gpui::{Bounds, Pixels, Point, point, px, size};
 
 use super::{
-    ParleyAccessibilityProjection, ParleyLayoutSnapshot, ParleySelection, ParleyTextPosition,
-    TextGeometryOperation, record_snapshot_geometry,
+    PlatformTextLayoutSnapshot, TextAccessibilityProjection, TextGeometryOperation, TextHitPoint,
+    TextLayoutPosition, record_snapshot_geometry,
 };
 
 pub(crate) struct RichTextPlatformLayout {
@@ -15,9 +16,15 @@ pub(crate) struct RichTextPlatformLayout {
     pub surface_id: SurfaceId,
     pub content_version: u64,
     pub layout_version: u64,
+    /// Exact width supplied to the text shaper, in GPUI logical pixels.
+    ///
+    /// This is deliberately separate from `bounds`: bounds are the most recent
+    /// paint placement, while this value controls soft wrapping and hit geometry.
+    pub wrap_width_px: f32,
+    pub text_align: TextAlign,
     pub input_session_identity: Option<InputSessionIdentity>,
-    pub snapshot: ParleyLayoutSnapshot,
-    pub accessibility: Option<ParleyAccessibilityProjection>,
+    pub snapshot: PlatformTextLayoutSnapshot,
+    pub accessibility: Option<TextAccessibilityProjection>,
     pub bounds: Bounds<Pixels>,
     pub measured_height: f64,
     pub table_cell_position: Option<TableCellPosition>,
@@ -28,6 +35,8 @@ pub(crate) struct TextPlatformLayoutIdentity {
     pub surface_id: SurfaceId,
     pub content_version: u64,
     pub layout_version: u64,
+    pub wrap_width_bits: u32,
+    pub text_align: TextAlign,
 }
 
 impl RichTextPlatformLayout {
@@ -36,13 +45,38 @@ impl RichTextPlatformLayout {
             surface_id: self.surface_id,
             content_version: self.content_version,
             layout_version: self.layout_version,
+            wrap_width_bits: self.wrap_width_px.to_bits(),
+            text_align: self.text_align,
         }
+    }
+
+    /// Returns whether this snapshot was shaped under the supplied text
+    /// constraints. Both sides are represented as `f32` because GPUI and the
+    /// text layout engine shape in logical `f32` pixels.
+    pub(crate) fn matches_text_constraints(
+        &self,
+        wrap_width_px: f64,
+        text_align: TextAlign,
+    ) -> bool {
+        wrap_width_px.is_finite()
+            && self.wrap_width_px.is_finite()
+            && self.wrap_width_px.to_bits() == (wrap_width_px as f32).to_bits()
+            && self.text_align == text_align
     }
 }
 
+#[cfg(test)]
 pub(crate) fn platform_range_bounds(
     cache: &RichTextPlatformLayout,
     range: Range<usize>,
+) -> Bounds<Pixels> {
+    platform_range_bounds_at(cache, range, cache.bounds.origin)
+}
+
+pub(crate) fn platform_range_bounds_at(
+    cache: &RichTextPlatformLayout,
+    range: Range<usize>,
+    element_origin: Point<Pixels>,
 ) -> Bounds<Pixels> {
     record_snapshot_geometry(TextGeometryOperation::RangeBounds);
     let range = normalized_text_range(cache.snapshot.text(), range);
@@ -50,37 +84,28 @@ pub(crate) fn platform_range_bounds(
         vec![
             cache
                 .snapshot
-                .caret_rect(ParleyTextPosition::downstream(range.start), 1.0),
+                .caret_rect(TextLayoutPosition::downstream(range.start), 1.0),
         ]
     } else {
-        cache.snapshot.selection_rects(ParleySelection {
-            anchor: ParleyTextPosition::downstream(range.start),
-            focus: ParleyTextPosition {
-                offset: range.end,
-                affinity: TextAffinity::Upstream,
-            },
-        })
+        cache.snapshot.range_rects(range.clone())
     };
     if local_rects.is_empty() {
         local_rects.push(
             cache
                 .snapshot
-                .caret_rect(ParleyTextPosition::downstream(range.start), 1.0),
+                .caret_rect(TextLayoutPosition::downstream(range.start), 1.0),
         );
     }
 
     let mut rects = local_rects.into_iter().map(|rect| {
         Bounds::new(
-            point(
-                cache.bounds.left() + px(rect.x),
-                cache.bounds.top() + px(rect.y),
-            ),
+            point(element_origin.x + px(rect.x), element_origin.y + px(rect.y)),
             size(px(rect.width.max(1.0)), px(rect.height.max(0.0))),
         )
     });
     let mut union = rects
         .next()
-        .expect("Parley range geometry always yields a caret or selection rectangle");
+        .expect("TextLayout range geometry always yields a caret or selection rectangle");
     for rect in rects {
         union = Bounds::from_corners(
             point(union.left().min(rect.left()), union.top().min(rect.top())),
@@ -93,21 +118,30 @@ pub(crate) fn platform_range_bounds(
     union
 }
 
-pub(crate) fn platform_index_for_point(
-    cache: &RichTextPlatformLayout,
-    position: Point<Pixels>,
-) -> usize {
-    platform_text_position_for_point(cache, position).offset
-}
-
+#[cfg(test)]
 pub(crate) fn platform_text_position_for_point(
     cache: &RichTextPlatformLayout,
     position: Point<Pixels>,
-) -> ParleyTextPosition {
-    record_snapshot_geometry(TextGeometryOperation::PointHit);
+) -> TextLayoutPosition {
     let local_x = f32::from(position.x - cache.bounds.left());
     let local_y = f32::from(position.y - cache.bounds.top());
-    let mut position = cache.snapshot.position_for_point(local_x, local_y);
+    platform_text_position_for_local_point(
+        cache,
+        TextHitPoint {
+            x: f64::from(local_x),
+            y: f64::from(local_y),
+        },
+    )
+}
+
+pub(crate) fn platform_text_position_for_local_point(
+    cache: &RichTextPlatformLayout,
+    point: TextHitPoint,
+) -> TextLayoutPosition {
+    record_snapshot_geometry(TextGeometryOperation::PointHit);
+    let mut position = cache
+        .snapshot
+        .position_for_point(point.x as f32, point.y as f32);
     position.offset =
         normalized_text_range(cache.snapshot.text(), position.offset..position.offset).start;
     position
@@ -131,8 +165,8 @@ pub(crate) fn test_platform_layout(
     use cditor_core::rich_text::{InlineSpan, RichBlockKind, TextAlign};
 
     use crate::text::{
-        ParleyLayoutOptions, ParleyLineHeight, ParleyTextStyleConfig, RichTextLayoutInput,
-        TextLayoutSurfaceId, build_parley_layout,
+        RichTextLayoutInput, TextLayoutOptions, TextLayoutSurfaceId, TextLineHeight,
+        TextStyleConfig, build_text_layout,
     };
     use crate::theme::GuiTheme;
 
@@ -150,21 +184,21 @@ pub(crate) fn test_platform_layout(
         layout_version: 1,
         kind: RichBlockKind::Paragraph,
         text_align: TextAlign::Start,
-        spans: vec![InlineSpan::plain(text)],
+        spans: vec![InlineSpan::plain(text)].into(),
         width_px: f64::from(f32::from(bounds.size.width)),
         theme_version: 1,
         font_version: 1,
     };
-    let snapshot = build_parley_layout(
+    let snapshot = build_text_layout(
         &input,
         GuiTheme::light(),
-        &ParleyLayoutOptions {
+        &TextLayoutOptions {
             width: Some(f32::from(bounds.size.width)),
-            base_style: ParleyTextStyleConfig {
-                line_height: ParleyLineHeight::Absolute(24.0),
-                ..ParleyTextStyleConfig::default()
+            base_style: TextStyleConfig {
+                line_height: TextLineHeight::Absolute(24.0),
+                ..TextStyleConfig::default()
             },
-            ..ParleyLayoutOptions::default()
+            ..TextLayoutOptions::default()
         },
     );
     RichTextPlatformLayout {
@@ -172,8 +206,10 @@ pub(crate) fn test_platform_layout(
         surface_id,
         content_version,
         layout_version: input.layout_version,
+        wrap_width_px: f32::from(bounds.size.width),
+        text_align: input.text_align,
         input_session_identity: None,
-        snapshot,
+        snapshot: snapshot.into(),
         accessibility: None,
         bounds,
         measured_height: f64::from(f32::from(bounds.size.height)),
@@ -188,13 +224,13 @@ mod tests {
 
     use super::*;
     use crate::text::{
-        ParleyAlignment, ParleyLayoutOptions, ParleyLineHeight, ParleyTextStyleConfig,
-        RichTextLayoutInput, TextLayoutSurfaceId, build_parley_layout,
+        RichTextLayoutInput, TextAlignment, TextLayoutOptions, TextLayoutSurfaceId, TextLineHeight,
+        TextStyleConfig, build_text_layout,
     };
     use crate::theme::GuiTheme;
 
     #[test]
-    fn range_and_point_geometry_round_trip_through_the_same_parley_snapshot() {
+    fn range_and_point_geometry_round_trip_through_the_same_text_layout_snapshot() {
         let cache = platform_layout("ab中cd", TextAlign::Start);
         let caret = platform_range_bounds(&cache, 5..5);
         let hit = platform_text_position_for_point(
@@ -207,7 +243,27 @@ mod tests {
     }
 
     #[test]
-    fn invalid_cjk_offsets_are_normalized_before_parley_geometry_queries() {
+    fn local_point_hit_is_independent_of_last_paint_bounds() {
+        let first = platform_layout("ab\u{4e2d}cd", TextAlign::Start);
+        let mut moved = platform_layout("ab\u{4e2d}cd", TextAlign::Start);
+        moved.bounds = Bounds::new(point(px(20_000_000.0), px(20_000_000.0)), moved.bounds.size);
+        let caret = first
+            .snapshot
+            .caret_rect(TextLayoutPosition::downstream(5), 1.0);
+        let point = TextHitPoint {
+            x: f64::from(caret.x),
+            y: f64::from(caret.y + caret.height / 2.0),
+        };
+
+        let first_hit = platform_text_position_for_local_point(&first, point);
+        let moved_hit = platform_text_position_for_local_point(&moved, point);
+        assert_eq!(first_hit, moved_hit);
+        assert_eq!(first_hit.offset, 5);
+        assert!(first.snapshot.text().is_char_boundary(first_hit.offset));
+    }
+
+    #[test]
+    fn invalid_cjk_offsets_are_normalized_before_text_layout_geometry_queries() {
         let cache = platform_layout("埃塞", TextAlign::Start);
 
         assert_eq!(normalized_text_range(cache.snapshot.text(), 1..4), 0..6);
@@ -217,12 +273,33 @@ mod tests {
     }
 
     #[test]
-    fn empty_centered_surface_uses_parley_for_caret_and_ime_bounds() {
+    fn platform_layout_identity_includes_wrap_width_and_alignment() {
+        let start = platform_layout("soft wrapping text", TextAlign::Start);
+        let mut resized = platform_layout("soft wrapping text", TextAlign::Start);
+        resized.wrap_width_px = 280.0;
+        let mut centered = platform_layout("soft wrapping text", TextAlign::Center);
+        centered.wrap_width_px = start.wrap_width_px;
+
+        assert_ne!(start.identity(), resized.identity());
+        assert_ne!(start.identity(), centered.identity());
+    }
+
+    #[test]
+    fn platform_layout_rejects_mismatched_text_constraints() {
+        let cache = platform_layout("soft wrapping text", TextAlign::Center);
+
+        assert!(cache.matches_text_constraints(300.0, TextAlign::Center));
+        assert!(!cache.matches_text_constraints(280.0, TextAlign::Center));
+        assert!(!cache.matches_text_constraints(300.0, TextAlign::End));
+    }
+
+    #[test]
+    fn empty_centered_surface_uses_text_layout_for_caret_and_ime_bounds() {
         let cache = platform_layout("", TextAlign::Center);
         let bounds = platform_range_bounds(&cache, 0..0);
         let local = cache
             .snapshot
-            .caret_rect(ParleyTextPosition::downstream(0), 1.0);
+            .caret_rect(TextLayoutPosition::downstream(0), 1.0);
 
         assert_eq!(bounds.left(), cache.bounds.left() + px(local.x));
         assert_eq!(bounds.top(), cache.bounds.top() + px(local.y));
@@ -247,8 +324,8 @@ mod tests {
     }
 
     #[test]
-    fn platform_layout_cache_evicts_oldest_unpinned_surface() {
-        let mut cache = crate::cache::PlatformLayoutCache::new(2, usize::MAX);
+    fn platform_geometry_registry_evicts_oldest_unpinned_surface() {
+        let mut cache = crate::cache::PlatformGeometryRegistry::new(2);
         let mut first = platform_layout("first", TextAlign::Start);
         first.block_id = 1;
         first.surface_id = TextLayoutSurfaceId::Block(1);
@@ -269,24 +346,23 @@ mod tests {
     }
 
     #[test]
-    fn platform_layout_cache_enforces_snapshot_byte_budget() {
+    fn platform_geometry_registry_does_not_duplicate_text_snapshot_budgeting() {
         let first = platform_layout(&"a".repeat(4_096), TextAlign::Start);
-        let first_bytes =
-            std::mem::size_of::<RichTextPlatformLayout>() + first.snapshot.estimated_bytes();
         let mut second = platform_layout(&"b".repeat(4_096), TextAlign::Start);
         second.block_id = 2;
         second.surface_id = TextLayoutSurfaceId::Block(2);
-        let budget = first_bytes
-            .max(std::mem::size_of::<RichTextPlatformLayout>() + second.snapshot.estimated_bytes())
-            + 256;
-        let mut cache = crate::cache::PlatformLayoutCache::new(8, budget);
+        let mut cache = crate::cache::PlatformGeometryRegistry::new(8);
 
         cache.insert(1, first, None);
         cache.insert(2, second, None);
 
-        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.len(), 2);
+        assert!(cache.contains_key(&1));
         assert!(cache.contains_key(&2));
-        assert!(cache.estimated_bytes() <= budget);
+        assert_eq!(
+            cache.estimated_metadata_bytes(),
+            2 * std::mem::size_of::<RichTextPlatformLayout>()
+        );
     }
 
     fn platform_layout(text: &str, text_align: TextAlign) -> RichTextPlatformLayout {
@@ -297,22 +373,22 @@ mod tests {
             layout_version: 1,
             kind: RichBlockKind::Paragraph,
             text_align,
-            spans: vec![InlineSpan::plain(text)],
+            spans: vec![InlineSpan::plain(text)].into(),
             width_px: 300.0,
             theme_version: 1,
             font_version: 1,
         };
-        let snapshot = build_parley_layout(
+        let snapshot = build_text_layout(
             &input,
             GuiTheme::light(),
-            &ParleyLayoutOptions {
+            &TextLayoutOptions {
                 width: Some(300.0),
-                alignment: ParleyAlignment::from_core(text_align),
-                base_style: ParleyTextStyleConfig {
-                    line_height: ParleyLineHeight::Absolute(24.0),
-                    ..ParleyTextStyleConfig::default()
+                alignment: TextAlignment::from_core(text_align),
+                base_style: TextStyleConfig {
+                    line_height: TextLineHeight::Absolute(24.0),
+                    ..TextStyleConfig::default()
                 },
-                ..ParleyLayoutOptions::default()
+                ..TextLayoutOptions::default()
             },
         );
         RichTextPlatformLayout {
@@ -320,8 +396,10 @@ mod tests {
             surface_id: TextLayoutSurfaceId::Block(1),
             content_version: 1,
             layout_version: 1,
+            wrap_width_px: 300.0,
+            text_align,
             input_session_identity: None,
-            snapshot,
+            snapshot: snapshot.into(),
             accessibility: None,
             bounds: Bounds::new(point(px(120.0), px(240.0)), size(px(300.0), px(120.0))),
             measured_height: 120.0,

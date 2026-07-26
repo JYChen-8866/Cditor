@@ -1,7 +1,6 @@
 use gpui::{Context, MouseMoveEvent, MouseUpEvent, ScrollDelta, ScrollWheelEvent, Window};
 
 use crate::editor_view::{CditorV2View, CditorViewState};
-use crate::interaction::scrollbar::scrollbar_local_pointer_y;
 use crate::scroll::{ScrollDeltaMode, ScrollDevice, ScrollInput, ScrollPhase};
 
 impl CditorV2View {
@@ -11,6 +10,7 @@ impl CditorV2View {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pause_caret_blink(cx);
         self.interaction.last_wheel_delta_y = scroll_delta_y(event);
         if let CditorViewState::Ready(session) = &self.state {
             let _ = session.apply_scroll_input_frame(
@@ -52,44 +52,23 @@ impl CditorV2View {
             }
             return;
         }
-        if event.dragging() && self.interaction.table_hscroll_drag.is_some() {
-            if self.update_table_hscroll_drag(event.position, cx) {
-                cx.stop_propagation();
-            }
-            return;
-        }
         if event.dragging() && self.interaction.gutter_block_drag.is_some() {
             if self.update_gutter_block_drag(event.position, cx) {
                 cx.stop_propagation();
             }
             return;
         }
-        let Some(drag) = self.interaction.scrollbar_drag else {
-            if event.dragging() {
-                if !self.interaction.block_drag_selection.is_dragging() {
-                    self.update_text_drag_selection(event.position, cx);
-                }
-            } else {
-                self.finish_text_drag_selection();
-                self.finish_block_drag_selection();
-            }
-            return;
-        };
-        if !event.dragging() {
-            self.finish_gui_scrollbar_drag(cx);
-            self.finish_text_drag_selection();
-            self.finish_block_drag_selection();
+        if self.interaction.scrollbar_drag.is_some() {
             return;
         }
-        let CditorViewState::Ready(session) = &self.state else {
-            self.interaction.scrollbar_drag = None;
-            return;
-        };
-        let thumb_top =
-            scrollbar_local_pointer_y(f64::from(event.position.y)) - drag.pointer_y_offset_in_thumb;
-        let _ = session.drag_scrollbar(thumb_top);
-        cx.stop_propagation();
-        cx.notify();
+        if event.dragging() {
+            if !self.interaction.block_drag_selection.is_dragging() {
+                self.update_text_drag_selection(event.position, cx);
+            }
+        } else {
+            self.finish_text_drag_selection();
+            self.finish_block_drag_selection();
+        }
     }
 
     pub(crate) fn on_scrollbar_mouse_up(
@@ -107,14 +86,10 @@ impl CditorV2View {
         if self.commit_table_reorder_drag(cx) {
             cx.stop_propagation();
         }
-        if self.finish_table_hscroll_drag(cx) {
-            cx.stop_propagation();
-        }
         if self.commit_gutter_block_drag(cx) {
             cx.stop_propagation();
         }
         self.finish_table_cell_text_selection_drag();
-        self.finish_gui_scrollbar_drag(cx);
         self.finish_text_drag_selection();
         self.finish_block_drag_selection();
     }

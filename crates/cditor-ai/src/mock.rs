@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::provider::{
     AiCancellationToken, AiProvider, AiProviderError, AiProviderRequest, AiStreamEvent, AiTaskKind,
-    send_stream_event,
+    send_ai_stream_event,
 };
 
 #[derive(Debug, Clone)]
@@ -74,7 +74,7 @@ impl AiProvider for MockAiProvider {
     ) -> Result<(), AiProviderError> {
         let response = self.response_for(&request);
         for chunk in utf8_chunks(&response, self.chunk_bytes) {
-            send_stream_event(
+            send_ai_stream_event(
                 &sender,
                 AiStreamEvent::Delta {
                     request_id: request.request_id,
@@ -86,7 +86,7 @@ impl AiProvider for MockAiProvider {
                 std::thread::sleep(self.chunk_delay);
             }
         }
-        send_stream_event(
+        send_ai_stream_event(
             &sender,
             AiStreamEvent::Done {
                 request_id: request.request_id,

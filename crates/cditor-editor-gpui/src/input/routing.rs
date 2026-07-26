@@ -9,7 +9,7 @@ use crate::platform::normalize_external_line_endings;
 use super::keyboard::mermaid_preview_blocks_command;
 use crate::input::table_cell_navigation::{
     table_cell_navigation_command, table_cell_offset_selection_command,
-    table_cell_parley_selection_command, table_cell_parley_target,
+    table_cell_text_layout_selection_command, table_cell_text_layout_target,
     table_cell_vertical_selection_target,
 };
 
@@ -42,6 +42,8 @@ impl CditorV2View {
         action: BoundInputAction,
         cx: &mut Context<Self>,
     ) {
+        self.interaction.note_input();
+        self.pause_caret_blink(cx);
         trace_input(
             "action.dispatch",
             format_args!(
@@ -52,6 +54,12 @@ impl CditorV2View {
                     .and_then(|session| session.input_context().ok()?.target),
             ),
         );
+
+        if matches!(action, BoundInputAction::Cancel) && self.interaction.cancel_document_drags() {
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
 
         if self.overlay.ai_prompt.is_some() {
             self.handle_bound_ai_prompt_action(action, cx);
@@ -187,6 +195,7 @@ impl CditorV2View {
 
         if matches!(action, BoundInputAction::Cancel) {
             let _ = self.dismiss_table_menu_from_gui(cx);
+            let _ = self.overlay.dismiss_topmost_formatting_layer();
             let _ = close_active_preview_if_escape_enabled(cx);
             cx.stop_propagation();
             cx.notify();
@@ -296,30 +305,56 @@ impl CditorV2View {
         let table_context = self
             .ready_session()
             .and_then(|session| session.table_interaction(None).ok());
-        let (parley_target, next_preferred_x) = table_cell_parley_target(
-            &self.cache.table_cell_layouts,
-            table_context.as_ref(),
-            action,
-            self.input.preferred_navigation_x,
-        );
-        self.input.preferred_navigation_x = next_preferred_x;
-        let vertical_selection_target = match action {
-            BoundInputAction::MoveUp {
-                extend_selection: true,
-            } => table_cell_vertical_selection_target(
-                &self.cache.table_cell_layouts,
+        let (text_layout_target, next_preferred_x, vertical_selection_target) = {
+            let current_layout = table_context
+                .as_ref()
+                .and_then(|context| context.focused_cell.as_ref())
+                .and_then(|focused| {
+                    let surface_id = crate::surfaces::table_cell::surface_id(
+                        focused.block_id,
+                        cditor_runtime::TableCellPosition {
+                            row: focused.row,
+                            col: focused.col,
+                        },
+                    );
+                    let current = self
+                        .ready_session()?
+                        .surface_version(surface_id)
+                        .ok()
+                        .flatten()?;
+                    self.current_table_cell_layout_cache(
+                        current,
+                        focused.block_id,
+                        focused.row,
+                        focused.col,
+                    )
+                });
+            let (text_layout_target, next_preferred_x) = table_cell_text_layout_target(
+                current_layout,
                 table_context.as_ref(),
-                -1,
-            ),
-            BoundInputAction::MoveDown {
-                extend_selection: true,
-            } => table_cell_vertical_selection_target(
-                &self.cache.table_cell_layouts,
-                table_context.as_ref(),
-                1,
-            ),
-            _ => None,
+                action,
+                self.input.preferred_navigation_x,
+            );
+            let vertical_selection_target = match action {
+                BoundInputAction::MoveUp {
+                    extend_selection: true,
+                } => {
+                    table_cell_vertical_selection_target(current_layout, table_context.as_ref(), -1)
+                }
+                BoundInputAction::MoveDown {
+                    extend_selection: true,
+                } => {
+                    table_cell_vertical_selection_target(current_layout, table_context.as_ref(), 1)
+                }
+                _ => None,
+            };
+            (
+                text_layout_target,
+                next_preferred_x,
+                vertical_selection_target,
+            )
         };
+        self.input.preferred_navigation_x = next_preferred_x;
         let Some(table_context) = table_context else {
             return false;
         };
@@ -349,9 +384,9 @@ impl CditorV2View {
             )),
             BoundInputAction::MoveLeft {
                 extend_selection: true,
-            } => parley_target
+            } => text_layout_target
                 .and_then(|position| {
-                    table_cell_parley_selection_command(&table_context, position, true)
+                    table_cell_text_layout_selection_command(&table_context, position, true)
                 })
                 .map(&mut dispatch)
                 .unwrap_or_else(|| {
@@ -362,9 +397,9 @@ impl CditorV2View {
                 }),
             BoundInputAction::MoveLeft {
                 extend_selection: false,
-            } => parley_target
+            } => text_layout_target
                 .and_then(|position| {
-                    table_cell_parley_selection_command(&table_context, position, false)
+                    table_cell_text_layout_selection_command(&table_context, position, false)
                 })
                 .map(&mut dispatch)
                 .unwrap_or_else(|| {
@@ -375,9 +410,9 @@ impl CditorV2View {
                 }),
             BoundInputAction::MoveRight {
                 extend_selection: true,
-            } => parley_target
+            } => text_layout_target
                 .and_then(|position| {
-                    table_cell_parley_selection_command(&table_context, position, true)
+                    table_cell_text_layout_selection_command(&table_context, position, true)
                 })
                 .map(&mut dispatch)
                 .unwrap_or_else(|| {
@@ -388,9 +423,9 @@ impl CditorV2View {
                 }),
             BoundInputAction::MoveRight {
                 extend_selection: false,
-            } => parley_target
+            } => text_layout_target
                 .and_then(|position| {
-                    table_cell_parley_selection_command(&table_context, position, false)
+                    table_cell_text_layout_selection_command(&table_context, position, false)
                 })
                 .map(&mut dispatch)
                 .unwrap_or_else(|| {
@@ -404,9 +439,9 @@ impl CditorV2View {
             }
             | BoundInputAction::MoveDown {
                 extend_selection: true,
-            } => parley_target
+            } => text_layout_target
                 .and_then(|position| {
-                    table_cell_parley_selection_command(&table_context, position, true)
+                    table_cell_text_layout_selection_command(&table_context, position, true)
                 })
                 .map(&mut dispatch)
                 .or_else(|| {
@@ -423,9 +458,9 @@ impl CditorV2View {
                 .unwrap_or(false),
             BoundInputAction::MoveUp {
                 extend_selection: false,
-            } => parley_target
+            } => text_layout_target
                 .and_then(|position| {
-                    table_cell_parley_selection_command(&table_context, position, false)
+                    table_cell_text_layout_selection_command(&table_context, position, false)
                 })
                 .map(&mut dispatch)
                 .unwrap_or_else(|| {
@@ -436,9 +471,9 @@ impl CditorV2View {
                 }),
             BoundInputAction::MoveDown {
                 extend_selection: false,
-            } => parley_target
+            } => text_layout_target
                 .and_then(|position| {
-                    table_cell_parley_selection_command(&table_context, position, false)
+                    table_cell_text_layout_selection_command(&table_context, position, false)
                 })
                 .map(&mut dispatch)
                 .unwrap_or_else(|| {
@@ -450,9 +485,13 @@ impl CditorV2View {
             BoundInputAction::MoveToLineStart { extend_selection }
             | BoundInputAction::MoveToLineEnd { extend_selection }
             | BoundInputAction::MoveToPreviousWord { extend_selection }
-            | BoundInputAction::MoveToNextWord { extend_selection } => parley_target
+            | BoundInputAction::MoveToNextWord { extend_selection } => text_layout_target
                 .and_then(|position| {
-                    table_cell_parley_selection_command(&table_context, position, extend_selection)
+                    table_cell_text_layout_selection_command(
+                        &table_context,
+                        position,
+                        extend_selection,
+                    )
                 })
                 .map(&mut dispatch)
                 .unwrap_or(false),

@@ -1,6 +1,8 @@
 use super::*;
 
-const DEFAULT_TABLE_COLUMNS: usize = 3;
+pub(super) use crate::content::payload_preparation::{
+    default_table_payload, ensure_table_payload_for_kind, table_has_cells,
+};
 
 mod clipboard;
 mod edit;
@@ -19,68 +21,6 @@ pub use clipboard::TableClipboardSnapshot;
 pub(super) use layout::{span_size, table_payload_projected_height_px};
 pub(super) use projection::table_view_state_from_payload;
 pub(super) use runtime::TableRuntime;
-
-pub(super) fn ensure_table_payload_for_kind(
-    kind: &RichBlockKind,
-    payload: BlockPayload,
-) -> BlockPayload {
-    match kind {
-        RichBlockKind::Table => match payload {
-            BlockPayload::Table(mut table) if table_has_cells(&table) => {
-                table.normalize();
-                BlockPayload::Table(table)
-            }
-            BlockPayload::Table(_) => default_table_payload(String::new()),
-            other => default_table_payload(other.plain_text()),
-        },
-        _ => payload,
-    }
-}
-
-pub(super) fn table_has_cells(table: &cditor_core::rich_text::TablePayload) -> bool {
-    table.rows.iter().any(|row| !row.cells.is_empty())
-}
-
-pub(super) fn default_table_payload(first_cell_text: String) -> BlockPayload {
-    BlockPayload::Table(cditor_core::rich_text::TablePayload {
-        rows: vec![
-            cditor_core::rich_text::TableRowPayload {
-                cells: vec![
-                    cditor_core::rich_text::TableCellPayload::plain(first_cell_text),
-                    cditor_core::rich_text::TableCellPayload::plain(""),
-                    cditor_core::rich_text::TableCellPayload::plain(""),
-                ],
-                height: Default::default(),
-            },
-            cditor_core::rich_text::TableRowPayload {
-                cells: vec![
-                    cditor_core::rich_text::TableCellPayload::plain(""),
-                    cditor_core::rich_text::TableCellPayload::plain(""),
-                    cditor_core::rich_text::TableCellPayload::plain(""),
-                ],
-                height: Default::default(),
-            },
-            cditor_core::rich_text::TableRowPayload {
-                cells: vec![
-                    cditor_core::rich_text::TableCellPayload::plain(""),
-                    cditor_core::rich_text::TableCellPayload::plain(""),
-                    cditor_core::rich_text::TableCellPayload::plain(""),
-                ],
-                height: Default::default(),
-            },
-        ],
-        // Use Auto width for new tables - they will fill available width evenly
-        // User can manually resize columns to Px if needed
-        columns: (0..DEFAULT_TABLE_COLUMNS)
-            .map(|_| cditor_core::rich_text::TableColumnPayload {
-                width: cditor_core::rich_text::TableTrackSize::Auto,
-            })
-            .collect(),
-        header_rows: 0,
-        header_cols: 0,
-        header_style: cditor_core::rich_text::TableHeaderStyle::default(),
-    })
-}
 
 impl DocumentRuntime {
     pub(super) fn sync_table_runtime_for_payload(&mut self, record: &mut BlockPayloadRecord) {

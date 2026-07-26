@@ -2,6 +2,14 @@ use cditor_core::block::BlockPrefixSnapshot;
 
 use super::*;
 
+fn prepared_payload_result(
+    request: PayloadWindowLoadRequest,
+    records: Vec<BlockPayloadRecord>,
+    missing_block_ids: Vec<BlockId>,
+) -> PayloadWindowLoadResult {
+    PayloadWindowLoadResult::prepare(request, records, missing_block_ids)
+}
+
 fn runtime_with_paragraph_blocks(count: usize) -> DocumentRuntime {
     let records = (1..=count as BlockId)
         .map(|block_id| {
@@ -160,8 +168,6 @@ mod local_block_transactions;
 mod local_table_transactions;
 #[path = "tests/local_text_transactions.rs"]
 mod local_text_transactions;
-#[path = "tests/markdown.rs"]
-mod markdown;
 #[path = "tests/multi_block_delete.rs"]
 mod multi_block_delete;
 #[path = "tests/payload_window_store.rs"]

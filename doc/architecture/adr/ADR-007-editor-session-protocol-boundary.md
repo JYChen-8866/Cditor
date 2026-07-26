@@ -43,8 +43,8 @@ headless 测试宿主共同消费它；具体 UI、存储、网络和文本引�
   reqwest 和具体 adapter。
 - 线程模型：纯 owned value，禁止 `Entity`、executor、锁、task handle 和线程亲和对象；DTO
   在需要时可 `Send + Sync`，但同步热路径不因协议边界增加异步或序列化。
-- 真实消费者：`cditor-api` 与 `cditor-editor` 已消费 Command；迁移完成后 Runtime、Session、
-  SDK 和测试宿主直接消费完整协议。
+- 真实消费者：Runtime、Session、`cditor-editor-gpui`、`cditor-sdk` 和测试宿主直接消费
+  Protocol；Viewport 不再拥有 Command 协议。
 
 协议是进程内应用边界，不等同于 operation journal、clipboard、持久化 schema 或未来网络
 协议。只有确需跨进程或持久化的 DTO 才承诺 serde wire 兼容。
@@ -57,9 +57,9 @@ headless 测试宿主共同消费它；具体 UI、存储、网络和文本引�
 
 ## 5. 迁移
 
-1. 迁移 viewport 中 Command DTO/catalog，API 和 Editor 改用 Protocol。
+1. 迁移 viewport 中 Command DTO/catalog，SDK 和 GPUI Editor 改用 Protocol。
 2. 定义 Query/Event/Projection/Capability/Error，Runtime 负责构造，Editor 只消费。
-3. 删除 API 和 Runtime 的重复 state/outcome/projection 类型及临时 re-export。
+3. 删除 SDK 和 Runtime 的重复 state/outcome/projection 类型及临时 re-export。
 4. Session 建立后，所有 dispatch/query/projection/event 通过 Protocol 边界。
 5. R9 删除兼容 façade，并以 dependency gate 固定最终拓扑。
 

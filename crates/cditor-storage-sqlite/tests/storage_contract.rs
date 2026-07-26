@@ -127,6 +127,14 @@ async fn sqlite_document_round_trips_across_reopen() {
     let loaded = storage.load_document(request(42)).await.unwrap();
     assert_eq!(loaded.records.len(), 1);
     assert_eq!(loaded.initial_payloads[0].plain_text(), "");
+    assert_eq!(
+        loaded.initial_payloads[0].kind,
+        RichBlockKind::Heading { level: 1 }
+    );
+    assert_eq!(
+        loaded.records[0].kind_tag,
+        kind_tag_for_rich_block_kind(&RichBlockKind::Heading { level: 1 })
+    );
 
     let first_block_id = loaded.records[0].id;
     let mut payload =

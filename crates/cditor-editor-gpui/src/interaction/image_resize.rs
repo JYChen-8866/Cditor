@@ -79,7 +79,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn commit_image_resize_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.interaction.image_resize_drag.take() else {
+        let Some(drag) = super::take_drag(&mut self.interaction.image_resize_drag) else {
             return false;
         };
         clear_committed_image_resize_action(&mut self.interaction.action_block_id, drag.block_id);

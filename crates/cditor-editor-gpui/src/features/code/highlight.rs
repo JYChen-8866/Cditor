@@ -1,20 +1,22 @@
 //! Code-block syntax highlighting and theme metadata.
 
 use std::collections::{HashMap, HashSet};
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{
-    BlockPayload, BlockPayloadView, InlineMark, InlineSpan, RichBlockKind,
+    BlockPayload, BlockPayloadRecord, BlockPayloadView, InlineMark, InlineSpan, RichBlockKind,
 };
-use cditor_runtime::EditorViewProjection;
+use cditor_runtime::{EditorViewProjection, MainThreadWorkKind, WorkCost, WorkerTaskKind};
+use cditor_text::requires_segmentation;
 use gpui::{AppContext, Context, Task};
 use lumis::highlight::Highlighter;
 use lumis::languages::Language;
 use lumis::themes::{self, UnderlineStyle};
 
+use crate::app::worker_admission::{EditorWorkerAdmission, WorkerPermit};
 use crate::editor_view::CditorV2View;
+use crate::text::input::RichTextLayoutSpans;
 
 pub(crate) const DEFAULT_CODE_HIGHLIGHT_THEME: &str = "catppuccin_latte";
 
@@ -100,75 +102,98 @@ pub(crate) fn code_theme_item(theme_name: &str) -> CodeThemeItem {
         .expect("default code highlight theme is in the menu")
 }
 
-type HighlightResult = Result<Arc<Vec<InlineSpan>>, Arc<str>>;
+type HighlightResult = Result<RichTextLayoutSpans, Arc<str>>;
 
 struct CodeHighlightEntry {
     content_version: u64,
-    source_hash: u64,
     language: Language,
     theme_name: &'static str,
-    source: Arc<str>,
-    fallback: Arc<Vec<InlineSpan>>,
+    source: Arc<BlockPayloadRecord>,
+    fallback: Option<RichTextLayoutSpans>,
     result: Arc<OnceLock<HighlightResult>>,
     _task: Task<()>,
 }
 
+struct CodeHighlightRequest {
+    block_id: BlockId,
+    source: Arc<BlockPayloadRecord>,
+    language: Language,
+    theme_name: &'static str,
+    fallback: Option<RichTextLayoutSpans>,
+}
+
 impl CodeHighlightEntry {
     fn new(
-        content_version: u64,
-        source_hash: u64,
-        source: String,
-        language: Language,
-        theme_name: &'static str,
-        fallback: Vec<InlineSpan>,
+        request: CodeHighlightRequest,
+        permit: WorkerPermit,
         cx: &mut Context<CditorV2View>,
     ) -> Self {
-        let stored_source = Arc::<str>::from(source.as_str());
+        let CodeHighlightRequest {
+            block_id,
+            source,
+            language,
+            theme_name,
+            fallback,
+        } = request;
+        let content_version = source.content_version;
         let result = Arc::new(OnceLock::new());
         let result_for_task = result.clone();
+        let source_for_task = source.clone();
         let task = cx.spawn(async move |view, cx| {
             let highlighted = cx
                 .background_spawn(async move {
-                    highlight_source(&source, language, theme_name)
-                        .map(Arc::new)
+                    let _permit = permit;
+                    highlight_source(code_source(&source_for_task), language, theme_name)
+                        .map(RichTextLayoutSpans::from)
                         .map_err(Arc::<str>::from)
                 })
                 .await;
-            let _ = result_for_task.set(highlighted);
-            let _ = view.update(cx, |_view, cx| cx.notify());
+            let _ = view.update(cx, |view, cx| {
+                view.enqueue_main_thread_apply(
+                    MainThreadWorkKind::AsyncMeasureApply,
+                    content_version,
+                    Some(block_id),
+                    WorkCost {
+                        sync_ms: 0.05,
+                        async_results: 1,
+                        ..WorkCost::ZERO
+                    },
+                    move |_view, cx| {
+                        let _ = result_for_task.set(highlighted);
+                        cx.notify();
+                    },
+                    cx,
+                );
+            });
         });
 
         Self {
             content_version,
-            source_hash,
             language,
             theme_name,
-            source: stored_source,
-            fallback: Arc::new(fallback),
+            source,
+            fallback,
             result,
             _task: task,
         }
     }
 
-    fn matches(
-        &self,
-        content_version: u64,
-        source_hash: u64,
-        language: Language,
-        theme_name: &str,
-    ) -> bool {
+    fn matches(&self, content_version: u64, language: Language, theme_name: &str) -> bool {
         self.content_version == content_version
-            && self.source_hash == source_hash
             && self.language == language
             && self.theme_name == theme_name
     }
 
-    fn spans(&self) -> &[InlineSpan] {
+    fn spans(&self) -> Option<RichTextLayoutSpans> {
         self.result
             .get()
             .and_then(|result| result.as_ref().ok())
-            .map(|spans| spans.as_slice())
-            .unwrap_or(self.fallback.as_slice())
+            .cloned()
+            .or_else(|| self.fallback.clone())
+    }
+
+    fn source(&self) -> &str {
+        code_source(&self.source)
     }
 }
 
@@ -187,6 +212,7 @@ impl CodeHighlightCache {
         &mut self,
         projection: &EditorViewProjection,
         theme_name: &'static str,
+        worker_admission: &EditorWorkerAdmission,
         cx: &mut Context<CditorV2View>,
     ) {
         let visible = projection
@@ -201,58 +227,77 @@ impl CodeHighlightCache {
                 };
                 let BlockPayload::Code {
                     language: payload_language,
-                    text,
+                    ..
                 } = &payload.payload
                 else {
                     return None;
                 };
                 let language = code_language(payload_language.as_deref().or(language.as_deref()))?;
-                Some((
-                    block.block_id,
-                    payload.content_version,
-                    source_hash(text),
-                    text.clone(),
-                    language,
-                ))
+                Some((block.block_id, payload.clone(), language))
             })
             .collect::<Vec<_>>();
         let visible_ids = visible
             .iter()
-            .map(|(block_id, _, _, _, _)| *block_id)
+            .map(|(block_id, _, _)| *block_id)
             .collect::<HashSet<_>>();
         self.entries
             .retain(|block_id, _| visible_ids.contains(block_id));
 
-        for (block_id, content_version, hash, source, language) in visible {
+        for (block_id, source, language) in visible {
             if self
                 .entries
                 .get(&block_id)
-                .is_some_and(|entry| entry.matches(content_version, hash, language, theme_name))
+                .is_some_and(|entry| entry.matches(source.content_version, language, theme_name))
             {
                 continue;
             }
-            let fallback = self
-                .entries
-                .remove(&block_id)
-                .map(|entry| rebase_spans(&entry.source, entry.spans(), &source))
-                .unwrap_or_else(|| vec![InlineSpan::plain(&source)]);
+            let Some(permit) = worker_admission.try_acquire(WorkerTaskKind::SyntaxHighlight) else {
+                continue;
+            };
+            let source_text = code_source(&source);
+            let previous = self.entries.remove(&block_id);
+            let fallback = if should_build_synchronous_fallback(source_text.len()) {
+                Some(RichTextLayoutSpans::from(
+                    previous
+                        .and_then(|entry| {
+                            let spans = entry.spans()?;
+                            Some(rebase_spans(
+                                entry.source(),
+                                spans.as_inline_spans()?,
+                                source_text,
+                            ))
+                        })
+                        .unwrap_or_else(|| vec![InlineSpan::plain(source_text)]),
+                ))
+            } else {
+                None
+            };
             self.entries.insert(
                 block_id,
                 CodeHighlightEntry::new(
-                    content_version,
-                    hash,
-                    source,
-                    language,
-                    theme_name,
-                    fallback,
+                    CodeHighlightRequest {
+                        block_id,
+                        source,
+                        language,
+                        theme_name,
+                        fallback,
+                    },
+                    permit,
                     cx,
                 ),
             );
         }
     }
 
-    pub(crate) fn spans(&self, block_id: BlockId) -> Option<&[InlineSpan]> {
-        self.entries.get(&block_id).map(CodeHighlightEntry::spans)
+    pub(crate) fn spans(
+        &self,
+        block_id: BlockId,
+        content_version: u64,
+    ) -> Option<RichTextLayoutSpans> {
+        self.entries
+            .get(&block_id)
+            .filter(|entry| entry.content_version == content_version)
+            .and_then(CodeHighlightEntry::spans)
     }
 
     pub(crate) fn clear(&mut self) {
@@ -418,16 +463,70 @@ fn push_span(target: &mut Vec<InlineSpan>, span: InlineSpan) {
     }
 }
 
-fn source_hash(source: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    source.hash(&mut hasher);
-    hasher.finish()
+fn code_source(record: &BlockPayloadRecord) -> &str {
+    match &record.payload {
+        BlockPayload::Code { text, .. } => text,
+        _ => "",
+    }
+}
+
+fn should_build_synchronous_fallback(text_len: usize) -> bool {
+    !requires_segmentation(text_len)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use cditor_core::rich_text::plain_text_from_spans;
+
+    #[test]
+    fn segmented_code_skips_the_full_source_main_thread_fallback() {
+        assert!(should_build_synchronous_fallback(1024));
+        assert!(!should_build_synchronous_fallback(10 * 1024 * 1024));
+    }
+
+    #[test]
+    fn cache_never_returns_spans_for_a_stale_content_version() {
+        let block_id = 17;
+        let source = Arc::new(BlockPayloadRecord {
+            block_id,
+            content_version: 8,
+            kind: RichBlockKind::Code {
+                language: Some("rust".to_owned()),
+            },
+            payload: BlockPayload::Code {
+                language: Some("rust".to_owned()),
+                text: "fn current() {}".to_owned(),
+            },
+        });
+        let highlighted = Arc::new(vec![InlineSpan::plain("fn current() {}")]);
+        let layout_spans = RichTextLayoutSpans::from(highlighted.clone());
+        let result = Arc::new(OnceLock::new());
+        result
+            .set(Ok(layout_spans))
+            .expect("test result is initialized once");
+        let mut cache = CodeHighlightCache::default();
+        cache.entries.insert(
+            block_id,
+            CodeHighlightEntry {
+                content_version: source.content_version,
+                language: Language::Rust,
+                theme_name: DEFAULT_CODE_HIGHLIGHT_THEME,
+                source,
+                fallback: None,
+                result,
+                _task: Task::ready(()),
+            },
+        );
+
+        assert!(
+            cache
+                .spans(block_id, 8)
+                .expect("matching content version should use highlighted spans")
+                .shares_materialized_spans(&highlighted)
+        );
+        assert!(cache.spans(block_id, 9).is_none());
+    }
 
     #[test]
     fn editor_language_labels_map_to_lumis_languages() {
@@ -495,18 +594,18 @@ mod tests {
     }
 
     #[test]
-    fn default_rust_theme_produces_distinct_parley_foreground_runs() {
+    fn default_rust_theme_produces_distinct_text_layout_foreground_runs() {
         let source = "fn main() {\n    let answer = 42;\n}";
         let spans = highlight_source(source, Language::Rust, DEFAULT_CODE_HIGHLIGHT_THEME)
             .expect("default Rust highlighting succeeds");
-        let style_runs = cditor_text::parley_style_runs(
+        let style_runs = cditor_text::text_style_runs(
             &spans,
             &RichBlockKind::Code {
                 language: Some("rust".to_owned()),
             },
             cditor_text::TextTheme::default(),
             code_theme_item(DEFAULT_CODE_HIGHLIGHT_THEME).foreground,
-            &cditor_text::ParleyTextStyleConfig::default(),
+            &cditor_text::TextStyleConfig::default(),
             crate::platform::EDITOR_MONO_FONT_FAMILY,
         );
         let colors = style_runs
@@ -518,7 +617,7 @@ mod tests {
         assert!(spans.iter().any(|span| !span.marks.is_empty()));
         assert!(
             colors.len() > 1,
-            "syntax colors must reach Parley style runs"
+            "syntax colors must reach TextLayout style runs"
         );
     }
 

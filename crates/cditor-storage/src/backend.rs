@@ -4,6 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use cditor_core::document::BlockIndexRecord;
 use cditor_core::edit::{EditTransaction, ExternalUndoBlobRef};
+use cditor_core::ids::AssetId;
 use cditor_core::ids::{BlockId, DocumentId};
 use cditor_core::rich_text::{BlockAttrs, BlockPayloadRecord};
 use cditor_core::schema::VersionedEnvelope;
@@ -11,6 +12,11 @@ use cditor_core::schema::VersionedEnvelope;
 use crate::error::StorageResult;
 use crate::layout_cache::LayoutCacheKey;
 use crate::page_layout_snapshot::StoragePageLayoutSnapshot;
+use crate::query_index::{
+    BacklinkRecord, FtsApplyResult, LocalIndexRebuildRequest, LocalSearchHit, LocalSearchRequest,
+};
+use crate::{AssetManifestRecord, AssetReference, AssetUploadMutation, ProvisionalAssetRequest};
+use crate::{MaterializedCheckpoint, MaterializedRebuildPlan};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StorageBackendKind {
@@ -41,7 +47,7 @@ pub struct StorageCapabilities {
 impl StorageCapabilities {
     pub const SQLITE: Self = Self {
         payload_window: true,
-        full_text_search: false,
+        full_text_search: true,
         cloud_sync: false,
         server_authoritative: false,
         emergency_log: true,
@@ -88,6 +94,33 @@ pub struct LoadDocumentRequest {
     pub visible_index_version: i64,
     pub layout_key: LayoutCacheKey,
     pub page_policy_version: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentLoadStage {
+    EnsureDocument,
+    Metadata,
+    Structure,
+    BlockLayout,
+    PageLayout,
+    Attributes,
+    InitialPayloads,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DocumentLoadProgress {
+    pub stage: DocumentLoadStage,
+    pub completed_units: usize,
+    pub total_units: usize,
+}
+
+impl DocumentLoadProgress {
+    pub fn percentage(self) -> u8 {
+        if self.total_units == 0 {
+            return 0;
+        }
+        ((self.completed_units.min(self.total_units) * 100) / self.total_units) as u8
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -139,6 +172,25 @@ pub trait DocumentStorage: Send + Sync {
     fn capabilities(&self) -> StorageCapabilities;
 
     async fn load_document(&self, request: LoadDocumentRequest) -> StorageResult<LoadedDocument>;
+
+    async fn load_document_with_progress(
+        &self,
+        request: LoadDocumentRequest,
+        progress: &mut (dyn FnMut(DocumentLoadProgress) + Send),
+    ) -> StorageResult<LoadedDocument> {
+        progress(DocumentLoadProgress {
+            stage: DocumentLoadStage::EnsureDocument,
+            completed_units: 0,
+            total_units: 1,
+        });
+        let loaded = self.load_document(request).await?;
+        progress(DocumentLoadProgress {
+            stage: DocumentLoadStage::InitialPayloads,
+            completed_units: 1,
+            total_units: 1,
+        });
+        Ok(loaded)
+    }
 
     async fn load_payloads(
         &self,
@@ -212,6 +264,92 @@ pub trait DocumentStorage: Send + Sync {
         Ok(0)
     }
 
+    async fn create_materialized_checkpoint(
+        &self,
+        _document_id: DocumentId,
+    ) -> StorageResult<MaterializedCheckpoint> {
+        Err(crate::error::StorageError::Backend {
+            backend: self.backend_kind(),
+            message: "materialized checkpoints are not supported by this backend".to_owned(),
+        })
+    }
+
+    async fn load_materialized_rebuild_plan(
+        &self,
+        _document_id: DocumentId,
+    ) -> StorageResult<Option<MaterializedRebuildPlan>> {
+        Ok(None)
+    }
+
+    async fn search_local(
+        &self,
+        _request: LocalSearchRequest,
+    ) -> StorageResult<Vec<LocalSearchHit>> {
+        Err(crate::error::StorageError::Backend {
+            backend: self.backend_kind(),
+            message: "local full-text search is not supported by this backend".to_owned(),
+        })
+    }
+
+    async fn backlinks(
+        &self,
+        _target_document_id: DocumentId,
+        _target_block_id: Option<BlockId>,
+        _limit: usize,
+    ) -> StorageResult<Vec<BacklinkRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn rebuild_local_query_index(
+        &self,
+        _request: LocalIndexRebuildRequest,
+    ) -> StorageResult<FtsApplyResult> {
+        Err(crate::error::StorageError::Backend {
+            backend: self.backend_kind(),
+            message: "local query-index rebuild is not supported by this backend".to_owned(),
+        })
+    }
+
+    async fn create_provisional_asset(
+        &self,
+        _request: ProvisionalAssetRequest,
+    ) -> StorageResult<AssetManifestRecord> {
+        Err(crate::error::StorageError::Backend {
+            backend: self.backend_kind(),
+            message: "asset manifests are not supported by this backend".to_owned(),
+        })
+    }
+
+    async fn asset_manifest(
+        &self,
+        _asset_id: AssetId,
+    ) -> StorageResult<Option<AssetManifestRecord>> {
+        Ok(None)
+    }
+
+    async fn update_asset_upload(
+        &self,
+        _asset_id: AssetId,
+        _mutation: AssetUploadMutation,
+    ) -> StorageResult<AssetManifestRecord> {
+        Err(crate::error::StorageError::Backend {
+            backend: self.backend_kind(),
+            message: "asset upload state is not supported by this backend".to_owned(),
+        })
+    }
+
+    async fn pending_asset_uploads(
+        &self,
+        _workspace_id: u64,
+        _limit: usize,
+    ) -> StorageResult<Vec<AssetManifestRecord>> {
+        Ok(Vec::new())
+    }
+
+    async fn asset_references(&self, _asset_id: AssetId) -> StorageResult<Vec<AssetReference>> {
+        Ok(Vec::new())
+    }
+
     async fn commit(&self, batch: StorageSaveBatch) -> StorageResult<StorageSaveOutcome>;
 
     async fn flush(&self) -> StorageResult<()> {
@@ -253,128 +391,5 @@ impl StorageProvider for StaticStorageProvider {
 
     async fn open(&self) -> StorageResult<Arc<dyn DocumentStorage>> {
         Ok(self.storage.clone())
-    }
-}
-
-#[derive(Clone)]
-pub struct StorageSession {
-    storage: Arc<dyn DocumentStorage>,
-    document_id: DocumentId,
-    layout_key: Option<LayoutCacheKey>,
-}
-
-impl StorageSession {
-    pub fn new(storage: Arc<dyn DocumentStorage>, document_id: DocumentId) -> Self {
-        Self {
-            storage,
-            document_id,
-            layout_key: None,
-        }
-    }
-
-    pub fn with_layout_key(mut self, layout_key: LayoutCacheKey) -> Self {
-        self.layout_key = Some(layout_key);
-        self
-    }
-
-    pub fn document_id(&self) -> DocumentId {
-        self.document_id
-    }
-
-    pub fn backend_kind(&self) -> StorageBackendKind {
-        self.storage.backend_kind()
-    }
-
-    pub fn capabilities(&self) -> StorageCapabilities {
-        self.storage.capabilities()
-    }
-
-    pub fn layout_key(&self) -> Option<LayoutCacheKey> {
-        self.layout_key
-    }
-
-    pub async fn load_payloads(&self, block_ids: &[BlockId]) -> StorageResult<LoadedPayloadBatch> {
-        self.storage
-            .load_payloads(self.document_id, block_ids)
-            .await
-    }
-
-    pub async fn write_undo_blob(
-        &self,
-        snapshot_id: u64,
-        block_count: usize,
-        transaction: &EditTransaction,
-    ) -> StorageResult<ExternalUndoBlobRef> {
-        self.storage
-            .write_undo_blob(self.document_id, snapshot_id, block_count, transaction)
-            .await
-    }
-
-    pub async fn load_undo_blob(
-        &self,
-        reference: &ExternalUndoBlobRef,
-    ) -> StorageResult<EditTransaction> {
-        self.storage
-            .load_undo_blob(self.document_id, reference)
-            .await
-    }
-
-    pub async fn delete_undo_blob(&self, snapshot_id: u64) -> StorageResult<bool> {
-        self.storage
-            .delete_undo_blob(self.document_id, snapshot_id)
-            .await
-    }
-
-    pub async fn prune_undo_blobs(&self, keep_recent: usize) -> StorageResult<u64> {
-        self.storage
-            .prune_undo_blobs(self.document_id, keep_recent)
-            .await
-    }
-
-    pub async fn append_emergency_transactions(
-        &self,
-        transactions: &[EditTransaction],
-    ) -> StorageResult<EmergencyLogAppendOutcome> {
-        self.storage
-            .append_emergency_transactions(self.document_id, transactions)
-            .await
-    }
-
-    pub async fn load_emergency_transactions(&self) -> StorageResult<Vec<EmergencyLogEntry>> {
-        self.storage
-            .load_emergency_transactions(self.document_id)
-            .await
-    }
-
-    pub async fn acknowledge_emergency_transactions(
-        &self,
-        through_sequence: u64,
-    ) -> StorageResult<u64> {
-        self.storage
-            .acknowledge_emergency_transactions(self.document_id, through_sequence)
-            .await
-    }
-
-    pub async fn commit(&self, mut batch: StorageSaveBatch) -> StorageResult<StorageSaveOutcome> {
-        batch.document_id = self.document_id;
-        if batch.layout_key.is_none() {
-            batch.layout_key = self.layout_key;
-        }
-        self.storage.commit(batch).await
-    }
-
-    pub async fn flush(&self) -> StorageResult<()> {
-        self.storage.flush().await
-    }
-}
-
-impl fmt::Debug for StorageSession {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("StorageSession")
-            .field("backend", &self.backend_kind())
-            .field("document_id", &self.document_id)
-            .field("has_layout_key", &self.layout_key.is_some())
-            .finish_non_exhaustive()
     }
 }

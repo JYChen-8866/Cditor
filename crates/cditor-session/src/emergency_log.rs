@@ -1,16 +1,48 @@
 use std::collections::BTreeSet;
 
-use cditor_core::edit::{EditTransaction, TransactionDecodeOutcome, decode_transaction};
+use cditor_core::edit::{
+    EditTransaction, TransactionDecodeOutcome, decode_transaction, encode_transaction,
+};
 use cditor_core::ids::BlockId;
+use cditor_core::schema::VersionedEnvelope;
 use cditor_runtime::DocumentRuntime;
 use cditor_runtime::content::payload_window::{
     PayloadWindowApplyDecision, PayloadWindowLoadRequest, PayloadWindowLoadResult,
 };
 use cditor_storage::EmergencyLogEntry;
+use serde::{Deserialize, Serialize};
+
+use crate::session::{EditorSessionHandle, busy_error};
 
 pub const MAX_EMERGENCY_LOG_ENTRIES: usize = 4_096;
 pub const MAX_EMERGENCY_LOG_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_EMERGENCY_AFFECTED_BLOCKS: usize = 16_384;
+pub const EMERGENCY_EXPORT_FORMAT: &str = "cditor-emergency-operations";
+pub const EMERGENCY_EXPORT_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmergencyExportArtifact {
+    pub document_id: u64,
+    pub revision: u64,
+    pub transaction_count: usize,
+    pub suggested_file_name: String,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EmergencyExportWire {
+    format: String,
+    version: u32,
+    document_id: u64,
+    revision: u64,
+    operations: Vec<EmergencyExportOperation>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EmergencyExportOperation {
+    transaction_id: u64,
+    envelope: VersionedEnvelope,
+}
 
 #[derive(Debug, Clone)]
 pub struct EmergencyRecoveryPlan {
@@ -33,6 +65,109 @@ pub struct EmergencyRecoveryReport {
     pub replayed_transactions: usize,
     pub affected_blocks: usize,
     pub through_sequence: Option<u64>,
+}
+
+pub fn project_emergency_export(
+    runtime: &DocumentRuntime,
+) -> Result<EmergencyExportArtifact, String> {
+    let transactions = runtime.pending_structure_transactions_snapshot();
+    if transactions.is_empty() {
+        return Err("document has no unsaved operations to export".to_owned());
+    }
+    if transactions.len() > MAX_EMERGENCY_LOG_ENTRIES {
+        return Err(format!(
+            "unsaved operation count {} exceeds export limit {MAX_EMERGENCY_LOG_ENTRIES}",
+            transactions.len()
+        ));
+    }
+    let operations = transactions
+        .iter()
+        .map(|transaction| {
+            Ok(EmergencyExportOperation {
+                transaction_id: transaction.id,
+                envelope: encode_transaction(transaction).map_err(|error| error.to_string())?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let wire = EmergencyExportWire {
+        format: EMERGENCY_EXPORT_FORMAT.to_owned(),
+        version: EMERGENCY_EXPORT_VERSION,
+        document_id: runtime.document_id(),
+        revision: runtime.revision(),
+        operations,
+    };
+    let bytes = serde_json::to_vec_pretty(&wire).map_err(|error| error.to_string())?;
+    if bytes.len() > MAX_EMERGENCY_LOG_BYTES {
+        return Err(format!(
+            "emergency export has {} bytes, limit is {MAX_EMERGENCY_LOG_BYTES}",
+            bytes.len()
+        ));
+    }
+    Ok(EmergencyExportArtifact {
+        document_id: wire.document_id,
+        revision: wire.revision,
+        transaction_count: wire.operations.len(),
+        suggested_file_name: format!(
+            "cditor-recovery-{}-r{}.json",
+            wire.document_id, wire.revision
+        ),
+        bytes,
+    })
+}
+
+pub fn decode_emergency_export(bytes: &[u8]) -> Result<EmergencyRecoveryPlan, String> {
+    if bytes.len() > MAX_EMERGENCY_LOG_BYTES {
+        return Err(format!(
+            "emergency export has {} bytes, limit is {MAX_EMERGENCY_LOG_BYTES}",
+            bytes.len()
+        ));
+    }
+    let wire: EmergencyExportWire = serde_json::from_slice(bytes)
+        .map_err(|error| format!("invalid emergency export: {error}"))?;
+    if wire.format != EMERGENCY_EXPORT_FORMAT {
+        return Err(format!(
+            "unsupported emergency export format: {}",
+            wire.format
+        ));
+    }
+    if wire.version != EMERGENCY_EXPORT_VERSION {
+        return Err(format!(
+            "unsupported emergency export version: {}",
+            wire.version
+        ));
+    }
+    if wire.operations.len() > MAX_EMERGENCY_LOG_ENTRIES {
+        return Err(format!(
+            "emergency export has {} operations, limit is {MAX_EMERGENCY_LOG_ENTRIES}",
+            wire.operations.len()
+        ));
+    }
+    let entries = wire
+        .operations
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| EmergencyLogEntry {
+            sequence: u64::try_from(index).unwrap_or(u64::MAX).saturating_add(1),
+            transaction_id: operation.transaction_id,
+            envelope: operation.envelope,
+        })
+        .collect();
+    match plan_emergency_recovery(entries)? {
+        EmergencyRecoveryDecision::Replay(plan) => Ok(plan),
+        EmergencyRecoveryDecision::ReadOnlyNewerMajor { written_major, .. } => Err(format!(
+            "emergency export uses newer operation schema major {written_major}"
+        )),
+    }
+}
+
+impl EditorSessionHandle {
+    pub fn export_emergency_recovery(&self) -> Result<EmergencyExportArtifact, String> {
+        let session = self
+            .inner
+            .try_borrow()
+            .map_err(|_| busy_error().to_string())?;
+        project_emergency_export(&session.runtime)
+    }
 }
 
 pub fn plan_emergency_recovery(
@@ -239,5 +374,38 @@ mod tests {
         assert_eq!(report.replayed_transactions, 2);
         assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "ab");
         assert_eq!(runtime.pending_structure_transaction_count(), 2);
+    }
+
+    #[test]
+    fn in_memory_operations_export_without_mutation_and_round_trip_to_recovery_plan() {
+        let mut runtime = DocumentRuntime::empty();
+        runtime
+            .apply_external_transaction(&transaction(1, "a"), cditor_core::edit::ChangeOrigin::User)
+            .unwrap();
+        let pending_before = runtime.pending_structure_transaction_count();
+
+        let artifact = project_emergency_export(&runtime).unwrap();
+        let plan = decode_emergency_export(&artifact.bytes).unwrap();
+
+        assert_eq!(artifact.document_id, runtime.document_id());
+        assert_eq!(artifact.transaction_count, 1);
+        assert_eq!(plan.transactions.len(), 1);
+        assert_eq!(
+            runtime.pending_structure_transaction_count(),
+            pending_before
+        );
+        assert!(artifact.suggested_file_name.ends_with(".json"));
+    }
+
+    #[test]
+    fn emergency_export_rejects_empty_wrong_format_and_wrong_version() {
+        assert!(project_emergency_export(&DocumentRuntime::empty()).is_err());
+        assert!(
+            decode_emergency_export(
+                br#"{"format":"other","version":1,"document_id":1,"revision":1,"operations":[]}"#
+            )
+            .is_err()
+        );
+        assert!(decode_emergency_export(br#"{"format":"cditor-emergency-operations","version":2,"document_id":1,"revision":1,"operations":[]}"#).is_err());
     }
 }

@@ -112,7 +112,30 @@ fn accepting_empty_line_ai_parses_markdown_into_structured_blocks() {
         request_id: dispatch.request.request_id,
     });
 
-    assert!(runtime.accept_ai_preview().unwrap());
+    let imported = ImportedBlockDocument {
+        root_blocks: vec![2, 3],
+        blocks: vec![
+            RichBlockRecord::rich_text(2, RichBlockKind::Heading { level: 3 }, "阶段一"),
+            RichBlockRecord::new(
+                3,
+                RichBlockKind::BulletedList,
+                BlockPayload::RichText {
+                    spans: vec![
+                        InlineSpan::plain("学习 "),
+                        InlineSpan {
+                            text: "Rust".to_owned(),
+                            marks: vec![InlineMark::Code],
+                        },
+                    ],
+                },
+            ),
+        ],
+    };
+    assert!(
+        runtime
+            .apply_ai_preview(AiApplyMode::InsertAfter, Some(imported))
+            .unwrap()
+    );
     let first = runtime.block_payload_record(1).unwrap();
     assert!(matches!(first.kind, RichBlockKind::Heading { level: 3 }));
     assert_eq!(first.plain_text(), "阶段一");
@@ -330,7 +353,11 @@ fn ai_insert_after_selection_preserves_selected_text_and_is_undoable() {
         request_id: dispatch.request.request_id,
     });
 
-    assert!(runtime.apply_ai_preview(AiApplyMode::InsertAfter).unwrap());
+    assert!(
+        runtime
+            .apply_ai_preview(AiApplyMode::InsertAfter, None)
+            .unwrap()
+    );
     assert_eq!(runtime.focused_text(), Some("abcAIdef"));
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(runtime.focused_text(), Some("abcdef"));
@@ -357,7 +384,11 @@ fn ai_replace_uses_the_original_single_block_selection_range() {
         request_id: dispatch.request.request_id,
     });
 
-    assert!(runtime.apply_ai_preview(AiApplyMode::Replace).unwrap());
+    assert!(
+        runtime
+            .apply_ai_preview(AiApplyMode::Replace, None)
+            .unwrap()
+    );
     assert_eq!(runtime.focused_text(), Some("aAIdef"));
     assert!(runtime.undo_focused_block().unwrap());
     assert_eq!(runtime.focused_text(), Some("abcdef"));
@@ -386,7 +417,19 @@ fn ai_replace_selection_parses_markdown_into_structured_blocks() {
         request_id: dispatch.request.request_id,
     });
 
-    assert!(runtime.apply_ai_preview(AiApplyMode::Replace).unwrap());
+    let imported = ImportedBlockDocument {
+        root_blocks: vec![2, 3, 4],
+        blocks: vec![
+            RichBlockRecord::rich_text(2, RichBlockKind::Heading { level: 1 }, "新标题"),
+            RichBlockRecord::rich_text(3, RichBlockKind::BulletedList, "第一项"),
+            RichBlockRecord::rich_text(4, RichBlockKind::BulletedList, "第二项"),
+        ],
+    };
+    assert!(
+        runtime
+            .apply_ai_preview(AiApplyMode::Replace, Some(imported))
+            .unwrap()
+    );
     let projection = runtime.projection_for_window();
     let kinds = projection
         .blocks
@@ -422,7 +465,11 @@ fn cross_block_ai_insert_preserves_all_selected_blocks() {
         request_id: dispatch.request.request_id,
     });
 
-    assert!(runtime.apply_ai_preview(AiApplyMode::InsertAfter).unwrap());
+    assert!(
+        runtime
+            .apply_ai_preview(AiApplyMode::InsertAfter, None)
+            .unwrap()
+    );
     assert!(runtime.document.index.index_of(first).is_some());
     assert!(runtime.document.index.index_of(second).is_some());
     assert_eq!(runtime.block_payload_record(first).unwrap(), before_first);

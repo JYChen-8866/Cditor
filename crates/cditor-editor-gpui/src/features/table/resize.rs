@@ -380,7 +380,7 @@ mod tests {
             width_px: 240.0,
             height_px: 72.0,
             header: false,
-            spans: Vec::new(),
+            spans: Default::default(),
             align: cditor_core::rich_text::TableCellAlign::Left,
             background_color: None,
         }];
@@ -427,7 +427,7 @@ mod tests {
             width_px: 240.0,
             height_px: 72.0,
             header: false,
-            spans: Vec::new(),
+            spans: Default::default(),
             align: cditor_core::rich_text::TableCellAlign::Left,
             background_color: None,
         }];
@@ -470,7 +470,7 @@ mod tests {
             width_px: 240.0,
             height_px: 72.0,
             header: false,
-            spans: Vec::new(),
+            spans: Default::default(),
             align: cditor_core::rich_text::TableCellAlign::Left,
             background_color: None,
         }];
@@ -512,7 +512,7 @@ mod tests {
             row_span: 1,
             col_span: 1,
             header: false,
-            spans: Vec::new(),
+            spans: Default::default(),
             align: cditor_core::rich_text::TableCellAlign::Left,
             background_color: None,
         }

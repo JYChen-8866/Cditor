@@ -12,6 +12,8 @@ pub struct SelectionMaterializationRequest {
     pub structure_version: u64,
     pub selection: UnifiedDocumentSelection,
     pub block_ids: Vec<BlockId>,
+    /// Correlates host tasks for diagnostics and duplicate admission only.
+    /// Payload prefetch may advance this value without invalidating the request.
     pub payload_window_generation: u64,
 }
 
@@ -26,6 +28,27 @@ impl DocumentRuntime {
     /// selection. `None` means there is no active selection or everything is
     /// already resident.
     pub fn selection_materialization_request(&self) -> Option<SelectionMaterializationRequest> {
+        let (selection, ids) = self.selection_materialization_targets()?;
+        let missing = ids
+            .into_iter()
+            .filter(|block_id| !self.document.payload_window.payloads.contains_key(block_id))
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
+            return None;
+        }
+
+        Some(SelectionMaterializationRequest {
+            document_id: self.document_id,
+            structure_version: self.structure_version(),
+            selection,
+            block_ids: missing,
+            payload_window_generation: self.layout.payload_window_generation,
+        })
+    }
+
+    fn selection_materialization_targets(
+        &self,
+    ) -> Option<(UnifiedDocumentSelection, Vec<BlockId>)> {
         let selection = self.unified_document_selection_snapshot()?;
         let mut ids = Vec::new();
 
@@ -66,21 +89,7 @@ impl DocumentRuntime {
                 .unwrap_or(usize::MAX)
         });
         ids.dedup();
-        let missing = ids
-            .into_iter()
-            .filter(|block_id| !self.document.payload_window.payloads.contains_key(block_id))
-            .collect::<Vec<_>>();
-        if missing.is_empty() {
-            return None;
-        }
-
-        Some(SelectionMaterializationRequest {
-            document_id: self.document_id,
-            structure_version: self.structure_version(),
-            selection,
-            block_ids: missing,
-            payload_window_generation: self.layout.payload_window_generation,
-        })
+        Some((selection, ids))
     }
 
     pub(super) fn selected_block_subtree_ids(&self) -> Vec<BlockId> {
@@ -116,16 +125,30 @@ impl DocumentRuntime {
     }
 
     pub fn selection_request_is_current(&self, request: &SelectionMaterializationRequest) -> bool {
-        request.document_id == self.document_id
-            && request.structure_version == self.structure_version()
-            && request.payload_window_generation == self.layout.payload_window_generation
-            && self.unified_document_selection_snapshot() == Some(request.selection.clone())
+        if request.document_id != self.document_id
+            || request.structure_version != self.structure_version()
+            || request.block_ids.is_empty()
+        {
+            return false;
+        }
+        let Some((selection, target_ids)) = self.selection_materialization_targets() else {
+            return false;
+        };
+        if selection != request.selection {
+            return false;
+        }
+        let target_ids = target_ids.into_iter().collect::<HashSet<_>>();
+        let mut unique_request_ids = HashSet::with_capacity(request.block_ids.len());
+        request
+            .block_ids
+            .iter()
+            .all(|block_id| target_ids.contains(block_id) && unique_request_ids.insert(*block_id))
     }
 
     pub fn apply_selection_materialization_result(
         &mut self,
         request: &SelectionMaterializationRequest,
-        records: Vec<BlockPayloadRecord>,
+        records: Vec<PreparedPayloadRecord>,
         missing_block_ids: &[BlockId],
     ) -> SelectionMaterializationApplyDecision {
         if !self.selection_request_is_current(request) {
@@ -133,16 +156,15 @@ impl DocumentRuntime {
         }
         let expected = request.block_ids.iter().copied().collect::<HashSet<_>>();
         for record in records {
-            if expected.contains(&record.block_id)
+            let block_id = record.block_id();
+            if expected.contains(&block_id)
                 && !self
                     .document
                     .payload_window
                     .payloads
-                    .contains_key(&record.block_id)
+                    .contains_key(&block_id)
             {
-                let mut record = normalize_payload_record_for_kind(record);
-                self.sync_table_runtime_from_loaded_record(&mut record);
-                self.document.payload_window.insert_loaded(record);
+                self.document.payload_window.insert_loaded_prepared(record);
             }
         }
         for block_id in missing_block_ids {
@@ -255,7 +277,11 @@ mod tests {
         let request = runtime.selection_materialization_request().unwrap();
 
         assert_eq!(
-            runtime.apply_selection_materialization_result(&request, vec![record.clone()], &[]),
+            runtime.apply_selection_materialization_result(
+                &request,
+                vec![PreparedPayloadRecord::prepare(record.as_ref().clone())],
+                &[],
+            ),
             SelectionMaterializationApplyDecision::Applied
         );
         assert!(runtime.selection_materialization_request().is_none());
@@ -265,7 +291,11 @@ mod tests {
             .set_document_selection(DocumentSelection::caret(TextPosition::downstream(1, 0)))
             .unwrap();
         assert_eq!(
-            runtime.apply_selection_materialization_result(&request, vec![record], &[]),
+            runtime.apply_selection_materialization_result(
+                &request,
+                vec![PreparedPayloadRecord::prepare(record.as_ref().clone())],
+                &[],
+            ),
             SelectionMaterializationApplyDecision::DiscardedStale
         );
         assert!(!runtime.document.payload_window.payloads.contains_key(&2));

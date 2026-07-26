@@ -59,36 +59,6 @@ fn every_builtin_kind_has_a_registered_descriptor() {
 }
 
 #[test]
-fn menu_descriptors_have_stable_unique_order_and_safe_targets() {
-    let registry = BlockRegistry::builtin();
-    let slash = registry.slash_descriptors();
-    let transforms = registry.transform_descriptors();
-
-    assert_eq!(slash.len(), 21);
-    assert_eq!(transforms.len(), 13);
-    assert_eq!(slash[0].default_kind, RichBlockKind::Paragraph);
-    assert_eq!(slash[20].default_kind, RichBlockKind::RawMarkdown);
-    for (expected, descriptor) in slash.iter().enumerate() {
-        assert_eq!(usize::from(descriptor.menu.slash.unwrap().order), expected);
-        assert!(descriptor.menu.create_from_text);
-    }
-    for (expected, descriptor) in transforms.iter().enumerate() {
-        assert_eq!(
-            usize::from(descriptor.menu.transform.unwrap().order),
-            expected
-        );
-        assert!(descriptor.menu.create_from_text);
-    }
-    assert!(
-        !registry
-            .descriptor_for_kind(&RichBlockKind::Image)
-            .menu
-            .create_from_text
-    );
-    assert!(!registry.descriptor_by_tag(31_337).menu.create_from_text);
-}
-
-#[test]
 fn unknown_tag_falls_back_to_lossless_placeholder() {
     let registry = BlockRegistry::builtin();
     let descriptor = registry.descriptor_by_tag(31_337);
@@ -108,6 +78,13 @@ fn capability_spot_checks_match_product_semantics() {
     let paragraph = registry.descriptor_for_kind(&RichBlockKind::Paragraph);
     assert!(paragraph.capabilities.text_surface);
     assert!(paragraph.capabilities.inline_marks);
+    assert!(paragraph.capabilities.plain_text_conversion_target);
+    assert!(
+        registry
+            .descriptor_for_kind(&RichBlockKind::Whiteboard)
+            .capabilities
+            .plain_text_conversion_target
+    );
 
     let code = registry.descriptor_for_kind(&RichBlockKind::Code { language: None });
     assert!(code.capabilities.text_surface);
@@ -139,6 +116,12 @@ fn capability_spot_checks_match_product_semantics() {
             .caption
     );
     assert!(
+        !registry
+            .descriptor_for_kind(&RichBlockKind::Image)
+            .capabilities
+            .plain_text_conversion_target
+    );
+    assert!(
         registry
             .descriptor_for_kind(&RichBlockKind::Toggle)
             .capabilities
@@ -163,7 +146,6 @@ fn duplicate_registration_is_rejected() {
             default_kind: RichBlockKind::Paragraph,
             payload_version: CURRENT_BLOCK_PAYLOAD,
             capabilities: BlockCapabilities::empty(),
-            menu: BlockMenuMetadata::default(),
             migrator: None,
         })
         .unwrap_err();
@@ -196,7 +178,6 @@ fn migrate_payload_uses_descriptor_migrator() {
             default_kind: RichBlockKind::Custom("migratable".to_owned()),
             payload_version: SchemaVersion::new(2, 0),
             capabilities: BlockCapabilities::empty(),
-            menu: BlockMenuMetadata::default(),
             migrator: Some(rename_field),
         })
         .unwrap();

@@ -13,7 +13,7 @@ pub(crate) fn handle_registered_platform_input(
     cx: &mut App,
 ) -> bool {
     let registered = view.update(cx, |view, _cx| {
-        view.register_platform_input_target(target, layout_identity)
+        view.register_platform_input_target(target, layout_identity, bounds)
     });
     if registered {
         window.handle_input(focus, ElementInputHandler::new(bounds, view.clone()), cx);

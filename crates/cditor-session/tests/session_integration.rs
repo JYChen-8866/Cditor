@@ -21,7 +21,6 @@ use cditor_session::{
 use cditor_storage::{
     DocumentStorage, LoadDocumentRequest, LoadedDocument, LoadedPayloadBatch, StorageBackendKind,
     StorageCapabilities, StorageError, StorageResult, StorageSaveBatch, StorageSaveOutcome,
-    StorageSession,
 };
 
 fn cold_start_request(readonly: bool) -> SessionColdStartRequest {
@@ -152,7 +151,10 @@ impl DocumentStorage for ProbeStorage {
 async fn persistence_failure_restores_transaction_and_retry_commits() {
     let storage = Arc::new(ProbeStorage::default());
     storage.fail_commit.store(true, Ordering::SeqCst);
-    let pipeline = PersistencePipeline::for_session(StorageSession::new(storage.clone(), 91), None);
+    let pipeline = PersistencePipeline::for_session(
+        cditor_session::DocumentPersistence::new(storage.clone(), 91),
+        None,
+    );
     let prepared =
         prepare_editor_session_with_persistence(cold_start_request(false), pipeline).unwrap();
     let session = prepared.into_opened().session;
@@ -172,7 +174,7 @@ async fn persistence_failure_restores_transaction_and_retry_commits() {
     let error = save_storage_batch(&failed_request).await.unwrap_err();
     assert!(error.to_string().contains("injected commit failure"));
     session
-        .apply_storage_save_failure(&failed_request, &error.to_string())
+        .apply_storage_save_failure(&failed_request, &error)
         .unwrap();
 
     storage.fail_commit.store(false, Ordering::SeqCst);

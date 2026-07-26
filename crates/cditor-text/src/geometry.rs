@@ -1,15 +1,17 @@
+use std::ops::Range;
+
 use cditor_core::edit::TextAffinity;
 use parley::{Affinity, Cursor, Selection};
 
-use super::ParleyLayoutSnapshot;
+use super::TextLayoutSnapshot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParleyTextPosition {
+pub struct TextLayoutPosition {
     pub offset: usize,
     pub affinity: TextAffinity,
 }
 
-impl ParleyTextPosition {
+impl TextLayoutPosition {
     pub const fn downstream(offset: usize) -> Self {
         Self {
             offset,
@@ -19,7 +21,7 @@ impl ParleyTextPosition {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ParleyRect {
+pub struct TextLayoutRect {
     pub x: f32,
     pub y: f32,
     pub width: f32,
@@ -27,19 +29,19 @@ pub struct ParleyRect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ParleySelection {
-    pub anchor: ParleyTextPosition,
-    pub focus: ParleyTextPosition,
+pub struct TextLayoutSelection {
+    pub anchor: TextLayoutPosition,
+    pub focus: TextLayoutPosition,
 }
 
-impl ParleySelection {
+impl TextLayoutSelection {
     pub fn text_range(self) -> std::ops::Range<usize> {
         self.anchor.offset.min(self.focus.offset)..self.anchor.offset.max(self.focus.offset)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParleySelectionKind {
+pub enum TextLayoutSelectionKind {
     Cluster,
     Word,
     Line,
@@ -47,7 +49,7 @@ pub enum ParleySelectionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParleyMoveCommand {
+pub enum TextLayoutMoveCommand {
     PreviousVisual,
     NextVisual,
     PreviousVisualWord,
@@ -62,58 +64,80 @@ pub enum ParleyMoveCommand {
     HardLineEnd,
 }
 
-impl ParleyLayoutSnapshot {
-    pub fn position_for_point(&self, x: f32, y: f32) -> ParleyTextPosition {
-        let scale = self.display_scale();
-        cursor_to_position(
-            self.text(),
-            Cursor::from_point(self.layout(), x * scale, y * scale),
-        )
+impl TextLayoutSnapshot {
+    pub fn position_for_point(&self, x: f32, y: f32) -> TextLayoutPosition {
+        self.geometry().position_for_point(x, y)
     }
 
-    pub fn caret_rect(&self, position: ParleyTextPosition, width: f32) -> ParleyRect {
-        let scale = self.display_scale();
-        let cursor = position_to_cursor(self.layout(), self.text(), position);
-        bounding_box_to_rect(cursor.geometry(self.layout(), width * scale), scale)
+    pub fn caret_rect(&self, position: TextLayoutPosition, width: f32) -> TextLayoutRect {
+        self.geometry().caret_rect(self.text(), position, width)
     }
 
-    pub fn selection_rects(&self, selection: ParleySelection) -> Vec<ParleyRect> {
-        let scale = self.display_scale();
-        positions_to_selection(self.layout(), self.text(), selection)
-            .geometry(self.layout())
-            .into_iter()
-            .map(|(bounds, _)| bounding_box_to_rect(bounds, scale))
-            .collect()
+    pub fn selection_rects(&self, selection: TextLayoutSelection) -> Vec<TextLayoutRect> {
+        self.geometry().selection_rects(self.text(), selection)
     }
 
-    pub fn selection_at_point(&self, x: f32, y: f32, kind: ParleySelectionKind) -> ParleySelection {
+    pub fn range_rects(&self, range: Range<usize>) -> Vec<TextLayoutRect> {
+        let start = range.start.min(self.text().len());
+        let end = range.end.min(self.text().len()).max(start);
+        if start == end {
+            return Vec::new();
+        }
+        self.selection_rects(TextLayoutSelection {
+            anchor: TextLayoutPosition::downstream(start),
+            focus: TextLayoutPosition {
+                offset: end,
+                affinity: TextAffinity::Upstream,
+            },
+        })
+    }
+
+    pub fn selection_at_point(
+        &self,
+        x: f32,
+        y: f32,
+        kind: TextLayoutSelectionKind,
+    ) -> TextLayoutSelection {
+        if kind == TextLayoutSelectionKind::Cluster {
+            let position = self.position_for_point(x, y);
+            return TextLayoutSelection {
+                anchor: position,
+                focus: position,
+            };
+        }
         let scale = self.display_scale();
         let x = x * scale;
         let y = y * scale;
         let selection = match kind {
-            ParleySelectionKind::Cluster => Selection::from_point(self.layout(), x, y),
-            ParleySelectionKind::Word => Selection::word_from_point(self.layout(), x, y),
-            ParleySelectionKind::Line => Selection::line_from_point(self.layout(), x, y),
-            ParleySelectionKind::HardLine => Selection::hard_line_from_point(self.layout(), x, y),
+            TextLayoutSelectionKind::Cluster => unreachable!("cluster hit returned above"),
+            TextLayoutSelectionKind::Word => Selection::word_from_point(self.layout(), x, y),
+            TextLayoutSelectionKind::Line => Selection::line_from_point(self.layout(), x, y),
+            TextLayoutSelectionKind::HardLine => {
+                Selection::hard_line_from_point(self.layout(), x, y)
+            }
         };
         selection_to_positions(self.text(), selection)
     }
 
     pub fn move_selection(
         &self,
-        selection: ParleySelection,
-        command: ParleyMoveCommand,
+        selection: TextLayoutSelection,
+        command: TextLayoutMoveCommand,
         extend: bool,
-    ) -> ParleySelection {
+    ) -> TextLayoutSelection {
         let selection = positions_to_selection(self.layout(), self.text(), selection);
         let moved = match command {
-            ParleyMoveCommand::PreviousVisual => selection.previous_visual(self.layout(), extend),
-            ParleyMoveCommand::NextVisual => selection.next_visual(self.layout(), extend),
-            ParleyMoveCommand::PreviousVisualWord => {
+            TextLayoutMoveCommand::PreviousVisual => {
+                selection.previous_visual(self.layout(), extend)
+            }
+            TextLayoutMoveCommand::NextVisual => selection.next_visual(self.layout(), extend),
+            TextLayoutMoveCommand::PreviousVisualWord => {
                 selection.previous_visual_word(self.layout(), extend)
             }
-            ParleyMoveCommand::NextVisualWord => selection.next_visual_word(self.layout(), extend),
-            ParleyMoveCommand::PreviousLogicalWord => {
+            TextLayoutMoveCommand::NextVisualWord => {
+                selection.next_visual_word(self.layout(), extend)
+            }
+            TextLayoutMoveCommand::PreviousLogicalWord => {
                 let focus = selection.focus().previous_logical_word(self.layout());
                 if extend {
                     selection.extend(focus)
@@ -121,7 +145,7 @@ impl ParleyLayoutSnapshot {
                     focus.into()
                 }
             }
-            ParleyMoveCommand::NextLogicalWord => {
+            TextLayoutMoveCommand::NextLogicalWord => {
                 let focus = selection.focus().next_logical_word(self.layout());
                 if extend {
                     selection.extend(focus)
@@ -129,26 +153,28 @@ impl ParleyLayoutSnapshot {
                     focus.into()
                 }
             }
-            ParleyMoveCommand::PreviousLine => selection.previous_line(self.layout(), extend),
-            ParleyMoveCommand::NextLine => selection.next_line(self.layout(), extend),
-            ParleyMoveCommand::LineStart => selection.line_start(self.layout(), extend),
-            ParleyMoveCommand::LineEnd => selection.line_end(self.layout(), extend),
-            ParleyMoveCommand::HardLineStart => selection.hard_line_start(self.layout(), extend),
-            ParleyMoveCommand::HardLineEnd => selection.hard_line_end(self.layout(), extend),
+            TextLayoutMoveCommand::PreviousLine => selection.previous_line(self.layout(), extend),
+            TextLayoutMoveCommand::NextLine => selection.next_line(self.layout(), extend),
+            TextLayoutMoveCommand::LineStart => selection.line_start(self.layout(), extend),
+            TextLayoutMoveCommand::LineEnd => selection.line_end(self.layout(), extend),
+            TextLayoutMoveCommand::HardLineStart => {
+                selection.hard_line_start(self.layout(), extend)
+            }
+            TextLayoutMoveCommand::HardLineEnd => selection.hard_line_end(self.layout(), extend),
         };
         selection_to_positions(self.text(), moved)
     }
 
     pub fn move_selection_with_preferred_x(
         &self,
-        selection: ParleySelection,
-        command: ParleyMoveCommand,
+        selection: TextLayoutSelection,
+        command: TextLayoutMoveCommand,
         extend: bool,
         preferred_x: Option<f32>,
-    ) -> (ParleySelection, Option<f32>) {
+    ) -> (TextLayoutSelection, Option<f32>) {
         if !matches!(
             command,
-            ParleyMoveCommand::PreviousLine | ParleyMoveCommand::NextLine
+            TextLayoutMoveCommand::PreviousLine | TextLayoutMoveCommand::NextLine
         ) {
             return (self.move_selection(selection, command, extend), None);
         }
@@ -158,12 +184,12 @@ impl ParleyLayoutSnapshot {
         let target_rect = self.caret_rect(initial.focus, 1.0);
         let focus = self.position_for_point(preferred_x, target_rect.y + target_rect.height * 0.5);
         let selection = if extend {
-            ParleySelection {
+            TextLayoutSelection {
                 anchor: selection.anchor,
                 focus,
             }
         } else {
-            ParleySelection {
+            TextLayoutSelection {
                 anchor: focus,
                 focus,
             }
@@ -173,9 +199,9 @@ impl ParleyLayoutSnapshot {
 }
 
 fn position_to_cursor(
-    layout: &parley::Layout<super::ParleyBrush>,
+    layout: &parley::Layout<super::TextBrush>,
     text: &str,
-    position: ParleyTextPosition,
+    position: TextLayoutPosition,
 ) -> Cursor {
     Cursor::from_byte_index(
         layout,
@@ -185,9 +211,9 @@ fn position_to_cursor(
 }
 
 fn positions_to_selection(
-    layout: &parley::Layout<super::ParleyBrush>,
+    layout: &parley::Layout<super::TextBrush>,
     text: &str,
-    selection: ParleySelection,
+    selection: TextLayoutSelection,
 ) -> Selection {
     Selection::new(
         position_to_cursor(layout, text, selection.anchor),
@@ -195,16 +221,16 @@ fn positions_to_selection(
     )
 }
 
-fn selection_to_positions(text: &str, selection: Selection) -> ParleySelection {
-    ParleySelection {
+fn selection_to_positions(text: &str, selection: Selection) -> TextLayoutSelection {
+    TextLayoutSelection {
         anchor: cursor_to_position(text, selection.anchor()),
         focus: cursor_to_position(text, selection.focus()),
     }
 }
 
-fn cursor_to_position(text: &str, cursor: Cursor) -> ParleyTextPosition {
+fn cursor_to_position(text: &str, cursor: Cursor) -> TextLayoutPosition {
     let affinity = affinity_from_parley(cursor.affinity());
-    ParleyTextPosition {
+    TextLayoutPosition {
         offset: normalize_byte_offset(text, cursor.index(), affinity),
         affinity,
     }
@@ -237,14 +263,5 @@ fn affinity_from_parley(affinity: Affinity) -> TextAffinity {
     match affinity {
         Affinity::Upstream => TextAffinity::Upstream,
         Affinity::Downstream => TextAffinity::Downstream,
-    }
-}
-
-fn bounding_box_to_rect(bounds: parley::BoundingBox, scale: f32) -> ParleyRect {
-    ParleyRect {
-        x: bounds.x0 as f32 / scale,
-        y: bounds.y0 as f32 / scale,
-        width: (bounds.x1 - bounds.x0) as f32 / scale,
-        height: (bounds.y1 - bounds.y0) as f32 / scale,
     }
 }

@@ -57,7 +57,7 @@ proptest! {
 
         for grapheme_index in 0..=snapshot.grapheme_count() {
             let offset = snapshot.grapheme_to_byte(grapheme_index).unwrap();
-            let position = ParleyTextPosition {
+            let position = TextLayoutPosition {
                 offset,
                 affinity: TextAffinity::Downstream,
             };
@@ -96,7 +96,7 @@ fn text_token() -> impl Strategy<Value = &'static str> {
     ]
 }
 
-fn layout(text: &str, width: f32, scale: f32) -> ParleyLayoutSnapshot {
+fn layout(text: &str, width: f32, scale: f32) -> TextLayoutSnapshot {
     let input = TextLayoutInput {
         surface_id: TextLayoutSurfaceId::Block(900),
         content_version: 1,
@@ -108,32 +108,32 @@ fn layout(text: &str, width: f32, scale: f32) -> ParleyLayoutSnapshot {
         theme_version: 1,
         font_version: 1,
     };
-    build_parley_layout(
+    build_text_layout(
         &input,
         TextTheme {
             link_text: 0x0057ff,
             inline_code_text: 0xd1242f,
             inline_code_background: 0xf2f2f2,
         },
-        &ParleyLayoutOptions {
+        &TextLayoutOptions {
             width: Some(width),
             display_scale: scale,
             quantize: false,
-            base_style: ParleyTextStyleConfig {
+            base_style: TextStyleConfig {
                 font_size: 17.0,
-                line_height: ParleyLineHeight::Absolute(26.0),
-                ..ParleyTextStyleConfig::default()
+                line_height: TextLineHeight::Absolute(26.0),
+                ..TextStyleConfig::default()
             },
-            ..ParleyLayoutOptions::default()
+            ..TextLayoutOptions::default()
         },
     )
 }
 
-fn rect_is_finite(rect: ParleyRect) -> bool {
+fn rect_is_finite(rect: TextLayoutRect) -> bool {
     rect.x.is_finite() && rect.y.is_finite() && rect.width.is_finite() && rect.height.is_finite()
 }
 
-fn same_visual_caret(first: ParleyRect, second: ParleyRect, scale: f32) -> bool {
+fn same_visual_caret(first: TextLayoutRect, second: TextLayoutRect, scale: f32) -> bool {
     device_pixel_difference(first.x, second.x, scale) <= MAX_DEVICE_PIXEL_DRIFT
         && device_pixel_difference(first.y, second.y, scale) <= MAX_DEVICE_PIXEL_DRIFT
         && device_pixel_difference(first.height, second.height, scale) <= MAX_DEVICE_PIXEL_DRIFT

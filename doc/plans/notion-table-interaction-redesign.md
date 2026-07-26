@@ -175,7 +175,7 @@ Editor overlay layer
 ### 4.1 Engine
 
 ```text
-crates/runtime/src/document_runtime/table/
+crates/cditor-runtime/src/document_runtime/table/
   runtime.rs
   layout.rs
   selection.rs
@@ -189,13 +189,13 @@ crates/runtime/src/document_runtime/table/
 ### 4.2 App
 
 ```text
-crates/app/src/gui/block/table/
+crates/cditor-editor-gpui/src/features/table/
   render.rs          # 只画 grid/cells
   cell.rs
   text.rs
   style.rs
 
-crates/app/src/gui/overlay/table/
+crates/cditor-editor-gpui/src/overlays/table/
   mod.rs
   handles.rs
   menu.rs

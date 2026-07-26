@@ -1,16 +1,16 @@
-use cditor_whiteboard::WhiteboardView;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
+use crate::features::whiteboard::WhiteboardBackendEntity;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 
 #[derive(Clone)]
 pub(crate) struct WhiteboardEditorSession {
     pub(crate) block_id: BlockId,
-    pub(crate) board: Entity<WhiteboardView>,
+    pub(crate) board: WhiteboardBackendEntity,
 }
 
 pub(crate) fn render_whiteboard_editor(
@@ -30,7 +30,7 @@ pub(crate) fn render_whiteboard_editor(
         .on_mouse_down(gpui::MouseButton::Left, |_event, _window, cx| {
             cx.stop_propagation();
         })
-        .child(session.board.clone())
+        .child(session.board.render())
         .child(
             div()
                 .id("whiteboard-editor-close")

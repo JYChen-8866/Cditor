@@ -7,11 +7,11 @@ use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 
 pub const BLOCK_INDENT_STEP_PX: f32 = 24.0;
-pub const BLOCK_GUTTER_WIDTH_PX: f32 = 48.0;
+pub const BLOCK_GUTTER_WIDTH_PX: f32 = 22.0;
 pub const BLOCK_GUTTER_HEIGHT_PX: f32 = 24.0;
-pub const BLOCK_SHELL_OUTER_PADDING_X_PX: f32 = 8.0;
+pub const BLOCK_SHELL_OUTER_PADDING_X_PX: f32 = 3.0;
 pub const BLOCK_SHELL_OUTER_PADDING_Y_PX: f32 = 4.0;
-pub const BLOCK_ROW_GAP_PX: f32 = 8.0;
+pub const BLOCK_ROW_GAP_PX: f32 = 0.0;
 pub const BLOCK_SHELL_BORDER_WIDTH_PX: f32 = 1.0;
 pub const BLOCK_CONTENT_BORDER_WIDTH_PX: f32 = 1.0;
 
@@ -78,15 +78,11 @@ pub const fn block_content_left_px(indent_px: f32) -> f32 {
     BlockHorizontalGeometry::for_indent(indent_px).marker_lane_left_px
 }
 
-pub const fn block_gutter_left_px(indent_px: f32) -> f32 {
-    BlockHorizontalGeometry::for_indent(indent_px).gutter_left_px
-}
-
 pub const fn block_gutter_top_px() -> f32 {
     BLOCK_SHELL_BORDER_WIDTH_PX + BLOCK_SHELL_OUTER_PADDING_Y_PX
 }
-pub const BLOCK_PREFIX_WIDTH_PX: f32 = 24.0;
-pub const CALLOUT_PREFIX_WIDTH_PX: f32 = 32.0;
+pub const BLOCK_PREFIX_WIDTH_PX: f32 = 22.0;
+pub const CALLOUT_PREFIX_WIDTH_PX: f32 = 36.0;
 pub const NOTION_QUOTE_CONTENT_GAP_PX: f32 = 14.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -101,6 +97,7 @@ pub struct BlockChromeStyle {
     pub content_padding_left_px: f32,
     pub content_padding_right_px: f32,
     pub content_radius_px: f32,
+    pub content_border_width_px: f32,
     pub outer_background: u32,
     pub content_background: u32,
     pub content_border: u32,
@@ -135,6 +132,7 @@ impl BlockChromeStyle {
             content_padding_left_px: kind_style.padding_left_px,
             content_padding_right_px: kind_style.padding_right_px,
             content_radius_px: kind_style.radius_px,
+            content_border_width_px: kind_style.content_border_width_px,
             outer_background,
             content_background: block_background,
             content_border: kind_style.border,
@@ -151,7 +149,7 @@ impl BlockChromeStyle {
         if self.quote_bar.is_some() {
             4.0
         } else {
-            BLOCK_CONTENT_BORDER_WIDTH_PX
+            self.content_border_width_px
         }
     }
 
@@ -159,7 +157,7 @@ impl BlockChromeStyle {
         if self.quote_bar.is_some() {
             0.0
         } else {
-            BLOCK_CONTENT_BORDER_WIDTH_PX
+            self.content_border_width_px
         }
     }
 }
@@ -196,6 +194,7 @@ struct KindChromeStyle {
     padding_right_px: f32,
     min_height_px: f32,
     radius_px: f32,
+    content_border_width_px: f32,
     quote_bar: Option<u32>,
 }
 
@@ -206,6 +205,7 @@ impl KindChromeStyle {
             RichBlockKind::Quote => Self::quote(theme),
             RichBlockKind::Callout { .. } => Self::callout(theme),
             RichBlockKind::Code { .. } => Self::code(theme),
+            RichBlockKind::RawMarkdown => Self::raw_markdown(theme),
             // Media and table geometry is consumed by their stable-box/overlay paths.
             RichBlockKind::Image | RichBlockKind::Table => Self::legacy_complex(theme),
             _ => Self::paragraph(theme),
@@ -222,6 +222,7 @@ impl KindChromeStyle {
             padding_right_px: 0.0,
             min_height_px: NOTION_BODY_LINE_HEIGHT_PX as f32,
             radius_px: 0.0,
+            content_border_width_px: BLOCK_CONTENT_BORDER_WIDTH_PX,
             quote_bar: None,
         }
     }
@@ -249,6 +250,7 @@ impl KindChromeStyle {
             padding_right_px: 0.0,
             min_height_px: NOTION_BODY_LINE_HEIGHT_PX as f32,
             radius_px: 0.0,
+            content_border_width_px: BLOCK_CONTENT_BORDER_WIDTH_PX,
             quote_bar: Some(theme.quote_bar),
         }
     }
@@ -258,11 +260,12 @@ impl KindChromeStyle {
             background: theme.callout_background,
             border: theme.callout_border,
             text: theme.text,
-            padding_y_px: 12.0,
-            padding_left_px: 12.0,
-            padding_right_px: 12.0,
+            padding_y_px: 14.0,
+            padding_left_px: 16.0,
+            padding_right_px: 16.0,
             min_height_px: 48.0,
-            radius_px: 3.0,
+            radius_px: 6.0,
+            content_border_width_px: BLOCK_CONTENT_BORDER_WIDTH_PX,
             quote_bar: None,
         }
     }
@@ -277,8 +280,24 @@ impl KindChromeStyle {
             padding_y_px: 0.0,
             padding_left_px: 0.0,
             padding_right_px: 0.0,
-            min_height_px: 92.0,
+            min_height_px: cditor_core::layout::V1_CODE_INNER_MIN_HEIGHT_PX as f32,
             radius_px: 0.0,
+            content_border_width_px: BLOCK_CONTENT_BORDER_WIDTH_PX,
+            quote_bar: None,
+        }
+    }
+
+    fn raw_markdown(theme: GuiTheme) -> Self {
+        Self {
+            background: theme.code_background,
+            border: theme.code_background,
+            text: theme.code_text,
+            padding_y_px: 14.0,
+            padding_left_px: 16.0,
+            padding_right_px: 16.0,
+            min_height_px: NOTION_BODY_LINE_HEIGHT_PX as f32,
+            radius_px: 6.0,
+            content_border_width_px: BLOCK_CONTENT_BORDER_WIDTH_PX,
             quote_bar: None,
         }
     }
@@ -293,6 +312,7 @@ impl KindChromeStyle {
             padding_right_px: 0.0,
             min_height_px: 28.0,
             radius_px: 6.0,
+            content_border_width_px: 0.0,
             quote_bar: None,
         }
     }
@@ -347,8 +367,8 @@ mod tests {
         let style = BlockChromeStyle::from_snapshot(&snapshot, GuiTheme::light());
 
         assert_eq!(style.indent_px, 48.0);
-        assert_eq!(style.gutter_width_px, 48.0);
-        assert_eq!(style.marker_lane_width_px, 24.0);
+        assert_eq!(style.gutter_width_px, BLOCK_GUTTER_WIDTH_PX);
+        assert_eq!(style.marker_lane_width_px, BLOCK_PREFIX_WIDTH_PX);
         assert_eq!(style.content_prefix_width_px, BLOCK_PREFIX_WIDTH_PX);
     }
 
@@ -404,6 +424,17 @@ mod tests {
     }
 
     #[test]
+    fn table_renderer_owns_its_frame_without_losing_full_track_width() {
+        let table = block(RichBlockKind::Table, BlockChromeSnapshot::plain());
+        let style = BlockChromeStyle::from_snapshot(&table, GuiTheme::light());
+        let geometry = style.horizontal_geometry();
+
+        assert_eq!(style.content_border_width_px, 0.0);
+        assert_eq!(geometry.content_surface_left_px, geometry.text_left_px);
+        assert_eq!(geometry.content_right_inset_px, 4.0);
+    }
+
+    #[test]
     fn every_nested_block_kind_uses_the_same_depth_geometry() {
         for kind in [
             RichBlockKind::Paragraph,
@@ -448,12 +479,12 @@ mod tests {
         );
         let geometry = style.horizontal_geometry();
 
-        assert_eq!(geometry.gutter_left_px, 9.0);
-        assert_eq!(geometry.marker_lane_left_px, 65.0);
-        assert_eq!(geometry.content_surface_left_px, 89.0);
-        assert_eq!(geometry.content_prefix_left_px, 90.0);
-        assert_eq!(geometry.text_left_px, 90.0);
-        assert_eq!(geometry.content_right_inset_px, 10.0);
+        assert_eq!(geometry.gutter_left_px, 4.0);
+        assert_eq!(geometry.marker_lane_left_px, 26.0);
+        assert_eq!(geometry.content_surface_left_px, 48.0);
+        assert_eq!(geometry.content_prefix_left_px, 49.0);
+        assert_eq!(geometry.text_left_px, 49.0);
+        assert_eq!(geometry.content_right_inset_px, 5.0);
     }
 
     #[test]
@@ -542,6 +573,7 @@ mod tests {
                 variant: cditor_core::rich_text::CalloutVariant::Note,
             },
             RichBlockKind::Code { language: None },
+            RichBlockKind::RawMarkdown,
         ] {
             let snapshot = block(kind.clone(), BlockChromeSnapshot::plain());
             let style = BlockChromeStyle::from_snapshot(&snapshot, GuiTheme::light());
@@ -615,7 +647,7 @@ mod tests {
         assert_eq!(code.content_border, theme.surface);
         assert_eq!(code.text_color, theme.text);
         assert_eq!(code.content_padding_y_px, 0.0);
-        assert_eq!(code.content_min_height_px, 92.0);
+        assert_eq!(code.content_min_height_px, 93.0);
     }
 
     #[test]
@@ -637,8 +669,23 @@ mod tests {
             callout_style.content_background,
             GuiTheme::light().callout_background
         );
-        assert_eq!(callout_style.content_radius_px, 3.0);
-        assert_eq!(callout_style.content_padding_y_px, 12.0);
-        assert_eq!(callout_style.content_padding_left_px, 12.0);
+        assert_eq!(callout_style.content_radius_px, 6.0);
+        assert_eq!(callout_style.content_padding_y_px, 14.0);
+        assert_eq!(callout_style.content_padding_left_px, 16.0);
+        assert_eq!(callout_style.content_padding_right_px, 16.0);
+    }
+
+    #[test]
+    fn raw_markdown_uses_code_surface_without_changing_its_font_contract() {
+        let style = BlockChromeStyle::from_snapshot(
+            &block(RichBlockKind::RawMarkdown, BlockChromeSnapshot::plain()),
+            GuiTheme::light(),
+        );
+
+        assert_eq!(style.content_background, GuiTheme::light().code_background);
+        assert_eq!(style.content_radius_px, 6.0);
+        assert_eq!(style.content_padding_y_px, 14.0);
+        assert_eq!(style.content_padding_left_px, 16.0);
+        assert_eq!(style.content_padding_right_px, 16.0);
     }
 }

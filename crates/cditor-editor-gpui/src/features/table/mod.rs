@@ -21,20 +21,24 @@ pub(crate) use chrome::{
     TableChromeOverlays, render_table_axis_overlays, render_table_chrome_viewport,
     table_chrome_viewport_origins,
 };
-pub(crate) use render::render_table_block;
+pub(crate) use render::{render_table_block, table_content_viewport_height_px};
 pub(crate) use reorder::{
     TableReorderPreview, table_axis_track_sizes, table_reorder_indicator_edge_px_for_preview,
 };
 pub(crate) use resize::{
     TableResizePreview, render_table_resize_overlays, table_resize_indicator_edge_px,
+    table_view_with_resize_preview,
 };
 pub(crate) use selection::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
 };
-pub(crate) use style::TABLE_RESIZE_INDICATOR_THICKNESS_PX;
+pub(crate) use style::{
+    TABLE_RESIZE_INDICATOR_THICKNESS_PX, V1_TABLE_CELL_PADDING_X_PX, V1_TABLE_CELL_PADDING_Y_PX,
+};
+pub(crate) use text::{core_text_align, table_cell_typography};
 pub(crate) use toolbar::{
     TableToolbarEditorOrigin, render_table_axis_toolbar, table_content_editor_origin,
-    table_toolbar_editor_origin,
+    table_projected_viewport_width_px, table_toolbar_editor_origin,
 };
 
 fn table_trace_enabled() -> bool {
@@ -48,7 +52,7 @@ fn table_trace_enabled() -> bool {
 
 fn trace_table(event: &str, details: impl std::fmt::Display) {
     if table_trace_enabled() {
-        eprintln!("[cditor][table][gui][{event}] {details}");
+        crate::diagnostics::stderr::write(format_args!("[cditor][table][gui][{event}] {details}"));
     }
 }
 
@@ -74,7 +78,7 @@ mod tests {
 
     #[test]
     fn v1_table_geometry_constants_are_stable() {
-        assert_eq!(V1_TABLE_RADIUS_PX, 0.0);
+        assert_eq!(V1_TABLE_RADIUS_PX, 4.0);
         assert_eq!(V1_TABLE_CELL_MIN_WIDTH_PX, 120.0);
         assert_eq!(V1_TABLE_CELL_PADDING_X_PX, 10.0);
         assert_eq!(V1_TABLE_CELL_PADDING_Y_PX, 7.0);

@@ -21,6 +21,7 @@ impl CditorV2View {
         if self.status.readonly {
             return;
         }
+        self.interaction.note_input();
         let registered_target = self.input.target;
         let empty_line_ai_input = is_empty_line_ai_platform_input(range_utf16.as_ref(), text)
             && self.ready_session().is_some_and(|session| {
@@ -119,6 +120,7 @@ impl CditorV2View {
         if self.status.readonly {
             return;
         }
+        self.interaction.note_input();
         let registered_target = self.input.target;
         let registered_identity = self.input.session_identity;
         let Some(input_context) = self

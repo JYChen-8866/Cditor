@@ -5,8 +5,8 @@ use gpui::{
 };
 
 use crate::block::chrome::{
-    BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX,
-    BLOCK_SHELL_OUTER_PADDING_X_PX, BLOCK_SHELL_OUTER_PADDING_Y_PX, BlockChromeStyle,
+    BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX, BLOCK_SHELL_OUTER_PADDING_X_PX,
+    BLOCK_SHELL_OUTER_PADDING_Y_PX, BlockChromeStyle,
 };
 use crate::block::gutter::{GutterAddHandler, GutterMouseDownHandler, render_block_gutter};
 use crate::block::prefix::{
@@ -14,9 +14,13 @@ use crate::block::prefix::{
 };
 use crate::diagnostics::block_color::trace_render;
 use crate::theme::GuiTheme;
+use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 
 const NOTION_QUOTE_BAR_WIDTH_PX: f32 = 3.0;
+const BLOCK_SELECTION_EXPAND_X_PX: f32 = 2.0;
+const BLOCK_SELECTION_EXPAND_Y_PX: f32 = 3.0;
+const BLOCK_SELECTION_RADIUS_PX: f32 = 4.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlockActionState {
@@ -104,6 +108,7 @@ pub fn block_shell(
                         theme,
                         gutter_visible,
                         action.action_active,
+                        gutter_control_top_px(&block.kind, chrome.content_min_height_px),
                         on_gutter_add,
                         on_gutter_mouse_down,
                     ))
@@ -130,8 +135,8 @@ pub fn block_shell(
                                     .min_h(px(chrome.content_min_height_px))
                                     .rounded(px(chrome.content_radius_px))
                                     .bg(rgb(content_background))
-                                    .when(chrome.quote_bar.is_none(), |this| {
-                                        this.border(px(BLOCK_CONTENT_BORDER_WIDTH_PX))
+                                    .when(chrome.content_border_width_px > 0.0, |this| {
+                                        this.border(px(chrome.content_border_width_px))
                                     })
                                     .border_color(rgb(content_border))
                                     // Keep the historical 4px quote geometry slot so caret/hit-test
@@ -142,6 +147,9 @@ pub fn block_shell(
                                     .py(px(chrome.content_padding_y_px))
                                     .flex()
                                     .items_start()
+                                    .when(action.action_active, |this| {
+                                        this.child(render_block_selection_decoration(theme))
+                                    })
                                     .when_some(chrome.quote_bar, |this, color| {
                                         this.child(render_quote_bar(color))
                                     })
@@ -159,6 +167,26 @@ pub fn block_shell(
                     ),
             ),
         )
+        .into_any_element()
+}
+
+fn gutter_control_top_px(kind: &RichBlockKind, first_line_height_px: f32) -> f32 {
+    if matches!(kind, RichBlockKind::Heading { .. }) {
+        ((first_line_height_px - 28.0) / 2.0).max(0.0)
+    } else {
+        0.0
+    }
+}
+
+fn render_block_selection_decoration(theme: GuiTheme) -> AnyElement {
+    div()
+        .absolute()
+        .left(px(-BLOCK_SELECTION_EXPAND_X_PX))
+        .right(px(-BLOCK_SELECTION_EXPAND_X_PX))
+        .top(px(-BLOCK_SELECTION_EXPAND_Y_PX))
+        .bottom(px(-BLOCK_SELECTION_EXPAND_Y_PX))
+        .rounded(px(BLOCK_SELECTION_RADIUS_PX))
+        .bg(rgb(theme.action_background))
         .into_any_element()
 }
 
@@ -225,6 +253,30 @@ mod tests {
     #[test]
     fn notion_quote_bar_is_three_pixels_without_changing_hit_test_slot() {
         assert_eq!(NOTION_QUOTE_BAR_WIDTH_PX, 3.0);
+    }
+
+    #[test]
+    fn selection_decoration_is_symmetric_and_does_not_change_layout() {
+        assert_eq!(BLOCK_SELECTION_EXPAND_X_PX, 2.0);
+        assert_eq!(BLOCK_SELECTION_EXPAND_Y_PX, 3.0);
+        assert_eq!(BLOCK_SELECTION_RADIUS_PX, 4.0);
+    }
+
+    #[test]
+    fn heading_gutter_centers_on_the_first_line_without_moving_other_blocks() {
+        assert_eq!(
+            gutter_control_top_px(&RichBlockKind::Heading { level: 1 }, 39.0),
+            5.5
+        );
+        assert_eq!(
+            gutter_control_top_px(&RichBlockKind::Heading { level: 2 }, 32.0),
+            2.0
+        );
+        assert_eq!(gutter_control_top_px(&RichBlockKind::Paragraph, 24.0), 0.0);
+        assert_eq!(
+            gutter_control_top_px(&RichBlockKind::Code { language: None }, 93.0),
+            0.0
+        );
     }
 
     #[test]

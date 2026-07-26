@@ -208,6 +208,7 @@ pub enum EditorCommand {
         block_id: cditor_core::ids::BlockId,
         axis: TableAxis,
         index: usize,
+        count: usize,
     },
     #[doc(hidden)]
     TableDeleteAxis {
@@ -518,10 +519,12 @@ impl EditorCommand {
                 block_id,
                 axis,
                 index,
+                count,
             } => CommandArgs::TableInsertAxis {
                 block_id: *block_id,
                 axis: *axis,
                 index: *index,
+                count: *count,
             },
             Self::TableClearRange { block_id, range } => CommandArgs::TableRangeTarget {
                 block_id: *block_id,

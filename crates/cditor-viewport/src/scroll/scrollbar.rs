@@ -128,6 +128,17 @@ impl ScrollbarDragSession {
         })
     }
 
+    pub fn drag_to_ratio(
+        &self,
+        state: &mut VirtualScrollState,
+        policy: ScrollbarPolicy,
+        ratio: f64,
+    ) -> Result<ScrollbarDragUpdate, VirtualScrollError> {
+        let visual = visual_for_total_height(state, policy, self.frozen_total_height);
+        let max_thumb_top = (policy.track_height - visual.thumb_height).max(0.0);
+        self.drag_to_thumb_top(state, policy, ratio.clamp(0.0, 1.0) * max_thumb_top)
+    }
+
     pub fn finish(self, state: &mut VirtualScrollState) -> ScrollbarDragEnd {
         state.displayed_total_height = self.frozen_total_height;
         ScrollbarDragEnd {
@@ -217,6 +228,23 @@ mod tests {
         assert_eq!(update.global_scroll_top, 450.0);
         assert_eq!(state.global_scroll_top, 450.0);
         assert_eq!(state.origin, ScrollOrigin::UserScrollbar);
+    }
+
+    #[test]
+    fn component_ratio_maps_to_the_same_frozen_virtual_scroll_transaction() {
+        let mut state = VirtualScrollState::new(100.0, 1_000.0).unwrap();
+        let policy = ScrollbarPolicy {
+            track_height: 200.0,
+            min_thumb_height: 20.0,
+            local_list_state_scrollbar_enabled: false,
+        };
+        let visual = ScrollbarVisualState::from_virtual_scroll(&state, policy);
+        let session = ScrollbarDragSession::begin(&mut state, visual);
+
+        let update = session.drag_to_ratio(&mut state, policy, 0.5).unwrap();
+
+        assert_eq!(update.drag_ratio, 0.5);
+        assert_eq!(update.global_scroll_top, 450.0);
     }
 
     #[test]

@@ -4,6 +4,7 @@ use crate::layout::{
 };
 use crate::schema::{SchemaDomain, VersionedEnvelope};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::sync::Arc;
 
 use super::{InlineSpan, RichBlockKind, TablePayload, plain_text_from_spans};
 
@@ -219,7 +220,7 @@ fn default_columns_gap_milli() -> u16 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlockPayloadView {
-    Loaded(BlockPayloadRecord),
+    Loaded(Arc<BlockPayloadRecord>),
     Placeholder { estimated_height: f64 },
     Loading { stable_box: StableBox },
     Error { message: String },

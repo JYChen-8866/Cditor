@@ -18,8 +18,7 @@ use serde::{Deserialize, Serialize};
 
 pub use envelope::{DecodeOutcome, EnvelopeError, VersionedEnvelope};
 pub use registry::{
-    BlockCapabilities, BlockDescriptor, BlockMenuMetadata, BlockRegistry, PayloadMigrator,
-    SlashMenuMetadata, TransformMenuMetadata, builtin_block_registry,
+    BlockCapabilities, BlockDescriptor, BlockRegistry, PayloadMigrator, builtin_block_registry,
 };
 
 /// `major.minor` schema 版本。major 破坏性、minor 向后兼容新增。

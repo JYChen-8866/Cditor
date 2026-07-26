@@ -2,6 +2,7 @@ use super::*;
 
 mod fixture_corpus;
 mod geometry_properties;
+mod geometry_snapshot_consistency;
 mod segmented_consistency;
 mod visual_regression;
 use cditor_core::{
@@ -33,15 +34,15 @@ fn input(spans: Vec<InlineSpan>, width: f32) -> TextLayoutInput {
     }
 }
 
-fn options(width: f32) -> ParleyLayoutOptions {
-    ParleyLayoutOptions {
+fn options(width: f32) -> TextLayoutOptions {
+    TextLayoutOptions {
         width: Some(width),
         base_text_color: BASE_TEXT_COLOR,
-        base_style: ParleyTextStyleConfig {
-            line_height: ParleyLineHeight::Absolute(24.0),
-            ..ParleyTextStyleConfig::default()
+        base_style: TextStyleConfig {
+            line_height: TextLineHeight::Absolute(24.0),
+            ..TextStyleConfig::default()
         },
-        ..ParleyLayoutOptions::default()
+        ..TextLayoutOptions::default()
     }
 }
 
@@ -66,8 +67,8 @@ fn style_runs_cover_text_and_map_all_current_inline_marks() {
             ],
         },
     ];
-    let base = ParleyTextStyleConfig::default();
-    let runs = parley_style_runs(
+    let base = TextStyleConfig::default();
+    let runs = text_style_runs(
         &spans,
         &RichBlockKind::Paragraph,
         theme,
@@ -81,7 +82,7 @@ fn style_runs_cover_text_and_map_all_current_inline_marks() {
     assert_eq!(runs[1].range, 5..9);
     assert_eq!(runs[1].style.font_family, "Cditor Mono");
     assert_eq!(runs[1].style.font_weight, 700.0);
-    assert_eq!(runs[1].style.font_slant, ParleyFontSlant::Italic);
+    assert_eq!(runs[1].style.font_slant, TextFontSlant::Italic);
     assert!(runs[1].style.underline);
     assert!(runs[1].style.strikethrough);
     assert_eq!(runs[1].style.brush.foreground, 0x123456);
@@ -96,19 +97,19 @@ fn style_runs_cover_text_and_map_all_current_inline_marks() {
 fn parley_layout_shapes_cjk_combining_and_emoji_clusters() {
     let text = "A中e\u{301}👨‍👩‍👧‍👦Z";
     let input = input(vec![InlineSpan::plain(text)], 500.0);
-    let layout = build_parley_layout(&input, theme(), &options(500.0));
+    let layout = build_text_layout(&input, theme(), &options(500.0));
 
     assert_eq!(layout.text(), text);
     assert_eq!(layout.line_count(), 1);
-    let mut position = ParleyTextPosition::downstream(0);
+    let mut position = TextLayoutPosition::downstream(0);
     for _ in 0..16 {
         let next = layout
             .move_selection(
-                ParleySelection {
+                TextLayoutSelection {
                     anchor: position,
                     focus: position,
                 },
-                ParleyMoveCommand::NextVisual,
+                TextLayoutMoveCommand::NextVisual,
                 false,
             )
             .focus;
@@ -125,7 +126,7 @@ fn parley_layout_shapes_cjk_combining_and_emoji_clusters() {
 fn layout_snapshot_owns_unicode_offset_and_shaping_cluster_maps() {
     let text = "Ae\u{301}中 👨‍👩‍👧‍👦 אב";
     let input = input(vec![InlineSpan::plain(text)], 500.0);
-    let layout = build_parley_layout(&input, theme(), &options(500.0));
+    let layout = build_text_layout(&input, theme(), &options(500.0));
     let family_start = text.find('👨').expect("fixture contains family emoji");
     let family_end = family_start + "👨‍👩‍👧‍👦".len();
 
@@ -175,24 +176,24 @@ fn layout_snapshot_owns_unicode_offset_and_shaping_cluster_maps() {
 fn parley_layout_reflows_without_rebuilding_text_or_styles() {
     let text = "one two three four five six seven eight";
     let input = input(vec![InlineSpan::plain(text)], 90.0);
-    let narrow = build_parley_layout(&input, theme(), &options(90.0));
-    let wide = narrow.reflow(Some(600.0), ParleyAlignment::Center);
+    let narrow = build_text_layout(&input, theme(), &options(90.0));
+    let wide = narrow.reflow(Some(600.0), TextAlignment::Center);
 
     assert!(narrow.line_count() > wide.line_count());
     assert_eq!(wide.text(), narrow.text());
-    assert_eq!(wide.alignment(), ParleyAlignment::Center);
+    assert_eq!(wide.alignment(), TextAlignment::Center);
     assert_eq!(wide.layout_width(), Some(600.0));
 }
 
 #[test]
 fn parley_layout_cache_hits_and_reflows_only_for_width_changes() {
-    super::cache::clear_parley_layout_cache();
+    super::cache::reset_text_layout_cache_for_tests();
     let input = input(vec![InlineSpan::plain("cache me across frames")], 90.0);
     let narrow_options = options(90.0);
 
-    let first = cached_parley_layout(&input, theme(), &narrow_options);
-    let second = cached_parley_layout(&input, theme(), &narrow_options);
-    let wide = cached_parley_layout(&input, theme(), &options(600.0));
+    let first = cached_text_layout(&input, theme(), &narrow_options);
+    let second = cached_text_layout(&input, theme(), &narrow_options);
+    let wide = cached_text_layout(&input, theme(), &options(600.0));
 
     assert!(!first.cache_hit);
     assert!(!first.reflowed);
@@ -208,29 +209,29 @@ fn parley_layout_cache_hits_and_reflows_only_for_width_changes() {
 fn parley_layout_key_invalidates_content_style_theme_font_and_scale() {
     let base_input = input(vec![InlineSpan::plain("key")], 200.0);
     let base_options = options(200.0);
-    let base = ParleyLayoutKey::from_input(&base_input, &base_options);
+    let base = TextLayoutKey::from_input(&base_input, &base_options);
 
     let mut changed = base_input.clone();
     changed.content_version += 1;
-    assert_ne!(base, ParleyLayoutKey::from_input(&changed, &base_options));
+    assert_ne!(base, TextLayoutKey::from_input(&changed, &base_options));
 
     let mut changed = base_input.clone();
     changed.spans[0].marks.push(InlineMark::Bold);
-    assert_ne!(base, ParleyLayoutKey::from_input(&changed, &base_options));
+    assert_ne!(base, TextLayoutKey::from_input(&changed, &base_options));
 
     let mut changed = base_input.clone();
     changed.theme_version += 1;
-    assert_ne!(base, ParleyLayoutKey::from_input(&changed, &base_options));
+    assert_ne!(base, TextLayoutKey::from_input(&changed, &base_options));
 
     let mut changed = base_input.clone();
     changed.font_version += 1;
-    assert_ne!(base, ParleyLayoutKey::from_input(&changed, &base_options));
+    assert_ne!(base, TextLayoutKey::from_input(&changed, &base_options));
 
     let mut changed_options = base_options.clone();
     changed_options.display_scale = 2.0;
     assert_ne!(
         base,
-        ParleyLayoutKey::from_input(&base_input, &changed_options)
+        TextLayoutKey::from_input(&base_input, &changed_options)
     );
 }
 
@@ -238,20 +239,20 @@ fn parley_layout_key_invalidates_content_style_theme_font_and_scale() {
 fn parley_geometry_preserves_soft_wrap_affinity() {
     let text = "alpha beta gamma delta";
     let input = input(vec![InlineSpan::plain(text)], 75.0);
-    let layout = build_parley_layout(&input, theme(), &options(75.0));
+    let layout = build_text_layout(&input, theme(), &options(75.0));
     assert!(layout.line_count() > 1);
 
     let first_line = &layout.line_snapshots()[0];
     let boundary = first_line.text_range.end;
     let upstream = layout.caret_rect(
-        ParleyTextPosition {
+        TextLayoutPosition {
             offset: boundary,
             affinity: TextAffinity::Upstream,
         },
         1.0,
     );
     let downstream = layout.caret_rect(
-        ParleyTextPosition {
+        TextLayoutPosition {
             offset: boundary,
             affinity: TextAffinity::Downstream,
         },
@@ -265,13 +266,13 @@ fn parley_geometry_preserves_soft_wrap_affinity() {
 fn parley_mixed_bidi_uses_visual_cursor_movement_and_split_selection_geometry() {
     let text = "abc אבג 123";
     let input = input(vec![InlineSpan::plain(text)], 500.0);
-    let layout = build_parley_layout(&input, theme(), &options(500.0));
+    let layout = build_text_layout(&input, theme(), &options(500.0));
 
-    let start = ParleySelection {
-        anchor: ParleyTextPosition::downstream(0),
-        focus: ParleyTextPosition::downstream(0),
+    let start = TextLayoutSelection {
+        anchor: TextLayoutPosition::downstream(0),
+        focus: TextLayoutPosition::downstream(0),
     };
-    let moved = layout.move_selection(start, ParleyMoveCommand::NextVisual, false);
+    let moved = layout.move_selection(start, TextLayoutMoveCommand::NextVisual, false);
     assert_ne!(moved.focus, start.focus);
     assert!(text.is_char_boundary(moved.focus.offset));
 
@@ -280,9 +281,9 @@ fn parley_mixed_bidi_uses_visual_cursor_movement_and_split_selection_geometry() 
         .find(' ')
         .map(|offset| hebrew_start + offset)
         .unwrap_or(text.len());
-    let rects = layout.selection_rects(ParleySelection {
-        anchor: ParleyTextPosition::downstream(hebrew_start),
-        focus: ParleyTextPosition {
+    let rects = layout.selection_rects(TextLayoutSelection {
+        anchor: TextLayoutPosition::downstream(hebrew_start),
+        focus: TextLayoutPosition {
             offset: hebrew_end,
             affinity: TextAffinity::Upstream,
         },
@@ -292,14 +293,38 @@ fn parley_mixed_bidi_uses_visual_cursor_movement_and_split_selection_geometry() 
 }
 
 #[test]
+fn range_geometry_is_normalized_and_owned_by_the_text_snapshot() {
+    let text = "ab中cd";
+    let input = input(vec![InlineSpan::plain(text)], 500.0);
+    let layout = build_text_layout(&input, theme(), &options(500.0));
+
+    let cjk = layout.range_rects(2..5);
+    assert!(!cjk.is_empty());
+    assert!(
+        cjk.iter()
+            .all(|rect| rect.width >= 0.0 && rect.height > 0.0)
+    );
+    assert_eq!(layout.range_rects(3..3), Vec::new());
+    assert_eq!(
+        layout.range_rects(text.len() + 10..text.len() + 20),
+        Vec::new()
+    );
+    let reversed = std::ops::Range { start: 5, end: 2 };
+    assert_eq!(layout.range_rects(reversed), Vec::new());
+
+    let split_scalar = layout.range_rects(3..4);
+    assert!(!split_scalar.is_empty());
+}
+
+#[test]
 fn parley_word_line_and_hard_line_selection_are_available() {
     let text = "first word\nsecond line";
     let input = input(vec![InlineSpan::plain(text)], 500.0);
-    let layout = build_parley_layout(&input, theme(), &options(500.0));
+    let layout = build_text_layout(&input, theme(), &options(500.0));
 
-    let word = layout.selection_at_point(50.0, 10.0, ParleySelectionKind::Word);
-    let line = layout.selection_at_point(50.0, 10.0, ParleySelectionKind::Line);
-    let hard_line = layout.selection_at_point(50.0, 10.0, ParleySelectionKind::HardLine);
+    let word = layout.selection_at_point(50.0, 10.0, TextLayoutSelectionKind::Word);
+    let line = layout.selection_at_point(50.0, 10.0, TextLayoutSelectionKind::Line);
+    let hard_line = layout.selection_at_point(50.0, 10.0, TextLayoutSelectionKind::HardLine);
 
     assert!(!word.text_range().is_empty());
     assert!(line.text_range().len() >= word.text_range().len());
@@ -310,17 +335,17 @@ fn parley_word_line_and_hard_line_selection_are_available() {
 fn vertical_movement_preserves_preferred_x_across_short_lines() {
     let text = "abcdefghij\nx\nabcdefghij";
     let input = input(vec![InlineSpan::plain(text)], 500.0);
-    let layout = build_parley_layout(&input, theme(), &options(500.0));
-    let start = ParleySelection {
-        anchor: ParleyTextPosition::downstream(8),
-        focus: ParleyTextPosition::downstream(8),
+    let layout = build_text_layout(&input, theme(), &options(500.0));
+    let start = TextLayoutSelection {
+        anchor: TextLayoutPosition::downstream(8),
+        focus: TextLayoutPosition::downstream(8),
     };
 
     let (middle, preferred_x) =
-        layout.move_selection_with_preferred_x(start, ParleyMoveCommand::NextLine, false, None);
+        layout.move_selection_with_preferred_x(start, TextLayoutMoveCommand::NextLine, false, None);
     let (last, retained_x) = layout.move_selection_with_preferred_x(
         middle,
-        ParleyMoveCommand::NextLine,
+        TextLayoutMoveCommand::NextLine,
         false,
         preferred_x,
     );
@@ -329,7 +354,7 @@ fn vertical_movement_preserves_preferred_x_across_short_lines() {
 
     let (_, cleared_x) = layout.move_selection_with_preferred_x(
         last,
-        ParleyMoveCommand::PreviousVisual,
+        TextLayoutMoveCommand::PreviousVisual,
         false,
         retained_x,
     );
@@ -340,13 +365,13 @@ fn vertical_movement_preserves_preferred_x_across_short_lines() {
 fn parley_inline_boxes_participate_in_layout_and_report_positions() {
     let text = "before after";
     let input = input(vec![InlineSpan::plain(text)], 500.0);
-    let layout = build_parley_layout(
+    let layout = build_text_layout(
         &input,
         theme(),
-        &ParleyLayoutOptions {
-            inline_boxes: vec![ParleyInlineBoxSpec {
+        &TextLayoutOptions {
+            inline_boxes: vec![InlineBoxSpec {
                 id: 42,
-                kind: ParleyInlineBoxKind::InFlow,
+                kind: InlineBoxKind::InFlow,
                 index: "before".len(),
                 width: 48.0,
                 height: 18.0,
@@ -358,7 +383,7 @@ fn parley_inline_boxes_participate_in_layout_and_report_positions() {
     let boxes = layout.inline_boxes();
     assert_eq!(boxes.len(), 1);
     assert_eq!(boxes[0].id, 42);
-    assert_eq!(boxes[0].kind, ParleyInlineBoxKind::InFlow);
+    assert_eq!(boxes[0].kind, InlineBoxKind::InFlow);
     assert_eq!(boxes[0].width, 48.0);
     assert_eq!(boxes[0].height, 18.0);
 }
@@ -367,16 +392,16 @@ fn parley_inline_boxes_participate_in_layout_and_report_positions() {
 fn focused_parley_layout_builds_accesskit_runs_and_selection() {
     let text = "abc אבג";
     let input = input(vec![InlineSpan::plain(text)], 500.0);
-    let layout = build_parley_layout(&input, theme(), &options(500.0));
-    let projection = build_parley_accessibility_projection(
+    let layout = build_text_layout(&input, theme(), &options(500.0));
+    let projection = build_text_accessibility_projection(
         &layout,
         accesskit::NodeId(10),
         accesskit::NodeId(11),
         20.0,
         30.0,
-        Some(ParleySelection {
-            anchor: ParleyTextPosition::downstream(0),
-            focus: ParleyTextPosition {
+        Some(TextLayoutSelection {
+            anchor: TextLayoutPosition::downstream(0),
+            focus: TextLayoutPosition {
                 offset: text.len(),
                 affinity: TextAffinity::Upstream,
             },
@@ -398,7 +423,7 @@ fn paint_plan_keeps_exact_font_blob_face_and_glyph_data_outside_gpui() {
         }],
         500.0,
     );
-    let layout = build_parley_layout(&input, theme(), &options(500.0));
+    let layout = build_text_layout(&input, theme(), &options(500.0));
     let plan = layout.paint_plan();
 
     assert!(!plan.runs.is_empty());
@@ -425,8 +450,8 @@ fn paint_plan_keeps_exact_font_blob_face_and_glyph_data_outside_gpui() {
 #[test]
 fn empty_text_uses_base_font_metrics_for_visible_caret() {
     let input = input(vec![InlineSpan::plain("")], 320.0);
-    let layout = build_parley_layout(&input, theme(), &options(320.0));
-    let caret = layout.caret_rect(ParleyTextPosition::downstream(0), 1.5);
+    let layout = build_text_layout(&input, theme(), &options(320.0));
+    let caret = layout.caret_rect(TextLayoutPosition::downstream(0), 1.5);
 
     assert!(layout.is_empty());
     assert!(caret.width > 0.0);
@@ -444,7 +469,7 @@ fn soft_wrapped_lines_keep_one_base_font_size_through_the_last_line() {
         )],
         96.0,
     );
-    let layout = build_parley_layout(&input, theme(), &layout_options);
+    let layout = build_text_layout(&input, theme(), &layout_options);
     let lines = layout.line_snapshots();
     let run_sizes = layout
         .paint_plan()
@@ -466,12 +491,12 @@ fn soft_wrap_reflow_preserves_the_single_line_font_instance_and_size() {
     single_line_options.base_style.font_size = 17.0;
     let mut wrapped_options = single_line_options.clone();
     wrapped_options.width = Some(92.0);
-    let single_line = build_parley_layout(
+    let single_line = build_text_layout(
         &input(vec![InlineSpan::plain(text)], 1_000.0),
         theme(),
         &single_line_options,
     );
-    let wrapped = build_parley_layout(
+    let wrapped = build_text_layout(
         &input(vec![InlineSpan::plain(text)], 92.0),
         theme(),
         &wrapped_options,

@@ -122,6 +122,13 @@ impl CodeLanguageEditState {
         let max_start = len.saturating_sub(CODE_LANGUAGE_VISIBLE_SUGGESTIONS);
         let next_scroll_start =
             (self.scroll_start as isize + delta_rows).clamp(0, max_start as isize) as usize;
+        self.set_scroll_start(next_scroll_start)
+    }
+
+    pub fn set_scroll_start(&mut self, scroll_start: usize) -> bool {
+        let len = self.matching_items().len();
+        let next_scroll_start =
+            scroll_start.min(len.saturating_sub(CODE_LANGUAGE_VISIBLE_SUGGESTIONS));
         if next_scroll_start == self.scroll_start {
             return false;
         }
@@ -439,6 +446,21 @@ mod tests {
         assert!(state.scroll_suggestions(-1));
         assert_eq!(state.scroll_start, 1);
         assert_eq!(state.selected_index, 2);
+    }
+
+    #[test]
+    fn code_language_edit_clamps_direct_scrollbar_positions() {
+        let mut state = CodeLanguageEditState::new(1, None);
+        let max_start = state
+            .matching_items()
+            .len()
+            .saturating_sub(CODE_LANGUAGE_VISIBLE_SUGGESTIONS);
+
+        assert!(state.set_scroll_start(usize::MAX));
+        assert_eq!(state.scroll_start, max_start);
+        assert!(state.selected_index >= state.scroll_start);
+        assert!(state.selected_index < state.scroll_start + CODE_LANGUAGE_VISIBLE_SUGGESTIONS);
+        assert!(!state.set_scroll_start(max_start));
     }
 
     #[test]

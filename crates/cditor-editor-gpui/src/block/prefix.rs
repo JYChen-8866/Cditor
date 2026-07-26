@@ -15,10 +15,11 @@ pub type FoldToggleHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) 
 const NOTION_PREFIX_LINE_HEIGHT_PX: f32 = 24.0;
 const NOTION_CHECKBOX_SIZE_PX: f32 = 16.0;
 const NOTION_CHECKBOX_RADIUS_PX: f32 = 2.0;
-const NOTION_FOLD_HOVER_SIZE_PX: f32 = 20.0;
+const NOTION_FOLD_HOVER_SIZE_PX: f32 = 22.0;
 const NOTION_FOLD_ICON_SIZE_PX: f32 = 10.0;
+const NOTION_FOLD_ICON_STROKE_PX: f32 = 1.5;
 const NOTION_FOLD_HOVER_RADIUS_PX: f32 = 3.0;
-const NOTION_BULLET_OUTER_SIZE_PX: f32 = 6.0;
+const NOTION_BULLET_OUTER_SIZE_PX: f32 = 5.0;
 const NOTION_BULLET_CANVAS_SIZE_PX: f32 = NOTION_BULLET_OUTER_SIZE_PX;
 const NOTION_BULLET_STROKE_WIDTH_PX: f32 = 1.25;
 
@@ -254,9 +255,8 @@ pub fn render_callout_content_prefix(variant: CalloutVariant, theme: GuiTheme) -
 
 pub fn fold_control_visible(prefix: &BlockPrefixSnapshot, focused: bool) -> bool {
     match prefix {
-        BlockPrefixSnapshot::Heading { collapsed } | BlockPrefixSnapshot::Toggle { collapsed } => {
-            *collapsed || focused
-        }
+        BlockPrefixSnapshot::Heading { .. } => true,
+        BlockPrefixSnapshot::Toggle { collapsed } => *collapsed || focused,
         _ => false,
     }
 }
@@ -284,7 +284,7 @@ fn render_fold_indicator(collapsed: bool, visible: bool, theme: GuiTheme) -> Any
                 |_, _, _| {},
                 move |bounds, _, window, _| {
                     let origin = bounds.origin;
-                    let mut path = PathBuilder::fill();
+                    let mut path = PathBuilder::stroke(px(NOTION_FOLD_ICON_STROKE_PX));
                     path.move_to(point(
                         origin.x + px(points[0].0),
                         origin.y + px(points[0].1),
@@ -297,7 +297,6 @@ fn render_fold_indicator(collapsed: bool, visible: bool, theme: GuiTheme) -> Any
                         origin.x + px(points[2].0),
                         origin.y + px(points[2].1),
                     ));
-                    path.close();
                     if let Ok(path) = path.build() {
                         window.paint_path(path, rgb(theme.text));
                     }
@@ -310,11 +309,9 @@ fn render_fold_indicator(collapsed: bool, visible: bool, theme: GuiTheme) -> Any
 
 const fn fold_indicator_points(collapsed: bool) -> [(f32, f32); 3] {
     if collapsed {
-        // Compact right-pointing solid triangle, matching Notion's closed toggle.
-        [(2.0, 1.5), (8.0, 5.0), (2.0, 8.5)]
+        [(2.5, 1.5), (7.0, 5.0), (2.5, 8.5)]
     } else {
-        // The open state uses the same optical weight, rotated downward.
-        [(1.5, 2.0), (8.5, 2.0), (5.0, 8.0)]
+        [(1.5, 2.5), (5.0, 7.0), (8.5, 2.5)]
     }
 }
 
@@ -369,15 +366,16 @@ mod tests {
 
     #[test]
     fn prefix_width_constants_match_v1() {
-        assert_eq!(BLOCK_PREFIX_WIDTH_PX, 24.0);
-        assert_eq!(CALLOUT_PREFIX_WIDTH_PX, 32.0);
+        assert_eq!(BLOCK_PREFIX_WIDTH_PX, 22.0);
+        assert_eq!(CALLOUT_PREFIX_WIDTH_PX, 36.0);
         assert_eq!(NOTION_PREFIX_LINE_HEIGHT_PX, 24.0);
         assert_eq!(NOTION_CHECKBOX_SIZE_PX, 16.0);
         assert_eq!(NOTION_CHECKBOX_RADIUS_PX, 2.0);
-        assert_eq!(NOTION_FOLD_HOVER_SIZE_PX, 20.0);
+        assert_eq!(NOTION_FOLD_HOVER_SIZE_PX, 22.0);
         assert_eq!(NOTION_FOLD_ICON_SIZE_PX, 10.0);
+        assert_eq!(NOTION_FOLD_ICON_STROKE_PX, 1.5);
         assert_eq!(NOTION_FOLD_HOVER_RADIUS_PX, 3.0);
-        assert_eq!(NOTION_BULLET_CANVAS_SIZE_PX, 6.0);
+        assert_eq!(NOTION_BULLET_CANVAS_SIZE_PX, 5.0);
     }
 
     #[test]
@@ -387,42 +385,46 @@ mod tests {
         let solid_square = bullet_marker_style_for_depth(2);
 
         assert_eq!(solid_circle.shape, BulletMarkerShape::SolidCircle);
-        assert_eq!(solid_circle.size_px, 6.0);
+        assert_eq!(solid_circle.size_px, 5.0);
         assert_eq!(hollow_circle.shape, BulletMarkerShape::HollowCircle);
-        assert_eq!(hollow_circle.size_px, 6.0);
+        assert_eq!(hollow_circle.size_px, 5.0);
         assert_eq!(hollow_circle.stroke_width_px, 1.25);
         assert_eq!(solid_square.shape, BulletMarkerShape::SolidSquare);
-        assert_eq!(solid_square.size_px, 6.0);
+        assert_eq!(solid_square.size_px, 5.0);
         assert_eq!(solid_circle.size_px, hollow_circle.size_px);
         assert_eq!(hollow_circle.size_px, solid_square.size_px);
-        assert_eq!(solid_circle.painted_outer_size_px(), 6.0);
-        assert_eq!(hollow_circle.painted_outer_size_px(), 6.0);
-        assert_eq!(solid_square.painted_outer_size_px(), 6.0);
+        assert_eq!(solid_circle.painted_outer_size_px(), 5.0);
+        assert_eq!(hollow_circle.painted_outer_size_px(), 5.0);
+        assert_eq!(solid_square.painted_outer_size_px(), 5.0);
         assert_eq!(bullet_marker_style_for_depth(3), solid_circle);
         assert_eq!(bullet_marker_style_for_depth(4), hollow_circle);
         assert_eq!(bullet_marker_style_for_depth(5), solid_square);
     }
 
     #[test]
-    fn fold_indicator_uses_balanced_solid_triangle_geometry() {
+    fn fold_indicator_uses_a_rotated_open_chevron() {
         assert_eq!(
             fold_indicator_points(true),
-            [(2.0, 1.5), (8.0, 5.0), (2.0, 8.5)]
+            [(2.5, 1.5), (7.0, 5.0), (2.5, 8.5)]
         );
         assert_eq!(
             fold_indicator_points(false),
-            [(1.5, 2.0), (8.5, 2.0), (5.0, 8.0)]
+            [(1.5, 2.5), (5.0, 7.0), (8.5, 2.5)]
         );
     }
 
     #[test]
-    fn fold_control_visibility_follows_focus_until_collapsed() {
-        let expanded = BlockPrefixSnapshot::Heading { collapsed: false };
-        let collapsed = BlockPrefixSnapshot::Heading { collapsed: true };
+    fn heading_fold_control_is_persistent_while_toggle_follows_focus() {
+        let heading = BlockPrefixSnapshot::Heading { collapsed: false };
+        let toggle = BlockPrefixSnapshot::Toggle { collapsed: false };
 
-        assert!(!fold_control_visible(&expanded, false));
-        assert!(fold_control_visible(&expanded, true));
-        assert!(fold_control_visible(&collapsed, false));
+        assert!(fold_control_visible(&heading, false));
+        assert!(!fold_control_visible(&toggle, false));
+        assert!(fold_control_visible(&toggle, true));
+        assert!(fold_control_visible(
+            &BlockPrefixSnapshot::Toggle { collapsed: true },
+            false
+        ));
         assert!(!fold_control_visible(&BlockPrefixSnapshot::None, true));
     }
 

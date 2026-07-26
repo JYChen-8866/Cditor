@@ -15,9 +15,9 @@ use sqlx::{Row, SqlitePool};
 
 use cditor_storage::{StorageBackendKind, StorageError, StorageResult};
 
+use crate::config::prepare_path;
 use crate::config::{SqliteDurability, SqliteStorageOptions};
 use crate::error::sqlite_error;
-use crate::storage::prepare_path;
 
 mod validation;
 

@@ -1,0 +1,12 @@
+[package]
+name = "cditor-component"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Reusable GPUI components for Cditor applications."
+
+[lib]
+name = "cditor_component"
+
+[dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }

@@ -1,18 +1,18 @@
 use gpui::{AppContext, Context, EventEmitter, Task, Window};
 
+use crate::CditorViewContract;
 use crate::editor_view::CditorV2View;
 use crate::persistence::{
     EditorSaveStatus, PersistenceBarrierKind, PersistencePipelineError, schedule_storage_autosave,
 };
-use cditor_api::CditorViewContract;
-use cditor_api::diagnostics::CditorDiagnostics;
-use cditor_api::document::{
-    Affinity, CloseGuard, DocumentInfo, DocumentPosition, DocumentSelection, SaveReport,
-    SaveStatus, ScrollAlignment, TextOffset,
-};
-use cditor_api::event::CditorEvent;
-use cditor_api::{CditorError, command::CommandState};
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcome, CommandSource};
+use cditor_sdk::diagnostics::CditorDiagnostics;
+use cditor_sdk::document::{
+    Affinity, CloseGuard, DocumentInfo, DocumentPosition, DocumentSelection, RecoveryExport,
+    SaveFailure, SaveFailureKind, SaveReport, SaveStatus, ScrollAlignment, TextOffset,
+};
+use cditor_sdk::event::CditorEvent;
+use cditor_sdk::{CditorError, command::CommandState};
 
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
@@ -75,6 +75,10 @@ impl CditorViewContract for CditorV2View {
 
     fn sdk_close_guard(&self) -> CloseGuard {
         CditorV2View::sdk_close_guard(self)
+    }
+
+    fn sdk_export_recovery(&self) -> Result<RecoveryExport, CditorError> {
+        CditorV2View::sdk_export_recovery(self)
     }
 
     fn sdk_save(&mut self, cx: &mut Context<Self>) -> Task<Result<SaveReport, CditorError>> {
@@ -160,9 +164,9 @@ impl CditorV2View {
         self.status.save_status = if effective_readonly {
             EditorSaveStatus::Readonly
         } else if self.status.dirty {
-            EditorSaveStatus::Dirty
+            EditorSaveStatus::DirtyMemory
         } else {
-            EditorSaveStatus::Clean
+            EditorSaveStatus::LocallySaved
         };
         if !effective_readonly && self.status.dirty {
             schedule_storage_autosave(self, cx);
@@ -257,9 +261,14 @@ impl CditorV2View {
 
     pub fn sdk_save_status(&self) -> SaveStatus {
         match &self.status.save_status {
-            EditorSaveStatus::Clean => SaveStatus::Clean,
-            EditorSaveStatus::Dirty => SaveStatus::Dirty,
-            EditorSaveStatus::Saving => SaveStatus::Saving,
+            EditorSaveStatus::LocallySaved => SaveStatus::LocallySaved,
+            EditorSaveStatus::DirtyMemory => SaveStatus::DirtyMemory,
+            EditorSaveStatus::SavingLocal => SaveStatus::SavingLocal,
+            EditorSaveStatus::Syncing => SaveStatus::Syncing,
+            EditorSaveStatus::Synced => SaveStatus::Synced,
+            EditorSaveStatus::FailedLocal(failure) => {
+                SaveStatus::FailedLocal(sdk_save_failure(failure))
+            }
             EditorSaveStatus::Failed(message) => SaveStatus::Failed(message.clone()),
             EditorSaveStatus::Readonly => SaveStatus::Readonly,
         }
@@ -270,16 +279,41 @@ impl CditorV2View {
             .ready_session()
             .and_then(|session| session.persistence_snapshot().ok())
             .is_some_and(|snapshot| snapshot.saving);
+        let local_failure = match &self.status.save_status {
+            EditorSaveStatus::FailedLocal(failure) => Some(sdk_save_failure(failure)),
+            _ => None,
+        };
         let failed_operations = usize::from(matches!(
             self.status.save_status,
-            EditorSaveStatus::Failed(_)
+            EditorSaveStatus::FailedLocal(_) | EditorSaveStatus::Failed(_)
         ));
+        let requires_recovery_export = local_failure
+            .as_ref()
+            .is_some_and(|failure| failure.requires_recovery_export);
         CloseGuard {
             dirty: self.status.dirty,
             saving,
             failed_operations,
+            local_failure,
+            requires_recovery_export,
             can_close_safely: !self.status.dirty && !saving && failed_operations == 0,
         }
+    }
+
+    pub fn sdk_export_recovery(&self) -> Result<RecoveryExport, CditorError> {
+        let artifact = self
+            .ready_session()
+            .ok_or(CditorError::NotReady)?
+            .export_emergency_recovery()
+            .map_err(CditorError::Export)?;
+        Ok(RecoveryExport {
+            document_id: artifact.document_id,
+            revision: artifact.revision,
+            transaction_count: artifact.transaction_count,
+            suggested_file_name: artifact.suggested_file_name,
+            media_type: "application/vnd.cditor.recovery+json",
+            bytes: artifact.bytes,
+        })
     }
 
     pub fn sdk_save(&mut self, cx: &mut Context<Self>) -> Task<Result<SaveReport, CditorError>> {
@@ -358,9 +392,10 @@ impl CditorV2View {
             memory_estimate_bytes: u64::try_from(
                 diagnostics
                     .payload_and_undo_bytes
-                    .saturating_add(self.cache.text_layouts.estimated_bytes())
-                    .saturating_add(self.cache.table_cell_layouts.estimated_bytes())
-                    .saturating_add(self.cache.text_surface_layouts.estimated_bytes()),
+                    .saturating_add(crate::text::text_layout_cache_stats().estimated_bytes)
+                    .saturating_add(self.cache.text_layouts.estimated_metadata_bytes())
+                    .saturating_add(self.cache.table_cell_layouts.estimated_metadata_bytes())
+                    .saturating_add(self.cache.text_surface_layouts.estimated_metadata_bytes()),
             )
             .unwrap_or(u64::MAX),
         })
@@ -473,7 +508,28 @@ fn persistence_pipeline_error(error: PersistencePipelineError) -> CditorError {
     match error {
         PersistencePipelineError::Cancelled => CditorError::Cancelled,
         PersistencePipelineError::Unavailable(message) => CditorError::Unsupported(message),
-        PersistencePipelineError::Storage(message) => CditorError::Persistence(message),
+        PersistencePipelineError::Storage(failure) => CditorError::Persistence(failure.to_string()),
+    }
+}
+
+fn sdk_save_failure(failure: &cditor_session::PersistenceFailure) -> SaveFailure {
+    SaveFailure {
+        kind: match failure.kind {
+            cditor_session::PersistenceFailureKind::Busy => SaveFailureKind::Busy,
+            cditor_session::PersistenceFailureKind::CapacityExhausted => {
+                SaveFailureKind::CapacityExhausted
+            }
+            cditor_session::PersistenceFailureKind::PermissionDenied => {
+                SaveFailureKind::PermissionDenied
+            }
+            cditor_session::PersistenceFailureKind::Corruption => SaveFailureKind::Corruption,
+            cditor_session::PersistenceFailureKind::Timeout => SaveFailureKind::Timeout,
+            cditor_session::PersistenceFailureKind::Io => SaveFailureKind::Io,
+            cditor_session::PersistenceFailureKind::Other => SaveFailureKind::Other,
+        },
+        message: failure.message.clone(),
+        retryable: failure.retryable(),
+        requires_recovery_export: failure.requires_recovery_export(),
     }
 }
 
@@ -594,5 +650,47 @@ mod tests {
             session_position(&session, position(2)),
             Err(CditorError::InvalidSelection)
         );
+    }
+
+    #[test]
+    fn persistence_failure_kinds_round_trip_to_the_public_sdk() {
+        let cases = [
+            (
+                cditor_session::PersistenceFailureKind::Busy,
+                SaveFailureKind::Busy,
+            ),
+            (
+                cditor_session::PersistenceFailureKind::CapacityExhausted,
+                SaveFailureKind::CapacityExhausted,
+            ),
+            (
+                cditor_session::PersistenceFailureKind::PermissionDenied,
+                SaveFailureKind::PermissionDenied,
+            ),
+            (
+                cditor_session::PersistenceFailureKind::Corruption,
+                SaveFailureKind::Corruption,
+            ),
+            (
+                cditor_session::PersistenceFailureKind::Timeout,
+                SaveFailureKind::Timeout,
+            ),
+            (
+                cditor_session::PersistenceFailureKind::Io,
+                SaveFailureKind::Io,
+            ),
+            (
+                cditor_session::PersistenceFailureKind::Other,
+                SaveFailureKind::Other,
+            ),
+        ];
+        for (session_kind, sdk_kind) in cases {
+            let failure = sdk_save_failure(&cditor_session::PersistenceFailure::new(
+                session_kind,
+                "failure",
+            ));
+            assert_eq!(failure.kind, sdk_kind);
+            assert!(failure.requires_recovery_export);
+        }
     }
 }

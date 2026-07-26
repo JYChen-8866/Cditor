@@ -87,8 +87,7 @@ fn failed_cross_surface_commit_preserves_original_focus_and_composition() {
     runtime
         .document
         .payload_window
-        .payloads
-        .get_mut(&1)
+        .get_mut(1)
         .unwrap()
         .content_version += 1;
 

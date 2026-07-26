@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use gpui::{Context, Pixels, Point, Window};
+use gpui::{Bounds, Context, Pixels, Point, Window, point, px};
 
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::{BlockId, SurfaceId};
@@ -11,18 +11,21 @@ use cditor_session::SurfaceVersionSnapshot;
 
 use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::input::trace::trace_input;
-use crate::interaction::geometry::FallbackViewportOrigin;
+use crate::interaction::geometry::{DocumentViewportOrigin, ProjectedTextPlacement};
 use crate::text::{
-    ParleySelectionKind, ParleyTextPosition, RichTextElement, RichTextLayoutInput,
-    RichTextPlatformLayout, platform_text_position_for_point, record_synchronous_geometry_fallback,
+    RichTextElement, RichTextLayoutInput, RichTextPlatformLayout, RichTextTypography, TextHitPoint,
+    TextLayoutPosition, TextLayoutSelection, TextLayoutSelectionKind, platform_range_bounds_at,
+    platform_text_position_for_local_point, record_synchronous_geometry_fallback,
     record_unavailable_geometry, text_geometry_telemetry,
 };
 
-pub(crate) fn selection_kind_for_click_count(click_count: usize) -> Option<ParleySelectionKind> {
+pub(crate) fn selection_kind_for_click_count(
+    click_count: usize,
+) -> Option<TextLayoutSelectionKind> {
     match click_count {
         0 | 1 => None,
-        2 => Some(ParleySelectionKind::Word),
-        _ => Some(ParleySelectionKind::Line),
+        2 => Some(TextLayoutSelectionKind::Word),
+        _ => Some(TextLayoutSelectionKind::Line),
     }
 }
 
@@ -36,6 +39,83 @@ pub(crate) struct TextSurfaceRenderState {
     pub marked_range: Option<Range<usize>>,
 }
 
+/// A version-checked text snapshot paired with its current window placement.
+/// Parley owns local geometry; this placement is the only transform between
+/// that geometry and document window coordinates.
+pub(crate) struct ResolvedProjectedTextGeometry<'a> {
+    layout: &'a RichTextPlatformLayout,
+    placement: ProjectedTextPlacement,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TextSurfaceInteractionGeometry {
+    placement: ProjectedTextPlacement,
+    typography: RichTextTypography,
+}
+
+impl TextSurfaceInteractionGeometry {
+    pub(crate) fn from_bounds(
+        bounds: Bounds<Pixels>,
+        wrap_width_px: f64,
+        text_align: cditor_core::rich_text::TextAlign,
+        typography: RichTextTypography,
+    ) -> Self {
+        Self {
+            placement: ProjectedTextPlacement {
+                window_origin_x_px: f64::from(bounds.left()),
+                window_origin_y_px: f64::from(bounds.top()),
+                wrap_width_px,
+                text_align,
+            },
+            typography,
+        }
+    }
+}
+
+impl ResolvedProjectedTextGeometry<'_> {
+    pub(crate) fn new(
+        layout: &RichTextPlatformLayout,
+        placement: ProjectedTextPlacement,
+    ) -> Option<ResolvedProjectedTextGeometry<'_>> {
+        layout
+            .matches_text_constraints(placement.wrap_width_px, placement.text_align)
+            .then_some(ResolvedProjectedTextGeometry { layout, placement })
+    }
+
+    pub(crate) const fn layout(&self) -> &RichTextPlatformLayout {
+        self.layout
+    }
+
+    pub(crate) fn position_for_window_point(&self, position: Point<Pixels>) -> TextLayoutPosition {
+        platform_text_position_for_local_point(
+            self.layout,
+            projected_text_hit_point(self.placement, position),
+        )
+    }
+
+    pub(crate) fn selection_at_window_point(
+        &self,
+        position: Point<Pixels>,
+        kind: TextLayoutSelectionKind,
+    ) -> TextLayoutSelection {
+        let point = projected_text_hit_point(self.placement, position);
+        self.layout
+            .snapshot
+            .selection_at_point(point.x as f32, point.y as f32, kind)
+    }
+
+    pub(crate) fn bounds_for_range(&self, range: Range<usize>) -> Bounds<Pixels> {
+        platform_range_bounds_at(self.layout, range, self.window_origin())
+    }
+
+    fn window_origin(&self) -> Point<Pixels> {
+        point(
+            px(self.placement.window_origin_x_px as f32),
+            px(self.placement.window_origin_y_px as f32),
+        )
+    }
+}
+
 impl CditorV2View {
     pub(crate) fn current_text_layout_cache(
         &self,
@@ -43,7 +123,24 @@ impl CditorV2View {
         block_id: BlockId,
     ) -> Option<&RichTextPlatformLayout> {
         let cache = self.cache.text_layouts.get(&block_id)?;
-        layout_cache_is_current(cache, current).then_some(cache)
+        let rect = self
+            .interaction
+            .projected_block_rects
+            .iter()
+            .find(|r| r.block_id == block_id);
+        let width = rect.map(|r| r.text_width_px);
+        let align = rect.and_then(|r| r.text_align);
+        layout_cache_is_current(cache, current, width, align).then_some(cache)
+    }
+
+    pub(crate) fn projected_text_geometry_for_block(
+        &self,
+        current: SurfaceVersionSnapshot,
+        block_id: BlockId,
+    ) -> Option<ResolvedProjectedTextGeometry<'_>> {
+        let placement = self.projected_text_placement_for_block(block_id)?;
+        let layout = self.current_text_layout_cache(current, block_id)?;
+        ResolvedProjectedTextGeometry::new(layout, placement)
     }
 
     pub(crate) fn current_text_surface_layout_cache(
@@ -65,33 +162,105 @@ impl CditorV2View {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn text_position_for_surface_at_position(
         &self,
         surface_id: SurfaceId,
         position: Point<Pixels>,
-    ) -> Option<ParleyTextPosition> {
+    ) -> Option<TextLayoutPosition> {
+        if let SurfaceId::Block(block_id) = surface_id {
+            return self.text_position_for_block_at_position(block_id, position);
+        }
+        if let SurfaceId::TableCell {
+            block_id,
+            row,
+            column,
+        } = surface_id
+        {
+            return self.text_position_for_table_cell_at_position(block_id, row, column, position);
+        }
+        None
+    }
+
+    fn text_position_for_auxiliary_surface_at_position(
+        &self,
+        surface_id: SurfaceId,
+        position: Point<Pixels>,
+        geometry: TextSurfaceInteractionGeometry,
+    ) -> Option<TextLayoutPosition> {
+        if !matches!(
+            surface_id,
+            SurfaceId::ImageCaption { .. } | SurfaceId::CollectionTitle { .. }
+        ) {
+            return None;
+        }
         let session = self.ready_session()?;
         let current = session.surface_version(surface_id).ok().flatten()?;
-        let cache = self.current_text_surface_layout_cache(current)?;
-        Some(platform_text_position_for_point(cache, position))
+        let hit_point = projected_text_hit_point(geometry.placement, position);
+        if let Some(cache) = self.current_text_surface_layout_cache(current)
+            && cache.matches_text_constraints(
+                geometry.placement.wrap_width_px,
+                geometry.placement.text_align,
+            )
+        {
+            return Some(platform_text_position_for_local_point(cache, hit_point));
+        }
+
+        record_synchronous_geometry_fallback();
+        let element =
+            cold_text_element_for_auxiliary_surface(session, surface_id, current, geometry)?;
+        if element.input.spans.is_empty() {
+            return Some(TextLayoutPosition::downstream(0));
+        }
+        Some(element.hit_test_position(hit_point))
+    }
+
+    fn text_selection_for_auxiliary_surface_at_position(
+        &self,
+        surface_id: SurfaceId,
+        position: Point<Pixels>,
+        kind: TextLayoutSelectionKind,
+        geometry: TextSurfaceInteractionGeometry,
+    ) -> Option<TextLayoutSelection> {
+        let session = self.ready_session()?;
+        let current = session.surface_version(surface_id).ok().flatten()?;
+        let hit_point = projected_text_hit_point(geometry.placement, position);
+        if let Some(cache) = self.current_text_surface_layout_cache(current)
+            && cache.matches_text_constraints(
+                geometry.placement.wrap_width_px,
+                geometry.placement.text_align,
+            )
+        {
+            return Some(cache.snapshot.selection_at_point(
+                hit_point.x as f32,
+                hit_point.y as f32,
+                kind,
+            ));
+        }
+        let element =
+            cold_text_element_for_auxiliary_surface(session, surface_id, current, geometry)?;
+        Some(element.selection_at_point(hit_point, kind))
     }
 
     pub(crate) fn text_position_for_block_at_position(
         &self,
         block_id: BlockId,
         position: Point<Pixels>,
-    ) -> Option<ParleyTextPosition> {
+    ) -> Option<TextLayoutPosition> {
         let session = self.ready_session()?;
         let current = session
             .surface_version(SurfaceId::Block(block_id))
             .ok()
             .flatten()?;
-        if let Some(cache) = self.current_text_layout_cache(current, block_id) {
-            return Some(platform_text_position_for_point(cache, position));
+        let placement = self.projected_text_placement_for_block(block_id)?;
+        let hit_point = projected_text_hit_point(placement, position);
+        if let Some(geometry) = self.projected_text_geometry_for_block(current, block_id) {
+            return Some(geometry.position_for_window_point(position));
         }
         record_synchronous_geometry_fallback();
-        let fallback =
-            self.fallback_text_position_for_block_at_position(session, block_id, position);
+        let fallback = self.fallback_text_position_for_block_at_position(
+            session, block_id, current, placement, hit_point,
+        );
         if fallback.is_none() {
             record_unavailable_geometry();
         }
@@ -110,86 +279,121 @@ impl CditorV2View {
         &self,
         session: &cditor_session::EditorSessionHandle,
         block_id: BlockId,
-        position: Point<Pixels>,
-    ) -> Option<ParleyTextPosition> {
+        current: SurfaceVersionSnapshot,
+        placement: ProjectedTextPlacement,
+        hit_point: TextHitPoint,
+    ) -> Option<TextLayoutPosition> {
+        let element = cold_text_element_for_block(session, block_id, current, placement)?;
+        if element.input.spans.is_empty() {
+            return Some(TextLayoutPosition::downstream(0));
+        }
+        Some(element.hit_test_position(hit_point))
+    }
+
+    pub(crate) fn document_viewport_origin(&self) -> Option<DocumentViewportOrigin> {
+        let bounds = self.interaction.editor_viewport_handle.bounds();
+        let width = f32::from(bounds.size.width);
+        let height = f32::from(bounds.size.height);
+        if width > 0.5 && height > 0.5 {
+            let viewport =
+                crate::menu_metrics::EditorViewport::from_measurement(bounds, bounds.size);
+            let document = crate::document::DocumentLayoutMetrics::for_viewport(viewport.width);
+            return Some(DocumentViewportOrigin::from_layout(viewport, document));
+        }
+        self.interaction.document_viewport_origin
+    }
+
+    pub(crate) fn sync_document_viewport_origin(
+        &mut self,
+        viewport: crate::menu_metrics::EditorViewport,
+        document: crate::document::DocumentLayoutMetrics,
+    ) {
+        self.interaction.document_viewport_origin =
+            Some(DocumentViewportOrigin::from_layout(viewport, document));
+    }
+
+    pub(crate) fn projected_text_placement_for_block(
+        &self,
+        block_id: BlockId,
+    ) -> Option<ProjectedTextPlacement> {
         let rect = self
             .interaction
             .projected_block_rects
             .iter()
-            .find(|rect| rect.block_id == block_id)?;
-        let viewport_origin = self.infer_document_viewport_origin()?;
-        let payload = session.loaded_payload_record(block_id).ok().flatten()?;
-        let spans = match &payload.payload {
-            cditor_core::rich_text::BlockPayload::RichText { spans } => spans.clone(),
-            cditor_core::rich_text::BlockPayload::Code { text, .. } => {
-                vec![cditor_core::rich_text::InlineSpan::plain(text)]
-            }
-            cditor_core::rich_text::BlockPayload::Html { html, .. } => {
-                vec![cditor_core::rich_text::InlineSpan::plain(html)]
-            }
-            _ => return Some(ParleyTextPosition::downstream(0)),
+            .find(|r| r.block_id == block_id)?;
+        let viewport_origin = self.document_viewport_origin()?;
+        let internal_scroll = if rect.has_internal_text_scroll {
+            self.interaction
+                .code_scroll_handles
+                .get(&block_id)
+                .map(|h| f64::from(h.offset().y))
+                .unwrap_or(0.0)
+        } else {
+            0.0
         };
-        let text = cditor_core::rich_text::plain_text_from_spans(&spans);
-        if text.is_empty() {
-            return Some(ParleyTextPosition::downstream(0));
-        }
-        let hit_point = fallback_text_hit_point(
-            position,
+        Some(ProjectedTextPlacement::for_block(
             viewport_origin,
-            rect.document_top,
-            rect.text_origin_x_in_block_px,
-            rect.text_origin_y_in_block_px,
-            session.layout_viewport().ok()?.global_scroll_top,
-        );
-        let input = RichTextLayoutInput {
-            block_id,
-            surface_id: crate::text::TextLayoutSurfaceId::Block(block_id),
-            content_version: payload.content_version,
-            layout_version: session
-                .surface_version(SurfaceId::Block(block_id))
-                .ok()
-                .flatten()?
-                .layout_version,
-            kind: payload.kind,
-            text_align: cditor_core::rich_text::TextAlign::Start,
-            spans,
-            width_px: rect.text_width_px,
-            theme_version: 1,
-            font_version: 1,
-        };
-        Some(
-            RichTextElement::new(input, crate::theme::GuiTheme::light())
-                .hit_test_position(hit_point),
-        )
+            *rect,
+            self.interaction.presented_scroll_top,
+            internal_scroll,
+        ))
     }
 
-    pub(crate) fn infer_document_viewport_origin(&self) -> Option<FallbackViewportOrigin> {
+    pub(crate) fn text_range_bounds_for_block(
+        &self,
+        block_id: BlockId,
+        range: Range<usize>,
+    ) -> Option<Bounds<Pixels>> {
         let session = self.ready_session()?;
-        let focused = session
-            .document_snapshot()
+        let current = session
+            .surface_version(SurfaceId::Block(block_id))
             .ok()
-            .and_then(|snapshot| snapshot.focused_block_id)
-            .and_then(|block_id| {
-                viewport_origin_for_block(
-                    session,
-                    &self.interaction.projected_block_rects,
-                    &self.cache.text_layouts,
-                    block_id,
-                )
-            });
-        focused.or_else(|| {
-            self.interaction
-                .projected_block_rects
-                .iter()
-                .find_map(|rect| {
-                    viewport_origin_for_block(
-                        session,
-                        &self.interaction.projected_block_rects,
-                        &self.cache.text_layouts,
-                        rect.block_id,
-                    )
-                })
-        })
+            .flatten()?;
+        if let Some(geometry) = self.projected_text_geometry_for_block(current, block_id) {
+            return Some(geometry.bounds_for_range(range));
+        }
+
+        record_synchronous_geometry_fallback();
+        let placement = self.projected_text_placement_for_block(block_id)?;
+        let element = cold_text_element_for_block(session, block_id, current, placement)?;
+        let local_rects = if range.is_empty() {
+            vec![element.local_caret_rect_for_offset(range.start)]
+        } else {
+            element.local_rects_for_range(range)
+        };
+        projected_bounds_for_local_rects(placement, local_rects)
+    }
+
+    pub(crate) fn text_caret_bounds_for_block(
+        &self,
+        block_id: BlockId,
+        offset: usize,
+    ) -> Option<Bounds<Pixels>> {
+        self.text_range_bounds_for_block(block_id, offset..offset)
+    }
+
+    pub(crate) fn text_selection_for_block_at_position(
+        &self,
+        block_id: BlockId,
+        position: Point<Pixels>,
+        kind: TextLayoutSelectionKind,
+    ) -> Option<TextLayoutSelection> {
+        let session = self.ready_session()?;
+        let current = session
+            .surface_version(SurfaceId::Block(block_id))
+            .ok()
+            .flatten()?;
+        let placement = self.projected_text_placement_for_block(block_id)?;
+        let hit_point = projected_text_hit_point(placement, position);
+        if let Some(geometry) = self.projected_text_geometry_for_block(current, block_id) {
+            return Some(geometry.selection_at_window_point(position, kind));
+        }
+        let payload = session.loaded_payload_record(block_id).ok().flatten()?;
+        let input = block_text_layout_input(&payload, current, placement)?;
+        Some(
+            RichTextElement::new(input, crate::theme::GuiTheme::light())
+                .selection_at_point(hit_point, kind),
+        )
     }
 }
 
@@ -219,24 +423,31 @@ impl CditorV2View {
         surface_id: SurfaceId,
         position: Point<Pixels>,
         click_count: usize,
+        geometry: TextSurfaceInteractionGeometry,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.status.readonly {
             return;
         }
-        let hit = self
-            .text_position_for_surface_at_position(surface_id, position)
-            .map(|position| position.offset);
+        let hit = match surface_id {
+            SurfaceId::Block(block_id) => {
+                self.text_position_for_block_at_position(block_id, position)
+            }
+            _ => {
+                self.text_position_for_auxiliary_surface_at_position(surface_id, position, geometry)
+            }
+        }
+        .map(|position| position.offset);
         let click_selection = if let Some(kind) = selection_kind_for_click_count(click_count) {
-            self.ready_session()
-                .and_then(|session| session.surface_version(surface_id).ok().flatten())
-                .and_then(|current| self.current_text_surface_layout_cache(current))
-                .map(|cache| {
-                    let local_x = f32::from(position.x - cache.bounds.left());
-                    let local_y = f32::from(position.y - cache.bounds.top());
-                    cache.snapshot.selection_at_point(local_x, local_y, kind)
-                })
+            match surface_id {
+                SurfaceId::Block(block_id) => {
+                    self.text_selection_for_block_at_position(block_id, position, kind)
+                }
+                _ => self.text_selection_for_auxiliary_surface_at_position(
+                    surface_id, position, kind, geometry,
+                ),
+            }
         } else {
             None
         };
@@ -284,198 +495,125 @@ impl CditorV2View {
     }
 }
 
-fn viewport_origin_for_block(
-    session: &cditor_session::EditorSessionHandle,
-    rects: &[crate::interaction::geometry::ProjectedBlockRect],
-    layouts: &std::collections::HashMap<BlockId, RichTextPlatformLayout>,
-    block_id: BlockId,
-) -> Option<FallbackViewportOrigin> {
-    let cache = layouts.get(&block_id)?;
-    let rect = rects.iter().find(|rect| rect.block_id == block_id)?;
-    if session
-        .surface_version(SurfaceId::Block(block_id))
-        .ok()
-        .flatten()?
-        .content_version
-        != cache.content_version
-    {
+pub(crate) fn projected_text_hit_point(
+    placement: ProjectedTextPlacement,
+    position: Point<Pixels>,
+) -> TextHitPoint {
+    let (x, y) = placement.local_point(f64::from(position.x), f64::from(position.y));
+    TextHitPoint { x, y }
+}
+
+fn block_text_layout_input(
+    payload: &cditor_core::rich_text::BlockPayloadRecord,
+    current: SurfaceVersionSnapshot,
+    placement: ProjectedTextPlacement,
+) -> Option<RichTextLayoutInput> {
+    if payload.content_version != current.content_version {
         return None;
     }
-    Some(FallbackViewportOrigin {
-        x: f32::from(cache.bounds.left()) as f64 - rect.text_origin_x_in_block_px,
-        y: f32::from(cache.bounds.top()) as f64 - rect.document_top
-            + session.layout_viewport().ok()?.global_scroll_top
-            - rect.text_origin_y_in_block_px,
+    let spans = match &payload.payload {
+        cditor_core::rich_text::BlockPayload::RichText { spans } => spans.clone(),
+        cditor_core::rich_text::BlockPayload::Code { text, .. } => {
+            vec![cditor_core::rich_text::InlineSpan::plain(text)]
+        }
+        cditor_core::rich_text::BlockPayload::Html { html, .. } => {
+            vec![cditor_core::rich_text::InlineSpan::plain(html)]
+        }
+        _ => return None,
+    };
+    Some(RichTextLayoutInput {
+        block_id: payload.block_id,
+        surface_id: crate::text::TextLayoutSurfaceId::Block(payload.block_id),
+        content_version: payload.content_version,
+        layout_version: current.layout_version,
+        kind: payload.kind.clone(),
+        text_align: placement.text_align,
+        spans: spans.into(),
+        width_px: placement.wrap_width_px,
+        theme_version: 1,
+        font_version: 1,
     })
+}
+
+fn cold_text_element_for_block(
+    session: &cditor_session::EditorSessionHandle,
+    block_id: BlockId,
+    current: SurfaceVersionSnapshot,
+    placement: ProjectedTextPlacement,
+) -> Option<RichTextElement> {
+    let payload = session.loaded_payload_record(block_id).ok().flatten()?;
+    let input = block_text_layout_input(&payload, current, placement)?;
+    Some(RichTextElement::new(input, crate::theme::GuiTheme::light()))
+}
+
+fn cold_text_element_for_auxiliary_surface(
+    session: &cditor_session::EditorSessionHandle,
+    surface_id: SurfaceId,
+    current: SurfaceVersionSnapshot,
+    geometry: TextSurfaceInteractionGeometry,
+) -> Option<RichTextElement> {
+    let state = session.text_surface_state(surface_id).ok().flatten()?;
+    if state.snapshot.identity.content_version != current.content_version {
+        return None;
+    }
+    let input = RichTextLayoutInput::from_text_surface_snapshot(
+        state.snapshot,
+        current.layout_version,
+        geometry.placement.text_align,
+        geometry.placement.wrap_width_px,
+        1,
+        1,
+    );
+    Some(
+        RichTextElement::new(input, crate::theme::GuiTheme::light())
+            .with_typography(geometry.typography),
+    )
+}
+
+fn projected_bounds_for_local_rects(
+    placement: ProjectedTextPlacement,
+    rects: Vec<crate::text::TextLayoutRect>,
+) -> Option<Bounds<Pixels>> {
+    let mut rects = rects.into_iter().map(|rect| {
+        Bounds::new(
+            point(
+                px((placement.window_origin_x_px + f64::from(rect.x)) as f32),
+                px((placement.window_origin_y_px + f64::from(rect.y)) as f32),
+            ),
+            gpui::size(px(rect.width.max(1.0)), px(rect.height.max(0.0))),
+        )
+    });
+    let first = rects.next()?;
+    Some(rects.fold(first, |union, rect| {
+        Bounds::from_corners(
+            point(union.left().min(rect.left()), union.top().min(rect.top())),
+            point(
+                union.right().max(rect.right()),
+                union.bottom().max(rect.bottom()),
+            ),
+        )
+    }))
 }
 
 pub(crate) fn layout_cache_is_current(
     cache: &RichTextPlatformLayout,
     current: SurfaceVersionSnapshot,
+    wrap_width_px: Option<f64>,
+    text_align: Option<cditor_core::rich_text::TextAlign>,
 ) -> bool {
-    cache.surface_id == current.surface_id
-        && cache.content_version == current.content_version
-        && cache.layout_version == current.layout_version
-}
-
-pub(crate) fn fallback_text_hit_point(
-    position: Point<Pixels>,
-    viewport_origin: FallbackViewportOrigin,
-    document_top: f64,
-    text_origin_x_in_block_px: f64,
-    text_origin_y_in_block_px: f64,
-    global_scroll_top: f64,
-) -> crate::text::TextHitPoint {
-    let text_origin_x = viewport_origin.x + text_origin_x_in_block_px;
-    let text_origin_y =
-        viewport_origin.y + document_top - global_scroll_top + text_origin_y_in_block_px;
-    crate::text::TextHitPoint {
-        x: f32::from(position.x) as f64 - text_origin_x,
-        y: f32::from(position.y) as f64 - text_origin_y,
+    if cache.surface_id != current.surface_id
+        || cache.content_version != current.content_version
+        || cache.layout_version != current.layout_version
+    {
+        return false;
+    }
+    if let Some(w) = wrap_width_px {
+        cache.matches_text_constraints(w, text_align.unwrap_or(cache.text_align))
+    } else {
+        true
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use cditor_core::rich_text::{BlockPayload, BlockPayloadRecord, RichBlockKind};
-    use cditor_runtime::TableCellPosition;
-    use gpui::{AppContext, Bounds, Size, TestAppContext, point, px};
-
-    use super::*;
-
-    #[test]
-    fn fallback_text_hit_point_accounts_for_scroll_and_text_origin() {
-        let hit = fallback_text_hit_point(
-            point(px(180.0), px(260.0)),
-            FallbackViewportOrigin { x: 100.0, y: 40.0 },
-            500.0,
-            32.0,
-            12.0,
-            320.0,
-        );
-
-        assert_eq!(hit.x, 48.0);
-        assert_eq!(hit.y, 28.0);
-    }
-
-    #[test]
-    fn layout_cache_rejects_stale_surface_content_and_layout_identity() {
-        let mut runtime = DocumentRuntime::from_payloads(
-            1,
-            vec![BlockPayloadRecord {
-                block_id: 1,
-                content_version: 1,
-                kind: RichBlockKind::Table,
-                payload: BlockPayload::Table(cditor_core::rich_text::TablePayload {
-                    rows: vec![cditor_core::rich_text::TableRowPayload {
-                        cells: vec![cditor_core::rich_text::TableCellPayload::plain("cell")],
-                        height: Default::default(),
-                    }],
-                    columns: Vec::new(),
-                    header_rows: 0,
-                    header_cols: 0,
-                    header_style: Default::default(),
-                }),
-            }],
-            720.0,
-        );
-        crate::test_support::focus_table_cell_at_offset(&mut runtime, 1, 0, 0, 4);
-        crate::test_support::replace_realtime_text(&mut runtime, None, "\nmore");
-        let current_version = runtime.block_content_version(1).unwrap();
-        let stale_cache = crate::text::test_platform_layout(
-            1,
-            current_version.saturating_sub(1),
-            "cell",
-            Bounds {
-                origin: point(px(10.0), px(20.0)),
-                size: Size {
-                    width: px(120.0),
-                    height: px(36.0),
-                },
-            },
-            Some(TableCellPosition { row: 0, col: 0 }),
-        );
-        let surface_id = SurfaceId::TableCell {
-            block_id: 1,
-            row: 0,
-            column: 0,
-        };
-        let current = cditor_session::project_surface_version(&runtime, surface_id).unwrap();
-        assert!(!layout_cache_is_current(&stale_cache, current));
-        let mut current_cache = crate::text::test_platform_layout(
-            1,
-            current_version,
-            "cell\nmore",
-            Bounds {
-                origin: point(px(10.0), px(20.0)),
-                size: Size {
-                    width: px(120.0),
-                    height: px(88.0),
-                },
-            },
-            Some(TableCellPosition { row: 0, col: 0 }),
-        );
-        current_cache.layout_version = current.layout_version;
-
-        assert!(layout_cache_is_current(&current_cache, current));
-        assert!(!layout_cache_is_current(
-            &current_cache,
-            SurfaceVersionSnapshot {
-                layout_version: current.layout_version.saturating_add(1),
-                ..current
-            }
-        ));
-        assert!(!layout_cache_is_current(
-            &current_cache,
-            SurfaceVersionSnapshot {
-                surface_id: SurfaceId::Block(1),
-                ..current
-            }
-        ));
-    }
-
-    #[test]
-    fn click_count_maps_single_to_caret_double_to_word_and_triple_to_line() {
-        assert_eq!(selection_kind_for_click_count(1), None);
-        assert_eq!(
-            selection_kind_for_click_count(2),
-            Some(ParleySelectionKind::Word)
-        );
-        assert_eq!(
-            selection_kind_for_click_count(3),
-            Some(ParleySelectionKind::Line)
-        );
-        assert_eq!(
-            selection_kind_for_click_count(5),
-            Some(ParleySelectionKind::Line)
-        );
-    }
-
-    #[gpui::test]
-    fn render_state_projects_caption_snapshot_and_focus_session(cx: &mut TestAppContext) {
-        let mut runtime = DocumentRuntime::from_payloads(
-            1,
-            vec![BlockPayloadRecord {
-                block_id: 10,
-                content_version: 3,
-                kind: RichBlockKind::Image,
-                payload: BlockPayload::Image(cditor_core::rich_text::ImagePayload {
-                    caption: "caption".into(),
-                    ..Default::default()
-                }),
-            }],
-            720.0,
-        );
-        let surface_id = super::super::caption::surface_id(10);
-        crate::test_support::focus_text_surface_at_offset(&mut runtime, surface_id, 2);
-        let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
-
-        view.update(cx, |view, _cx| {
-            let state = view.text_surface_render_state(surface_id).unwrap();
-            assert!(state.focused);
-            assert_eq!(state.caret_offset, Some(2));
-            assert_eq!(state.snapshot.plain_text(), "caption");
-            assert_eq!(state.snapshot.identity.content_version, 3);
-        });
-    }
-}
+#[path = "text_tests.rs"]
+mod tests;

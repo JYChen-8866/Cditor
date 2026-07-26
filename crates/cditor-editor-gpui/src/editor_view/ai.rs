@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
-use cditor_ai::{
-    AiProvider, AiProviderError, AiStreamEvent, MockAiProvider, OpenAiCompatibleProvider,
-    bounded_ai_stream,
-};
+use cditor_ai::{AiProvider, AiProviderError, AiStreamEvent, MockAiProvider, bounded_ai_stream};
 use cditor_runtime::{
     AiApplyMode, AiRequestPresentation, AiSessionOutcome, AiSessionRequest, AiStreamApplyResult,
+    MainThreadWorkKind, WorkCost,
 };
 use cditor_session::SessionTaskKind;
 use gpui::{AppContext, Context, px};
 
+use crate::app::main_thread_scheduler::MainThreadApplyRequest;
 use crate::editor_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::input::{AiPromptEditAction, AiPromptKeyResult, AiPromptState, apply_ai_prompt_action};
 use crate::persistence::EditorSaveStatus;
@@ -18,9 +17,7 @@ use cditor_editor_protocol::command::{
 };
 
 pub(crate) fn default_ai_provider() -> Arc<dyn AiProvider> {
-    OpenAiCompatibleProvider::from_env()
-        .map(|provider| Arc::new(provider) as Arc<dyn AiProvider>)
-        .unwrap_or_else(|_| Arc::new(MockAiProvider::default()))
+    Arc::new(MockAiProvider::default())
 }
 
 impl CditorV2View {
@@ -209,23 +206,50 @@ impl CditorV2View {
                     event,
                     AiStreamEvent::Done { .. } | AiStreamEvent::Error { .. }
                 );
+                let (applied_sender, applied_receiver) = async_channel::bounded(1);
+                let cancel_sender = applied_sender.clone();
                 let result = view.update(cx, |view, cx| {
-                    let result = view
-                        .ready_session()
-                        .and_then(|session| {
-                            session
-                                .request_ai_session(AiSessionRequest::Stream(event))
-                                .ok()
-                        })
-                        .and_then(|outcome| match outcome {
-                            AiSessionOutcome::StreamApplied(result) => Some(result),
-                            _ => None,
-                        })
-                        .unwrap_or(AiStreamApplyResult::IgnoredRequest);
-                    cx.notify();
-                    result
+                    view.enqueue_main_thread_apply_with_cancel(
+                        MainThreadApplyRequest {
+                            kind: MainThreadWorkKind::VisibleSelection,
+                            generation: request_id,
+                            block_id: None,
+                            cost: WorkCost {
+                                sync_ms: 0.08,
+                                async_results: 1,
+                                ..WorkCost::ZERO
+                            },
+                        },
+                        move |view, cx| {
+                            let result = view
+                                .ready_session()
+                                .and_then(|session| {
+                                    session
+                                        .request_ai_session(AiSessionRequest::Stream(event))
+                                        .ok()
+                                })
+                                .and_then(|outcome| match outcome {
+                                    AiSessionOutcome::StreamApplied(result) => Some(result),
+                                    _ => None,
+                                })
+                                .unwrap_or(AiStreamApplyResult::IgnoredRequest);
+                            let _ = applied_sender.try_send(result);
+                            cx.notify();
+                        },
+                        move || {
+                            let _ = cancel_sender.try_send(AiStreamApplyResult::IgnoredRequest);
+                        },
+                        cx,
+                    )
                 });
-                if terminal || !matches!(result, Ok(AiStreamApplyResult::Applied)) {
+                if result.is_err() {
+                    break;
+                }
+                let applied = applied_receiver
+                    .recv()
+                    .await
+                    .unwrap_or(AiStreamApplyResult::IgnoredRequest);
+                if terminal || applied != AiStreamApplyResult::Applied {
                     break;
                 }
             }
@@ -325,5 +349,15 @@ impl CditorV2View {
             cx.notify();
         }
         changed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_provider_is_deterministic_and_does_not_read_host_configuration() {
+        assert_eq!(default_ai_provider().id(), "mock");
     }
 }

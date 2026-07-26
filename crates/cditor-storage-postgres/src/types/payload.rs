@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum DbBlockPayload {
+pub(crate) enum DbBlockPayload {
     RichText {
         spans: Vec<DbInlineSpan>,
     },
@@ -64,14 +64,14 @@ pub enum DbBlockPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DbInlineSpan {
+pub(crate) struct DbInlineSpan {
     pub text: String,
     pub marks: Vec<DbInlineMark>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
-pub enum DbInlineMark {
+pub(crate) enum DbInlineMark {
     Bold,
     Italic,
     Underline,
@@ -83,20 +83,20 @@ pub enum DbInlineMark {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DbTableRow {
+pub(crate) struct DbTableRow {
     pub cells: Vec<DbTableCell>,
     #[serde(default)]
     pub height: DbTableTrackSize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct DbTableColumn {
+pub(crate) struct DbTableColumn {
     #[serde(default)]
     pub width: DbTableTrackSize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DbTableCell {
+pub(crate) struct DbTableCell {
     pub spans: Vec<DbInlineSpan>,
     #[serde(default)]
     pub align: DbTableCellAlign,
@@ -107,13 +107,13 @@ pub struct DbTableCell {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct DbTableCellStyle {
+pub(crate) struct DbTableCellStyle {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_color: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct DbTableHeaderStyle {
+pub(crate) struct DbTableHeaderStyle {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row_background_color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -122,7 +122,7 @@ pub struct DbTableHeaderStyle {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
-pub enum DbTableTrackSize {
+pub(crate) enum DbTableTrackSize {
     #[default]
     Auto,
     Px(u16),
@@ -130,7 +130,7 @@ pub enum DbTableTrackSize {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum DbTableCellAlign {
+pub(crate) enum DbTableCellAlign {
     #[default]
     Left,
     Center,
@@ -139,7 +139,7 @@ pub enum DbTableCellAlign {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum DbTableCellMerge {
+pub(crate) enum DbTableCellMerge {
     #[default]
     Unmerged,
     Origin {
@@ -491,10 +491,12 @@ impl From<DbTableCellMerge> for TableCellMerge {
     }
 }
 
-pub fn encode_block_payload(payload: &BlockPayload) -> serde_json::Result<serde_json::Value> {
+pub(crate) fn encode_block_payload(
+    payload: &BlockPayload,
+) -> serde_json::Result<serde_json::Value> {
     serde_json::to_value(DbBlockPayload::try_from(payload)?)
 }
 
-pub fn decode_block_payload(value: serde_json::Value) -> serde_json::Result<BlockPayload> {
+pub(crate) fn decode_block_payload(value: serde_json::Value) -> serde_json::Result<BlockPayload> {
     serde_json::from_value::<DbBlockPayload>(value).map(BlockPayload::from)
 }

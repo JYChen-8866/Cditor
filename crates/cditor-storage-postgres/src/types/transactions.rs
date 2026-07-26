@@ -6,7 +6,7 @@ use super::*;
 mod decode;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DbEditTransaction {
+pub(crate) struct DbEditTransaction {
     pub id: u64,
     #[serde(default)]
     pub origin: cditor_core::edit::ChangeOrigin,
@@ -29,7 +29,7 @@ pub struct DbEditTransaction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum DbEditTransactionKind {
+pub(crate) enum DbEditTransactionKind {
     Typing,
     CompositionCommit,
     Paste,
@@ -42,7 +42,7 @@ pub enum DbEditTransactionKind {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum DbEditOperation {
+pub(crate) enum DbEditOperation {
     InsertText {
         block_id: BlockId,
         offset: usize,
@@ -119,7 +119,7 @@ pub enum DbEditOperation {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum DbTableEditOperation {
+pub(crate) enum DbTableEditOperation {
     SetCellText {
         block_id: BlockId,
         row: usize,
@@ -195,7 +195,7 @@ pub enum DbTableEditOperation {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DbTableRange {
+pub(crate) struct DbTableRange {
     pub start_row: usize,
     pub start_col: usize,
     pub end_row: usize,
@@ -203,7 +203,7 @@ pub struct DbTableRange {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct DbBlockIndexRecord {
+pub(crate) struct DbBlockIndexRecord {
     pub id: BlockId,
     pub parent_id: Option<BlockId>,
     pub depth: u16,
@@ -212,13 +212,13 @@ pub struct DbBlockIndexRecord {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DbDocumentSelection {
+pub(crate) struct DbDocumentSelection {
     pub anchor: DbTextPosition,
     pub focus: DbTextPosition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DbTextPosition {
+pub(crate) struct DbTextPosition {
     pub block_id: BlockId,
     pub offset: usize,
     pub affinity: DbTextAffinity,
@@ -226,13 +226,13 @@ pub struct DbTextPosition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum DbTextAffinity {
+pub(crate) enum DbTextAffinity {
     Upstream,
     Downstream,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct DbScrollAnchor {
+pub(crate) struct DbScrollAnchor {
     pub block_id: BlockId,
     pub offset_in_block: f64,
     pub viewport_y: f64,
@@ -581,10 +581,14 @@ impl From<ScrollAnchor> for DbScrollAnchor {
     }
 }
 
-pub fn encode_edit_transaction(tx: &EditTransaction) -> serde_json::Result<serde_json::Value> {
+pub(crate) fn encode_edit_transaction(
+    tx: &EditTransaction,
+) -> serde_json::Result<serde_json::Value> {
     serde_json::to_value(DbEditTransaction::from(tx))
 }
 
-pub fn decode_edit_transaction(value: serde_json::Value) -> serde_json::Result<EditTransaction> {
+pub(crate) fn decode_edit_transaction(
+    value: serde_json::Value,
+) -> serde_json::Result<EditTransaction> {
     serde_json::from_value::<DbEditTransaction>(value).map(EditTransaction::from)
 }

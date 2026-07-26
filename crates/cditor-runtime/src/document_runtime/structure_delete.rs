@@ -128,7 +128,7 @@ impl DocumentRuntime {
             return Ok(false);
         }
         if self.document.visible_index.total_visible_count() <= 1 {
-            self.reset_last_block_to_paragraph(current_id)?;
+            self.reset_last_block_to_empty_text_block(current_id)?;
             return Ok(false);
         }
         let Some(current_index) = self.document.index.index_of(current_id) else {
@@ -157,7 +157,7 @@ impl DocumentRuntime {
     /// Delete any block by ID, moving focus to an adjacent block.
     pub(crate) fn delete_block_by_id(&mut self, block_id: BlockId) -> Result<bool, String> {
         if self.document.visible_index.total_visible_count() <= 1 {
-            self.reset_last_block_to_paragraph(block_id)?;
+            self.reset_last_block_to_empty_text_block(block_id)?;
             return Ok(true);
         }
         let Some(current_index) = self.document.index.index_of(block_id) else {
@@ -180,11 +180,20 @@ impl DocumentRuntime {
         self.delete_leaf_block_transaction(block_id, target_id, target_offset)
     }
 
-    fn reset_last_block_to_paragraph(&mut self, block_id: BlockId) -> Result<(), String> {
+    fn reset_last_block_to_empty_text_block(&mut self, block_id: BlockId) -> Result<(), String> {
+        let kind = if self.document.index.block_ids.first() == Some(&block_id)
+            && matches!(
+                self.block_kind(block_id),
+                Some(RichBlockKind::Heading { level: 1 })
+            ) {
+            RichBlockKind::Heading { level: 1 }
+        } else {
+            RichBlockKind::Paragraph
+        };
         self.apply_local_block_payload_transaction(
             block_id,
             EditTransactionKind::BlockStructureChange,
-            RichBlockKind::Paragraph,
+            kind,
             BlockPayload::RichText {
                 spans: vec![InlineSpan::plain("")],
             },

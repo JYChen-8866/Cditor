@@ -59,16 +59,6 @@ impl DocumentRuntime {
         Ok(true)
     }
 
-    pub(crate) fn paste_delimited_table_text_at_focused_cell(
-        &mut self,
-        text: &str,
-    ) -> Result<bool, String> {
-        let Some(snapshot) = table_clipboard_snapshot_from_delimited_text(text) else {
-            return Ok(false);
-        };
-        self.paste_table_clipboard_at_focused_cell(&snapshot)
-    }
-
     pub(crate) fn paste_table_clipboard_at_focused_cell(
         &mut self,
         snapshot: &TableClipboardSnapshot,
@@ -166,97 +156,6 @@ impl DocumentRuntime {
             markdown,
         })
     }
-}
-
-fn table_clipboard_snapshot_from_delimited_text(text: &str) -> Option<TableClipboardSnapshot> {
-    let table = table_payload_from_delimited_text(text)?;
-    let range = TableRange::normalized(0, 0, table.row_count() - 1, table.column_count() - 1);
-    let plain_text = table.plain_text();
-    let markdown = table_clipboard_markdown(&table)?;
-    Some(TableClipboardSnapshot {
-        range,
-        table,
-        plain_text,
-        markdown,
-    })
-}
-
-fn table_payload_from_delimited_text(text: &str) -> Option<cditor_core::rich_text::TablePayload> {
-    let text = text.trim_end_matches(['\r', '\n']);
-    if text.is_empty() || !looks_like_delimited_table_text(text) {
-        return None;
-    }
-    let rows = if text.contains('\t') {
-        parse_tsv_rows(text)
-    } else {
-        parse_csv_rows(text)
-    };
-    let rows = rows
-        .into_iter()
-        .filter(|row| !row.is_empty())
-        .map(|row| cditor_core::rich_text::TableRowPayload {
-            cells: row
-                .into_iter()
-                .map(cditor_core::rich_text::TableCellPayload::plain)
-                .collect(),
-            height: TableTrackSize::Auto,
-        })
-        .collect::<Vec<_>>();
-    if rows.is_empty() {
-        return None;
-    }
-    let mut table = cditor_core::rich_text::TablePayload {
-        rows,
-        columns: Vec::new(),
-        header_rows: 0,
-        header_cols: 0,
-        header_style: Default::default(),
-    };
-    table.normalize();
-    Some(table)
-}
-
-fn looks_like_delimited_table_text(text: &str) -> bool {
-    text.contains('\t') || text.contains(',') || text.contains('\n')
-}
-
-fn parse_tsv_rows(text: &str) -> Vec<Vec<String>> {
-    text.lines()
-        .map(|line| line.trim_end_matches('\r'))
-        .map(|line| line.split('\t').map(str::to_owned).collect())
-        .collect()
-}
-
-fn parse_csv_rows(text: &str) -> Vec<Vec<String>> {
-    let mut rows = Vec::new();
-    let mut row = Vec::new();
-    let mut cell = String::new();
-    let mut chars = text.chars().peekable();
-    let mut in_quotes = false;
-
-    while let Some(ch) = chars.next() {
-        match ch {
-            '"' if in_quotes && chars.peek() == Some(&'"') => {
-                cell.push('"');
-                chars.next();
-            }
-            '"' => {
-                in_quotes = !in_quotes;
-            }
-            ',' if !in_quotes => {
-                row.push(std::mem::take(&mut cell));
-            }
-            '\n' if !in_quotes => {
-                row.push(cell.trim_end_matches('\r').to_owned());
-                cell.clear();
-                rows.push(std::mem::take(&mut row));
-            }
-            _ => cell.push(ch),
-        }
-    }
-    row.push(cell.trim_end_matches('\r').to_owned());
-    rows.push(row);
-    rows
 }
 
 fn table_payload_for_clipboard_range(

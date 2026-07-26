@@ -40,9 +40,6 @@ pub(crate) enum GuiTableInteractionMode {
         target_index: usize,
         active: bool,
     },
-    HScrolling {
-        block_id: BlockId,
-    },
 }
 
 impl GuiTableInteractionMode {
@@ -52,8 +49,7 @@ impl GuiTableInteractionMode {
             Self::EditingCell { block_id, .. }
             | Self::SelectingCellText { block_id, .. }
             | Self::Resizing { block_id, .. }
-            | Self::Reordering { block_id, .. }
-            | Self::HScrolling { block_id } => Some(block_id),
+            | Self::Reordering { block_id, .. } => Some(block_id),
             Self::SelectingRange(selection) | Self::RangeSelected(selection) => {
                 Some(selection.block_id)
             }
@@ -69,7 +65,6 @@ impl GuiTableInteractionMode {
                 | Self::SelectingRange(_)
                 | Self::Resizing { .. }
                 | Self::Reordering { active: true, .. }
-                | Self::HScrolling { .. }
         )
     }
 
@@ -146,7 +141,6 @@ mod tests {
 
     #[test]
     fn table_interaction_mode_marks_dragging_modes_only() {
-        assert!(GuiTableInteractionMode::HScrolling { block_id: 7 }.is_dragging());
         assert!(
             GuiTableInteractionMode::SelectingRange(TableCellRangeSelection::new(7, 0, 0, 0, 1,))
                 .is_dragging()

@@ -81,7 +81,11 @@ impl EditorSessionHandle {
 
 #[cfg(test)]
 mod tests {
-    use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
+    use cditor_core::{
+        edit::{DocumentSelection, TextAffinity, TextPosition},
+        ids::SurfaceId,
+        rich_text::{BlockPayload, BlockPayloadRecord, ImagePayload, RichBlockKind, TablePayload},
+    };
     use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
     use cditor_runtime::{RealtimeInput, RealtimeInputRequest};
 
@@ -133,5 +137,112 @@ mod tests {
         let composition = context.composition.unwrap();
         assert_eq!(composition.base_range, 1..1);
         assert_eq!(composition.preview_marked_range, Some(1..4));
+    }
+
+    #[test]
+    fn every_persistent_text_surface_shares_the_versioned_ime_commit_contract() {
+        let focus_commands = [
+            EditorCommand::SetDocumentSelection {
+                selection: DocumentSelection::caret(TextPosition::downstream(1, 0)),
+            },
+            EditorCommand::FocusTableCell {
+                block_id: 2,
+                row: 0,
+                col: 0,
+                offset: Some(0),
+                affinity: TextAffinity::Downstream,
+            },
+            EditorCommand::SetTextSurfaceSelection {
+                surface_id: SurfaceId::ImageCaption { block_id: 3 },
+                anchor_offset: 0,
+                focus_offset: 0,
+                focus_affinity: TextAffinity::Downstream,
+            },
+            EditorCommand::SetTextSurfaceSelection {
+                surface_id: SurfaceId::CollectionTitle { block_id: 4 },
+                anchor_offset: 0,
+                focus_offset: 0,
+                focus_affinity: TextAffinity::Downstream,
+            },
+        ];
+
+        for focus in focus_commands {
+            let handle = ime_surface_session();
+            handle
+                .dispatch(CommandEnvelope::new(focus, CommandSource::Automation))
+                .unwrap();
+            let before = handle.input_context().unwrap();
+            let expected = before.identity.unwrap();
+            let preview = handle
+                .apply_realtime_input(RealtimeInputRequest {
+                    expected,
+                    input: RealtimeInput::UpdateComposition {
+                        range: 0..0,
+                        text: "中",
+                        selected_range: Some("中".len().."中".len()),
+                    },
+                })
+                .unwrap();
+            let preview_identity = preview.input_identity.unwrap();
+            let context = handle.input_context().unwrap();
+
+            assert!(context.has_pending_composition);
+            assert_eq!(context.marked_range, Some(0.."中".len()));
+            assert!(preview_identity.composition_generation > expected.composition_generation);
+            assert!(
+                handle
+                    .apply_realtime_input(RealtimeInputRequest {
+                        expected,
+                        input: RealtimeInput::UnmarkComposition,
+                    })
+                    .is_err(),
+                "the preview must invalidate its preceding platform callback identity"
+            );
+
+            let committed = handle
+                .apply_realtime_input(RealtimeInputRequest {
+                    expected: preview_identity,
+                    input: RealtimeInput::UnmarkComposition,
+                })
+                .unwrap();
+            assert!(committed.document_changed);
+            assert!(committed.transaction_id.is_some());
+            assert!(!handle.input_context().unwrap().has_pending_composition);
+            assert!(handle.document_snapshot().unwrap().can_undo);
+        }
+    }
+
+    fn ime_surface_session() -> EditorSessionHandle {
+        let runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![
+                BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "body"),
+                BlockPayloadRecord {
+                    block_id: 2,
+                    content_version: 1,
+                    kind: RichBlockKind::Table,
+                    payload: BlockPayload::Table(TablePayload::default()),
+                },
+                BlockPayloadRecord {
+                    block_id: 3,
+                    content_version: 1,
+                    kind: RichBlockKind::Image,
+                    payload: BlockPayload::Image(ImagePayload {
+                        source: "asset://image".to_owned(),
+                        alt: String::new(),
+                        caption: "caption".into(),
+                        display_width_ratio_milli: None,
+                    }),
+                },
+                BlockPayloadRecord {
+                    block_id: 4,
+                    content_version: 1,
+                    kind: RichBlockKind::Database,
+                    payload: BlockPayload::Empty,
+                },
+            ],
+            720.0,
+        );
+        EditorSession::new(runtime, false).into_handle()
     }
 }

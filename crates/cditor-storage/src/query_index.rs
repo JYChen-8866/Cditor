@@ -2,17 +2,70 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use cditor_core::ids::{BlockId, DocumentId};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalSearchRequest {
+    pub workspace_id: u64,
+    pub document_id: Option<DocumentId>,
+    pub query: String,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocalSearchHit {
+    pub document_id: DocumentId,
+    pub block_id: BlockId,
+    pub content_version: u64,
+    pub rank: f64,
+    pub snippet: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocalIndexRebuildRequest {
+    pub document_id: DocumentId,
+    pub reset: bool,
+    pub max_blocks: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BacklinkKind {
+    InlineLink,
+    Embed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BacklinkRecord {
+    pub source_document_id: DocumentId,
+    pub source_block_id: BlockId,
+    pub target_document_id: DocumentId,
+    pub target_block_id: Option<BlockId>,
+    pub kind: BacklinkKind,
+    pub resolved: bool,
+}
+
 pub const BLOCK_FTS_SCHEMA: &str = r#"CREATE VIRTUAL TABLE block_fts USING fts5(
+    workspace_id UNINDEXED,
     document_id UNINDEXED,
     block_id UNINDEXED,
+    content_version UNINDEXED,
     plain_text,
     tokenize = 'unicode61'
 );
 
 CREATE TABLE block_fts_state (
-    block_id TEXT PRIMARY KEY,
+    document_id BLOB NOT NULL,
+    block_id BLOB NOT NULL,
     content_version INTEGER NOT NULL,
-    indexed_at INTEGER NOT NULL
+    indexed_at INTEGER NOT NULL,
+    PRIMARY KEY(document_id, block_id)
+);
+
+CREATE TABLE document_links (
+    source_document_id BLOB NOT NULL,
+    source_block_id BLOB NOT NULL,
+    target_document_id BLOB NOT NULL,
+    target_block_id BLOB,
+    link_kind TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
 );"#;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -218,6 +271,7 @@ mod tests {
         assert!(DocumentQueryIndex::schema().contains("CREATE VIRTUAL TABLE block_fts USING fts5"));
         assert!(DocumentQueryIndex::schema().contains("plain_text"));
         assert!(DocumentQueryIndex::schema().contains("block_fts_state"));
+        assert!(DocumentQueryIndex::schema().contains("document_links"));
     }
 
     #[test]

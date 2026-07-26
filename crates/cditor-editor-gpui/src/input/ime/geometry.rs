@@ -12,7 +12,10 @@ use crate::input::ime::utf8_to_utf16_offset;
 use crate::input::ime::utf16_range_to_utf8_range;
 use crate::input::trace::trace_input;
 use crate::input::{SINGLE_LINE_INPUT_FONT_SIZE_PX, single_line_visible_range_x};
-use crate::text::{platform_index_for_point, platform_range_bounds, record_unavailable_geometry};
+use crate::text::{
+    TextHitPoint, platform_range_bounds_at, platform_text_position_for_local_point,
+    record_unavailable_geometry,
+};
 use cditor_core::ids::SurfaceId;
 use cditor_runtime::InputTarget;
 use cditor_session::EditorSessionHandle;
@@ -41,7 +44,16 @@ impl CditorV2View {
             record_unavailable_geometry();
             return None;
         }
-        let utf8 = platform_index_for_point(cache, point).min(text.len());
+        let bounds = self.input.element_bounds?;
+        let utf8 = platform_text_position_for_local_point(
+            cache,
+            TextHitPoint {
+                x: f64::from(point.x - bounds.left()),
+                y: f64::from(point.y - bounds.top()),
+            },
+        )
+        .offset
+        .min(text.len());
         Some(utf8_to_utf16_offset(text, utf8))
     }
 
@@ -160,11 +172,13 @@ impl CditorV2View {
                 row,
                 col,
             } if target_block_id == block_id => {
-                let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col)
+                let Some(geometry) =
+                    self.resolved_table_cell_text_geometry(current, block_id, row, col)
                 else {
                     record_unavailable_geometry();
                     return None;
                 };
+                let cache = geometry.layout();
                 if !platform_input_geometry_allows(
                     self.input.target,
                     self.input.session_identity,
@@ -175,15 +189,17 @@ impl CditorV2View {
                     record_unavailable_geometry();
                     return None;
                 }
-                Some(platform_range_bounds(cache, range))
+                Some(geometry.bounds_for_range(range))
             }
             InputTarget::BlockText {
                 block_id: target_block_id,
             } if target_block_id == block_id => {
-                let Some(cache) = self.current_text_layout_cache(current, block_id) else {
+                let Some(geometry) = self.projected_text_geometry_for_block(current, block_id)
+                else {
                     record_unavailable_geometry();
                     return None;
                 };
+                let cache = geometry.layout();
                 if !platform_input_geometry_allows(
                     self.input.target,
                     self.input.session_identity,
@@ -194,7 +210,7 @@ impl CditorV2View {
                     record_unavailable_geometry();
                     return None;
                 }
-                Some(platform_range_bounds(cache, range))
+                Some(geometry.bounds_for_range(range))
             }
             InputTarget::ImageCaption {
                 block_id: target_block_id,
@@ -216,7 +232,11 @@ impl CditorV2View {
                     record_unavailable_geometry();
                     return None;
                 }
-                Some(platform_range_bounds(cache, range))
+                Some(platform_range_bounds_at(
+                    cache,
+                    range,
+                    element_bounds.origin,
+                ))
             }
             _ => None,
         }

@@ -1,7 +1,10 @@
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use cditor_session::EditorSessionHandle;
-use gpui::{Context, FocusHandle};
+use gpui::{AppContext, Context, Entity, FocusHandle, Subscription};
 
 use cditor_core::block::GutterBlockDragState;
 use cditor_core::ids::BlockId;
@@ -9,20 +12,26 @@ use cditor_core::ids::BlockId;
 use crate::features::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
 use crate::input::BlockDragSelectionController;
 use crate::input::{AiPromptState, CodeLanguageEditState};
-use crate::interaction::geometry::ProjectedBlockRect;
+use crate::interaction::geometry::{
+    DocumentViewportOrigin, ProjectedBlockRect, ProjectedTableCellRect,
+};
 use crate::interaction::image_resize::GuiImageResizeDrag;
 use crate::interaction::scrollbar::GuiScrollbarDrag;
 use crate::interaction::selection_drag::GuiTextDragSelection;
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::interaction::table_reorder::GuiTableReorderDrag;
 use crate::interaction::table_resize::GuiTableResizeDrag;
-use crate::interaction::table_scroll::{GuiTableHScrollDrag, GuiTableScrollState};
+use crate::interaction::table_scroll::GuiTableScrollState;
 use crate::overlays::{GuiToast, SlashMenuState, WhiteboardEditorSession};
 use crate::persistence::EditorSaveStatus;
 use crate::scroll::ScrollAccumulator;
-use crate::text::TextPlatformLayoutIdentity;
+use crate::surfaces::table_cell::TableCellLayoutKey;
+use crate::text::{CaretBlink, TextPlatformLayoutIdentity};
 
 use super::{CditorV2View, GuiPlatformInputTarget, SelectionToolbarDelay, ai::default_ai_provider};
+use crate::app::{
+    main_thread_scheduler::EditorMainThreadScheduler, worker_admission::EditorWorkerAdmission,
+};
 
 pub(crate) struct EditorDiagnosticsState {
     pub(crate) show_debug: bool,
@@ -73,6 +82,7 @@ pub(crate) struct OverlayUiState {
     pub(crate) color_menu_open: bool,
     pub(crate) color_menu_hover_generation: u64,
     pub(crate) color_menu_scroll_handle: gpui::ScrollHandle,
+    pub(crate) ai_actions_scroll_handle: gpui::ScrollHandle,
     pub(crate) last_color_action: Option<crate::overlays::ColorMenuAction>,
 }
 
@@ -80,29 +90,100 @@ impl OverlayUiState {
     pub(crate) fn reset(&mut self) {
         *self = Self::default();
     }
+
+    pub(crate) fn dismiss_topmost_formatting_layer(&mut self) -> bool {
+        if self.color_menu_open {
+            self.color_menu_open = false;
+            self.color_menu_hover_generation = self.color_menu_hover_generation.wrapping_add(1);
+            return true;
+        }
+        if self.block_transform_menu_open {
+            self.block_transform_menu_open = false;
+            return true;
+        }
+        if self.gutter_toolbar_block_id.take().is_some() {
+            self.selection_toolbar_delay = SelectionToolbarDelay::default();
+            return true;
+        }
+        false
+    }
 }
 
 pub(crate) struct FocusUiState {
     pub(crate) editor: FocusHandle,
     pub(crate) code_language: FocusHandle,
     pub(crate) ai_prompt: FocusHandle,
+    pub(crate) caret_blink: Entity<CaretBlink>,
+    _caret_blink_subscription: Subscription,
     pub(crate) sdk_observers_registered: bool,
-    pub(crate) last_emitted_selection: Option<cditor_api::document::DocumentSelection>,
+    pub(crate) last_emitted_selection: Option<cditor_sdk::document::DocumentSelection>,
+    document_epoch: DocumentInteractionEpoch,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DocumentInteractionEpoch(u64);
+
+#[derive(Default)]
+pub(crate) struct EditorSchedulingState {
+    pub(crate) main_thread: EditorMainThreadScheduler,
+    pub(crate) workers: EditorWorkerAdmission,
+    payload_cache_trim_scheduled: bool,
+    payload_cache_trim_requested_while_scheduled: bool,
+}
+
+impl EditorSchedulingState {
+    pub(crate) fn request_payload_cache_trim(&mut self) -> bool {
+        if self.payload_cache_trim_scheduled {
+            self.payload_cache_trim_requested_while_scheduled = true;
+            return false;
+        }
+        self.payload_cache_trim_scheduled = true;
+        true
+    }
+
+    pub(crate) fn finish_payload_cache_trim_wait(&mut self) -> bool {
+        self.payload_cache_trim_scheduled = false;
+        std::mem::take(&mut self.payload_cache_trim_requested_while_scheduled)
+    }
+}
+
+impl DocumentInteractionEpoch {
+    pub(crate) const fn current(self) -> u64 {
+        self.0
+    }
+
+    fn advance(&mut self) {
+        self.0 = self.0.wrapping_add(1);
+    }
+
+    pub(crate) const fn matches(self, epoch: u64) -> bool {
+        self.0 == epoch
+    }
 }
 
 impl FocusUiState {
     pub(crate) fn new(cx: &mut Context<CditorV2View>) -> Self {
+        let caret_blink = cx.new(|_| CaretBlink::new());
+        let caret_blink_subscription = cx.observe(&caret_blink, |_, _, cx| cx.notify());
         Self {
             editor: cx.focus_handle(),
             code_language: cx.focus_handle(),
             ai_prompt: cx.focus_handle(),
+            caret_blink,
+            _caret_blink_subscription: caret_blink_subscription,
             sdk_observers_registered: false,
             last_emitted_selection: None,
+            document_epoch: DocumentInteractionEpoch::default(),
         }
     }
 
     pub(crate) fn reset_session_projection(&mut self) {
+        self.document_epoch.advance();
         self.last_emitted_selection = None;
+    }
+
+    pub(crate) const fn document_epoch(&self) -> DocumentInteractionEpoch {
+        self.document_epoch
     }
 }
 
@@ -111,6 +192,7 @@ pub(crate) struct PlatformInputState {
     pub(crate) target: Option<GuiPlatformInputTarget>,
     pub(crate) session_identity: Option<cditor_runtime::InputSessionIdentity>,
     pub(crate) layout_identity: Option<TextPlatformLayoutIdentity>,
+    pub(crate) element_bounds: Option<gpui::Bounds<gpui::Pixels>>,
     pub(crate) preferred_navigation_x: Option<(cditor_core::ids::SurfaceId, f32)>,
 }
 
@@ -121,9 +203,12 @@ impl PlatformInputState {
 }
 
 pub(crate) struct InteractionUiState {
+    pub(crate) last_input_at: Option<std::time::Instant>,
     pub(crate) last_wheel_delta_y: f64,
     pub(crate) scroll_accumulator: ScrollAccumulator,
     pub(crate) editor_viewport_handle: gpui::ScrollHandle,
+    pub(crate) code_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
+    pub(crate) code_caret_reveal_after_line_break: HashSet<BlockId>,
     pub(crate) table_scroll_state: GuiTableScrollState,
     pub(crate) scrollbar_drag: Option<GuiScrollbarDrag>,
     pub(crate) text_drag_selection: Option<GuiTextDragSelection>,
@@ -137,16 +222,26 @@ pub(crate) struct InteractionUiState {
     pub(crate) image_resize_drag: Option<GuiImageResizeDrag>,
     pub(crate) table_resize_drag: Option<GuiTableResizeDrag>,
     pub(crate) table_reorder_drag: Option<GuiTableReorderDrag>,
-    pub(crate) table_hscroll_drag: Option<GuiTableHScrollDrag>,
+    /// Scroll offset used to paint the projection currently on screen.
+    /// This can intentionally trail the model scroll while a remote window is
+    /// preparing; all hit testing must consume this value, not session scroll.
+    pub(crate) presented_scroll_top: f64,
+    /// Window-space origin of document coordinate `(0, 0)` for the projection
+    /// currently on screen. Text layouts only own block-local geometry.
+    pub(crate) document_viewport_origin: Option<DocumentViewportOrigin>,
     pub(crate) projected_block_rects: Vec<ProjectedBlockRect>,
+    pub(crate) projected_table_cells: HashMap<TableCellLayoutKey, ProjectedTableCellRect>,
 }
 
 impl Default for InteractionUiState {
     fn default() -> Self {
         Self {
+            last_input_at: None,
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             editor_viewport_handle: Default::default(),
+            code_scroll_handles: Default::default(),
+            code_caret_reveal_after_line_break: Default::default(),
             table_scroll_state: Default::default(),
             scrollbar_drag: None,
             text_drag_selection: None,
@@ -160,15 +255,43 @@ impl Default for InteractionUiState {
             image_resize_drag: None,
             table_resize_drag: None,
             table_reorder_drag: None,
-            table_hscroll_drag: None,
+            presented_scroll_top: 0.0,
+            document_viewport_origin: None,
             projected_block_rects: Vec::new(),
+            projected_table_cells: HashMap::new(),
         }
     }
 }
 
 impl InteractionUiState {
+    pub(crate) fn note_input(&mut self) {
+        self.last_input_at = Some(std::time::Instant::now());
+    }
+
     pub(crate) fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    pub(crate) fn cancel_document_drags(&mut self) -> bool {
+        let had_active_drag = self.text_drag_selection.is_some()
+            || self.gutter_block_drag.is_some()
+            || self.image_resize_drag.is_some()
+            || self.table_resize_drag.is_some()
+            || self.table_reorder_drag.is_some()
+            || self.table_interaction_mode.is_dragging();
+        if !had_active_drag {
+            return false;
+        }
+        self.text_drag_selection = None;
+        self.text_drag_auto_scroll_scheduled = false;
+        self.gutter_block_drag = None;
+        self.gutter_drag_auto_scroll_scheduled = false;
+        self.image_resize_drag = None;
+        self.table_resize_drag = None;
+        self.table_reorder_drag = None;
+        self.table_interaction_mode = GuiTableInteractionMode::Idle;
+        self.action_block_id = None;
+        true
     }
 }
 
@@ -211,6 +334,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn payload_cache_trim_requests_coalesce_until_the_wait_finishes() {
+        let mut scheduling = EditorSchedulingState::default();
+
+        assert!(scheduling.request_payload_cache_trim());
+        assert!(!scheduling.request_payload_cache_trim());
+
+        assert!(scheduling.finish_payload_cache_trim_wait());
+        assert!(scheduling.request_payload_cache_trim());
+        assert!(!scheduling.finish_payload_cache_trim_wait());
+    }
+
+    #[test]
     fn status_reset_preserves_host_request_and_clears_transient_save_state() {
         let mut status = EditorStatusUiState::new(true, false);
         status.readonly_reason = Some(EditorReadonlyReason::NewerDocumentSchema {
@@ -226,7 +361,7 @@ mod tests {
         assert!(!status.requested_readonly);
         assert!(status.readonly_reason.is_none());
         assert!(!status.dirty);
-        assert_eq!(status.save_status, EditorSaveStatus::Clean);
+        assert_eq!(status.save_status, EditorSaveStatus::LocallySaved);
     }
 
     #[test]
@@ -241,7 +376,7 @@ mod tests {
 
         assert!(!status.readonly);
         assert!(status.readonly_reason.is_none());
-        assert_eq!(status.save_status, EditorSaveStatus::Clean);
+        assert_eq!(status.save_status, EditorSaveStatus::LocallySaved);
     }
 
     #[test]
@@ -256,6 +391,7 @@ mod tests {
         assert!(input.target.is_none());
         assert!(input.session_identity.is_none());
         assert!(input.layout_identity.is_none());
+        assert!(input.element_bounds.is_none());
         assert!(input.preferred_navigation_x.is_none());
     }
 
@@ -267,6 +403,7 @@ mod tests {
             gutter_drag_auto_scroll_scheduled: true,
             hovered_block_id: Some(7),
             action_block_id: Some(8),
+            code_caret_reveal_after_line_break: std::iter::once(10).collect(),
             table_interaction_mode: GuiTableInteractionMode::EditingCell {
                 block_id: 9,
                 row: 1,
@@ -282,11 +419,38 @@ mod tests {
         assert!(!interaction.gutter_drag_auto_scroll_scheduled);
         assert!(interaction.hovered_block_id.is_none());
         assert!(interaction.action_block_id.is_none());
+        assert!(interaction.code_caret_reveal_after_line_break.is_empty());
+        assert!(interaction.document_viewport_origin.is_none());
         assert!(matches!(
             interaction.table_interaction_mode,
             GuiTableInteractionMode::Idle
         ));
         assert!(interaction.projected_block_rects.is_empty());
+    }
+
+    #[test]
+    fn cancelling_document_drag_discards_preview_without_creating_a_commit() {
+        let mut interaction = InteractionUiState {
+            text_drag_auto_scroll_scheduled: true,
+            gutter_drag_auto_scroll_scheduled: true,
+            action_block_id: Some(7),
+            table_interaction_mode: GuiTableInteractionMode::Resizing {
+                block_id: 7,
+                axis: crate::features::table::TableAxis::Column,
+                index: 1,
+            },
+            ..Default::default()
+        };
+
+        assert!(interaction.cancel_document_drags());
+        assert!(!interaction.cancel_document_drags());
+        assert!(!interaction.text_drag_auto_scroll_scheduled);
+        assert!(!interaction.gutter_drag_auto_scroll_scheduled);
+        assert!(interaction.action_block_id.is_none());
+        assert_eq!(
+            interaction.table_interaction_mode,
+            GuiTableInteractionMode::Idle
+        );
     }
 
     #[test]
@@ -316,6 +480,30 @@ mod tests {
     }
 
     #[test]
+    fn formatting_overlay_escape_dismisses_only_the_topmost_layer() {
+        let mut overlay = OverlayUiState {
+            gutter_toolbar_block_id: Some(7),
+            block_transform_menu_open: true,
+            color_menu_open: true,
+            color_menu_hover_generation: 3,
+            ..Default::default()
+        };
+
+        assert!(overlay.dismiss_topmost_formatting_layer());
+        assert!(!overlay.color_menu_open);
+        assert!(overlay.block_transform_menu_open);
+        assert_eq!(overlay.color_menu_hover_generation, 4);
+
+        assert!(overlay.dismiss_topmost_formatting_layer());
+        assert!(!overlay.block_transform_menu_open);
+        assert_eq!(overlay.gutter_toolbar_block_id, Some(7));
+
+        assert!(overlay.dismiss_topmost_formatting_layer());
+        assert!(overlay.gutter_toolbar_block_id.is_none());
+        assert!(!overlay.dismiss_topmost_formatting_layer());
+    }
+
+    #[test]
     fn feature_session_reset_preserves_host_configuration() {
         let mut features = FeatureUiState {
             ai_enabled: false,
@@ -334,6 +522,17 @@ mod tests {
     fn diagnostics_state_preserves_the_host_debug_choice() {
         assert!(EditorDiagnosticsState::new(true).show_debug);
         assert!(!EditorDiagnosticsState::new(false).show_debug);
+    }
+
+    #[test]
+    fn document_interaction_epoch_never_reuses_the_previous_session_identity() {
+        let mut epoch = DocumentInteractionEpoch::default();
+        let previous = epoch.current();
+
+        epoch.advance();
+
+        assert!(!epoch.matches(previous));
+        assert!(epoch.matches(previous + 1));
     }
 }
 
@@ -370,8 +569,13 @@ impl EditorReadonlyReason {
 
 pub enum CditorViewState {
     Ready(EditorSessionHandle),
-    Loading { message: String },
-    LoadFailed { message: String },
+    Loading {
+        message: String,
+        progress: Option<u8>,
+    },
+    LoadFailed {
+        message: String,
+    },
 }
 
 impl CditorViewState {
@@ -389,6 +593,23 @@ impl CditorViewState {
 
     pub fn apply_loaded_session(&mut self, session: EditorSessionHandle) {
         *self = Self::Ready(session);
+    }
+
+    pub fn apply_load_progress(&mut self, message: impl Into<String>, progress: u8) -> bool {
+        let Self::Loading {
+            message: current_message,
+            progress: current_progress,
+        } = self
+        else {
+            return false;
+        };
+        let progress = progress.min(100);
+        if current_progress.is_some_and(|current| progress < current) {
+            return false;
+        }
+        *current_message = message.into();
+        *current_progress = Some(progress);
+        true
     }
 
     pub fn apply_load_failed(&mut self, message: impl Into<String>) {

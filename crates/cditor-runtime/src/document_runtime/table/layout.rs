@@ -1,6 +1,7 @@
 use cditor_core::layout::{
-    COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX, NOTION_TABLE_CELL_LINE_HEIGHT_PX,
-    NOTION_TABLE_CELL_PADDING_Y_PX, NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX,
+    BODY_BLOCK_CONTENT_WIDTH_PX, COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX,
+    NOTION_TABLE_CELL_LINE_HEIGHT_PX, NOTION_TABLE_CELL_PADDING_Y_PX,
+    NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX, STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX,
     TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX,
 };
 use cditor_core::rich_text::{InlineSpan, TableCellMerge, TablePayload, TableTrackSize};
@@ -48,6 +49,7 @@ pub(in crate::document_runtime) struct TableLayoutInput<'a> {
     pub metrics: TableLayoutMetrics,
 }
 
+#[cfg(test)]
 impl<'a> TableLayoutInput<'a> {
     pub(in crate::document_runtime) fn new(table: &'a TablePayload) -> Self {
         Self {
@@ -70,7 +72,11 @@ pub(in crate::document_runtime) struct TableLayout {
 }
 
 pub(in crate::document_runtime) fn table_layout_from_payload(table: &TablePayload) -> TableLayout {
-    table_layout_from_input(TableLayoutInput::new(table))
+    table_layout_from_input(TableLayoutInput {
+        table,
+        available_width_px: Some(BODY_BLOCK_CONTENT_WIDTH_PX as f32),
+        metrics: TableLayoutMetrics::default(),
+    })
 }
 
 pub(in crate::document_runtime) fn table_layout_from_input(
@@ -117,7 +123,9 @@ pub(in crate::document_runtime) fn table_layout_from_input(
 }
 
 pub(in crate::document_runtime) fn table_payload_projected_height_px(table: &TablePayload) -> f32 {
-    table_layout_from_payload(table).height_px
+    table_layout_from_payload(table)
+        .height_px
+        .min(STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX as f32)
         + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32
         + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX as f32
 }
@@ -311,6 +319,27 @@ mod tests {
     }
 
     #[test]
+    fn projected_table_height_caps_only_the_internal_content_viewport() {
+        let mut table = TablePayload {
+            rows: (0..20)
+                .map(|_| TableRowPayload {
+                    cells: vec![TableCellPayload::plain("cell")],
+                    height: TableTrackSize::Auto,
+                })
+                .collect(),
+            ..Default::default()
+        };
+        table.normalize();
+
+        assert_eq!(
+            table_payload_projected_height_px(&table),
+            STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX as f32
+                + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32
+                + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX as f32
+        );
+    }
+
+    #[test]
     fn table_layout_input_distributes_extra_available_width_to_auto_columns() {
         let mut table = table_with_text("abc");
         table.rows[0].cells.push(TableCellPayload::plain("def"));
@@ -332,6 +361,21 @@ mod tests {
 
         assert_eq!(layout.column_widths, vec![160.0, 240.0]);
         assert_eq!(layout.width_px, 400.0);
+    }
+
+    #[test]
+    fn projected_auto_columns_fill_the_body_width_inside_the_full_track() {
+        let mut table = table_with_text("abc");
+        table.rows[0].cells.extend([
+            TableCellPayload::plain("def"),
+            TableCellPayload::plain("ghi"),
+        ]);
+        table.normalize();
+
+        let layout = table_layout_from_payload(&table);
+
+        assert_eq!(layout.width_px, BODY_BLOCK_CONTENT_WIDTH_PX as f32);
+        assert_eq!(layout.column_widths, vec![240.0, 240.0, 240.0]);
     }
 
     #[test]

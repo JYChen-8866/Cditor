@@ -3,7 +3,7 @@ pub mod reorder;
 pub mod resize;
 pub mod scrollbar;
 
-pub(crate) use reorder::render_table_reorder_preview_overlay;
+pub(crate) use reorder::{TableReorderOverlayViewport, render_table_reorder_preview_overlay};
 #[allow(unused_imports)]
 pub(crate) use resize::render_table_resize_preview_overlay;
 pub(crate) use scrollbar::{

@@ -145,6 +145,9 @@ pub(super) fn apply_table_op(
             if *index > table.rows.len() {
                 return Err(format!("row index {index} out of bounds"));
             }
+            if *index < table.header_rows {
+                table.header_rows = table.header_rows.saturating_add(rows.len());
+            }
             table.rows.splice(*index..*index, rows.iter().cloned());
         }
         TableEditOperation::DeleteRows { index, rows, .. } => {
@@ -155,6 +158,8 @@ pub(super) fn apply_table_op(
             if table.rows[*index..end] != *rows {
                 return Err("deleted rows changed since the transaction was built".to_owned());
             }
+            let deleted_header_rows = table.header_rows.saturating_sub(*index).min(rows.len());
+            table.header_rows = table.header_rows.saturating_sub(deleted_header_rows);
             table.rows.drain(*index..end);
         }
         TableEditOperation::InsertColumns {
@@ -175,6 +180,9 @@ pub(super) fn apply_table_op(
             }
             let insert_columns = columns.iter().cloned();
             let column_at = (*index).min(table.columns.len());
+            if *index < table.header_cols {
+                table.header_cols = table.header_cols.saturating_add(columns.len());
+            }
             table.columns.splice(column_at..column_at, insert_columns);
             for (row_payload, cells) in table.rows.iter_mut().zip(cells_by_row) {
                 let at = (*index).min(row_payload.cells.len());
@@ -206,6 +214,8 @@ pub(super) fn apply_table_op(
                     "deleted column cells changed since the transaction was built".to_owned(),
                 );
             }
+            let deleted_header_columns = table.header_cols.saturating_sub(*index).min(width);
+            table.header_cols = table.header_cols.saturating_sub(deleted_header_columns);
             if index + width <= table.columns.len() {
                 table.columns.drain(*index..index + width);
             }

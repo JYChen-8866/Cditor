@@ -109,6 +109,15 @@ pub fn project_drag_scrollbar(
         .map_err(|message| layout_error(runtime, message))
 }
 
+pub fn project_drag_scrollbar_to_ratio(
+    runtime: &mut DocumentRuntime,
+    ratio: f64,
+) -> Result<Option<ScrollbarDragUpdate>, ProtocolError> {
+    runtime
+        .drag_scrollbar_to_ratio(scrollbar_policy(runtime), ratio)
+        .map_err(|message| layout_error(runtime, message))
+}
+
 pub fn project_finish_scrollbar_drag(
     runtime: &mut DocumentRuntime,
 ) -> Result<Option<ScrollbarDragEnd>, ProtocolError> {
@@ -193,6 +202,13 @@ impl EditorSessionHandle {
         thumb_top: f64,
     ) -> Result<Option<ScrollbarDragUpdate>, ProtocolError> {
         project_drag_scrollbar(&mut self.try_session_mut()?.runtime, thumb_top)
+    }
+
+    pub fn drag_scrollbar_to_ratio(
+        &self,
+        ratio: f64,
+    ) -> Result<Option<ScrollbarDragUpdate>, ProtocolError> {
+        project_drag_scrollbar_to_ratio(&mut self.try_session_mut()?.runtime, ratio)
     }
 
     pub fn end_scrollbar_drag(&self) -> Result<Option<ScrollbarDragEnd>, ProtocolError> {

@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use cditor_core::ids::BlockId;
+use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
 use cditor_runtime::{AiApplyMode, AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus};
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -15,7 +13,6 @@ use crate::features::text::list::{render_bulleted, render_numbered, render_todo}
 use crate::input::{AiPromptState, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement};
 use crate::menu_metrics::EditorViewport;
 use crate::presentation::rich_text::render_wrapped_payload_text;
-use crate::text::{RichTextPlatformLayout, platform_range_bounds};
 use crate::theme::GuiTheme;
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
 use cditor_import_export::markdown::{MarkdownImportOptions, parse_markdown_document};
@@ -35,12 +32,6 @@ struct AiPreviewGeometry {
     y: f32,
     width: f32,
     max_height: f32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct AiScrollbarMetrics {
-    thumb_top: f32,
-    thumb_height: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -182,7 +173,7 @@ fn ai_prompt_can_submit(draft: &str) -> bool {
 
 pub(crate) fn render_ai_preview_overlay(
     preview: Option<&AiPreviewSnapshot>,
-    layouts: &HashMap<BlockId, RichTextPlatformLayout>,
+    text_anchor: Option<Bounds<gpui::Pixels>>,
     block_anchor: Option<Bounds<gpui::Pixels>>,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
@@ -190,16 +181,6 @@ pub(crate) fn render_ai_preview_overlay(
     viewport: EditorViewport,
 ) -> Option<AnyElement> {
     let preview = preview?;
-    let layout = layouts.get(&preview.block_id);
-    let text_anchor = preview
-        .replacement_range
-        .clone()
-        .and_then(|range| layout.map(|layout| platform_range_bounds(layout, range)))
-        .or_else(|| {
-            layout.map(|layout| {
-                platform_range_bounds(layout, preview.anchor_offset..preview.anchor_offset)
-            })
-        });
     let text_anchor = text_anchor.map(|bounds| viewport.window_bounds_to_local(bounds));
     let anchor = preferred_ai_preview_anchor(preview.kind, text_anchor, block_anchor)?;
     let geometry = ai_preview_geometry(anchor, preview.kind, viewport.width, viewport.height);
@@ -326,29 +307,22 @@ fn render_ai_panel_scrollbar(
 ) -> AnyElement {
     let max_offset = f32::from(scroll_handle.max_offset().y)
         .max((estimated_content_height - track_height).max(0.0));
-    let Some(metrics) = ai_scrollbar_metrics(
-        f32::from(scroll_handle.offset().y),
-        max_offset,
-        track_height,
-    ) else {
+    if max_offset <= 0.5 || track_height <= 0.5 {
         return div().into_any_element();
-    };
+    }
     div()
         .absolute()
         .top(px(10.0))
-        .right(px(4.0))
-        .w(px(6.0))
+        .right(px(2.0))
+        .w(px(10.0))
         .h(px(track_height))
-        .child(
-            div()
-                .absolute()
-                .top(px(metrics.thumb_top))
-                .w_full()
-                .h(px(metrics.thumb_height))
-                .rounded(px(3.0))
-                .bg(rgb(theme.scrollbar))
-                .hover(|style| style.bg(rgb(theme.scrollbar_hover))),
-        )
+        .child(InteractiveScrollbar::for_scroll_handle(
+            ScrollbarAxis::Vertical,
+            scroll_handle.clone(),
+            track_height,
+            estimated_content_height,
+            InteractiveScrollbarStyle::notion(theme.scrollbar, theme.scrollbar_hover),
+        ))
         .into_any_element()
 }
 
@@ -429,24 +403,6 @@ fn estimate_ai_content_height(text: &str, width: f32) -> f32 {
         .sum::<usize>()
         .max(1);
     lines as f32 * LINE_HEIGHT_PX
-}
-
-fn ai_scrollbar_metrics(
-    offset_y: f32,
-    max_offset: f32,
-    track_height: f32,
-) -> Option<AiScrollbarMetrics> {
-    if max_offset <= 0.0 || track_height <= 0.0 {
-        return None;
-    }
-    let track_height = track_height.max(48.0);
-    let thumb_height =
-        (track_height * track_height / (track_height + max_offset)).clamp(24.0, track_height);
-    let progress = (-offset_y / max_offset).clamp(0.0, 1.0);
-    Some(AiScrollbarMetrics {
-        thumb_top: (track_height - thumb_height) * progress,
-        thumb_height,
-    })
 }
 
 fn ai_preview_geometry(
@@ -613,7 +569,7 @@ mod tests {
     }
 
     #[test]
-    fn long_streaming_content_has_visible_scrollbar_metrics_on_first_layout() {
+    fn long_streaming_content_exceeds_the_first_layout_viewport() {
         let text = (0..30)
             .map(|index| format!("第 {index} 行内容"))
             .collect::<Vec<_>>()
@@ -621,11 +577,7 @@ mod tests {
         let estimated_height = estimate_ai_content_height(&text, 600.0);
         assert!(estimated_height > 240.0);
 
-        let metrics = ai_scrollbar_metrics(0.0, estimated_height - 240.0, 240.0).unwrap();
-        assert_eq!(metrics.thumb_top, 0.0);
-        assert!(metrics.thumb_height >= 24.0);
-        assert!(metrics.thumb_height < 240.0);
-        assert!(ai_scrollbar_metrics(0.0, 0.0, 240.0).is_none());
+        assert!(estimated_height - 240.0 > 0.5);
     }
 
     #[test]

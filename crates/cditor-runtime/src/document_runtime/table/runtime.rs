@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::document_runtime) struct TableRuntime {
-    table: cditor_core::rich_text::TablePayload,
+    table: Arc<cditor_core::rich_text::TablePayload>,
     revision: u64,
     dirty: bool,
 }
@@ -16,17 +16,23 @@ impl TableRuntime {
         let mut table = table;
         table.normalize();
         Self {
-            table,
+            table: Arc::new(table),
             revision: 0,
             dirty: false,
         }
     }
 
     pub(in crate::document_runtime) fn payload(&self) -> BlockPayload {
-        BlockPayload::Table(self.table.clone())
+        BlockPayload::Table(self.table.as_ref().clone())
     }
 
     pub(in crate::document_runtime) fn table(&self) -> &cditor_core::rich_text::TablePayload {
+        &self.table
+    }
+
+    pub(in crate::document_runtime) fn shared_table(
+        &self,
+    ) -> &Arc<cditor_core::rich_text::TablePayload> {
         &self.table
     }
 
@@ -44,7 +50,7 @@ impl TableRuntime {
         col: usize,
         text: String,
     ) -> Option<u64> {
-        self.table.set_cell_plain_text(row, col, text)?;
+        Arc::make_mut(&mut self.table).set_cell_plain_text(row, col, text)?;
         self.revision = self.revision.saturating_add(1);
         self.dirty = true;
         Some(self.revision)
@@ -54,7 +60,7 @@ impl TableRuntime {
         &mut self,
         range: TableRange,
     ) -> Result<bool, String> {
-        let changed = self.table.merge_cells(range)?;
+        let changed = Arc::make_mut(&mut self.table).merge_cells(range)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -67,7 +73,7 @@ impl TableRuntime {
         row: usize,
         col: usize,
     ) -> Result<bool, String> {
-        let changed = self.table.split_cell(row, col)?;
+        let changed = Arc::make_mut(&mut self.table).split_cell(row, col)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -80,9 +86,8 @@ impl TableRuntime {
         range: TableRange,
         background_color: Option<String>,
     ) -> Result<bool, String> {
-        let changed = self
-            .table
-            .set_cell_background_color(range, background_color)?;
+        let changed =
+            Arc::make_mut(&mut self.table).set_cell_background_color(range, background_color)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -91,7 +96,7 @@ impl TableRuntime {
     }
 
     pub(in crate::document_runtime) fn set_header_rows(&mut self, count: usize) -> bool {
-        let changed = self.table.set_header_rows(count);
+        let changed = Arc::make_mut(&mut self.table).set_header_rows(count);
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -100,7 +105,7 @@ impl TableRuntime {
     }
 
     pub(in crate::document_runtime) fn set_header_columns(&mut self, count: usize) -> bool {
-        let changed = self.table.set_header_columns(count);
+        let changed = Arc::make_mut(&mut self.table).set_header_columns(count);
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -114,8 +119,8 @@ impl TableRuntime {
         col: usize,
         table: &cditor_core::rich_text::TablePayload,
     ) -> Result<bool, String> {
-        let changed = cditor_import_export::table_clipboard::paste_table_at(
-            &mut self.table,
+        let changed = cditor_core::rich_text::paste_table_at(
+            Arc::make_mut(&mut self.table),
             row,
             col,
             table,
@@ -127,8 +132,25 @@ impl TableRuntime {
         Ok(changed)
     }
 
-    pub(in crate::document_runtime) fn insert_row(&mut self, index: usize) -> Result<bool, String> {
-        let changed = self.table.insert_row(index)?;
+    pub(in crate::document_runtime) fn insert_rows(
+        &mut self,
+        index: usize,
+        count: usize,
+    ) -> Result<bool, String> {
+        let changed = Arc::make_mut(&mut self.table).insert_rows(index, count)?;
+        if changed {
+            self.revision = self.revision.saturating_add(1);
+            self.dirty = true;
+        }
+        Ok(changed)
+    }
+
+    pub(in crate::document_runtime) fn insert_columns(
+        &mut self,
+        index: usize,
+        count: usize,
+    ) -> Result<bool, String> {
+        let changed = Arc::make_mut(&mut self.table).insert_columns(index, count)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -137,7 +159,7 @@ impl TableRuntime {
     }
 
     pub(in crate::document_runtime) fn delete_row(&mut self, index: usize) -> Result<bool, String> {
-        let changed = self.table.delete_row(index)?;
+        let changed = Arc::make_mut(&mut self.table).delete_row(index)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -149,7 +171,7 @@ impl TableRuntime {
         &mut self,
         index: usize,
     ) -> Result<bool, String> {
-        let changed = self.table.duplicate_row(index)?;
+        let changed = Arc::make_mut(&mut self.table).duplicate_row(index)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -162,19 +184,7 @@ impl TableRuntime {
         from: usize,
         to: usize,
     ) -> Result<bool, String> {
-        let changed = self.table.move_row(from, to)?;
-        if changed {
-            self.revision = self.revision.saturating_add(1);
-            self.dirty = true;
-        }
-        Ok(changed)
-    }
-
-    pub(in crate::document_runtime) fn insert_column(
-        &mut self,
-        index: usize,
-    ) -> Result<bool, String> {
-        let changed = self.table.insert_column(index)?;
+        let changed = Arc::make_mut(&mut self.table).move_row(from, to)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -186,7 +196,7 @@ impl TableRuntime {
         &mut self,
         index: usize,
     ) -> Result<bool, String> {
-        let changed = self.table.delete_column(index)?;
+        let changed = Arc::make_mut(&mut self.table).delete_column(index)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -198,7 +208,7 @@ impl TableRuntime {
         &mut self,
         index: usize,
     ) -> Result<bool, String> {
-        let changed = self.table.duplicate_column(index)?;
+        let changed = Arc::make_mut(&mut self.table).duplicate_column(index)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;
@@ -211,7 +221,7 @@ impl TableRuntime {
         from: usize,
         to: usize,
     ) -> Result<bool, String> {
-        let changed = self.table.move_column(from, to)?;
+        let changed = Arc::make_mut(&mut self.table).move_column(from, to)?;
         if changed {
             self.revision = self.revision.saturating_add(1);
             self.dirty = true;

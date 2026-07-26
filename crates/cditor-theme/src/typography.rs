@@ -32,7 +32,11 @@ impl Typography {
     pub fn notion_like() -> Self {
         let sans = FontFamily {
             primary: ".SystemUIFont".to_owned(),
-            fallbacks: vec!["Inter".to_owned(), "Arial".to_owned()],
+            fallbacks: vec![
+                "SF Pro Text".to_owned(),
+                "PingFang SC".to_owned(),
+                "Arial".to_owned(),
+            ],
         };
         Self {
             body_family: sans.clone(),

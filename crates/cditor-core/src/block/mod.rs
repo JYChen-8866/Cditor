@@ -6,7 +6,7 @@ pub mod list_info;
 pub use chrome::{BlockChromeSnapshot, BlockPrefixSnapshot};
 pub use drag::{
     BlockDropTarget, DragPoint, GUTTER_DRAG_THRESHOLD_PX, GutterBlockDragState,
-    gutter_drag_exceeded_threshold,
+    GutterBlockReleaseKind, gutter_drag_exceeded_threshold,
 };
 pub use input_capability::{
     BlockInputCapability, BlockKeyboardPolicy, EnterKeyBehavior, TabKeyBehavior,

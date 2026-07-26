@@ -2,10 +2,11 @@ use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{CollectionPayload, TextAlign};
 use gpui::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Styled, div, px, rgb,
+    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
+use crate::surfaces::TextSurfaceInteractionGeometry;
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
 use crate::theme::GuiTheme;
 
@@ -31,9 +32,18 @@ pub(crate) fn render_collection_block(
         1,
     );
     let focus_view = view.clone();
+    let typography = RichTextTypography {
+        font_size_px: Some(20.0),
+        line_height_px: Some(28.0),
+        font_weight: Some(gpui::FontWeight::SEMIBOLD),
+    };
+    let bounds_handle = ScrollHandle::default();
+    let interaction_bounds = bounds_handle.clone();
     let title = div()
+        .id(("collection-title", block_id))
         .w_full()
         .min_h(px(32.0))
+        .track_scroll(&bounds_handle)
         .cursor_text()
         .on_mouse_down(MouseButton::Left, move |event, window, cx| {
             focus_view.update(cx, |view, cx| {
@@ -41,6 +51,12 @@ pub(crate) fn render_collection_block(
                     surface_id,
                     event.position,
                     event.click_count,
+                    TextSurfaceInteractionGeometry::from_bounds(
+                        interaction_bounds.bounds(),
+                        704.0,
+                        TextAlign::Start,
+                        typography,
+                    ),
                     window,
                     cx,
                 );
@@ -53,11 +69,7 @@ pub(crate) fn render_collection_block(
                 .with_caret_affinity(state.caret_affinity)
                 .with_selection_range(state.selection_range)
                 .with_marked_range(state.marked_range)
-                .with_typography(RichTextTypography {
-                    font_size_px: Some(20.0),
-                    line_height_px: Some(28.0),
-                    font_weight: Some(gpui::FontWeight::SEMIBOLD),
-                })
+                .with_typography(typography)
                 .with_placeholder(Some("无标题集合"))
                 .with_input_handler(view, focus, state.focused)
                 .render(),
@@ -85,8 +97,10 @@ pub(crate) fn render_collection_block(
         .child(
             div()
                 .w_full()
+                .rounded(px(4.0))
                 .border_1()
                 .border_color(rgb(theme.border))
+                .overflow_hidden()
                 .child(
                     div()
                         .w_full()

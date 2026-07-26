@@ -114,7 +114,7 @@ flowchart TD
 - font database/version 和 exact font instance；
 - 不依赖具体 Cditor view。
 
-`cditor-app`：
+`cditor-desktop`：
 
 - GPUI element、input adapter、overlay 和场景提交；
 - 把 runtime request 交给 text service；
@@ -130,7 +130,7 @@ flowchart TD
 ### 4.2 建议目录
 
 ```text
-crates/text/
+crates/cditor-text/
   src/
     lib.rs
     context.rs
@@ -156,7 +156,7 @@ crates/text/
       policy.rs
     diagnostics.rs
 
-crates/runtime/src/text/
+crates/cditor-runtime/src/text/
   surface.rs
   composition.rs
   selection.rs
@@ -164,7 +164,7 @@ crates/runtime/src/text/
   scheduler.rs
   pin.rs
 
-crates/app/src/gui/text/
+crates/cditor-editor-gpui/src/text/
   element.rs
   input_adapter.rs
   scene_bridge.rs

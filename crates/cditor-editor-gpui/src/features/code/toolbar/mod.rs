@@ -6,26 +6,29 @@ use crate::input::{
     CodeLanguagePopupPlacement, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement,
 };
 use crate::theme::GuiTheme;
+use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
 use cditor_core::ids::BlockId;
 use gpui::InteractiveElement;
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Entity, FocusHandle, IntoElement, MouseButton, ParentElement, Styled, deferred,
-    div, px, rgb,
+    AnyElement, Entity, FocusHandle, IntoElement, MouseButton, ParentElement, PathBuilder, Styled,
+    canvas, deferred, div, point, px, rgb,
 };
 
 mod theme_menu;
 
 use theme_menu::{render_code_theme_button, render_code_theme_popup};
 
-pub const V1_CODE_TOOLBAR_TOP_PX: f32 = 6.0;
+pub const V1_CODE_TOOLBAR_TOP_PX: f32 = 3.0;
 pub const V1_CODE_TOOLBAR_RIGHT_PX: f32 = 6.0;
+pub const V1_CODE_TOOLBAR_OPACITY: f32 = 1.0;
 pub const V1_CODE_TOOLBAR_HEIGHT_PX: f32 = 30.0;
-pub const V1_CODE_TOOLBAR_RADIUS_PX: f32 = 3.0;
+pub const V1_CODE_TOOLBAR_RADIUS_PX: f32 = 4.0;
 pub const V1_CODE_TOOLBAR_PADDING_PX: f32 = 2.0;
 pub const V1_CODE_TOOLBAR_BUTTON_SIZE_PX: f32 = 26.0;
-pub const V1_CODE_TOOLBAR_BUTTON_RADIUS_PX: f32 = 3.0;
-pub const V1_CODE_LANGUAGE_BUTTON_WIDTH_PX: f32 = 112.0;
+pub const V1_CODE_TOOLBAR_BUTTON_RADIUS_PX: f32 = 4.0;
+pub const V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX: f32 = 64.0;
+pub const V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX: f32 = 160.0;
 pub const V1_CODE_LANGUAGE_EDIT_WIDTH_PX: f32 = 132.0;
 pub const V1_CODE_TOOLBAR_GAP_PX: f32 = 2.0;
 pub const V1_CODE_LANGUAGE_POPUP_GAP_PX: f32 = 6.0;
@@ -35,6 +38,8 @@ pub const V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX: f32 = 44.0;
 pub const V1_CODE_COPY_ICON_SIZE_PX: f32 = 16.0;
 pub const V1_CODE_COPY_ICON_RECT_SIZE_PX: f32 = 10.0;
 pub const V1_CODE_COPY_ICON_OFFSET_PX: f32 = 4.0;
+pub const V1_CODE_LANGUAGE_CHEVRON_SIZE_PX: f32 = 12.0;
+pub const V1_CODE_LANGUAGE_CHEVRON_STROKE_PX: f32 = 1.5;
 pub const V1_CODE_THEME_POPUP_WIDTH_PX: f32 = 220.0;
 pub const V1_CODE_THEME_ROW_HEIGHT_PX: f32 = 34.0;
 
@@ -53,11 +58,7 @@ pub fn render_code_toolbar(
         .absolute()
         .top(px(V1_CODE_TOOLBAR_TOP_PX))
         .right(px(V1_CODE_TOOLBAR_RIGHT_PX))
-        .opacity(0.0)
-        .group_hover("notion-code-block", |style| style.opacity(1.0))
-        .when(language_edit.is_some() || code_theme_menu_open, |this| {
-            this.opacity(1.0)
-        })
+        .opacity(V1_CODE_TOOLBAR_OPACITY)
         .flex()
         .flex_col()
         .items_end()
@@ -129,7 +130,6 @@ fn render_language_editor(
     div()
         .relative()
         .h(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
-        .min_w(px(V1_CODE_LANGUAGE_BUTTON_WIDTH_PX))
         .flex()
         .items_center()
         .when(is_editing, |this| {
@@ -142,7 +142,8 @@ fn render_language_editor(
         .child(
             div()
                 .h(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
-                .w(px(V1_CODE_LANGUAGE_BUTTON_WIDTH_PX))
+                .min_w(px(V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX))
+                .max_w(px(V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX))
                 .px(px(8.0))
                 .flex()
                 .items_center()
@@ -168,7 +169,6 @@ fn render_language_editor(
                 })
                 .child(
                     div()
-                        .w_full()
                         .h_full()
                         .flex()
                         .items_center()
@@ -177,19 +177,13 @@ fn render_language_editor(
                         .child(
                             div()
                                 .min_w(px(0.0))
-                                .flex_1()
+                                .flex_shrink_1()
                                 .overflow_hidden()
                                 .text_ellipsis()
                                 .whitespace_nowrap()
                                 .child(label),
                         )
-                        .child(
-                            div()
-                                .flex_none()
-                                .text_size(px(9.0))
-                                .text_color(rgb(theme.muted))
-                                .child(if is_editing { "▴" } else { "▾" }),
-                        ),
+                        .child(render_language_chevron(theme, is_editing)),
                 ),
         )
         .when(is_editing, |this| {
@@ -210,6 +204,43 @@ fn render_language_editor(
             ))
         })
         .into_any_element()
+}
+
+fn render_language_chevron(theme: GuiTheme, expanded: bool) -> AnyElement {
+    let points = language_chevron_points(expanded);
+    canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| {
+            let origin = bounds.origin;
+            let mut path = PathBuilder::stroke(px(V1_CODE_LANGUAGE_CHEVRON_STROKE_PX));
+            path.move_to(point(
+                origin.x + px(points[0].0),
+                origin.y + px(points[0].1),
+            ));
+            path.line_to(point(
+                origin.x + px(points[1].0),
+                origin.y + px(points[1].1),
+            ));
+            path.line_to(point(
+                origin.x + px(points[2].0),
+                origin.y + px(points[2].1),
+            ));
+            if let Ok(path) = path.build() {
+                window.paint_path(path, rgb(theme.muted));
+            }
+        },
+    )
+    .size(px(V1_CODE_LANGUAGE_CHEVRON_SIZE_PX))
+    .flex_none()
+    .into_any_element()
+}
+
+const fn language_chevron_points(expanded: bool) -> [(f32, f32); 3] {
+    if expanded {
+        [(2.0, 8.0), (6.0, 4.0), (10.0, 8.0)]
+    } else {
+        [(2.0, 4.0), (6.0, 8.0), (10.0, 4.0)]
+    }
 }
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
@@ -324,6 +355,7 @@ fn render_language_suggestions(
                 theme,
                 total_suggestions,
                 scroll_start,
+                view.clone(),
             ));
         }
     }
@@ -411,32 +443,33 @@ fn render_language_scrollbar(
     theme: GuiTheme,
     total_suggestions: usize,
     scroll_start: usize,
+    view: Entity<CditorV2View>,
 ) -> AnyElement {
     let track_height =
         CODE_LANGUAGE_VISIBLE_SUGGESTIONS as f32 * code_language_suggestion_row_height() - 8.0;
     let visible = CODE_LANGUAGE_VISIBLE_SUGGESTIONS.min(total_suggestions);
-    let thumb_height = (track_height * visible as f32 / total_suggestions as f32).max(24.0);
-    let max_start = total_suggestions.saturating_sub(visible).max(1);
-    let max_top = (track_height - thumb_height).max(0.0);
-    let thumb_top = 4.0 + max_top * scroll_start.min(max_start) as f32 / max_start as f32;
+    let max_start = total_suggestions.saturating_sub(visible);
+    let row_height = code_language_suggestion_row_height();
 
     div()
         .absolute()
-        .right(px(3.0))
+        .right_0()
         .top(px(V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX + 4.0))
-        .w(px(3.0))
+        .w(px(10.0))
         .h(px(track_height))
-        .rounded(px(2.0))
-        .bg(rgb(theme.code_toolbar_border))
-        .child(
-            div()
-                .absolute()
-                .top(px(thumb_top - 4.0))
-                .w(px(3.0))
-                .h(px(thumb_height))
-                .rounded(px(2.0))
-                .bg(rgb(theme.muted)),
-        )
+        .child(InteractiveScrollbar::for_callback(
+            ScrollbarAxis::Vertical,
+            scroll_start.min(max_start) as f32 * row_height,
+            max_start as f32 * row_height,
+            visible as f32 / total_suggestions as f32,
+            InteractiveScrollbarStyle::notion(theme.muted, theme.code_toolbar_text),
+            move |offset_px, _window, cx| {
+                let target_start = (offset_px / row_height).round() as usize;
+                view.update(cx, |view, cx| {
+                    view.set_code_language_scroll_start_from_gui(target_start, cx);
+                });
+            },
+        ))
         .into_any_element()
 }
 
@@ -555,13 +588,14 @@ mod tests {
 
     #[test]
     fn v1_code_toolbar_geometry_constants_match_editor2() {
-        assert_eq!(V1_CODE_TOOLBAR_TOP_PX, 6.0);
+        assert_eq!(V1_CODE_TOOLBAR_TOP_PX, 3.0);
         assert_eq!(V1_CODE_TOOLBAR_RIGHT_PX, 6.0);
         assert_eq!(V1_CODE_TOOLBAR_HEIGHT_PX, 30.0);
-        assert_eq!(V1_CODE_TOOLBAR_RADIUS_PX, 3.0);
+        assert_eq!(V1_CODE_TOOLBAR_RADIUS_PX, 4.0);
         assert_eq!(V1_CODE_TOOLBAR_BUTTON_SIZE_PX, 26.0);
-        assert_eq!(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX, 3.0);
-        assert_eq!(V1_CODE_LANGUAGE_BUTTON_WIDTH_PX, 112.0);
+        assert_eq!(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX, 4.0);
+        assert_eq!(V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX, 64.0);
+        assert_eq!(V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX, 160.0);
         assert_eq!(V1_CODE_LANGUAGE_EDIT_WIDTH_PX, 132.0);
         assert_eq!(V1_CODE_TOOLBAR_GAP_PX, 2.0);
         assert_eq!(V1_CODE_LANGUAGE_POPUP_GAP_PX, 6.0);
@@ -570,8 +604,34 @@ mod tests {
         assert_eq!(V1_CODE_COPY_ICON_SIZE_PX, 16.0);
         assert_eq!(V1_CODE_COPY_ICON_RECT_SIZE_PX, 10.0);
         assert_eq!(V1_CODE_COPY_ICON_OFFSET_PX, 4.0);
+        assert_eq!(V1_CODE_LANGUAGE_CHEVRON_SIZE_PX, 12.0);
+        assert_eq!(V1_CODE_LANGUAGE_CHEVRON_STROKE_PX, 1.5);
         assert_eq!(V1_CODE_THEME_POPUP_WIDTH_PX, 220.0);
         assert_eq!(V1_CODE_THEME_ROW_HEIGHT_PX, 34.0);
+    }
+
+    #[test]
+    fn code_toolbar_is_fixed_visible_without_a_hover_gate() {
+        assert_eq!(V1_CODE_TOOLBAR_OPACITY, 1.0);
+    }
+
+    #[test]
+    fn language_button_uses_intrinsic_width_with_bounded_overflow() {
+        const {
+            assert!(V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX < V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX);
+        }
+    }
+
+    #[test]
+    fn language_chevron_rotates_between_collapsed_and_expanded_states() {
+        assert_eq!(
+            language_chevron_points(false),
+            [(2.0, 4.0), (6.0, 8.0), (10.0, 4.0)]
+        );
+        assert_eq!(
+            language_chevron_points(true),
+            [(2.0, 8.0), (6.0, 4.0), (10.0, 8.0)]
+        );
     }
 
     #[test]

@@ -1,14 +1,9 @@
-use std::{
-    cell::RefCell,
-    ops::Range,
-    rc::Rc,
-    sync::{Arc, OnceLock},
-};
+use std::{cell::RefCell, ops::Range, rc::Rc, sync::Arc};
 
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, Entity, FocusHandle, FontStyle,
-    FontWeight, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Size, Style,
-    Window, fill, point, px, rgb, rgba,
+    App, Bounds, Element, ElementId, Entity, FocusHandle, FontWeight, GlobalElementId,
+    InspectorElementId, LayoutId, Pixels, ScrollHandle, Size, Style, Window, fill, point, px, rgb,
+    rgba,
 };
 
 use crate::editor_view::{CditorV2View, GuiPlatformInputTarget};
@@ -17,43 +12,34 @@ use crate::theme::GuiTheme;
 use cditor_core::edit::TextAffinity;
 use cditor_core::layout::normalize_text_inner_measured_height;
 use cditor_core::rich_text::InlineSpan;
-use cditor_runtime::TableCellPosition;
+use cditor_runtime::{MainThreadWorkKind, TableCellPosition, WorkCost};
 
 use super::background::text_selection_background;
-use super::parley_adapter::{paint_parley_layout, parley_background_quads};
+use super::caret_reveal::reveal_caret_in_scroll_handle;
+use super::layout_adapter::{paint_text_layout, text_background_quads};
 use super::platform::RichTextPlatformLayout;
 use super::{
-    ParleyInlineBoxSpec, ParleyLayoutSnapshot, ParleyPositionedInlineBox, ParleySelection,
-    ParleyTextPosition, RichTextLayoutInput, TextHitPoint, TextLayoutCacheRequest,
-    accessibility_node_ids, build_parley_accessibility_projection,
-    cached_parley_layout_with_request, text_geometry_telemetry,
+    InlineBoxSpec, PositionedInlineBox, RichTextLayoutInput, TextLayoutCacheRequest,
+    TextLayoutPosition, TextLayoutSelection, TextLayoutSnapshot, accessibility_node_ids,
+    build_text_accessibility_projection, text_geometry_telemetry,
 };
 
-mod metrics;
+mod fallback;
+mod input_handler;
+mod layout_resolution;
+pub(crate) mod metrics;
+mod rich_text;
+mod trace;
+use fallback::deferred_placeholder_quads;
+use layout_resolution::resolve_measured_layout;
 #[cfg(test)]
 pub(super) use metrics::{
     base_font_weight_for_kind, is_completed_todo, line_height_for_kind, text_color_for_kind,
     text_size_for_kind,
 };
-use metrics::{
-    line_height_for, parley_layout_options, parley_range_rects, parley_rect_to_bounds,
-    plain_text_from_spans,
-};
-
-fn input_trace_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("CDITOR_TRACE_INPUT")
-            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
-            .unwrap_or(false)
-    })
-}
-
-fn trace_input(event: &str, details: impl std::fmt::Display) {
-    if input_trace_enabled() {
-        eprintln!("[cditor][input][text][{event}] {details}");
-    }
-}
+use metrics::{line_height_for, measured_wrap_width, text_layout_options, text_rect_to_bounds};
+use rich_text::default_text_layout_for_input;
+use trace::{input_trace_enabled, selection_trace_enabled, trace_input, trace_selection};
 
 #[derive(Clone)]
 pub struct RichTextElement {
@@ -66,9 +52,11 @@ pub struct RichTextElement {
     pub base_text_color: Option<u32>,
     pub typography: RichTextTypography,
     pub placeholder_text: Option<String>,
-    pub inline_boxes: Vec<ParleyInlineBoxSpec>,
-    pub inline_box_renderer: Option<ParleyInlineBoxRenderer>,
+    pub inline_boxes: Vec<InlineBoxSpec>,
+    pub inline_box_renderer: Option<InlineBoxRenderer>,
+    pub caret_reveal_scroll_handle: Option<ScrollHandle>,
     pub input_handler: Option<RichTextInputHandler>,
+    pub require_prewarmed_layout: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -78,186 +66,8 @@ pub struct RichTextTypography {
     pub font_weight: Option<FontWeight>,
 }
 
-pub type ParleyInlineBoxRenderer =
-    Arc<dyn Fn(&ParleyPositionedInlineBox, Bounds<Pixels>, &mut Window, &mut App) + 'static>;
-
-impl RichTextElement {
-    pub fn new(input: RichTextLayoutInput, theme: GuiTheme) -> Self {
-        Self {
-            input,
-            theme,
-            caret_offset: None,
-            caret_affinity: TextAffinity::Downstream,
-            marked_range: None,
-            selection_range: None,
-            base_text_color: None,
-            typography: RichTextTypography::default(),
-            placeholder_text: None,
-            inline_boxes: Vec::new(),
-            inline_box_renderer: None,
-            input_handler: None,
-        }
-    }
-
-    pub fn with_caret(mut self, caret_offset: Option<usize>) -> Self {
-        self.caret_offset = caret_offset;
-        self
-    }
-
-    pub fn with_caret_affinity(mut self, affinity: TextAffinity) -> Self {
-        self.caret_affinity = affinity;
-        self
-    }
-
-    pub fn with_marked_range(mut self, marked_range: Option<Range<usize>>) -> Self {
-        self.marked_range = marked_range;
-        self
-    }
-
-    pub fn with_selection_range(mut self, selection_range: Option<Range<usize>>) -> Self {
-        self.selection_range = selection_range;
-        self
-    }
-
-    pub fn with_base_text_color(mut self, color: Option<u32>) -> Self {
-        self.base_text_color = color;
-        self
-    }
-
-    pub fn with_typography(mut self, typography: RichTextTypography) -> Self {
-        self.typography = typography;
-        self
-    }
-
-    pub fn with_placeholder(mut self, placeholder: Option<impl Into<String>>) -> Self {
-        self.placeholder_text = placeholder.map(Into::into);
-        self
-    }
-
-    #[cfg(test)]
-    pub fn with_inline_boxes(
-        mut self,
-        inline_boxes: Vec<ParleyInlineBoxSpec>,
-        renderer: ParleyInlineBoxRenderer,
-    ) -> Self {
-        self.inline_boxes = inline_boxes;
-        self.inline_box_renderer = Some(renderer);
-        self
-    }
-
-    pub fn with_input_handler(
-        mut self,
-        view: Entity<CditorV2View>,
-        focus: FocusHandle,
-        focused: bool,
-    ) -> Self {
-        self.input_handler = Some(RichTextInputHandler {
-            view,
-            focus,
-            focused,
-            table_cell_position: None,
-        });
-        self
-    }
-
-    pub fn with_table_cell_input_handler(
-        mut self,
-        view: Entity<CditorV2View>,
-        focus: FocusHandle,
-        focused: bool,
-        table_cell_position: TableCellPosition,
-    ) -> Self {
-        self.input_handler = Some(RichTextInputHandler {
-            view,
-            focus,
-            focused,
-            table_cell_position: Some(table_cell_position),
-        });
-        self
-    }
-
-    #[cfg(test)]
-    pub fn hit_test(&self, point: TextHitPoint) -> usize {
-        self.hit_test_position(point).offset
-    }
-
-    pub fn hit_test_position(&self, point: TextHitPoint) -> ParleyTextPosition {
-        self.default_parley_layout()
-            .position_for_point(point.x as f32, point.y as f32)
-    }
-
-    #[cfg(test)]
-    pub fn candidate_rect_for_offset(&self, offset: usize) -> super::TextCaretRect {
-        let rect = self
-            .default_parley_layout()
-            .caret_rect(ParleyTextPosition::downstream(offset), 1.0);
-        super::TextCaretRect {
-            x: rect.x as f64,
-            y: rect.y as f64,
-            width: rect.width as f64,
-            height: rect.height as f64,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn candidate_rect_for_caret(&self) -> Option<super::TextCaretRect> {
-        self.caret_offset
-            .map(|offset| self.candidate_rect_for_offset(offset))
-    }
-
-    #[cfg(test)]
-    pub fn positioned_inline_boxes(&self) -> Vec<ParleyPositionedInlineBox> {
-        self.default_parley_layout().inline_boxes()
-    }
-
-    fn default_parley_layout(&self) -> ParleyLayoutSnapshot {
-        let cache_request = if self
-            .input_handler
-            .as_ref()
-            .is_some_and(|handler| handler.focused)
-        {
-            TextLayoutCacheRequest::editing()
-        } else {
-            TextLayoutCacheRequest::visible()
-        };
-        cached_parley_layout_with_request(
-            &self.input,
-            self.theme,
-            &parley_layout_options(
-                &self.input,
-                self.theme,
-                self.base_text_color,
-                "system-ui",
-                FontWeight::NORMAL,
-                FontStyle::Normal,
-                1.0,
-                Some(self.input.width_px as f32),
-                self.typography,
-                self.inline_boxes.clone(),
-            ),
-            cache_request,
-        )
-        .layout
-    }
-
-    pub fn render(&self) -> AnyElement {
-        RichTextGpuiElement {
-            input: self.input.clone(),
-            theme: self.theme,
-            caret_offset: self.caret_offset,
-            caret_affinity: self.caret_affinity,
-            marked_range: self.marked_range.clone(),
-            selection_range: self.selection_range.clone(),
-            base_text_color: self.base_text_color,
-            typography: self.typography,
-            placeholder_text: self.placeholder_text.clone(),
-            inline_boxes: self.inline_boxes.clone(),
-            inline_box_renderer: self.inline_box_renderer.clone(),
-            input_handler: self.input_handler.clone(),
-        }
-        .into_any_element()
-    }
-}
+pub type InlineBoxRenderer =
+    Arc<dyn Fn(&PositionedInlineBox, Bounds<Pixels>, &mut Window, &mut App) + 'static>;
 
 #[derive(Clone)]
 pub struct RichTextInputHandler {
@@ -277,30 +87,25 @@ struct RichTextGpuiElement {
     base_text_color: Option<u32>,
     typography: RichTextTypography,
     placeholder_text: Option<String>,
-    inline_boxes: Vec<ParleyInlineBoxSpec>,
-    inline_box_renderer: Option<ParleyInlineBoxRenderer>,
+    inline_boxes: Vec<InlineBoxSpec>,
+    inline_box_renderer: Option<InlineBoxRenderer>,
+    caret_reveal_scroll_handle: Option<ScrollHandle>,
     input_handler: Option<RichTextInputHandler>,
+    require_prewarmed_layout: bool,
 }
 
 struct RichTextGpuiPrepaintState {
-    layout: Option<ParleyLayoutSnapshot>,
+    layout: Option<TextLayoutSnapshot>,
     cursor: Option<gpui::PaintQuad>,
     inline_backgrounds: Vec<gpui::PaintQuad>,
     marked_backgrounds: Vec<gpui::PaintQuad>,
     marked_underlines: Vec<gpui::PaintQuad>,
     selection_backgrounds: Vec<gpui::PaintQuad>,
-}
-
-impl IntoElement for RichTextGpuiElement {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
+    deferred_placeholders: Vec<gpui::PaintQuad>,
 }
 
 impl Element for RichTextGpuiElement {
-    type RequestLayoutState = Rc<RefCell<Option<ParleyLayoutSnapshot>>>;
+    type RequestLayoutState = Rc<RefCell<Option<Option<TextLayoutSnapshot>>>>;
     type PrepaintState = RichTextGpuiPrepaintState;
 
     fn id(&self) -> Option<ElementId> {
@@ -321,7 +126,7 @@ impl Element for RichTextGpuiElement {
         let shared_layout = Rc::new(RefCell::new(None));
         let shared_layout_clone = shared_layout.clone();
         let mut input = self.input.clone();
-        let placeholder = plain_text_from_spans(&input.spans)
+        let placeholder = input
             .is_empty()
             .then(|| {
                 self.placeholder_text
@@ -330,7 +135,7 @@ impl Element for RichTextGpuiElement {
             })
             .flatten();
         if let Some(placeholder) = placeholder.as_ref() {
-            input.spans = vec![InlineSpan::plain(placeholder)];
+            input.spans = vec![InlineSpan::plain(placeholder)].into();
         }
         let theme = self.theme;
         let base_text_color = placeholder
@@ -344,6 +149,11 @@ impl Element for RichTextGpuiElement {
         let scale = window.scale_factor();
         let typography = self.typography;
         let inline_boxes = self.inline_boxes.clone();
+        let require_prewarmed_layout = self.require_prewarmed_layout;
+        let prewarm_view = self
+            .input_handler
+            .as_ref()
+            .map(|handler| handler.view.clone());
         let cache_request = if self
             .input_handler
             .as_ref()
@@ -358,13 +168,9 @@ impl Element for RichTextGpuiElement {
         style.min_size.width = px(0.0).into();
         style.max_size.width = gpui::relative(1.0).into();
         let layout_id =
-            window.request_measured_layout(style, move |known, available, window, _cx| {
-                let wrap_width = known.width.or(match available.width {
-                    AvailableSpace::Definite(width) => Some(width),
-                    AvailableSpace::MinContent => Some(px(1.0)),
-                    AvailableSpace::MaxContent => Some(window.viewport_size().width.max(px(1.0))),
-                });
-                let options = parley_layout_options(
+            window.request_measured_layout(style, move |known, available, _window, cx| {
+                let wrap_width = measured_wrap_width(known.width, available.width, input.width_px);
+                let options = text_layout_options(
                     &input,
                     theme,
                     base_text_color,
@@ -372,17 +178,49 @@ impl Element for RichTextGpuiElement {
                     font_weight,
                     font_style,
                     scale,
-                    wrap_width.map(f32::from),
+                    Some(f32::from(wrap_width)),
                     typography,
                     inline_boxes.clone(),
                 );
-                let layout =
-                    cached_parley_layout_with_request(&input, theme, &options, cache_request)
-                        .layout;
+                let mut layout = resolve_measured_layout(
+                    &input,
+                    theme,
+                    &options,
+                    cache_request,
+                    require_prewarmed_layout,
+                );
+                if layout.is_none()
+                    && let Some(view) = prewarm_view.as_ref()
+                {
+                    view.update(cx, |view, cx| {
+                        view.ensure_text_layout_prewarm(
+                            input.clone(),
+                            theme,
+                            options.clone(),
+                            cache_request,
+                            cx,
+                        );
+                    });
+                    layout = resolve_measured_layout(
+                        &input,
+                        theme,
+                        &options,
+                        cache_request,
+                        require_prewarmed_layout,
+                    );
+                }
                 let line_height = line_height_for(&input.kind, typography);
                 let total_size = Size {
-                    width: px(layout.width()),
-                    height: px(layout.height()).max(line_height),
+                    width: layout
+                        .as_ref()
+                        .map(|layout| px(layout.width()))
+                        .or(known.width)
+                        .unwrap_or(wrap_width),
+                    height: layout
+                        .as_ref()
+                        .map(|layout| px(layout.height()))
+                        .unwrap_or(line_height)
+                        .max(line_height),
                 };
                 *shared_layout_clone.borrow_mut() = Some(layout);
                 total_size
@@ -396,44 +234,53 @@ impl Element for RichTextGpuiElement {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
-        _window: &mut Window,
-        _cx: &mut App,
+        window: &mut Window,
+        cx: &mut App,
     ) -> Self::PrepaintState {
-        let layout = request_layout.borrow_mut().take();
+        let layout = request_layout.borrow_mut().take().flatten();
         let focused = self
             .input_handler
             .as_ref()
             .is_some_and(|handler| handler.focused);
-        let cursor = if focused && self.marked_range.is_none() {
+        let caret_visible = self.input_handler.as_ref().is_some_and(|handler| {
+            handler.focused && handler.view.read(cx).caret_blink_visible(cx)
+        });
+        let caret_bounds = if focused {
             self.caret_offset.and_then(|offset| {
                 layout.as_ref().map(|layout| {
                     let rect = layout.caret_rect(
-                        ParleyTextPosition {
+                        TextLayoutPosition {
                             offset,
                             affinity: self.caret_affinity,
                         },
-                        1.5,
+                        2.0,
                     );
-                    fill(parley_rect_to_bounds(bounds, rect), rgb(self.theme.focused))
+                    text_rect_to_bounds(bounds, rect)
                 })
             })
+        } else {
+            None
+        };
+        if let (Some(scroll_handle), Some(caret_bounds)) =
+            (self.caret_reveal_scroll_handle.as_ref(), caret_bounds)
+        {
+            reveal_caret_in_scroll_handle(scroll_handle, caret_bounds, window);
+        }
+        let cursor = if self.marked_range.is_none() && caret_visible {
+            caret_bounds.map(|bounds| fill(bounds, rgb(self.theme.focused)))
         } else {
             None
         };
         let marked_rects = self
             .marked_range
             .clone()
-            .and_then(|range| {
-                layout
-                    .as_ref()
-                    .map(|layout| parley_range_rects(layout, range))
-            })
+            .and_then(|range| layout.as_ref().map(|layout| layout.range_rects(range)))
             .unwrap_or_default();
         let marked_backgrounds = marked_rects
             .iter()
             .map(|rect| {
                 fill(
-                    parley_rect_to_bounds(bounds, *rect),
+                    text_rect_to_bounds(bounds, *rect),
                     rgb(self.theme.action_background),
                 )
             })
@@ -444,30 +291,46 @@ impl Element for RichTextGpuiElement {
                 let mut rect = *rect;
                 rect.y += (rect.height - 1.0).max(0.0);
                 rect.height = 1.0;
-                fill(parley_rect_to_bounds(bounds, rect), rgb(self.theme.focused))
+                fill(text_rect_to_bounds(bounds, rect), rgb(self.theme.focused))
             })
             .collect();
-        let selection_backgrounds = self
+        let selection_rects = self
             .selection_range
             .clone()
-            .and_then(|range| {
+            .and_then(|range| layout.as_ref().map(|layout| layout.range_rects(range)))
+            .unwrap_or_default();
+        if selection_trace_enabled() && self.selection_range.is_some() {
+            trace_selection(format_args!(
+                "block={} kind={:?} range={:?} element_bounds={:?} layout_size={:?} line_count={} rects={:?}",
+                self.input.block_id,
+                self.input.kind,
+                self.selection_range,
+                bounds,
                 layout
                     .as_ref()
-                    .map(|layout| parley_range_rects(layout, range))
-            })
-            .unwrap_or_default()
+                    .map(|layout| (layout.width(), layout.height())),
+                layout.as_ref().map_or(0, |layout| layout.line_count()),
+                selection_rects,
+            ));
+        }
+        let selection_backgrounds = selection_rects
             .into_iter()
             .map(|rect| {
                 fill(
-                    parley_rect_to_bounds(bounds, rect),
+                    text_rect_to_bounds(bounds, rect),
                     rgba(text_selection_background(self.theme)),
                 )
             })
             .collect();
         let inline_backgrounds = layout
             .as_ref()
-            .map(|layout| parley_background_quads(layout, bounds.origin))
+            .map(|layout| text_background_quads(layout, bounds.origin))
             .unwrap_or_default();
+        let deferred_placeholders = if layout.is_none() {
+            deferred_placeholder_quads(bounds, &self.input.kind, self.typography, self.theme)
+        } else {
+            Vec::new()
+        };
         RichTextGpuiPrepaintState {
             layout,
             cursor,
@@ -475,6 +338,7 @@ impl Element for RichTextGpuiElement {
             marked_backgrounds,
             marked_underlines,
             selection_backgrounds,
+            deferred_placeholders,
         }
     }
 
@@ -505,6 +369,8 @@ impl Element for RichTextGpuiElement {
                     surface_id: self.input.surface_id,
                     content_version: self.input.content_version,
                     layout_version: self.input.layout_version,
+                    wrap_width_bits: f32::from(bounds.size.width).to_bits(),
+                    text_align: self.input.text_align,
                 },
                 bounds,
                 window,
@@ -537,8 +403,11 @@ impl Element for RichTextGpuiElement {
         for background in prepaint.marked_backgrounds.drain(..) {
             window.paint_quad(background);
         }
+        for placeholder in prepaint.deferred_placeholders.drain(..) {
+            window.paint_quad(placeholder);
+        }
         if let Some(layout) = prepaint.layout.as_ref() {
-            let report = paint_parley_layout(layout, bounds.origin, input_trace_enabled(), window);
+            let report = paint_text_layout(layout, bounds.origin, input_trace_enabled(), window);
             if input_trace_enabled()
                 && (report.glyph_errors != 0
                     || report.font_registration_errors != 0
@@ -549,7 +418,7 @@ impl Element for RichTextGpuiElement {
                     || report.glyph_validation_mismatches != 0)
             {
                 trace_input(
-                    "parley.paint",
+                    "text_layout.paint",
                     format_args!("block={} report={report:?}", self.input.block_id),
                 );
             }
@@ -579,13 +448,29 @@ impl Element for RichTextGpuiElement {
         if let (Some(input_handler), Some(layout)) =
             (self.input_handler.as_ref(), prepaint.layout.as_ref())
         {
+            // Placeholder glyphs are visual only. Hit testing, IME geometry,
+            // and accessibility must remain constrained to the real text.
+            let interaction_layout = if self.placeholder_text.is_some() && self.input.is_empty() {
+                default_text_layout_for_input(
+                    &self.input,
+                    self.theme,
+                    self.base_text_color,
+                    self.typography,
+                    self.inline_boxes.clone(),
+                    input_handler.focused,
+                )
+            } else {
+                layout.clone()
+            };
             let mut cache = RichTextPlatformLayout {
                 block_id: self.input.block_id,
                 surface_id: self.input.surface_id,
                 content_version: self.input.content_version,
                 layout_version: self.input.layout_version,
+                wrap_width_px: f32::from(bounds.size.width),
+                text_align: self.input.text_align,
                 input_session_identity: None,
-                snapshot: layout.clone(),
+                snapshot: interaction_layout.clone().into(),
                 accessibility: input_handler.focused.then(|| {
                     let cell = input_handler
                         .table_cell_position
@@ -595,27 +480,27 @@ impl Element for RichTextGpuiElement {
                     let selection = self
                         .selection_range
                         .clone()
-                        .map(|range| ParleySelection {
-                            anchor: ParleyTextPosition::downstream(range.start),
-                            focus: ParleyTextPosition {
+                        .map(|range| TextLayoutSelection {
+                            anchor: TextLayoutPosition::downstream(range.start),
+                            focus: TextLayoutPosition {
                                 offset: range.end,
                                 affinity: TextAffinity::Upstream,
                             },
                         })
                         .or_else(|| {
                             self.caret_offset.map(|offset| {
-                                let position = ParleyTextPosition {
+                                let position = TextLayoutPosition {
                                     offset,
                                     affinity: self.caret_affinity,
                                 };
-                                ParleySelection {
+                                TextLayoutSelection {
                                     anchor: position,
                                     focus: position,
                                 }
                             })
                         });
-                    build_parley_accessibility_projection(
-                        layout,
+                    build_text_accessibility_projection(
+                        &interaction_layout,
                         parent_id,
                         first_child_id,
                         f64::from(bounds.left()),
@@ -636,8 +521,23 @@ impl Element for RichTextGpuiElement {
                     .focused
                     .then(|| view.registered_platform_input_session_identity())
                     .flatten();
-                if crate::cache::accept_text_layout(view, cache) {
-                    cx.notify();
+                if input_handler.focused {
+                    if crate::cache::accept_text_layout(view, cache) {
+                        cx.notify();
+                    }
+                } else if let Some(key) = crate::cache::queue_text_layout_apply(view, &cache) {
+                    view.enqueue_main_thread_apply(
+                        MainThreadWorkKind::PlatformGeometryApply,
+                        cache.content_version,
+                        Some(cache.block_id),
+                        WorkCost::async_measure(),
+                        move |view, cx| {
+                            if crate::cache::accept_queued_text_layout(view, key, cache) {
+                                cx.notify();
+                            }
+                        },
+                        cx,
+                    );
                 }
             });
         }

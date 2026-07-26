@@ -3,6 +3,11 @@ name = "cditor-storage-sqlite"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+autotests = false
+
+[features]
+default = []
+test-support = []
 
 [dependencies]
 async-trait = "0.1"
@@ -18,5 +23,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
 cditor-runtime = { path = "../cditor-runtime" }
+cditor-session = { path = "../cditor-session" }
+cditor-test-support = { path = "../cditor-test-support" }
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

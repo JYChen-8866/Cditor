@@ -1,71 +1,132 @@
+use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
 use gpui::{
-    AnyElement, App, Context, InteractiveElement, IntoElement, MouseDownEvent, ParentElement,
-    Styled, Window, div, px, rgb,
+    AnyElement, Context, ElementId, Entity, IntoElement, ParentElement, ScrollHandle, Styled, div,
+    px, rgb,
 };
 
-use crate::document::DEFAULT_DOCUMENT_TOP_INSET_PX;
 use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::scroll::ScrollbarVisualState;
 use crate::theme::GuiTheme;
 
-const GUI_SCROLLBAR_WIDTH_PX: f32 = 10.0;
 const GUI_SCROLLBAR_RIGHT_PX: f32 = 8.0;
-const GUI_SCROLLBAR_THUMB_INSET_PX: f32 = 2.0;
+const PAGE_SCROLLBAR_TOP_PX: f32 = 0.0;
+const INTERNAL_SCROLLBAR_WIDTH_PX: f32 = 5.0;
+const INTERNAL_SCROLLBAR_TRACK_WIDTH_PX: f32 = 12.0;
+const INTERNAL_SCROLLBAR_VERTICAL_INSET_PX: f32 = 3.0;
+const INTERNAL_SCROLLBAR_MIN_THUMB_HEIGHT_PX: f32 = 28.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct InternalScrollbarTrackStyle {
+    pub(crate) background: u32,
+    pub(crate) separator: u32,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct GuiScrollbarDrag {
-    pub(crate) pointer_y_offset_in_thumb: f64,
-}
+pub(crate) struct GuiScrollbarDrag;
 
 pub(crate) fn render_scrollbar(
     visual: ScrollbarVisualState,
-    dragging: bool,
+    viewport_height_px: f32,
     theme: GuiTheme,
-    on_mouse_down: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    view: Entity<CditorV2View>,
 ) -> AnyElement {
-    if !visual.enabled {
+    if !visual.enabled || viewport_height_px <= 0.5 {
         return div().into_any_element();
     }
 
-    let thumb_color = scrollbar_thumb_color(theme, dragging);
+    let start_view = view.clone();
+    let change_view = view.clone();
+    let end_view = view;
+    let visible_fraction = (visual.thumb_height / visual.track_height).clamp(0.0, 1.0) as f32;
+    let scrollbar = InteractiveScrollbar::for_callback(
+        ScrollbarAxis::Vertical,
+        visual.scroll_ratio as f32,
+        1.0,
+        visible_fraction,
+        shared_vertical_scrollbar_style(theme),
+        move |ratio, _window, cx| {
+            change_view.update(cx, |view, cx| {
+                view.drag_gui_scrollbar_to_ratio(f64::from(ratio), cx);
+            });
+        },
+    )
+    .id("document-scrollbar")
+    .on_drag_start(move |_window, cx| {
+        start_view.update(cx, |view, cx| view.begin_gui_scrollbar_drag(cx));
+    })
+    .on_drag_end(move |_window, cx| {
+        end_view.update(cx, |view, cx| view.finish_gui_scrollbar_drag(cx));
+    });
+
     div()
         .absolute()
-        .top(px(DEFAULT_DOCUMENT_TOP_INSET_PX))
+        .top(px(PAGE_SCROLLBAR_TOP_PX))
         .right(px(GUI_SCROLLBAR_RIGHT_PX))
-        .w(px(GUI_SCROLLBAR_WIDTH_PX))
-        .h(px(visual.track_height as f32))
-        .on_mouse_down(gpui::MouseButton::Left, on_mouse_down)
+        .w(px(INTERNAL_SCROLLBAR_TRACK_WIDTH_PX))
+        .h(px(page_scrollbar_track_height(viewport_height_px)))
+        .border_l(px(1.0))
+        .border_color(rgb(theme.border))
+        .bg(rgb(theme.scrollbar_track))
+        .child(scrollbar)
+        .into_any_element()
+}
+
+pub(crate) fn render_internal_vertical_scrollbar(
+    scrollbar_id: ElementId,
+    scroll_handle: &ScrollHandle,
+    viewport_height_px: f32,
+    estimated_content_height_px: f32,
+    theme: GuiTheme,
+    track_style: InternalScrollbarTrackStyle,
+) -> AnyElement {
+    let max_offset_y = f32::from(scroll_handle.max_offset().y)
+        .max((estimated_content_height_px - viewport_height_px).max(0.0));
+    if max_offset_y <= 0.5 || viewport_height_px <= 0.5 {
+        return div().into_any_element();
+    }
+
+    let scrollbar_style = shared_vertical_scrollbar_style(theme);
+
+    div()
+        .relative()
+        .w(px(INTERNAL_SCROLLBAR_TRACK_WIDTH_PX))
+        .h(px(viewport_height_px))
+        .flex_none()
+        .border_l(px(1.0))
+        .border_color(rgb(track_style.separator))
+        .bg(rgb(track_style.background))
         .child(
-            div()
-                .absolute()
-                .top(px(visual.thumb_top as f32))
-                .left(px(GUI_SCROLLBAR_THUMB_INSET_PX))
-                .right(px(GUI_SCROLLBAR_THUMB_INSET_PX))
-                .h(px(visual.thumb_height as f32))
-                .rounded(px((GUI_SCROLLBAR_WIDTH_PX
-                    - GUI_SCROLLBAR_THUMB_INSET_PX * 2.0)
-                    / 2.0))
-                .bg(rgb(thumb_color))
-                .hover(move |style| style.bg(rgb(theme.scrollbar_hover))),
+            InteractiveScrollbar::for_scroll_handle(
+                ScrollbarAxis::Vertical,
+                scroll_handle.clone(),
+                viewport_height_px,
+                estimated_content_height_px,
+                scrollbar_style,
+            )
+            .id(scrollbar_id),
         )
         .into_any_element()
 }
 
-fn scrollbar_thumb_color(theme: GuiTheme, dragging: bool) -> u32 {
-    if dragging {
-        theme.scrollbar_hover
-    } else {
-        theme.scrollbar
+fn shared_vertical_scrollbar_style(theme: GuiTheme) -> InteractiveScrollbarStyle {
+    InteractiveScrollbarStyle {
+        idle_thickness_px: INTERNAL_SCROLLBAR_WIDTH_PX,
+        active_thickness_px: 8.0,
+        hit_thickness_px: INTERNAL_SCROLLBAR_TRACK_WIDTH_PX,
+        min_thumb_extent_px: INTERNAL_SCROLLBAR_MIN_THUMB_HEIGHT_PX,
+        track_inset_px: INTERNAL_SCROLLBAR_VERTICAL_INSET_PX,
+        thumb: theme.scrollbar,
+        thumb_hover: theme.scrollbar_hover,
     }
 }
 
+fn page_scrollbar_track_height(editor_viewport_height_px: f32) -> f32 {
+    editor_viewport_height_px.max(0.0)
+}
+
 impl CditorV2View {
-    pub(crate) fn on_scrollbar_mouse_down(
-        &mut self,
-        event: &MouseDownEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn begin_gui_scrollbar_drag(&mut self, cx: &mut Context<Self>) {
+        self.pause_caret_blink(cx);
         let CditorViewState::Ready(session) = &self.state else {
             return;
         };
@@ -75,19 +136,18 @@ impl CditorV2View {
         if !visual.enabled {
             return;
         }
-        let pointer_y = scrollbar_local_pointer_y(f64::from(event.position.y));
-        let inside_thumb =
-            visual.thumb_top <= pointer_y && pointer_y <= visual.thumb_top + visual.thumb_height;
-        let pointer_y_offset_in_thumb = if inside_thumb {
-            (pointer_y - visual.thumb_top).clamp(0.0, visual.thumb_height)
-        } else {
-            visual.thumb_height / 2.0
-        };
-        self.interaction.scrollbar_drag = Some(GuiScrollbarDrag {
-            pointer_y_offset_in_thumb,
-        });
-        let _ = session.drag_scrollbar(pointer_y - pointer_y_offset_in_thumb);
-        cx.stop_propagation();
+        self.interaction.scrollbar_drag = Some(GuiScrollbarDrag);
+        cx.notify();
+    }
+
+    pub(crate) fn drag_gui_scrollbar_to_ratio(&mut self, ratio: f64, cx: &mut Context<Self>) {
+        if self.interaction.scrollbar_drag.is_none() {
+            return;
+        }
+        self.pause_caret_blink(cx);
+        if let CditorViewState::Ready(session) = &self.state {
+            let _ = session.drag_scrollbar_to_ratio(ratio);
+        }
         cx.notify();
     }
 
@@ -95,16 +155,12 @@ impl CditorV2View {
         if self.interaction.scrollbar_drag.take().is_none() {
             return;
         }
+        self.pause_caret_blink(cx);
         if let CditorViewState::Ready(session) = &self.state {
             let _ = session.end_scrollbar_drag();
         }
-        cx.stop_propagation();
         cx.notify();
     }
-}
-
-pub(crate) fn scrollbar_local_pointer_y(window_pointer_y: f64) -> f64 {
-    window_pointer_y - f64::from(DEFAULT_DOCUMENT_TOP_INSET_PX)
 }
 
 #[cfg(test)]
@@ -112,15 +168,61 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scrollbar_thumb_uses_notion_theme_states() {
+    fn page_and_internal_scrollbars_share_the_same_component_style() {
         let theme = GuiTheme::light();
+        let style = shared_vertical_scrollbar_style(theme);
 
-        assert_eq!(scrollbar_thumb_color(theme, false), theme.scrollbar);
-        assert_eq!(scrollbar_thumb_color(theme, true), theme.scrollbar_hover);
+        assert_eq!(style.idle_thickness_px, INTERNAL_SCROLLBAR_WIDTH_PX);
+        assert_eq!(style.active_thickness_px, 8.0);
+        assert_eq!(style.hit_thickness_px, INTERNAL_SCROLLBAR_TRACK_WIDTH_PX);
+        assert_eq!(style.thumb, theme.scrollbar);
+        assert_eq!(style.thumb_hover, theme.scrollbar_hover);
     }
 
     #[test]
-    fn scrollbar_pointer_coordinates_exclude_editor_top_inset() {
-        assert_eq!(scrollbar_local_pointer_y(52.0), 20.0);
+    fn page_scrollbar_track_belongs_to_the_full_editor_viewport() {
+        assert_eq!(PAGE_SCROLLBAR_TOP_PX, 0.0);
+        assert_eq!(page_scrollbar_track_height(824.0), 824.0);
+        assert_eq!(page_scrollbar_track_height(-1.0), 0.0);
+    }
+
+    #[test]
+    fn page_scrollbar_track_uses_a_distinct_semantic_surface() {
+        for theme in [GuiTheme::light(), GuiTheme::dark()] {
+            assert_ne!(theme.scrollbar_track, theme.page);
+            assert_ne!(theme.scrollbar_track, theme.scrollbar);
+            assert_eq!(INTERNAL_SCROLLBAR_TRACK_WIDTH_PX, 12.0);
+        }
+    }
+
+    #[test]
+    fn internal_scrollbar_style_fits_its_dedicated_track() {
+        const {
+            assert!(INTERNAL_SCROLLBAR_WIDTH_PX < 8.0);
+            assert!(8.0 <= INTERNAL_SCROLLBAR_TRACK_WIDTH_PX);
+        }
+        assert_eq!(INTERNAL_SCROLLBAR_MIN_THUMB_HEIGHT_PX, 28.0);
+        assert_eq!(INTERNAL_SCROLLBAR_VERTICAL_INSET_PX, 3.0);
+    }
+
+    #[test]
+    fn internal_scrollbar_uses_a_dedicated_track_wider_than_its_thumb() {
+        assert_eq!(INTERNAL_SCROLLBAR_TRACK_WIDTH_PX, 12.0);
+        assert_eq!(INTERNAL_SCROLLBAR_WIDTH_PX, 5.0);
+        const {
+            assert!(INTERNAL_SCROLLBAR_TRACK_WIDTH_PX > INTERNAL_SCROLLBAR_WIDTH_PX);
+        }
+    }
+
+    #[test]
+    fn internal_scrollbar_track_style_keeps_surface_and_separator_semantic() {
+        let style = InternalScrollbarTrackStyle {
+            background: 0xffffff,
+            separator: 0xe9e9e7,
+        };
+
+        assert_eq!(style.background, 0xffffff);
+        assert_eq!(style.separator, 0xe9e9e7);
+        assert_ne!(style.background, style.separator);
     }
 }

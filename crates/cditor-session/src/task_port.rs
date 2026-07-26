@@ -5,19 +5,19 @@ use std::{
 };
 
 use cditor_editor_protocol::ProtocolError;
-use cditor_runtime::content::payload_window::{
-    PayloadWindowApplyDecision, PayloadWindowLoadRequest, PayloadWindowLoadResult,
-};
 
 use crate::{EditorSessionHandle, SessionId};
 
-const PAYLOAD_DEBOUNCE: Duration = Duration::from_millis(75);
+pub use self::payload_window_port::PayloadWindowTaskSchedule;
+use self::payload_window_port::PayloadWindowTaskState;
+
 const STORAGE_TIMEOUT: Duration = Duration::from_secs(15);
 const HISTORY_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SessionTaskKind {
     PayloadWindow,
+    PayloadPrefetch,
     SelectionMaterialization,
     HistoryHydration,
     UndoSpill,
@@ -60,17 +60,6 @@ pub enum SessionTaskAdmission {
     Busy,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum PayloadWindowTaskSchedule {
-    Dispatch {
-        token: SessionTaskToken,
-        request: PayloadWindowLoadRequest,
-    },
-    WakeAfter(Duration),
-    WakeAlreadyScheduled,
-    Idle,
-}
-
 #[derive(Debug, Clone, Copy)]
 struct ActiveTask {
     key: u64,
@@ -81,8 +70,10 @@ struct ActiveTask {
 pub(crate) struct SessionTaskCoordinator {
     next_generation: u64,
     active: HashMap<SessionTaskKind, ActiveTask>,
-    payload_last_dispatched_at: Option<Instant>,
-    payload_wake_scheduled: bool,
+    payload: PayloadWindowTaskState,
+    prefetch_last_dispatched_at: Option<Instant>,
+    prefetch_wake_scheduled: bool,
+    prefetch_pending_range: Option<Range<usize>>,
 }
 
 impl SessionTaskCoordinator {
@@ -124,32 +115,8 @@ impl SessionTaskCoordinator {
         true
     }
 
-    fn payload_schedule(&mut self, now: Instant) -> Result<(), Duration> {
-        let Some(last) = self.payload_last_dispatched_at else {
-            self.payload_last_dispatched_at = Some(now);
-            return Ok(());
-        };
-        let elapsed = now.saturating_duration_since(last);
-        if elapsed >= PAYLOAD_DEBOUNCE {
-            self.payload_last_dispatched_at = Some(now);
-            self.payload_wake_scheduled = false;
-            return Ok(());
-        }
-        if self.payload_wake_scheduled {
-            return Err(Duration::ZERO);
-        }
-        self.payload_wake_scheduled = true;
-        Err(PAYLOAD_DEBOUNCE - elapsed)
-    }
-
-    fn wake_payload(&mut self) {
-        self.payload_wake_scheduled = false;
-    }
-
-    fn reset_payload(&mut self) {
-        self.payload_last_dispatched_at = None;
-        self.payload_wake_scheduled = false;
-        self.active.remove(&SessionTaskKind::PayloadWindow);
+    fn is_active(&self, kind: SessionTaskKind) -> bool {
+        self.active.contains_key(&kind)
     }
 
     pub(crate) fn cancel_kind(&mut self, kind: SessionTaskKind) {
@@ -162,6 +129,7 @@ fn task_policy(kind: SessionTaskKind) -> (SessionTaskLane, Duration) {
         SessionTaskKind::PayloadWindow | SessionTaskKind::SelectionMaterialization => {
             (SessionTaskLane::Visible, STORAGE_TIMEOUT)
         }
+        SessionTaskKind::PayloadPrefetch => (SessionTaskLane::Background, STORAGE_TIMEOUT),
         SessionTaskKind::HistoryHydration => (SessionTaskLane::Interactive, HISTORY_TIMEOUT),
         SessionTaskKind::AiStream => (SessionTaskLane::Interactive, Duration::from_secs(120)),
         SessionTaskKind::UndoSpill
@@ -172,68 +140,6 @@ fn task_policy(kind: SessionTaskKind) -> (SessionTaskLane, Duration) {
 }
 
 impl EditorSessionHandle {
-    pub fn schedule_payload_window_task(
-        &self,
-        block_range: Range<usize>,
-        now: Instant,
-    ) -> Result<PayloadWindowTaskSchedule, ProtocolError> {
-        let mut session = self.try_session_mut()?;
-        match session.tasks.payload_schedule(now) {
-            Err(delay) if delay.is_zero() => {
-                return Ok(PayloadWindowTaskSchedule::WakeAlreadyScheduled);
-            }
-            Err(delay) => return Ok(PayloadWindowTaskSchedule::WakeAfter(delay)),
-            Ok(()) => {}
-        }
-        let Some(request) = session
-            .runtime
-            .plan_payload_window_load_if_needed(block_range)
-        else {
-            return Ok(PayloadWindowTaskSchedule::Idle);
-        };
-        let key = request.generation;
-        let session_id = session.id;
-        match session
-            .tasks
-            .begin(session_id, SessionTaskKind::PayloadWindow, key)
-        {
-            SessionTaskAdmission::Started(token) => {
-                Ok(PayloadWindowTaskSchedule::Dispatch { token, request })
-            }
-            SessionTaskAdmission::Duplicate | SessionTaskAdmission::Busy => {
-                Ok(PayloadWindowTaskSchedule::Idle)
-            }
-        }
-    }
-
-    pub fn wake_payload_window_task(&self) -> Result<(), ProtocolError> {
-        self.try_session_mut()?.tasks.wake_payload();
-        Ok(())
-    }
-
-    pub fn reset_payload_window_tasks(&self) -> Result<(), ProtocolError> {
-        self.try_session_mut()?.tasks.reset_payload();
-        Ok(())
-    }
-
-    pub fn complete_payload_window_task(
-        &self,
-        token: SessionTaskToken,
-        result: Result<PayloadWindowLoadResult, (PayloadWindowLoadRequest, String)>,
-    ) -> Result<Option<PayloadWindowApplyDecision>, ProtocolError> {
-        let mut session = self.try_session_mut()?;
-        let session_id = session.id;
-        if !session.tasks.finish(session_id, token) {
-            return Ok(None);
-        }
-        Ok(Some(match result {
-            Ok(result) => session.runtime.apply_payload_window_result(result),
-            Err((request, message)) => session
-                .runtime
-                .apply_payload_window_load_error(request, message),
-        }))
-    }
-
     pub fn begin_session_task(
         &self,
         kind: SessionTaskKind,
@@ -268,10 +174,52 @@ impl EditorSessionHandle {
 
 #[cfg(test)]
 mod tests {
+    use cditor_core::{
+        document::BlockIndexRecord,
+        rich_text::{BlockPayloadRecord, RichBlockKind, kind_tag_for_rich_block_kind},
+    };
     use cditor_runtime::DocumentRuntime;
+    use cditor_runtime::document_runtime::{
+        DocumentRuntimeColdStartData, DocumentRuntimeIndexSource,
+    };
 
     use super::*;
     use crate::EditorSession;
+
+    pub(super) fn cold_window_runtime() -> DocumentRuntime {
+        let records = (1..=256)
+            .map(|block_id| {
+                BlockIndexRecord::new(
+                    block_id,
+                    None,
+                    0,
+                    kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+                    0,
+                )
+            })
+            .collect();
+        let initial_payloads = (1..=16)
+            .map(|block_id| {
+                BlockPayloadRecord::rich_text(block_id, RichBlockKind::Paragraph, "initial")
+            })
+            .collect();
+        DocumentRuntime::from_cold_start_data(
+            DocumentRuntimeColdStartData {
+                document_id: 1,
+                document_title: "payload scheduling race".to_owned(),
+                structure_version: 1,
+                records,
+                block_attrs: Vec::new(),
+                initial_payloads,
+                initial_payload_window_end: 16,
+                index_source: DocumentRuntimeIndexSource::Blocks,
+                layout_cache_hits: 0,
+            },
+            720.0,
+        )
+        .unwrap()
+        .0
+    }
 
     #[test]
     fn task_slots_dedupe_reject_conflicts_and_discard_stale_completion() {
@@ -348,6 +296,11 @@ mod tests {
                 STORAGE_TIMEOUT,
             ),
             (
+                SessionTaskKind::PayloadPrefetch,
+                SessionTaskLane::Background,
+                STORAGE_TIMEOUT,
+            ),
+            (
                 SessionTaskKind::HistoryHydration,
                 SessionTaskLane::Interactive,
                 HISTORY_TIMEOUT,
@@ -384,41 +337,14 @@ mod tests {
             assert!(!timeout.is_zero(), "timeout for {kind:?}");
         }
     }
-
-    #[test]
-    fn payload_reset_cancels_an_in_flight_generation() {
-        let handle = EditorSession::new(DocumentRuntime::empty(), false).into_handle();
-        let SessionTaskAdmission::Started(token) = handle
-            .begin_session_task(SessionTaskKind::PayloadWindow, 41)
-            .unwrap()
-        else {
-            panic!("payload task must start")
-        };
-
-        handle.reset_payload_window_tasks().unwrap();
-
-        assert!(!handle.complete_session_task(token).unwrap());
-        assert!(matches!(
-            handle
-                .begin_session_task(SessionTaskKind::PayloadWindow, 42)
-                .unwrap(),
-            SessionTaskAdmission::Started(_)
-        ));
-    }
-
-    #[test]
-    fn payload_debounce_is_owned_by_session() {
-        let handle = EditorSession::new(DocumentRuntime::large_mixed_demo(), false).into_handle();
-        let start = Instant::now();
-        assert!(matches!(
-            handle.schedule_payload_window_task(0..64, start).unwrap(),
-            PayloadWindowTaskSchedule::Idle | PayloadWindowTaskSchedule::Dispatch { .. }
-        ));
-        assert!(matches!(
-            handle
-                .schedule_payload_window_task(64..128, start + Duration::from_millis(25))
-                .unwrap(),
-            PayloadWindowTaskSchedule::WakeAfter(_)
-        ));
-    }
 }
+
+#[cfg(test)]
+#[path = "task_port_state_tests.rs"]
+mod state_tests;
+
+#[path = "task_port/payload_prefetch_port.rs"]
+mod payload_prefetch_port;
+
+#[path = "task_port/payload_window_port.rs"]
+mod payload_window_port;

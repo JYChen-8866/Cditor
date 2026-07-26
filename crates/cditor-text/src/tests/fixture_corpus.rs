@@ -154,7 +154,7 @@ fn multilingual_fixture_corpus_shapes_clusters_bidi_and_geometry() {
     for (index, case) in manifest.cases.iter().enumerate() {
         let text = read_fixture_text(&case.text_file);
         let snapshot = TextSnapshot::new(text.as_str());
-        let layout = build_parley_layout(
+        let layout = build_text_layout(
             &layout_input(index as u64 + 1, &text),
             fixture_theme(),
             &fixture_options(),
@@ -203,9 +203,9 @@ fn multilingual_fixture_corpus_shapes_clusters_bidi_and_geometry() {
             );
         }
 
-        let full_selection = layout.selection_rects(ParleySelection {
-            anchor: ParleyTextPosition::downstream(0),
-            focus: ParleyTextPosition {
+        let full_selection = layout.selection_rects(TextLayoutSelection {
+            anchor: TextLayoutPosition::downstream(0),
+            focus: TextLayoutPosition {
                 offset: text.len(),
                 affinity: TextAffinity::Upstream,
             },
@@ -213,7 +213,7 @@ fn multilingual_fixture_corpus_shapes_clusters_bidi_and_geometry() {
         assert!(!full_selection.is_empty(), "{}", case.id);
         for grapheme_index in 0..=snapshot.grapheme_count() {
             let offset = snapshot.grapheme_to_byte(grapheme_index).unwrap();
-            let rect = layout.caret_rect(ParleyTextPosition::downstream(offset), 1.0);
+            let rect = layout.caret_rect(TextLayoutPosition::downstream(offset), 1.0);
             assert!(rect.x.is_finite() && rect.y.is_finite(), "{}", case.id);
             assert!(rect.height > 0.0, "{}", case.id);
         }
@@ -238,7 +238,7 @@ fn variable_font_fixture_registers_exact_data_and_changes_normalized_axis_coords
     assert_eq!(axis.max_value(), fixture.axis.max);
 
     let cache_probe = layout_input(699, "font registration cache probe");
-    let cached = cached_parley_layout(&cache_probe, fixture_theme(), &fixture_options());
+    let cached = cached_text_layout(&cache_probe, fixture_theme(), &fixture_options());
     assert!(!cached.cache_hit);
     assert!(text_layout_cache_stats().entries > 0);
 
@@ -258,7 +258,7 @@ fn variable_font_fixture_registers_exact_data_and_changes_normalized_axis_coords
             options.base_style.font_family = fixture.family.clone();
             options.base_style.font_weight = fixture.axis.default;
             options.base_style.font_variations = sample.settings.clone();
-            let layout = build_parley_layout(&input, fixture_theme(), &options);
+            let layout = build_text_layout(&input, fixture_theme(), &options);
             let plan = layout.paint_plan();
             assert!(!plan.runs.is_empty(), "sample {}", sample.name);
             assert!(
@@ -363,16 +363,16 @@ fn layout_input(block_id: u64, text: &str) -> TextLayoutInput {
     }
 }
 
-fn fixture_options() -> ParleyLayoutOptions {
-    ParleyLayoutOptions {
+fn fixture_options() -> TextLayoutOptions {
+    TextLayoutOptions {
         width: Some(280.0),
         quantize: false,
-        base_style: ParleyTextStyleConfig {
+        base_style: TextStyleConfig {
             font_size: 18.0,
-            line_height: ParleyLineHeight::Absolute(28.0),
-            ..ParleyTextStyleConfig::default()
+            line_height: TextLineHeight::Absolute(28.0),
+            ..TextStyleConfig::default()
         },
-        ..ParleyLayoutOptions::default()
+        ..TextLayoutOptions::default()
     }
 }
 

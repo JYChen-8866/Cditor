@@ -175,11 +175,7 @@ fn hydrate_emergency_payloads(
         .collect();
     crate::project_emergency_payload_result(
         runtime,
-        PayloadWindowLoadResult {
-            request: load_request,
-            records,
-            missing_block_ids,
-        },
+        PayloadWindowLoadResult::prepare(load_request, records, missing_block_ids),
     )
     .map_err(|message| {
         ProtocolError::new(ProtocolErrorCode::ApplyFailed, message).with_document(document_id)

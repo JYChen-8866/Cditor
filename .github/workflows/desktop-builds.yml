@@ -25,6 +25,46 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  linux:
+    name: Linux x64 build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install GPUI Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake mold \
+            libasound2-dev libfontconfig-dev libfreetype-dev \
+            libssl-dev libvulkan-dev libwayland-dev \
+            libx11-xcb-dev libxcb1-dev libxcb-render0-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-cargo-
+
+      - name: Test editor input and runtime on Linux
+        run: cargo test --locked -p cditor-runtime -p cditor-text -p cditor-editor-gpui -p cditor-desktop --lib
+
+      - name: Build release executable
+        run: cargo build --locked --release -p cditor-desktop
+
   windows:
     name: Windows x64 EXE
     runs-on: windows-2025
@@ -55,19 +95,19 @@ jobs:
 
       - name: Test editor input and runtime on Windows
         shell: pwsh
-        run: cargo test --locked -p cditor-runtime -p cditor-text -p cditor-app --lib
+        run: cargo test --locked -p cditor-runtime -p cditor-text -p cditor-editor-gpui -p cditor-desktop --lib
 
       - name: Build release executable
         shell: pwsh
         env:
           RUSTFLAGS: -C target-feature=+crt-static
-        run: cargo build --locked --release -p cditor-app
+        run: cargo build --locked --release -p cditor-desktop
 
       - name: Package executable and checksum
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target/release/cditor-app.exe dist/Cditor.exe
+          Copy-Item target/release/cditor-desktop.exe dist/Cditor.exe
           $hash = (Get-FileHash dist/Cditor.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Cditor.exe" | Set-Content dist/Cditor.exe.sha256 -Encoding ascii
 
@@ -125,7 +165,7 @@ jobs:
         run: ./scripts/dev/check_release_profile.sh
 
       - name: Build release application
-        run: cargo build --locked --release -p cditor-app --target "${{ matrix.target }}"
+        run: cargo build --locked --release -p cditor-desktop --target "${{ matrix.target }}"
 
       - name: Package application bundle and DMG
         run: |
@@ -149,6 +189,7 @@ jobs:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
+      - linux
       - windows
       - macos
     runs-on: ubuntu-latest

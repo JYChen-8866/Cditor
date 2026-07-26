@@ -1,12 +1,10 @@
 use cditor_core::block::BlockDropTarget;
 
 use crate::block::chrome::block_content_left_px;
-use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
 
 const GUTTER_DRAG_AUTO_SCROLL_EDGE_PX: f64 = 40.0;
 const GUTTER_DRAG_AUTO_SCROLL_MAX_STEP_PX: f64 = 24.0;
 pub(crate) const GUTTER_DRAG_AUTO_SCROLL_TICK_MS: u64 = 16;
-const GUTTER_DRAG_GUIDELINE_CONTENT_END_PX: f32 = DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct GutterDragGuidelineGeometry {
@@ -33,8 +31,8 @@ pub(crate) fn gutter_drag_guideline_geometry(
             (anchor.document_bottom - window_start_global_y) as f32,
         )
     };
-    let start_x_px = block_content_left_px(anchor.indent_px);
-    let end_x_px = GUTTER_DRAG_GUIDELINE_CONTENT_END_PX;
+    let start_x_px = anchor.shell_left_px + block_content_left_px(anchor.indent_px);
+    let end_x_px = anchor.track_right_px;
     (end_x_px > start_x_px).then_some(GutterDragGuidelineGeometry {
         y_px,
         start_x_px,
@@ -83,10 +81,14 @@ mod tests {
             document_top: top,
             document_bottom: bottom,
             indent_px: 0.0,
+            shell_left_px: 100.0,
+            track_right_px: 820.0,
+            gutter_left_px: 104.0,
             text_origin_x_in_block_px: 0.0,
             text_origin_y_in_block_px: 0.0,
-            text_width_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX.into(),
+            text_width_px: 600.0,
             supports_children: false,
+            ..ProjectedBlockRect::default()
         }
     }
 
@@ -109,8 +111,8 @@ mod tests {
             ),
             Some(GutterDragGuidelineGeometry {
                 y_px: 0.0,
-                start_x_px: block_content_left_px(0.0),
-                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+                start_x_px: 100.0 + block_content_left_px(0.0),
+                end_x_px: 820.0,
             })
         );
         assert_eq!(
@@ -124,11 +126,11 @@ mod tests {
             ),
             Some(GutterDragGuidelineGeometry {
                 y_px: 40.0,
-                start_x_px: block_content_left_px(BLOCK_INDENT_STEP_PX),
-                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+                start_x_px: 100.0 + block_content_left_px(BLOCK_INDENT_STEP_PX),
+                end_x_px: 820.0,
             })
         );
-        assert!(GUTTER_DRAG_GUIDELINE_CONTENT_END_PX > block_content_left_px(BLOCK_INDENT_STEP_PX));
+        assert!(820.0 > 100.0 + block_content_left_px(BLOCK_INDENT_STEP_PX));
     }
 
     #[test]
@@ -146,8 +148,8 @@ mod tests {
             ),
             Some(GutterDragGuidelineGeometry {
                 y_px: 32.0,
-                start_x_px: block_content_left_px(0.0),
-                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+                start_x_px: 100.0 + block_content_left_px(0.0),
+                end_x_px: 820.0,
             }),
         );
         assert_eq!(
@@ -161,8 +163,8 @@ mod tests {
             ),
             Some(GutterDragGuidelineGeometry {
                 y_px: 64.0,
-                start_x_px: block_content_left_px(0.0),
-                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+                start_x_px: 100.0 + block_content_left_px(0.0),
+                end_x_px: 820.0,
             }),
         );
     }
@@ -185,8 +187,8 @@ mod tests {
             ),
             Some(GutterDragGuidelineGeometry {
                 y_px: 64.0,
-                start_x_px: block_content_left_px(0.0),
-                end_x_px: DEFAULT_DOCUMENT_CONTENT_WIDTH_PX - 8.0,
+                start_x_px: 100.0 + block_content_left_px(0.0),
+                end_x_px: 820.0,
             }),
         );
     }

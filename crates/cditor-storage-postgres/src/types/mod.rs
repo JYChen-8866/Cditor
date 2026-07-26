@@ -30,15 +30,21 @@ mod payload;
 mod rows;
 mod transactions;
 
-pub use attrs::{DbBlockAttrs, DbTextAlign, decode_block_attrs, encode_block_attrs};
-pub use block_kind::{rich_block_kind_from_db, rich_block_kind_to_db};
-pub use ids::{
+#[cfg(test)]
+pub(crate) use attrs::{DbBlockAttrs, DbTextAlign};
+pub(crate) use attrs::{decode_block_attrs, encode_block_attrs};
+pub(crate) use block_kind::{rich_block_kind_from_db, rich_block_kind_to_db};
+pub(crate) use ids::{
     PgBlockId, PgDocumentId, pg_block_id_from_runtime, pg_document_id_from_runtime,
     runtime_block_id_from_pg, runtime_document_id_from_pg,
 };
-pub use payload::{DbBlockPayload, decode_block_payload, encode_block_payload};
-pub use rows::{BlockPayloadRow, BlockRow, DocumentRow};
-pub use transactions::{DbEditTransaction, decode_edit_transaction, encode_edit_transaction};
+pub(crate) use payload::{DbBlockPayload, decode_block_payload, encode_block_payload};
+pub(crate) use rows::DocumentRow;
+#[cfg(test)]
+pub(crate) use rows::{BlockPayloadRow, BlockRow};
+pub(crate) use transactions::{
+    DbEditTransaction, decode_edit_transaction, encode_edit_transaction,
+};
 
 #[cfg(test)]
 mod tests {

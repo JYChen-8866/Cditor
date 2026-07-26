@@ -430,6 +430,12 @@ impl DocumentRuntime {
         block_id: BlockId,
     ) -> Result<bool, String> {
         let kind = self.kind_for_block(block_id);
+        if self.document.visible_index.total_visible_count() == 1
+            && self.document.index.block_ids.first() == Some(&block_id)
+            && matches!(kind, RichBlockKind::Heading { level: 1 })
+        {
+            return Ok(false);
+        }
         if !backspace_at_start_resets_kind_to_paragraph(&kind) {
             return Ok(false);
         }

@@ -105,11 +105,11 @@ const UNKNOWN_RAW_QUERIES: &[(&str, &str)] = &[
 const ASSET_REF_QUERIES: &[(&str, &str)] = &[
     (
         "block_assets",
-        "SELECT quote(document_id)||'|'||quote(block_id)||'|'||quote(asset_id) FROM block_assets ORDER BY document_id, block_id, asset_id",
+        "SELECT quote(document_id)||'|'||quote(block_id)||'|'||quote(asset_id)||'|'||quote(role) FROM block_assets ORDER BY document_id, block_id, asset_id, role",
     ),
     (
         "assets",
-        "SELECT quote(id)||'|'||quote(checksum)||'|'||quote(ref_count) FROM assets ORDER BY id",
+        "SELECT quote(id)||'|'||quote(content_hash)||'|'||(SELECT COUNT(*) FROM block_assets refs WHERE refs.asset_id = assets.id) FROM assets ORDER BY id",
     ),
 ];
 

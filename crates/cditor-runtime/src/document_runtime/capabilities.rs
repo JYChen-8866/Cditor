@@ -40,8 +40,8 @@ impl DocumentRuntime {
         }
         if !cditor_core::schema::builtin_block_registry()
             .descriptor_for_kind(target)
-            .menu
-            .create_from_text
+            .capabilities
+            .plain_text_conversion_target
         {
             return false;
         }

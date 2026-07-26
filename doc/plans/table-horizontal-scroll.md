@@ -12,7 +12,7 @@
 
 ### 文件修改
 
-**`crates/app/src/gui/block/table/render.rs`**
+**`crates/cditor-editor-gpui/src/features/table/render.rs`**
 
 始终把表格包裹在一个「填满可用内容宽度」的横向滚动视口里：
 
@@ -66,9 +66,9 @@ GPUI 的 `scrollbar_width` 默认为 `0`，即 `Overflow::Scroll` **不会自动
 
 为了让滚动条**可见且跟手**，采用「持久化 `ScrollHandle` + 自绘 thumb」方案：
 
-1. **持久化 ScrollHandle**：每个表格 block 在 `CditorV2View.table_scroll_handles:
-   HashMap<BlockId, ScrollHandle>` 里持有一个跨帧存活的滚动句柄。渲染顶层
-   （`app/render.rs`）为当前窗口内的每个 table block 惰性创建句柄，并把只读
+1. **持久化 ScrollHandle**：每个表格 block 在 `CditorV2View.table_scroll_state`
+   聚合状态里持有一个跨帧存活的滚动句柄。渲染顶层
+   （`editor_view/render.rs`）为当前窗口内的每个 table block 惰性创建句柄，并把只读
    快照沿渲染链传入（`DocumentEditorView` → `BlockView` → `block_content`
    → `render_table_block`）。
 
@@ -131,12 +131,12 @@ thumb 使用半透明灰（`0x8c959faa`）配合表面色描边，视觉上与�
 
 ## 相关文件
 
-- `crates/app/src/gui/block/table/render.rs` — 渲染 + 自绘滚动条 + 几何纯函数
-- `crates/app/src/gui/block/table/mod.rs` — 单元测试
-- `crates/app/src/gui/app/cditor_v2_view.rs` — `table_scroll_handles` 字段
-- `crates/app/src/gui/app/lifecycle.rs` — 句柄的创建 / 清理
-- `crates/app/src/gui/app/render.rs` — 顶层预建句柄并传入渲染链
-- `crates/app/src/gui/document/document_surface.rs` — 文档宽度定义
+- `crates/cditor-editor-gpui/src/features/table/render.rs` — 渲染 + 自绘滚动条 + 几何纯函数
+- `crates/cditor-editor-gpui/src/features/table/mod.rs` — 单元测试
+- `crates/cditor-editor-gpui/src/editor_view/state.rs` — `table_scroll_state` 聚合状态
+- `crates/cditor-editor-gpui/src/editor_view/lifecycle.rs` — 句柄的创建 / 清理
+- `crates/cditor-editor-gpui/src/editor_view/render.rs` — 顶层预建句柄并传入渲染链
+- `crates/cditor-editor-gpui/src/document/document_surface.rs` — 文档宽度定义
 
 ## 完成时间
 

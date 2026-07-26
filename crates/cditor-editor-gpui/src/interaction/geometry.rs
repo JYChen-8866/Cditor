@@ -1,17 +1,30 @@
 use crate::block::chrome::BlockChromeStyle;
-use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
-use crate::features::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+use crate::document::{DocumentBlockGeometry, DocumentLayoutMetrics, DocumentTextGeometry};
+use crate::menu_metrics::EditorViewport;
 use crate::theme::GuiTheme;
 use cditor_core::block::BlockDropTarget;
 use cditor_core::ids::BlockId;
+use cditor_core::rich_text::TextAlign;
 use cditor_runtime::{EditorViewProjection, ViewBlockSnapshot};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct FallbackViewportOrigin {
+pub(crate) struct DocumentViewportOrigin {
     pub(crate) x: f64,
     pub(crate) y: f64,
 }
 
+impl DocumentViewportOrigin {
+    pub(crate) fn from_layout(viewport: EditorViewport, document: DocumentLayoutMetrics) -> Self {
+        let page_left = ((viewport.width - document.page_width_px) / 2.0).max(0.0);
+        let content_left = ((document.page_width_px - document.content_width_px) / 2.0).max(0.0);
+        Self {
+            x: f64::from(viewport.window_left + page_left + content_left),
+            y: f64::from(viewport.window_top + document.top_inset_px),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub(crate) struct ProjectedBlockRect {
     pub(crate) block_id: BlockId,
     pub(crate) visible_index: usize,
@@ -19,10 +32,92 @@ pub(crate) struct ProjectedBlockRect {
     pub(crate) document_top: f64,
     pub(crate) document_bottom: f64,
     pub(crate) indent_px: f32,
+    pub(crate) shell_left_px: f32,
+    pub(crate) track_right_px: f32,
+    pub(crate) gutter_left_px: f32,
     pub(crate) text_origin_x_in_block_px: f64,
     pub(crate) text_origin_y_in_block_px: f64,
     pub(crate) text_width_px: f64,
+    /// `None` is reserved for manually constructed test projections. Rendered
+    /// projections always carry the block's actual text alignment.
+    pub(crate) text_align: Option<TextAlign>,
+    /// Code surfaces have a second, block-local vertical scroll transform.
+    pub(crate) has_internal_text_scroll: bool,
     pub(crate) supports_children: bool,
+}
+
+/// The one placement contract between document projection and local text
+/// geometry. Parley snapshots only understand points relative to this origin.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ProjectedTextPlacement {
+    pub(crate) window_origin_x_px: f64,
+    pub(crate) window_origin_y_px: f64,
+    pub(crate) wrap_width_px: f64,
+    pub(crate) text_align: TextAlign,
+}
+
+/// Cell-local geometry captured from the table projection currently presented
+/// by the editor. It deliberately excludes both document and table scroll
+/// transforms; those are resolved at interaction time from their live truth.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ProjectedTableCellRect {
+    pub(crate) block_id: BlockId,
+    pub(crate) row: usize,
+    pub(crate) col: usize,
+    pub(crate) content_version: u64,
+    pub(crate) layout_version: u64,
+    pub(crate) text_origin_x_in_table_px: f64,
+    pub(crate) text_origin_y_in_table_px: f64,
+    pub(crate) text_width_px: f64,
+    pub(crate) text_align: TextAlign,
+    pub(crate) header: bool,
+    pub(crate) projected_horizontal_scroll_offset_px: f64,
+}
+
+impl ProjectedTextPlacement {
+    pub(crate) fn for_block(
+        viewport_origin: DocumentViewportOrigin,
+        block: ProjectedBlockRect,
+        presented_scroll_top: f64,
+        internal_scroll_offset_y_px: f64,
+    ) -> Self {
+        Self {
+            window_origin_x_px: viewport_origin.x + block.text_origin_x_in_block_px,
+            window_origin_y_px: viewport_origin.y + block.document_top - presented_scroll_top
+                + block.text_origin_y_in_block_px
+                + internal_scroll_offset_y_px,
+            wrap_width_px: block.text_width_px,
+            text_align: block.text_align.unwrap_or(TextAlign::Start),
+        }
+    }
+
+    pub(crate) fn local_point(self, window_x_px: f64, window_y_px: f64) -> (f64, f64) {
+        (
+            window_x_px - self.window_origin_x_px,
+            window_y_px - self.window_origin_y_px,
+        )
+    }
+
+    pub(crate) fn for_table_cell(
+        viewport_origin: DocumentViewportOrigin,
+        block: ProjectedBlockRect,
+        cell: ProjectedTableCellRect,
+        presented_scroll_top: f64,
+        internal_scroll_offset_x_px: f64,
+        internal_scroll_offset_y_px: f64,
+    ) -> Self {
+        let block = Self::for_block(viewport_origin, block, presented_scroll_top, 0.0);
+        Self {
+            window_origin_x_px: block.window_origin_x_px
+                + cell.text_origin_x_in_table_px
+                + internal_scroll_offset_x_px,
+            window_origin_y_px: block.window_origin_y_px
+                + cell.text_origin_y_in_table_px
+                + internal_scroll_offset_y_px,
+            wrap_width_px: cell.text_width_px,
+            text_align: cell.text_align,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +229,7 @@ pub(crate) fn drop_target_for_document_y_from_rects(
 
 pub(crate) fn projected_block_rects_from_projection(
     projection: &EditorViewProjection,
+    document_layout: DocumentLayoutMetrics,
 ) -> Vec<ProjectedBlockRect> {
     let mut top = projection.before_window_height;
     projection
@@ -141,9 +237,11 @@ pub(crate) fn projected_block_rects_from_projection(
         .iter()
         .map(|block| {
             let height = block.layout.effective_height();
-            let text_metrics = fallback_text_metrics_for_block(block, GuiTheme::light());
+            let text_geometry =
+                DocumentTextGeometry::for_block(block, GuiTheme::light(), document_layout);
             let horizontal =
                 BlockChromeStyle::from_snapshot(block, GuiTheme::light()).horizontal_geometry();
+            let block_geometry = DocumentBlockGeometry::for_block(block, document_layout);
             let rect = ProjectedBlockRect {
                 block_id: block.block_id,
                 visible_index: block.visible_index,
@@ -151,9 +249,17 @@ pub(crate) fn projected_block_rects_from_projection(
                 document_top: top,
                 document_bottom: top + height,
                 indent_px: horizontal.indent_px,
-                text_origin_x_in_block_px: text_metrics.origin_x_in_block_px,
-                text_origin_y_in_block_px: text_metrics.origin_y_in_block_px,
-                text_width_px: text_metrics.width_px,
+                shell_left_px: block_geometry.shell_left_px,
+                track_right_px: block_geometry.track_right_px(),
+                gutter_left_px: block_geometry.shell_left_px + horizontal.gutter_left_px,
+                text_origin_x_in_block_px: text_geometry.origin_x_px,
+                text_origin_y_in_block_px: text_geometry.origin_y_px,
+                text_width_px: text_geometry.width_px,
+                text_align: Some(block.attrs.text_align),
+                has_internal_text_scroll: matches!(
+                    block.kind,
+                    cditor_core::rich_text::RichBlockKind::Code { .. }
+                ),
                 supports_children: cditor_core::block::supports_list_children(&block.kind),
             };
             top += height;
@@ -172,35 +278,110 @@ pub(crate) struct FallbackTextMetrics {
 pub(crate) fn fallback_text_metrics_for_block(
     block: &ViewBlockSnapshot,
     theme: GuiTheme,
+    document_layout: DocumentLayoutMetrics,
 ) -> FallbackTextMetrics {
-    let chrome = BlockChromeStyle::from_snapshot(block, theme);
-    let horizontal = chrome.horizontal_geometry();
-    let code_x = if matches!(
-        block.kind,
-        cditor_core::rich_text::RichBlockKind::Code { .. }
-    ) {
-        f64::from(V1_CODE_CONTENT_PADDING_X_PX)
-    } else {
-        0.0
-    };
-    let code_y = if matches!(
-        block.kind,
-        cditor_core::rich_text::RichBlockKind::Code { .. }
-    ) {
-        f64::from(V1_CODE_CONTENT_PADDING_TOP_PX)
-    } else {
-        0.0
-    };
-    let origin_x = f64::from(horizontal.text_left_px) + code_x;
-    let origin_y = 4.0 + 1.0 + f64::from(chrome.content_padding_y_px) + code_y;
-    let width = (f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX)
-        - origin_x
-        - f64::from(horizontal.content_right_inset_px)
-        - code_x)
-        .max(1.0);
+    let geometry = DocumentTextGeometry::for_block(block, theme, document_layout);
     FallbackTextMetrics {
-        origin_x_in_block_px: origin_x,
-        origin_y_in_block_px: origin_y,
-        width_px: width,
+        origin_x_in_block_px: geometry.origin_x_px,
+        origin_y_in_block_px: geometry.origin_y_px,
+        width_px: geometry.width_px,
+    }
+}
+
+#[cfg(test)]
+mod viewport_origin_tests {
+    use gpui::{Bounds, point, px, size};
+
+    use super::*;
+
+    #[test]
+    fn document_viewport_origin_includes_host_offset_centering_and_top_inset() {
+        let viewport = EditorViewport::from_measurement(
+            Bounds::new(point(px(240.0), px(80.0)), size(px(1_440.0), px(900.0))),
+            size(px(1_440.0), px(900.0)),
+        );
+
+        assert_eq!(
+            DocumentViewportOrigin::from_layout(viewport, DocumentLayoutMetrics::default()),
+            DocumentViewportOrigin { x: 312.0, y: 112.0 }
+        );
+    }
+
+    #[test]
+    fn narrow_document_viewport_origin_does_not_add_phantom_horizontal_inset() {
+        let viewport = EditorViewport::from_measurement(
+            Bounds::new(point(px(12.0), px(20.0)), size(px(700.0), px(600.0))),
+            size(px(700.0), px(600.0)),
+        );
+
+        assert_eq!(
+            DocumentViewportOrigin::from_layout(
+                viewport,
+                DocumentLayoutMetrics::for_viewport(700.0)
+            ),
+            DocumentViewportOrigin { x: 12.0, y: 52.0 }
+        );
+    }
+
+    #[test]
+    fn projected_text_placement_keeps_large_document_offsets_local_and_applies_inner_scroll() {
+        let placement = ProjectedTextPlacement::for_block(
+            DocumentViewportOrigin { x: 100.0, y: 40.0 },
+            ProjectedBlockRect {
+                document_top: 20_000_128.25,
+                text_origin_x_in_block_px: 32.0,
+                text_origin_y_in_block_px: 12.0,
+                text_width_px: 300.0,
+                text_align: Some(TextAlign::Center),
+                ..ProjectedBlockRect::default()
+            },
+            20_000_000.25,
+            -480.5,
+        );
+
+        assert_eq!(placement.window_origin_x_px, 132.0);
+        assert_eq!(placement.window_origin_y_px, -300.5);
+        assert_eq!(placement.wrap_width_px, 300.0);
+        assert_eq!(placement.text_align, TextAlign::Center);
+        assert_eq!(placement.local_point(197.5, -278.25), (65.5, 22.25));
+    }
+
+    #[test]
+    fn projected_table_cell_placement_composes_document_and_fractional_table_scroll() {
+        let block = ProjectedBlockRect {
+            block_id: 7,
+            document_top: 20_000_128.25,
+            text_origin_x_in_block_px: 32.0,
+            text_origin_y_in_block_px: 12.0,
+            ..ProjectedBlockRect::default()
+        };
+        let cell = ProjectedTableCellRect {
+            block_id: 7,
+            row: 4,
+            col: 5,
+            content_version: 11,
+            layout_version: 13,
+            text_origin_x_in_table_px: 610.0,
+            text_origin_y_in_table_px: 151.0,
+            text_width_px: 180.0,
+            text_align: TextAlign::End,
+            header: false,
+            projected_horizontal_scroll_offset_px: -480.5,
+        };
+
+        let placement = ProjectedTextPlacement::for_table_cell(
+            DocumentViewportOrigin { x: 100.0, y: 40.0 },
+            block,
+            cell,
+            20_000_000.25,
+            -480.5,
+            -144.25,
+        );
+
+        assert_eq!(placement.window_origin_x_px, 261.5);
+        assert_eq!(placement.window_origin_y_px, 186.75);
+        assert_eq!(placement.wrap_width_px, 180.0);
+        assert_eq!(placement.text_align, TextAlign::End);
+        assert_eq!(placement.local_point(281.75, 207.25), (20.25, 20.5));
     }
 }

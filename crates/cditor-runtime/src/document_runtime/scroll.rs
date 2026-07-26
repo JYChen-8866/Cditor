@@ -214,6 +214,20 @@ impl DocumentRuntime {
             .map_err(|error| error.to_string())
     }
 
+    pub fn drag_scrollbar_to_ratio(
+        &mut self,
+        policy: ScrollbarPolicy,
+        ratio: f64,
+    ) -> Result<Option<ScrollbarDragUpdate>, String> {
+        let Some(session) = &self.layout.scrollbar_drag else {
+            return Ok(None);
+        };
+        session
+            .drag_to_ratio(&mut self.layout.scroll, policy, ratio)
+            .map(Some)
+            .map_err(|error| error.to_string())
+    }
+
     pub fn finish_scrollbar_drag(&mut self) -> Result<Option<ScrollbarDragEnd>, String> {
         let Some(session) = self.layout.scrollbar_drag.take() else {
             return Ok(None);

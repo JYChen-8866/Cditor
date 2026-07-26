@@ -6,7 +6,7 @@ use super::*;
 impl DocumentRuntime {
     pub fn empty() -> Self {
         let mut document = RichTextDocument::empty(1);
-        document.push_root_block(RichBlockRecord::paragraph(1, ""));
+        document.push_root_block(RichBlockRecord::heading(1, 1, ""));
         Self::from_rich_text_document(document, 720.0)
     }
 
@@ -253,10 +253,12 @@ impl DocumentRuntime {
                 scroll,
                 table_horizontal_scroll_offsets: HashMap::new(),
                 payload_window_generation: 0,
+                payload_prefetch_residency_probe: None,
                 window_planner: WindowPlanner::new(1, 2, WindowPlannerPolicy::default()),
                 last_planned_scroll_top: 0.0,
                 window_plan_clock_ms: 0,
                 window_memory_pressure: WindowMemoryPressure::Normal,
+                projection_window: ProjectionWindowCommitState::default(),
                 pending_measured_heights: HashMap::new(),
                 dirty: false,
                 scrollbar_drag: None,
@@ -319,5 +321,27 @@ mod whiteboard_layout_tests {
         assert_eq!(record.layout_meta.effective_height(), 480.0);
         assert_eq!(record.layout_meta.measured_height, None);
         assert!(record.layout_meta.dirty);
+    }
+}
+
+#[cfg(test)]
+mod empty_document_tests {
+    use super::*;
+
+    #[test]
+    fn empty_document_starts_with_an_empty_h1_page_title() {
+        let runtime = DocumentRuntime::empty();
+
+        assert_eq!(
+            runtime.block_kind(1),
+            Some(RichBlockKind::Heading { level: 1 })
+        );
+        assert!(
+            runtime
+                .block_payload_record(1)
+                .unwrap()
+                .plain_text()
+                .is_empty()
+        );
     }
 }

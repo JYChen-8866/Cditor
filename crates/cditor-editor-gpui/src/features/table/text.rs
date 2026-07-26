@@ -3,12 +3,15 @@ use std::ops::Range;
 use gpui::{AnyElement, Entity, FocusHandle, FontWeight, IntoElement};
 
 use crate::editor_view::CditorV2View;
+use crate::text::input::RichTextLayoutSpans;
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography, TextLayoutSurfaceId};
 use crate::theme::GuiTheme;
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::{InlineSpan, RichBlockKind, TableCellAlign, TextAlign};
-use cditor_runtime::TableCellPosition;
+#[cfg(test)]
+use cditor_core::rich_text::InlineSpan;
+use cditor_core::rich_text::{RichBlockKind, TableCellAlign, TextAlign};
+use cditor_runtime::{TableCellPosition, TableCellSpansSnapshot};
 
 use super::style::{table_cell_line_height, table_cell_text_size};
 
@@ -17,7 +20,7 @@ pub(super) struct TableCellTextElement {
     content_version: u64,
     layout_version: u64,
     position: TableCellPosition,
-    spans: Vec<InlineSpan>,
+    spans: TableCellSpansSnapshot,
     active: bool,
     caret_offset: Option<usize>,
     caret_affinity: TextAffinity,
@@ -37,7 +40,7 @@ impl TableCellTextElement {
         content_version: u64,
         layout_version: u64,
         position: TableCellPosition,
-        spans: Vec<InlineSpan>,
+        spans: TableCellSpansSnapshot,
         active: bool,
         caret_offset: Option<usize>,
         caret_affinity: TextAffinity,
@@ -86,12 +89,7 @@ impl IntoElement for TableCellTextElement {
             .with_caret_affinity(self.caret_affinity)
             .with_selection_range(self.selection_range)
             .with_marked_range(self.marked_range)
-            .with_typography(RichTextTypography {
-                font_size_px: Some(f32::from(table_cell_text_size())),
-                line_height_px: Some(f32::from(table_cell_line_height())),
-                font_weight: Some(table_cell_font_weight(self.header)),
-            })
-            .with_placeholder(self.active.then_some("请输入..."))
+            .with_typography(table_cell_typography(self.header))
             .with_table_cell_input_handler(self.view, self.focus, self.active, self.position)
             .render()
     }
@@ -102,7 +100,7 @@ fn table_cell_layout_input(
     content_version: u64,
     layout_version: u64,
     position: TableCellPosition,
-    spans: Vec<InlineSpan>,
+    spans: impl Into<RichTextLayoutSpans>,
     align: TableCellAlign,
 ) -> RichTextLayoutInput {
     RichTextLayoutInput {
@@ -112,7 +110,7 @@ fn table_cell_layout_input(
         layout_version,
         kind: RichBlockKind::Paragraph,
         text_align: core_text_align(align),
-        spans,
+        spans: spans.into(),
         width_px: 0.0,
         theme_version: 1,
         font_version: 1,
@@ -123,11 +121,19 @@ fn table_cell_surface_id(block_id: BlockId, position: TableCellPosition) -> Text
     crate::surfaces::table_cell::layout_surface_id(block_id, position)
 }
 
-fn core_text_align(align: TableCellAlign) -> TextAlign {
+pub(crate) fn core_text_align(align: TableCellAlign) -> TextAlign {
     match align {
         TableCellAlign::Left => TextAlign::Start,
         TableCellAlign::Center => TextAlign::Center,
         TableCellAlign::Right => TextAlign::End,
+    }
+}
+
+pub(crate) fn table_cell_typography(header: bool) -> RichTextTypography {
+    RichTextTypography {
+        font_size_px: Some(f32::from(table_cell_text_size())),
+        line_height_px: Some(f32::from(table_cell_line_height())),
+        font_weight: Some(table_cell_font_weight(header)),
     }
 }
 
@@ -161,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn table_cell_alignment_maps_to_parley_input_alignment() {
+    fn table_cell_alignment_maps_to_text_layout_input_alignment() {
         assert_eq!(core_text_align(TableCellAlign::Left), TextAlign::Start);
         assert_eq!(core_text_align(TableCellAlign::Center), TextAlign::Center);
         assert_eq!(core_text_align(TableCellAlign::Right), TextAlign::End);

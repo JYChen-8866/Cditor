@@ -11,6 +11,6 @@ fn input_trace_enabled() -> bool {
 
 pub(crate) fn trace_input(event: &str, details: impl std::fmt::Display) {
     if input_trace_enabled() {
-        eprintln!("[cditor][input][gui][{event}] {details}");
+        crate::diagnostics::stderr::write(format_args!("[cditor][input][gui][{event}] {details}"));
     }
 }

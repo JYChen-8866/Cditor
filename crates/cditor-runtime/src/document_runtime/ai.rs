@@ -35,6 +35,7 @@ pub enum AiSessionStatus {
 pub struct AiRequestDispatch {
     pub request: AiProviderRequest,
     pub cancellation: AiCancellationToken,
+    pub redacted_fields: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,6 +198,7 @@ impl DocumentRuntime {
         Ok(AiRequestDispatch {
             request,
             cancellation,
+            redacted_fields: 0,
         })
     }
 
@@ -265,10 +267,14 @@ impl DocumentRuntime {
             Some(RuntimeAiTarget::TextSelection(_)) => AiApplyMode::Replace,
             None => return Ok(false),
         };
-        self.apply_ai_preview(mode)
+        self.apply_ai_preview(mode, None)
     }
 
-    pub(crate) fn apply_ai_preview(&mut self, mode: AiApplyMode) -> Result<bool, String> {
+    pub fn apply_ai_preview(
+        &mut self,
+        mode: AiApplyMode,
+        imported_markdown: Option<ImportedBlockDocument>,
+    ) -> Result<bool, String> {
         let Some(session) = self.ai_session.as_ref() else {
             return Ok(false);
         };
@@ -299,10 +305,12 @@ impl DocumentRuntime {
             RuntimeAiTarget::InlineCaret(position) => {
                 self.focus_block_at_offset(position.block_id, position.offset)?;
                 if session.preview_kind == AiPreviewKind::AssistantPanel {
-                    if looks_like_markdown_paste(&session.preview)
-                        && self.insert_ai_markdown_content(&session.preview)?
-                    {
-                        true
+                    if let Some(document) = imported_markdown {
+                        self.insert_imported_markdown_content_transaction(
+                            document,
+                            EditTransactionKind::AiApply,
+                            cditor_core::edit::ChangeOrigin::Ai,
+                        )?
                     } else {
                         self.replace_text_from_ai(
                             Some(position.offset..position.offset),
@@ -323,10 +331,12 @@ impl DocumentRuntime {
                 match mode {
                     AiApplyMode::InsertAfter => {
                         self.focus_block_at_offset(normalized.end.block_id, normalized.end.offset)?;
-                        if looks_like_markdown_paste(&session.preview)
-                            && self.insert_ai_markdown_content(&session.preview)?
-                        {
-                            true
+                        if let Some(document) = imported_markdown {
+                            self.insert_imported_markdown_content_transaction(
+                                document,
+                                EditTransactionKind::AiApply,
+                                cditor_core::edit::ChangeOrigin::Ai,
+                            )?
                         } else {
                             self.replace_text_from_ai(
                                 Some(normalized.end.offset..normalized.end.offset),
@@ -343,10 +353,12 @@ impl DocumentRuntime {
                             normalized.end.block_id,
                             normalized.end.offset,
                         )?;
-                        if looks_like_markdown_paste(&session.preview)
-                            && self.insert_ai_markdown_content(&session.preview)?
-                        {
-                            true
+                        if let Some(document) = imported_markdown {
+                            self.insert_imported_markdown_content_transaction(
+                                document,
+                                EditTransactionKind::AiApply,
+                                cditor_core::edit::ChangeOrigin::Ai,
+                            )?
                         } else {
                             self.focus_block_at_offset(
                                 normalized.start.block_id,
@@ -360,10 +372,12 @@ impl DocumentRuntime {
                     }
                     AiApplyMode::Replace => {
                         self.selection.document_selection = Some(selection);
-                        if looks_like_markdown_paste(&session.preview)
-                            && self.insert_ai_markdown_content(&session.preview)?
-                        {
-                            true
+                        if let Some(document) = imported_markdown {
+                            self.insert_imported_markdown_content_transaction(
+                                document,
+                                EditTransactionKind::AiApply,
+                                cditor_core::edit::ChangeOrigin::Ai,
+                            )?
                         } else {
                             self.apply_cross_block_ai_replacement(selection, &session.preview)?
                         }

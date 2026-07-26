@@ -131,6 +131,14 @@ impl DocumentRuntime {
         focus_offset: usize,
     ) -> Result<bool, String> {
         self.break_typing_coalescing();
+
+        // Visible payload fast commit intentionally leaves heavyweight editing
+        // mirrors cold. A text selection is the interaction boundary that must
+        // activate both endpoints before their offsets can be validated.
+        self.hydrate_payload_runtime_state(anchor_block_id);
+        if focus_block_id != anchor_block_id {
+            self.hydrate_payload_runtime_state(focus_block_id);
+        }
         let anchor_offset = self.clamp_text_offset(anchor_block_id, anchor_offset)?;
         let focus_offset = self.clamp_text_offset(focus_block_id, focus_offset)?;
         trace_input(
@@ -141,7 +149,7 @@ impl DocumentRuntime {
             ),
         );
         if self.focused_block_id() != Some(focus_block_id) {
-            self.focus_block(focus_block_id);
+            self.try_focus_block(focus_block_id)?;
         }
         if let Some(editing) = self.editing.session.as_mut() {
             editing.set_input_target(InputTarget::BlockText {

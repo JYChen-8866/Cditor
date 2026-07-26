@@ -163,6 +163,21 @@ impl CditorV2View {
         }
         changed
     }
+
+    pub(crate) fn set_code_language_scroll_start_from_gui(
+        &mut self,
+        scroll_start: usize,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(edit) = self.overlay.code_language_edit.as_mut() else {
+            return false;
+        };
+        let changed = edit.set_scroll_start(scroll_start);
+        if changed {
+            cx.notify();
+        }
+        changed
+    }
 }
 
 fn code_language_popup_placement(

@@ -1,11 +1,13 @@
 use cditor_core::ids::{BlockId, DocumentId};
+pub use cditor_core::import_plan::ImportedBlockDocument as ParsedMarkdownDocument;
 pub use cditor_core::rich_text::{
     BlockPayload, CalloutVariant, InlineMark, InlineSpan, RichBlockKind, RichBlockRecord,
     RichTextDocument, TableCellPayload, TablePayload, TableRowPayload,
 };
 
 mod block;
-mod export;
+mod commonmark;
+pub(crate) mod export;
 mod markdown_stats;
 
 pub use block::parse_callout_marker;
@@ -20,21 +22,6 @@ use block::{
 use export::block_to_plain_markdown;
 use inline::{parse_inline_markdown, parse_inline_markdown_extended};
 use table::{collect_table_candidate_region, is_table_candidate_line, parse_table_region};
-
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct ParsedMarkdownDocument {
-    pub root_blocks: Vec<BlockId>,
-    pub blocks: Vec<RichBlockRecord>,
-}
-
-impl ParsedMarkdownDocument {
-    pub fn push_root_block(&mut self, block: RichBlockRecord) -> BlockId {
-        let id = block.id;
-        self.root_blocks.push(id);
-        self.blocks.push(block);
-        id
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MarkdownImportOptions {
@@ -59,7 +46,7 @@ pub fn parse_markdown_document(
     let markdown = unwrap_outer_markdown_fence(markdown);
     MARKDOWN_PARSE_STATS.record_full_parse(markdown.len());
     let mut parser = MarkdownParser::new(options);
-    parser.parse_document(markdown)
+    commonmark::parse_document(&mut parser, markdown)
 }
 
 #[must_use]

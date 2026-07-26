@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DbBlockAttrs {
+pub(crate) struct DbBlockAttrs {
     pub color: Option<String>,
     pub background_color: Option<String>,
     pub text_align: DbTextAlign,
@@ -13,7 +13,7 @@ pub struct DbBlockAttrs {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum DbTextAlign {
+pub(crate) enum DbTextAlign {
     Start,
     Center,
     End,
@@ -67,10 +67,10 @@ impl From<DbTextAlign> for TextAlign {
     }
 }
 
-pub fn encode_block_attrs(attrs: &BlockAttrs) -> serde_json::Result<serde_json::Value> {
+pub(crate) fn encode_block_attrs(attrs: &BlockAttrs) -> serde_json::Result<serde_json::Value> {
     serde_json::to_value(DbBlockAttrs::from(attrs))
 }
 
-pub fn decode_block_attrs(value: serde_json::Value) -> serde_json::Result<BlockAttrs> {
+pub(crate) fn decode_block_attrs(value: serde_json::Value) -> serde_json::Result<BlockAttrs> {
     serde_json::from_value::<DbBlockAttrs>(value).map(BlockAttrs::from)
 }

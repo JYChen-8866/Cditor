@@ -20,6 +20,7 @@ mod tests {
         DOCUMENT_INDEX_VISIBLE_VERSION, DocumentStorage, LoadDocumentRequest,
         StoragePageLayoutSnapshot, StorageSaveBatch,
     };
+    use cditor_test_support::{StorageContractConfig, run_document_storage_contract};
 
     struct IntegrationStores {
         document: PostgresDocumentStore,
@@ -46,6 +47,52 @@ mod tests {
             transaction: PostgresTransactionStore::new(pool.clone()),
             fts: PostgresFtsStore::new(pool),
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires docker compose postgres_test and CDITOR_TEST_DATABASE_URL"]
+    async fn postgres_passes_shared_document_storage_contract() {
+        let stores = stores().await;
+        let storage = PostgresDocumentStorage::from_pool(stores.document.pool().clone());
+        run_document_storage_contract(
+            &storage,
+            StorageContractConfig {
+                backend: cditor_storage::StorageBackendKind::Postgres,
+                document_id: unique_runtime_document_id(110_001),
+                isolated_document_id: unique_runtime_document_id(110_002),
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires docker compose postgres_test and CDITOR_TEST_DATABASE_URL"]
+    async fn postgres_new_document_starts_with_an_empty_h1_page_title() {
+        let stores = stores().await;
+        let storage = PostgresDocumentStorage::from_pool(stores.document.pool().clone());
+        let document_id = unique_runtime_document_id(110_003);
+        let loaded = storage
+            .load_document(LoadDocumentRequest {
+                document_id,
+                workspace_id: 1,
+                initial_payload_window_blocks: 1,
+                visible_index_version: DOCUMENT_INDEX_VISIBLE_VERSION,
+                layout_key: runtime_layout_key(),
+                page_policy_version: PAGE_POLICY_VERSION,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(loaded.records.len(), 1);
+        assert_eq!(
+            loaded.records[0].kind_tag,
+            kind_tag_for_rich_block_kind(&RichBlockKind::Heading { level: 1 })
+        );
+        assert_eq!(
+            loaded.initial_payloads[0].kind,
+            RichBlockKind::Heading { level: 1 }
+        );
+        assert!(loaded.initial_payloads[0].plain_text().is_empty());
     }
 
     fn unique_runtime_document_id(seed: u64) -> u64 {

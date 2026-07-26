@@ -2,7 +2,14 @@ use super::*;
 
 impl TablePayload {
     pub fn insert_row(&mut self, index: usize) -> Result<bool, String> {
+        self.insert_rows(index, 1)
+    }
+
+    pub fn insert_rows(&mut self, index: usize, count: usize) -> Result<bool, String> {
         self.ensure_unmerged_table_for_structure_edit()?;
+        if count == 0 {
+            return Err("table row insert count must be greater than zero".to_owned());
+        }
         let col_count = self.column_count();
         let row_count = self.row_count();
         if index > row_count {
@@ -11,11 +18,14 @@ impl TablePayload {
                 row_count
             ));
         }
-        let mut row = TableRowPayload::default();
-        row.cells.resize_with(col_count, TableCellPayload::default);
-        self.rows.insert(index, row);
+        let rows = (0..count).map(|_| {
+            let mut row = TableRowPayload::default();
+            row.cells.resize_with(col_count, TableCellPayload::default);
+            row
+        });
+        self.rows.splice(index..index, rows);
         if index < self.header_rows {
-            self.header_rows = self.header_rows.saturating_add(1);
+            self.header_rows = self.header_rows.saturating_add(count);
         }
         self.normalize();
         Ok(true)
@@ -83,7 +93,14 @@ impl TablePayload {
     }
 
     pub fn insert_column(&mut self, index: usize) -> Result<bool, String> {
+        self.insert_columns(index, 1)
+    }
+
+    pub fn insert_columns(&mut self, index: usize, count: usize) -> Result<bool, String> {
         self.ensure_unmerged_table_for_structure_edit()?;
+        if count == 0 {
+            return Err("table column insert count must be greater than zero".to_owned());
+        }
         self.normalize();
         let col_count = self.column_count();
         if index > col_count {
@@ -92,12 +109,18 @@ impl TablePayload {
                 col_count
             ));
         }
-        self.columns.insert(index, TableColumnPayload::default());
+        self.columns.splice(
+            index..index,
+            std::iter::repeat_with(TableColumnPayload::default).take(count),
+        );
         for row in &mut self.rows {
-            row.cells.insert(index, TableCellPayload::default());
+            row.cells.splice(
+                index..index,
+                std::iter::repeat_with(TableCellPayload::default).take(count),
+            );
         }
         if index < self.header_cols {
-            self.header_cols = self.header_cols.saturating_add(1);
+            self.header_cols = self.header_cols.saturating_add(count);
         }
         self.normalize();
         Ok(true)

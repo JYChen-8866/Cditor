@@ -13,11 +13,11 @@ use cditor_core::edit::{ChangeOrigin, EditTransaction, encode_transaction};
 use cditor_core::schema::{SchemaVersion, VersionedEnvelope};
 use cditor_storage::backend::StorageBackendKind;
 use cditor_storage::{EmergencyLogAppendOutcome, EmergencyLogEntry, StorageError, StorageResult};
-use sqlx::Row;
+use sqlx::{Row, Sqlite, Transaction};
 
 use crate::ids::document_id_to_sqlite;
 use crate::storage::SqliteDocumentStorage;
-use crate::util::unix_millis;
+use crate::util::{checked_i64, unix_millis};
 use cditor_core::ids::DocumentId;
 
 /// journal 读回条目。
@@ -72,6 +72,21 @@ pub struct OutboxEntry {
     pub state: OutboxState,
     pub attempt_count: i64,
     pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboxEntry {
+    pub inbox_id: i64,
+    pub batch_id: String,
+    pub server_cursor: String,
+    pub envelope_json: String,
+    pub received_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncAckCursor {
+    pub pushed_outbox_id: Option<i64>,
+    pub pulled_cursor: Option<String>,
 }
 
 /// 启动时的恢复判定。
@@ -396,6 +411,14 @@ impl SqliteDocumentStorage {
     ) -> StorageResult<()> {
         let _writer = self.writer_gate().acquire().await?;
         let attempted = i64::from(matches!(state, OutboxState::Inflight));
+        let now = unix_millis()?;
+        let mut transaction = self.pool.begin().await.map_err(map_sqlx)?;
+        let document_uuid: Option<uuid::Uuid> =
+            sqlx::query_scalar("SELECT document_id FROM sync_outbox WHERE id = ?")
+                .bind(outbox_id)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(map_sqlx)?;
         sqlx::query(
             "UPDATE sync_outbox SET state = ?, attempt_count = attempt_count + ?, \
              last_error = ?, updated_at = ? WHERE id = ?",
@@ -403,12 +426,150 @@ impl SqliteDocumentStorage {
         .bind(state.as_str())
         .bind(attempted)
         .bind(error)
-        .bind(unix_millis()?)
+        .bind(now)
         .bind(outbox_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(map_sqlx)?;
+        if state == OutboxState::Acked
+            && let Some(document_uuid) = document_uuid
+        {
+            sqlx::query(
+                "INSERT INTO sync_ack_cursors (document_id, pushed_outbox_id, updated_at) \
+                 VALUES (?, ?, ?) ON CONFLICT(document_id) DO UPDATE SET \
+                 pushed_outbox_id = max(COALESCE(pushed_outbox_id, 0), excluded.pushed_outbox_id), \
+                 updated_at = excluded.updated_at",
+            )
+            .bind(document_uuid)
+            .bind(outbox_id)
+            .bind(now)
+            .execute(&mut *transaction)
+            .await
+            .map_err(map_sqlx)?;
+        }
+        transaction.commit().await.map_err(map_sqlx)?;
+        Ok(())
+    }
+
+    pub async fn enqueue_inbox(
+        &self,
+        document_id: DocumentId,
+        batch_id: &str,
+        server_cursor: &str,
+        envelope_json: &str,
+    ) -> StorageResult<bool> {
+        if batch_id.is_empty() || server_cursor.is_empty() || envelope_json.is_empty() {
+            return Err(StorageError::CorruptData(
+                "sync inbox identity, cursor, and envelope must be non-empty".to_owned(),
+            ));
+        }
+        let _writer = self.writer_gate().acquire().await?;
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO sync_inbox \
+             (document_id, batch_id, server_cursor, envelope_json, received_at) \
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(document_id_to_sqlite(document_id))
+        .bind(batch_id)
+        .bind(server_cursor)
+        .bind(envelope_json)
+        .bind(unix_millis()?)
         .execute(&self.pool)
         .await
         .map_err(map_sqlx)?;
-        Ok(())
+        Ok(result.rows_affected() == 1)
+    }
+
+    pub async fn pending_inbox(
+        &self,
+        document_id: DocumentId,
+        limit: usize,
+    ) -> StorageResult<Vec<InboxEntry>> {
+        let limit = i64::try_from(limit.clamp(1, 1_024)).map_err(|_| {
+            StorageError::CorruptData("inbox limit exceeds SQLite range".to_owned())
+        })?;
+        let rows = sqlx::query(
+            "SELECT id, batch_id, server_cursor, envelope_json, received_at \
+             FROM sync_inbox WHERE document_id = ? AND applied_at IS NULL \
+             ORDER BY id ASC LIMIT ?",
+        )
+        .bind(document_id_to_sqlite(document_id))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| InboxEntry {
+                inbox_id: row.get(0),
+                batch_id: row.get(1),
+                server_cursor: row.get(2),
+                envelope_json: row.get(3),
+                received_at: row.get(4),
+            })
+            .collect())
+    }
+
+    pub async fn mark_inbox_applied(
+        &self,
+        inbox_id: i64,
+        pulled_cursor: &str,
+    ) -> StorageResult<bool> {
+        if pulled_cursor.is_empty() {
+            return Err(StorageError::CorruptData(
+                "pulled cursor must be non-empty".to_owned(),
+            ));
+        }
+        let _writer = self.writer_gate().acquire().await?;
+        let now = unix_millis()?;
+        let mut transaction = self.pool.begin().await.map_err(map_sqlx)?;
+        let document_uuid: Option<uuid::Uuid> = sqlx::query_scalar(
+            "SELECT document_id FROM sync_inbox WHERE id = ? AND applied_at IS NULL",
+        )
+        .bind(inbox_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(map_sqlx)?;
+        let Some(document_uuid) = document_uuid else {
+            transaction.rollback().await.map_err(map_sqlx)?;
+            return Ok(false);
+        };
+        sqlx::query("UPDATE sync_inbox SET applied_at = ? WHERE id = ?")
+            .bind(now)
+            .bind(inbox_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(map_sqlx)?;
+        sqlx::query(
+            "INSERT INTO sync_ack_cursors (document_id, pulled_cursor, updated_at) \
+             VALUES (?, ?, ?) ON CONFLICT(document_id) DO UPDATE SET \
+             pulled_cursor = excluded.pulled_cursor, updated_at = excluded.updated_at",
+        )
+        .bind(document_uuid)
+        .bind(pulled_cursor)
+        .bind(now)
+        .execute(&mut *transaction)
+        .await
+        .map_err(map_sqlx)?;
+        transaction.commit().await.map_err(map_sqlx)?;
+        Ok(true)
+    }
+
+    pub async fn sync_ack_cursor(
+        &self,
+        document_id: DocumentId,
+    ) -> StorageResult<Option<SyncAckCursor>> {
+        Ok(sqlx::query(
+            "SELECT pushed_outbox_id, pulled_cursor FROM sync_ack_cursors WHERE document_id = ?",
+        )
+        .bind(document_id_to_sqlite(document_id))
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_sqlx)?
+        .map(|row| SyncAckCursor {
+            pushed_outbox_id: row.get(0),
+            pulled_cursor: row.get(1),
+        }))
     }
 
     /// 启动：读取上次会话的 crash marker 并将本次标记为 dirty。
@@ -447,6 +608,70 @@ impl SqliteDocumentStorage {
             .map_err(map_sqlx)?;
         Ok(())
     }
+}
+
+pub(crate) async fn materialize_transaction_in_journal(
+    database_transaction: &mut Transaction<'_, Sqlite>,
+    document_id: DocumentId,
+    edit: &EditTransaction,
+    now: i64,
+) -> StorageResult<i64> {
+    let document_uuid = document_id_to_sqlite(document_id);
+    let transaction_id = checked_i64(edit.id)?;
+    let existing: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM operation_journal \
+         WHERE document_id = ? AND transaction_id = ? \
+         ORDER BY id DESC LIMIT 1",
+    )
+    .bind(document_uuid)
+    .bind(transaction_id)
+    .fetch_optional(&mut **database_transaction)
+    .await
+    .map_err(map_sqlx)?;
+    let journal_id = if let Some(existing) = existing {
+        existing
+    } else {
+        let envelope = encode_transaction(edit).map_err(|error| {
+            StorageError::CorruptData(format!(
+                "cannot encode materialized transaction {}: {error}",
+                edit.id
+            ))
+        })?;
+        let envelope_json = serde_json::to_string(&envelope)
+            .map_err(|error| StorageError::CorruptData(error.to_string()))?;
+        sqlx::query(
+            "INSERT INTO operation_journal \
+             (document_id, transaction_id, schema_major, schema_minor, envelope_json, origin, created_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(document_uuid)
+        .bind(transaction_id)
+        .bind(i64::from(envelope.version.major))
+        .bind(i64::from(envelope.version.minor))
+        .bind(envelope_json)
+        .bind(edit.origin.as_str())
+        .bind(now)
+        .execute(&mut **database_transaction)
+        .await
+        .map_err(map_sqlx)?
+        .last_insert_rowid()
+    };
+
+    if !matches!(edit.origin, ChangeOrigin::Remote | ChangeOrigin::Migration) {
+        sqlx::query(
+            "INSERT INTO sync_outbox (journal_id, document_id, updated_at) \
+             SELECT ?, ?, ? WHERE NOT EXISTS \
+             (SELECT 1 FROM sync_outbox WHERE journal_id = ?)",
+        )
+        .bind(journal_id)
+        .bind(document_uuid)
+        .bind(now)
+        .bind(journal_id)
+        .execute(&mut **database_transaction)
+        .await
+        .map_err(map_sqlx)?;
+    }
+    Ok(journal_id)
 }
 
 fn map_sqlx(error: sqlx::Error) -> StorageError {

@@ -97,16 +97,14 @@ fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
     assert_eq!(table.cell_plain_text(0, 2).as_deref(), Some(""));
     assert_eq!(table.cell_plain_text(2, 2).as_deref(), Some(""));
     let projection = runtime.projection_for_window();
-    // With Auto columns, the table width should equal available width
-    // The exact width depends on layout calculation, but should be less than the old fixed 812
     let table_view = projection.blocks[0].table_view.as_ref().unwrap();
     assert_eq!(table_view.row_count, 3);
     assert_eq!(table_view.col_count, 3);
-    assert!(
-        table_view.width_px < 812.0,
-        "Auto-width table should not exceed old fixed width, got: {}",
-        table_view.width_px
+    assert_eq!(
+        table_view.width_px,
+        cditor_core::layout::BODY_BLOCK_CONTENT_WIDTH_PX as f32
     );
+    assert_eq!(table_view.column_widths_px, vec![240.0, 240.0, 240.0]);
     let document_index = runtime.document.index.index_of(1).unwrap();
     assert_eq!(
         runtime.document.index.layout_meta[document_index].measured_height,

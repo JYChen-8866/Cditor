@@ -1,6 +1,6 @@
 use super::*;
 use cditor_core::rich_text::RichBlockKind;
-use gpui::{Bounds, point, px, size};
+use gpui::{Bounds, point, px};
 
 #[test]
 fn cross_block_text_selection_keeps_unsupported_actions_visible_but_disabled() {
@@ -21,36 +21,27 @@ fn cross_block_text_selection_keeps_unsupported_actions_visible_but_disabled() {
         720.0,
     );
     crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 2, 2);
-    let mut layouts = HashMap::new();
     let viewport = EditorViewport {
         window_left: 240.0,
         window_top: 80.0,
         width: 900.0,
         height: 700.0,
     };
-    for (block_id, text, top) in [(1, "first", 100.0), (2, "second", 124.0)] {
-        layouts.insert(
-            block_id,
-            crate::text::test_platform_layout(
-                block_id,
-                runtime.block_content_version(block_id).unwrap(),
-                text,
-                Bounds::new(
-                    point(
-                        px(viewport.window_left + 120.0),
-                        px(viewport.window_top + top),
-                    ),
-                    size(px(500.0), px(24.0)),
-                ),
-                None,
-            ),
-        );
-    }
+    let selection_bounds = Bounds::from_corners(
+        point(
+            px(viewport.window_left + 120.0),
+            px(viewport.window_top + 100.0),
+        ),
+        point(
+            px(viewport.window_left + 620.0),
+            px(viewport.window_top + 148.0),
+        ),
+    );
 
     let context = formatting_toolbar_context(Some(&runtime), None).unwrap();
     let state = formatting_toolbar_state(
         Some(&context),
-        &layouts,
+        Some(selection_bounds),
         false,
         false,
         viewport,

@@ -6,42 +6,46 @@
 [成熟 Notion 类编辑器总体设计](cditor-mature-notion-editor-master-design.md)为准；10 万
 Block 的性能约束以[大文档富文本架构](../large-document-rich-text-architecture.md)为准。
 
-## 当前迁移态
+## 当前结构
 
 ```text
 crates/
+  cditor-editor-protocol/      Command、query、projection 和 event 协议
   cditor-core/                 纯文档模型和领域不变量
   cditor-theme/                theme token、resolver、typography、metrics
   cditor-text/                 Parley 私有实现和框架无关文本 API
   cditor-viewport/             虚拟滚动、窗口、anchor、hit-test
-  cditor-runtime/              当前活文档真相；正在收窄公共边界
+  cditor-runtime/              当前活文档真相和 command/query 执行
+  cditor-session/              Runtime 串行所有权和应用服务编排
   cditor-storage/              存储 port 和通用 DTO
   cditor-storage-sqlite/       SQLite adapter
   cditor-storage-postgres/     PostgreSQL adapter
-  cditor-import-export/        外部格式边界
-  cditor-ai/                   AI contract；OpenAI 实现待迁出
-  cditor-api/                  过渡期 SDK/API；待拆为 protocol、session、sdk
-  cditor-editor/               过渡期 GPUI adapter；待改名并瘦身
-  cditor-app/                  过渡期 desktop composition root
+  cditor-import-export/        外部格式解析、ImportPlan、安全限制
+  cditor-ai/                   AI provider contract 和 mock
+  cditor-ai-openai/            OpenAI-compatible HTTP adapter
+  cditor-sdk/                  无框架 SDK options/command/event/provider
+  cditor-editor-gpui/          GPUI view、input、overlay 和 adapter
   cditor-test-support/         fixture、acceptance 和 benchmark 支撑
+apps/
+  cditor-desktop/              desktop composition root
 components/
+  cditor-component/            共享 GPUI presentation component
   cditor-whiteboard/           独立白板产品组件
 ```
 
-当前不是目标态。尤其禁止把 `cditor-api`、`cditor-editor` 和 `cditor-app` 的现有职责
-当成长期边界。目标新增 `cditor-editor-protocol`、`cditor-session`、
-`cditor-ai-openai`，并最终迁移为 `cditor-sdk`、`cditor-editor-gpui` 和
-`apps/cditor-desktop`。
+目录叶子、Cargo package 和 Rust crate 名称保持一一对应；Desktop 位于 `apps/`，可复用
+组件位于 `components/`，其余稳定层和 adapter 位于 `crates/`。
 
 ## 当前依赖原则
 
 - `cditor-core` 不依赖 GPUI、Parley、SQLx、网络、SDK 或本地化呈现。
 - `cditor-text` 是 Parley 的唯一直接消费者，不依赖 GPUI。
-- `cditor-viewport` 只保存框架无关算法；Command 协议必须迁入
-  `cditor-editor-protocol`。
+- `cditor-editor-protocol` 是 Command、query、projection 和 event 的稳定协议边界。
+- `cditor-viewport` 只保存框架无关的窗口、滚动、anchor 和 hit-test 算法。
 - `cditor-runtime` 不依赖 GPUI、具体 Storage adapter、SQLx 或 OpenAI。
 - `cditor-storage` 只定义 port/DTO/error，不依赖 Runtime、Editor 或具体 adapter。
-- GPUI View 不是文档真相；迁移完成后只消费 Session projection/event 并发出 Command。
+- `cditor-session` 串行拥有 Runtime，并负责任务、持久化、import 和 AI 应用服务。
+- GPUI View 不是文档真相，只消费 Session projection/event 并发出 Command。
 - Desktop 是最终 composition root，具体数据库、AI 和平台实现只在此装配。
 - `cditor-whiteboard` 独立演进；编辑器只通过版本化 payload/projection 适配它。
 
@@ -49,7 +53,7 @@ components/
 
 - Cargo package 使用 `cditor-<domain>` 或 `cditor-<domain>-<adapter>`；目录叶子与
   package 名相同。
-- 非白板 Rust 文件不超过 700 行；白板豁免只持续到 R8-006。
+- 所有 Rust 文件不超过 700 行；白板不再享有永久豁免。
 - 同一功能的状态、行为、投影和测试放在同一模块树，不以超大 façade 文件聚合实现。
 - 历史计划进入 `doc/archive/`；当前文档不得把历史路径描述为现状。
 - 一次性脚本进入 `scripts/archive/`；持续入口按 `dev/`、`database/`、`packaging/` 分类。
@@ -65,7 +69,11 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 git diff --check
 ./scripts/dev/check_structure.sh
+./scripts/dev/check_dependency_graph.sh
 ```
+
+机器生成的 workspace 依赖快照位于 `dependency-graph-v2.txt`。未完成且独立演进的
+`cditor-whiteboard-drafft` 暂不进入当前编辑器架构验收。
 
 涉及 Runtime、Viewport、Text 或 Session 热路径时，还必须运行对应 benchmark，并与
 `doc/acceptance/2026-07-22-refactor-architecture-baseline.md` 比较 p95/max、resident

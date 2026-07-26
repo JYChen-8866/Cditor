@@ -12,9 +12,9 @@ use std::time::{Duration, Instant};
 use cditor_core::fixtures::code::large_code_source;
 use cditor_core::rich_text::{InlineSpan, RichBlockKind, TextAlign};
 use cditor_text::{
-    ParleyLayoutOptions, ParleyLayoutSnapshot, ParleyLineHeight, ParleyTextStyleConfig,
-    SegmentedLayoutConfig, SegmentedTextLayout, TextLayoutInput, TextLayoutSurfaceId, TextTheme,
-    build_parley_layout,
+    SegmentedLayoutConfig, SegmentedTextLayout, TextLayoutInput, TextLayoutOptions,
+    TextLayoutSnapshot, TextLayoutSurfaceId, TextLineHeight, TextStyleConfig, TextTheme,
+    build_text_layout,
 };
 use serde::Serialize;
 
@@ -231,7 +231,7 @@ fn config() -> SegmentedLayoutConfig {
     SegmentedLayoutConfig::default()
 }
 
-fn build_slice(text: &str) -> ParleyLayoutSnapshot {
+fn build_slice(text: &str) -> TextLayoutSnapshot {
     let input = TextLayoutInput {
         surface_id: TextLayoutSurfaceId::Block(61_500),
         content_version: 1,
@@ -245,23 +245,23 @@ fn build_slice(text: &str) -> ParleyLayoutSnapshot {
         theme_version: 1,
         font_version: 1,
     };
-    build_parley_layout(
+    build_text_layout(
         &input,
         TextTheme {
             link_text: 0x2383e2,
             inline_code_text: 0xeb5757,
             inline_code_background: 0xf1f1ef,
         },
-        &ParleyLayoutOptions {
+        &TextLayoutOptions {
             width: Some(CODE_WIDTH),
             display_scale: 1.0,
             quantize: true,
-            base_style: ParleyTextStyleConfig {
+            base_style: TextStyleConfig {
                 font_size: 14.0,
-                line_height: ParleyLineHeight::Absolute(22.0),
-                ..ParleyTextStyleConfig::default()
+                line_height: TextLineHeight::Absolute(22.0),
+                ..TextStyleConfig::default()
             },
-            ..ParleyLayoutOptions::default()
+            ..TextLayoutOptions::default()
         },
     )
 }

@@ -58,7 +58,7 @@ TablePayload
 ### 3.1 Engine
 
 ```text
-crates/runtime/src/document_runtime/table/
+crates/cditor-runtime/src/document_runtime/table/
   mod.rs
   runtime.rs       # TableRuntime、payload/runtime 同步、invariant
   layout.rs        # TableLayout、row/col/cell rect、Auto/Px 尺寸
@@ -74,7 +74,7 @@ crates/runtime/src/document_runtime/table/
 ### 3.2 App / GUI
 
 ```text
-crates/app/src/gui/block/table/
+crates/cditor-editor-gpui/src/features/table/
   mod.rs
   render.rs
   cell.rs
@@ -185,15 +185,15 @@ pub enum TableInteractionMode {
   - 需要迁移的行为：slash table 默认 2x2；cell click 请求焦点；focused cell 独立保存 selected range、selection direction、marked range；cell text replacement 按字符边界 clamp；Backspace/Delete 只删除 cell 内容；cell layout cache 提供 candidate rect；cell 内容变更同步 block payload 和 dirty/save queue；header row 和 active cell 有明确视觉状态。
   - 不能 1:1 照搬的部分：旧版把 `TableRuntime`、cell entity 和 layout cache 放在 GUI/block entity 中；V2 必须把 payload、focus/selection、layout height、transactions 放到 engine/runtime，GUI 只消费 `TableViewState` 和转发事件。
 - [x] A-003 梳理当前 V2 表格文件和大文件风险，确认拆分目标。
-  - 当前目录已拆成 `crates/runtime/src/document_runtime/table/{runtime,layout,selection,input,edit,transaction,projection,clipboard,navigation,resize,reorder}.rs` 和 `crates/app/src/gui/block/table/{render,cell,text,selection,style,toolbar}.rs`。
-  - 本轮继续拆分 `crates/app/src/gui/text/element.rs`：将平台布局/命中测试几何迁移到 `text/platform.rs`，将测试迁移到 `text/element_tests.rs`；`element.rs` 降至 700 行以内。
+  - 当前目录已拆成 `crates/cditor-runtime/src/document_runtime/table/{runtime,layout,selection,input,edit,transaction,projection,clipboard,navigation,resize,reorder}.rs` 和 `crates/cditor-editor-gpui/src/features/table/{render,cell,text,selection,style,toolbar}.rs`。
+  - 本轮继续拆分 `crates/cditor-editor-gpui/src/text/element.rs`：将平台布局/命中测试几何迁移到 `text/platform.rs`，将测试迁移到 `text/element_tests.rs`；`element.rs` 降至 700 行以内。
 - [x] A-004 建立本计划文档，并把后续任务按编号跟踪。
 - [x] A-005 增加手动验收清单：编辑、选择、resize、reorder、merge、undo、clipboard。
   - 手动验收入口见本文 R 组：覆盖 2x2 默认插入、多行 cell 高度、中文 IME、row/column handle、resize、reorder、merge/split、range selection、active cell/caret、滚动后 candidate rect 和下方 block 不重叠。
 
 ### B. Engine 目录拆分
 
-- [x] B-001 把 `crates/runtime/src/document_runtime/table.rs` 拆成 `table/mod.rs`。
+- [x] B-001 把 `crates/cditor-runtime/src/document_runtime/table.rs` 拆成 `table/mod.rs`。
 - [x] B-002 新增 `table/runtime.rs`，承载 `TableRuntime` 和 payload/runtime 同步。
 - [x] B-003 新增 `table/layout.rs`，承载 `TableLayout` 和几何计算。
 - [x] B-004 新增 `table/selection.rs`，承载 `TableSelection`。
@@ -318,9 +318,9 @@ pub enum TableInteractionMode {
 - [x] H-009 selected handle 转为 gutter-like control。
   - selected handle 使用 gutter/action 主题色和 2x2 dot icon，和 block gutter 视觉靠齐。
 - [x] H-010 resize indicator 使用主题 accent。
-  - `crates/app/src/gui/block/table/resize.rs` 在表格最外层 overlay 绘制实时 resize indicator，颜色取 `theme.action_accent`，避免被 cell 内容或 block 背景遮挡。
+  - `crates/cditor-editor-gpui/src/features/table/resize.rs` 在表格最外层 overlay 绘制实时 resize indicator，颜色取 `theme.action_accent`，避免被 cell 内容或 block 背景遮挡。
 - [x] H-011 reorder indicator 与 block drag indicator 风格一致。
-  - `crates/app/src/gui/block/table/reorder.rs` 在表格外层绘制主题 accent drop indicator，和现有 drag/resize indicator 保持同一视觉语言。
+  - `crates/cditor-editor-gpui/src/features/table/reorder.rs` 在表格外层绘制主题 accent drop indicator，和现有 drag/resize indicator 保持同一视觉语言。
 - [x] H-012 empty cell placeholder 只在未编辑且为空时显示。
   - 新增 `table_cell_placeholder_is_hidden_while_editing_empty_cell`，确保 active empty cell 不显示 placeholder。
 - [x] H-013 多行 cell 文本垂直位置稳定，不缩放、不偏移。
@@ -562,7 +562,7 @@ pub enum TableInteractionMode {
 - [ ] R-015 表格下方紧跟 heading/paragraph/list 时不重叠。
   - 验收要点：合适间距、高度增长时下方 block 下移、不同类型 block 都不重叠、快速输入无重叠。
 - [x] R-016 宽表格支持水平滚动条、横向滚轮和 thumb 拖拽。
-  - `crates/app/src/gui/block/table/render.rs` 的表格 viewport 现在会消费横向滚轮/Shift+纵向滚轮并更新 table `ScrollHandle`；自绘 horizontal thumb 支持 mouse down 后全局拖拽更新 offset。
+  - `crates/cditor-editor-gpui/src/features/table/render.rs` 的表格 viewport 现在会消费横向滚轮/Shift+纵向滚轮并更新 table `ScrollHandle`；自绘 horizontal thumb 支持 mouse down 后全局拖拽更新 offset。
   - `table_hscrollbar_*` 和 `table_hscroll_*` 单测覆盖 thumb geometry、drag offset 映射、wheel delta 映射和 offset clamp。
 
 ---
@@ -613,7 +613,7 @@ pub enum TableInteractionMode {
 - ✅ Postgres 保存/恢复完整保留表格结构和样式。
 - ✅ `cargo check --workspace` 通过。
 - ✅ `cargo test -p cditor-runtime --lib` 通过。
-- ✅ `cargo test -p cditor-app --lib` 通过。
+- ✅ `cargo test -p cditor-desktop --lib` 通过。
 - ✅ 与表格相关的 acceptance 测试通过。
 - 📋 手动验收清单完成（见 `doc/acceptance/table-manual-acceptance.md`）。
 

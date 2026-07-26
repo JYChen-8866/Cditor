@@ -7,14 +7,14 @@ use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::features::table::{TableAxis, TableAxisSelection};
 use crate::input::GuiInputCommand;
 use crate::text::{
-    ParleyMoveCommand, ParleySelection, ParleyTextPosition, RichTextPlatformLayout,
-    TextGeometryOperation, record_snapshot_geometry, record_unavailable_geometry,
+    RichTextPlatformLayout, TextGeometryOperation, TextLayoutMoveCommand, TextLayoutPosition,
+    TextLayoutSelection, record_snapshot_geometry, record_unavailable_geometry,
 };
+#[cfg(test)]
+use cditor_core::clipboard::ClipboardSelection;
 use cditor_core::edit::TextAffinity;
 use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_editor_protocol::command::CaretDirection;
-#[cfg(test)]
-use cditor_import_export::clipboard::ClipboardSelection;
 #[cfg(test)]
 use cditor_runtime::DocumentRuntime;
 use cditor_session::EditorSessionHandle;
@@ -191,12 +191,12 @@ impl CditorV2View {
                     unreachable!("keyboard document mutations return through Runtime dispatch")
                 }
                 GuiInputCommand::MoveCaretLeft { extend_selection } => {
-                    let moved = move_caret_with_parley(
+                    let moved = move_caret_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
-                        ParleyMoveCommand::PreviousVisual,
+                        TextLayoutMoveCommand::PreviousVisual,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -209,12 +209,12 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretRight { extend_selection } => {
-                    let moved = move_caret_with_parley(
+                    let moved = move_caret_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
-                        ParleyMoveCommand::NextVisual,
+                        TextLayoutMoveCommand::NextVisual,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -227,12 +227,12 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretToPreviousWord { extend_selection } => {
-                    let moved = move_caret_with_parley(
+                    let moved = move_caret_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
-                        ParleyMoveCommand::PreviousVisualWord,
+                        TextLayoutMoveCommand::PreviousVisualWord,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -245,12 +245,12 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretToNextWord { extend_selection } => {
-                    let moved = move_caret_with_parley(
+                    let moved = move_caret_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
-                        ParleyMoveCommand::NextVisualWord,
+                        TextLayoutMoveCommand::NextVisualWord,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -277,12 +277,12 @@ impl CditorV2View {
                     );
                 }
                 GuiInputCommand::MoveCaretUp { extend_selection } => {
-                    let moved_in_block = move_caret_with_parley(
+                    let moved_in_block = move_caret_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
-                        ParleyMoveCommand::PreviousLine,
+                        TextLayoutMoveCommand::PreviousLine,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -295,12 +295,12 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretDown { extend_selection } => {
-                    let moved_in_block = move_caret_with_parley(
+                    let moved_in_block = move_caret_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
-                        ParleyMoveCommand::NextLine,
+                        TextLayoutMoveCommand::NextLine,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -313,12 +313,12 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretToLineStart { extend_selection } => {
-                    let moved = move_caret_with_parley(
+                    let moved = move_caret_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
-                        ParleyMoveCommand::LineStart,
+                        TextLayoutMoveCommand::LineStart,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -331,12 +331,12 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::MoveCaretToLineEnd { extend_selection } => {
-                    let moved = move_caret_with_parley(
+                    let moved = move_caret_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
                         &mut self.input.preferred_navigation_x,
                         runtime,
-                        ParleyMoveCommand::LineEnd,
+                        TextLayoutMoveCommand::LineEnd,
                         extend_selection,
                     )
                     .unwrap_or(false);
@@ -411,12 +411,12 @@ fn selected_table_axis_range(
     Some((selection.block_id, range))
 }
 
-fn move_caret_with_parley(
+fn move_caret_with_text_layout(
     text_layouts: &HashMap<BlockId, RichTextPlatformLayout>,
     text_surface_layouts: &HashMap<SurfaceId, RichTextPlatformLayout>,
     preferred_x: &mut Option<(SurfaceId, f32)>,
     runtime: &EditorSessionHandle,
-    command: ParleyMoveCommand,
+    command: TextLayoutMoveCommand,
     extend_selection: bool,
 ) -> Result<bool, String> {
     let input_context = runtime.input_context().map_err(|error| error.to_string())?;
@@ -434,13 +434,27 @@ fn move_caret_with_parley(
         record_unavailable_geometry();
         return Ok(false);
     };
+    let Some(current_version) = runtime
+        .surface_version(surface_id)
+        .map_err(|error| error.to_string())?
+    else {
+        record_unavailable_geometry();
+        return Ok(false);
+    };
+    if cache.surface_id != current_version.surface_id
+        || cache.content_version != current_version.content_version
+        || cache.layout_version != current_version.layout_version
+    {
+        record_unavailable_geometry();
+        return Ok(false);
+    }
     let Some(current) = runtime
         .text_surface_state(surface_id)
         .map_err(|error| error.to_string())?
     else {
         return Ok(false);
     };
-    if cache.content_version != current.snapshot.identity.content_version {
+    if current.snapshot.identity.content_version != current_version.content_version {
         record_unavailable_geometry();
         return Ok(false);
     }
@@ -458,12 +472,12 @@ fn move_caret_with_parley(
     } else {
         selected.start
     };
-    let selection = ParleySelection {
-        anchor: ParleyTextPosition {
+    let selection = TextLayoutSelection {
+        anchor: TextLayoutPosition {
             offset: anchor_offset,
             affinity: TextAffinity::Downstream,
         },
-        focus: ParleyTextPosition {
+        focus: TextLayoutPosition {
             offset: caret_offset,
             affinity: caret_affinity,
         },

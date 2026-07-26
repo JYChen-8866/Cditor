@@ -1,9 +1,11 @@
 use super::{InlineSpan, plain_text_from_spans};
 use serde::{Deserialize, Serialize};
 
+mod clipboard;
 mod structure;
 mod style;
 
+pub use clipboard::paste_table_at;
 pub use style::{TableCellStyle, TableHeaderStyle};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

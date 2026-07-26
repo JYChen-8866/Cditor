@@ -10,10 +10,11 @@ mod render;
 mod slash_menu;
 mod state;
 
+pub(crate) use self::state::OverlayUiState;
 pub use self::state::{CditorViewState, EditorReadonlyReason};
 use self::state::{
-    EditorDiagnosticsState, EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState,
-    OverlayUiState, PlatformInputState,
+    EditorDiagnosticsState, EditorSchedulingState, EditorStatusUiState, FeatureUiState,
+    FocusUiState, InteractionUiState, PlatformInputState,
 };
 pub(crate) use crate::app::persistence_bridge::save_status_for_mode;
 pub(crate) use crate::interaction::table_scroll::TableScrollSnapshot;
@@ -36,6 +37,7 @@ pub struct CditorV2View {
     pub(crate) status: EditorStatusUiState,
     pub(crate) interaction: InteractionUiState,
     pub(crate) cache: RenderCacheState,
+    pub(crate) scheduling: EditorSchedulingState,
 }
 
 #[cfg(test)]

@@ -5,12 +5,14 @@ use gpui::{
 
 use crate::block::block_content::render_block_content;
 use crate::block::block_shell::{BlockActionState, block_shell};
+use crate::document::DocumentTextViewport;
 use crate::editor_view::CditorV2View;
 use crate::features::code::highlight::CodeHighlightCache;
-use crate::features::code::render_code_block;
+use crate::features::code::{estimated_code_content_height_px, render_code_block};
 use crate::features::mermaid::{MermaidRenderCache, render_mermaid_block};
 use crate::features::table::{
-    TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
+    TableAxisSelection, TableCellRangeSelection, TableCellSelection, TableReorderPreview,
+    TableResizePreview,
 };
 use crate::features::text::heading::render_heading;
 use crate::features::text::paragraph::render_paragraph;
@@ -38,6 +40,8 @@ impl BlockView {
     pub(crate) fn render(
         &self,
         block: &ViewBlockSnapshot,
+        text_layout_width_px: f64,
+        text_viewport: DocumentTextViewport,
         view: Entity<CditorV2View>,
         focus: FocusHandle,
         code_language_focus: FocusHandle,
@@ -48,11 +52,14 @@ impl BlockView {
         table_resize_preview: Option<TableResizePreview>,
         table_reorder_preview: Option<TableReorderPreview>,
         table_range_selection: Option<TableCellRangeSelection>,
+        table_cell_selection: Option<TableCellSelection>,
         code_language_edit: Option<&CodeLanguageEditState>,
         code_theme_menu_open: bool,
         code_highlight_theme: &'static str,
         suppress_document_text_input: bool,
         table_scroll_handle: Option<ScrollHandle>,
+        code_scroll_handle: Option<ScrollHandle>,
+        code_caret_reveal_after_line_break: bool,
         code_highlights: &CodeHighlightCache,
         mermaid_renders: &MermaidRenderCache,
         mermaid_show_source: bool,
@@ -63,6 +70,8 @@ impl BlockView {
         let block_id = block.block_id;
         let content = render_kind_content(
             block,
+            text_layout_width_px,
+            text_viewport,
             theme,
             view.clone(),
             focus,
@@ -73,11 +82,14 @@ impl BlockView {
             table_resize_preview,
             table_reorder_preview,
             table_range_selection,
+            table_cell_selection,
             code_language_edit,
             code_theme_menu_open,
             code_highlight_theme,
             suppress_document_text_input,
             table_scroll_handle,
+            code_scroll_handle,
+            code_caret_reveal_after_line_break,
             code_highlights,
             mermaid_renders,
             mermaid_show_source,
@@ -151,6 +163,8 @@ impl BlockView {
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 fn render_kind_content(
     block: &ViewBlockSnapshot,
+    text_layout_width_px: f64,
+    text_viewport: DocumentTextViewport,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
@@ -161,11 +175,14 @@ fn render_kind_content(
     table_resize_preview: Option<TableResizePreview>,
     table_reorder_preview: Option<TableReorderPreview>,
     table_range_selection: Option<TableCellRangeSelection>,
+    table_cell_selection: Option<TableCellSelection>,
     code_language_edit: Option<&CodeLanguageEditState>,
     code_theme_menu_open: bool,
     code_highlight_theme: &'static str,
     suppress_document_text_input: bool,
     table_scroll_handle: Option<ScrollHandle>,
+    code_scroll_handle: Option<ScrollHandle>,
+    code_caret_reveal_after_line_break: bool,
     code_highlights: &CodeHighlightCache,
     mermaid_renders: &MermaidRenderCache,
     mermaid_show_source: bool,
@@ -174,6 +191,8 @@ fn render_kind_content(
 ) -> AnyElement {
     let content = render_block_content(
         block,
+        text_layout_width_px,
+        text_viewport,
         theme,
         view.clone(),
         focus,
@@ -181,11 +200,14 @@ fn render_kind_content(
         table_resize_preview,
         table_reorder_preview,
         table_range_selection,
+        table_cell_selection,
         suppress_document_text_input
             || code_language_edit.is_some()
             || (matches!(block.kind, RichBlockKind::Mermaid) && !mermaid_show_source),
         table_axis_selection,
         table_scroll_handle,
+        code_scroll_handle.clone(),
+        code_caret_reveal_after_line_break,
         code_highlights,
         code_highlight_theme,
         whiteboard_thumbnails,
@@ -196,6 +218,12 @@ fn render_kind_content(
         RichBlockKind::Quote => content,
         RichBlockKind::Code { ref language } => {
             let language_edit = code_language_edit.filter(|edit| edit.block_id == block.block_id);
+            let estimated_content_height_px = match &block.payload {
+                cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                    estimated_code_content_height_px(&payload.plain_text())
+                }
+                _ => estimated_code_content_height_px(""),
+            };
             render_code_block(
                 block.block_id,
                 content,
@@ -205,6 +233,8 @@ fn render_kind_content(
                 code_theme_menu_open,
                 code_highlight_theme,
                 action.action_active,
+                estimated_content_height_px,
+                code_scroll_handle,
                 view.clone(),
                 code_language_focus,
             )
@@ -236,8 +266,6 @@ fn render_kind_content(
         ),
         RichBlockKind::RawMarkdown => div()
             .w_full()
-            .rounded(px(3.0))
-            .bg(rgb(theme.code_background))
             .font_family(EDITOR_MONO_FONT_FAMILY)
             .text_size(px(13.0))
             .child(content)

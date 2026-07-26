@@ -6,31 +6,23 @@ use cditor_core::ids::SurfaceId;
 
 use crate::text::RichTextPlatformLayout;
 
-pub(crate) const BLOCK_LAYOUT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
-pub(crate) const TABLE_LAYOUT_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
-pub(crate) const AUX_LAYOUT_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
-
-pub(crate) struct PlatformLayoutCache<K> {
+pub(crate) struct PlatformGeometryRegistry<K> {
     entries: HashMap<K, RichTextPlatformLayout>,
     last_insert: HashMap<K, u64>,
-    estimated_bytes: usize,
     clock: u64,
     max_entries: usize,
-    max_estimated_bytes: usize,
 }
 
-impl<K> PlatformLayoutCache<K>
+impl<K> PlatformGeometryRegistry<K>
 where
     K: Clone + Eq + Hash,
 {
-    pub(crate) fn new(max_entries: usize, max_estimated_bytes: usize) -> Self {
+    pub(crate) fn new(max_entries: usize) -> Self {
         Self {
             entries: HashMap::new(),
             last_insert: HashMap::new(),
-            estimated_bytes: 0,
             clock: 0,
             max_entries: max_entries.max(1),
-            max_estimated_bytes: max_estimated_bytes.max(1),
         }
     }
 
@@ -41,24 +33,14 @@ where
         pinned_surface: Option<SurfaceId>,
     ) {
         self.clock = self.clock.saturating_add(1);
-        let bytes = estimated_platform_layout_bytes(&layout);
-        if let Some(previous) = self.entries.insert(key.clone(), layout) {
-            self.estimated_bytes = self
-                .estimated_bytes
-                .saturating_sub(estimated_platform_layout_bytes(&previous));
-        }
-        self.estimated_bytes = self.estimated_bytes.saturating_add(bytes);
+        self.entries.insert(key.clone(), layout);
         self.last_insert.insert(key, self.clock);
         self.trim(pinned_surface);
     }
 
     pub(crate) fn remove(&mut self, key: &K) -> Option<RichTextPlatformLayout> {
         self.last_insert.remove(key);
-        let removed = self.entries.remove(key)?;
-        self.estimated_bytes = self
-            .estimated_bytes
-            .saturating_sub(estimated_platform_layout_bytes(&removed));
-        Some(removed)
+        self.entries.remove(key)
     }
 
     pub(crate) fn retain(&mut self, mut keep: impl FnMut(&K, &mut RichTextPlatformLayout) -> bool) {
@@ -75,21 +57,20 @@ where
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
         self.last_insert.clear();
-        self.estimated_bytes = 0;
     }
 
-    pub(crate) fn estimated_bytes(&self) -> usize {
-        self.estimated_bytes
+    pub(crate) fn estimated_metadata_bytes(&self) -> usize {
+        self.entries
+            .len()
+            .saturating_mul(std::mem::size_of::<RichTextPlatformLayout>())
     }
 
     pub(crate) fn is_over_budget(&self) -> bool {
-        self.entries.len() > self.max_entries || self.estimated_bytes > self.max_estimated_bytes
+        self.entries.len() > self.max_entries
     }
 
     fn trim(&mut self, pinned_surface: Option<SurfaceId>) {
-        while self.entries.len() > self.max_entries
-            || self.estimated_bytes > self.max_estimated_bytes
-        {
+        while self.entries.len() > self.max_entries {
             let candidate = self
                 .entries
                 .iter()
@@ -108,7 +89,7 @@ where
     }
 }
 
-impl<K> Deref for PlatformLayoutCache<K> {
+impl<K> Deref for PlatformGeometryRegistry<K> {
     type Target = HashMap<K, RichTextPlatformLayout>;
 
     fn deref(&self) -> &Self::Target {
@@ -116,27 +97,23 @@ impl<K> Deref for PlatformLayoutCache<K> {
     }
 }
 
-pub(crate) fn block_layout_cache<K>() -> PlatformLayoutCache<K>
+pub(crate) fn block_geometry_registry<K>() -> PlatformGeometryRegistry<K>
 where
     K: Clone + Eq + Hash,
 {
-    PlatformLayoutCache::new(1_024, BLOCK_LAYOUT_CACHE_MAX_BYTES)
+    PlatformGeometryRegistry::new(1_024)
 }
 
-pub(crate) fn table_layout_cache<K>() -> PlatformLayoutCache<K>
+pub(crate) fn table_geometry_registry<K>() -> PlatformGeometryRegistry<K>
 where
     K: Clone + Eq + Hash,
 {
-    PlatformLayoutCache::new(4_096, TABLE_LAYOUT_CACHE_MAX_BYTES)
+    PlatformGeometryRegistry::new(4_096)
 }
 
-pub(crate) fn auxiliary_layout_cache<K>() -> PlatformLayoutCache<K>
+pub(crate) fn auxiliary_geometry_registry<K>() -> PlatformGeometryRegistry<K>
 where
     K: Clone + Eq + Hash,
 {
-    PlatformLayoutCache::new(256, AUX_LAYOUT_CACHE_MAX_BYTES)
-}
-
-fn estimated_platform_layout_bytes(layout: &RichTextPlatformLayout) -> usize {
-    std::mem::size_of::<RichTextPlatformLayout>().saturating_add(layout.snapshot.estimated_bytes())
+    PlatformGeometryRegistry::new(256)
 }

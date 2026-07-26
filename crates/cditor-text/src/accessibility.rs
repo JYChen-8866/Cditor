@@ -2,15 +2,15 @@ use accesskit::{Action, Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate};
 use cditor_core::edit::TextAffinity;
 use parley::{Affinity, Cursor, LayoutAccessibility, Selection};
 
-use super::{ParleyLayoutSnapshot, ParleySelection, ParleyTextPosition};
+use super::{TextLayoutPosition, TextLayoutSelection, TextLayoutSnapshot};
 
 #[derive(Clone, Debug)]
-pub struct ParleyAccessibilityProjection {
+pub struct TextAccessibilityProjection {
     pub parent_id: NodeId,
     pub update: TreeUpdate,
 }
 
-impl ParleyAccessibilityProjection {
+impl TextAccessibilityProjection {
     pub fn parent_node(&self) -> Option<&Node> {
         self.update
             .nodes
@@ -19,14 +19,14 @@ impl ParleyAccessibilityProjection {
     }
 }
 
-pub fn build_parley_accessibility_projection(
-    snapshot: &ParleyLayoutSnapshot,
+pub fn build_text_accessibility_projection(
+    snapshot: &TextLayoutSnapshot,
     parent_id: NodeId,
     first_child_id: NodeId,
     origin_x: f64,
     origin_y: f64,
-    selection: Option<ParleySelection>,
-) -> ParleyAccessibilityProjection {
+    selection: Option<TextLayoutSelection>,
+) -> TextAccessibilityProjection {
     let mut layout_access = LayoutAccessibility::default();
     let mut update = TreeUpdate {
         nodes: Vec::new(),
@@ -64,12 +64,12 @@ pub fn build_parley_accessibility_projection(
     }
     parent.add_action(Action::SetTextSelection);
     update.nodes.push((parent_id, parent));
-    ParleyAccessibilityProjection { parent_id, update }
+    TextAccessibilityProjection { parent_id, update }
 }
 
 fn parley_selection(
-    selection: ParleySelection,
-    snapshot: &ParleyLayoutSnapshot,
+    selection: TextLayoutSelection,
+    snapshot: &TextLayoutSnapshot,
 ) -> Option<Selection> {
     Some(Selection::new(
         parley_cursor(selection.anchor, snapshot)?,
@@ -77,7 +77,7 @@ fn parley_selection(
     ))
 }
 
-fn parley_cursor(position: ParleyTextPosition, snapshot: &ParleyLayoutSnapshot) -> Option<Cursor> {
+fn parley_cursor(position: TextLayoutPosition, snapshot: &TextLayoutSnapshot) -> Option<Cursor> {
     (position.offset <= snapshot.text().len()).then(|| {
         Cursor::from_byte_index(
             snapshot.layout(),

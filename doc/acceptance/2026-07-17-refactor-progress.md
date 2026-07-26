@@ -12,30 +12,30 @@
 | 项 | 状态 | 证据 |
 |---|---|---|
 | workspace strict Clippy | **通过** | `cargo clippy --workspace --all-targets -- -D warnings` 干净退出。core 25 项、runtime 15 项、app 29 项、editor 6 项、store-postgres 4 项、ding-board 10 项存量 lint 全部真实修复；仅 23 个 GUI render 函数的 `too_many_arguments` 以 `#[expect(..., reason = "P4-002 render context 聚合")]` 显式挂账（属 Phase 4/5 render context 重构范围）。大 enum（`UndoPayload::InlineSmall`、`CditorViewState::Ready`、`DbEditOperation::Table`）以 Box 收敛。 |
-| P0-007 版本化 fixture | 完成 | `crates/core/src/fixtures/`（bidi/code/table 确定性生成器 + FNV-1a 语义 checksum；100k mixed 复用 demo_fixtures）。 |
-| P0-008 frame benchmark 基线 | 完成 | `crates/runtime/benches/frame_baseline.rs` + `doc/acceptance/2026-07-17-frame-baseline-benchmark.md`（M1 Max full 模式全过）。 |
-| P0-009 telemetry schema | 完成 | `crates/core/src/telemetry/`（input/layout/storage/sync 四域，类型级禁自由文本）+ `doc/architecture/telemetry-schema-v1.md`。 |
+| P0-007 版本化 fixture | 完成 | `crates/cditor-core/src/fixtures/`（bidi/code/table 确定性生成器 + FNV-1a 语义 checksum；100k mixed 复用 demo_fixtures）。 |
+| P0-008 frame benchmark 基线 | 完成 | `crates/cditor-test-support/benches/frame_baseline.rs` + `doc/acceptance/2026-07-17-frame-baseline-benchmark.md`（M1 Max full 模式全过）。 |
+| P0-009 telemetry schema | 完成 | `crates/cditor-core/src/telemetry/`（input/layout/storage/sync 四域，类型级禁自由文本）+ `doc/architecture/telemetry-schema-v1.md`。 |
 | P0-012 三类模板 | 完成 | `doc/templates/{adr-template,migration-checklist,manual-acceptance-template}.md`。 |
 
 ### Phase 1（除 P1-011 UI 呈现与 P1-013 实数据迁移外全部完成）
 
 - ADR-006 裁决：UUIDv7 + base-256 fractional order key
   （`doc/architecture/adr/ADR-006-persistent-id-and-order-key.md`）。
-- `crates/core/src/identity/`：PersistentId + 13 类 typed ID、RFC 9562
+- `crates/cditor-core/src/identity/`：PersistentId + 13 类 typed ID、RFC 9562
   单调生成器（回拨/溢出/双设备）、RuntimeHandle/IdArena、LegacyIdMap、
   OrderKey（between/entropy 消歧/rebalance）。
-- `crates/core/src/schema/`：七域独立 SchemaVersion、ReadPolicy 四态、
+- `crates/cditor-core/src/schema/`：七域独立 SchemaVersion、ReadPolicy 四态、
   RawValue envelope（unknown 字节不变 + 新 minor 未知字段保留重写）、
   30 内置 kind 的 BlockRegistry（capabilities/migrator/unknown fallback）。
-- `crates/core/tests/identity_tree_property.rs`：随机 tree/order 操作
+- `crates/cditor-core/tests/identity_tree_property.rs`：随机 tree/order 操作
   不变量（P1-012）。
 
 ### P6-015 机制层（大文本分段布局）
 
-- `crates/text/src/segmented.rs`：O(n) 硬行分段、窗口化测量、自适应估高、
+- `crates/cditor-text/src/segmented.rs`：O(n) 硬行分段、窗口化测量、自适应估高、
   局部失效、宽度 reflow、字节偏移滚动锚点；"分段总高 == 整块布局高度"
   一致性测试（含软换行）。
-- `crates/text/benches/segmented_layout.rs`：10MiB/549 段 full 模式全指标
+- `crates/cditor-text/benches/segmented_layout.rs`：10MiB/549 段 full 模式全指标
   在预算内（索引 p95 2.5ms、冷窗口 9.7ms、滚动步进 4.8ms、编辑重测 5.0ms、
   reflow 窗口 4.7ms）；对比整块 build p95 2.543s。
 - 未完成：App `RichTextElement`/cache identity/高亮接线。

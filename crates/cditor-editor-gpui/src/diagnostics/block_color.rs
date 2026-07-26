@@ -17,7 +17,9 @@ pub(crate) fn enabled() -> bool {
 
 pub(crate) fn trace(event: &str, details: impl std::fmt::Display) {
     if enabled() {
-        eprintln!("[cditor][block-color][gui][{event}] {details}");
+        super::stderr::write(format_args!(
+            "[cditor][block-color][gui][{event}] {details}"
+        ));
     }
 }
 

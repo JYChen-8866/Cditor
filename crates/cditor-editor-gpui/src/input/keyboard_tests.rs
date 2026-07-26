@@ -18,15 +18,14 @@ fn mermaid_preview_blocks_hidden_source_mutations() {
     ));
 }
 use crate::{
-    text::{ParleyLayoutOptions, RichTextLayoutInput, build_parley_layout},
+    text::{RichTextLayoutInput, TextLayoutOptions, build_text_layout},
     theme::GuiTheme,
 };
+use cditor_core::clipboard::CditorClipboardEnvelope;
 use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineMark, InlineSpan, RichBlockKind, TableCellPayload,
     TablePayload, TableRowPayload,
 };
-use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
-use cditor_import_export::clipboard::CditorClipboardEnvelope;
 use gpui::{Bounds, point, px, size};
 
 fn dispatch_clipboard_data(
@@ -37,15 +36,9 @@ fn dispatch_clipboard_data(
     let metadata_json = selection.map(|selection| {
         serde_json::to_string(&CditorClipboardEnvelope::new(None, selection.clone(), text)).unwrap()
     });
-    runtime
-        .dispatch(CommandEnvelope::new(
-            EditorCommand::ApplyClipboardData {
-                text: text.to_owned(),
-                metadata_json,
-            },
-            CommandSource::Keyboard,
-        ))
+    cditor_session::project_clipboard_import(runtime, text, metadata_json.as_deref())
         .unwrap()
+        .outcome
         .changed()
 }
 
@@ -94,7 +87,7 @@ fn table_runtime(block_id: BlockId, rows: &[&[&str]]) -> DocumentRuntime {
 }
 
 #[test]
-fn keyboard_navigation_consumes_parley_layout_cache() {
+fn keyboard_navigation_consumes_text_layout_layout_cache() {
     let text = "abc אבג 123";
     let mut runtime = paragraph_runtime(text);
     crate::test_support::focus_block_at_offset(&mut runtime, 1, 0);
@@ -102,21 +95,21 @@ fn keyboard_navigation_consumes_parley_layout_cache() {
         block_id: 1,
         surface_id: crate::text::TextLayoutSurfaceId::Block(1),
         content_version: runtime.block_content_version(1).unwrap(),
-        layout_version: 1,
+        layout_version: runtime.block_layout_version(1).unwrap(),
         kind: RichBlockKind::Paragraph,
         text_align: cditor_core::rich_text::TextAlign::Start,
-        spans: vec![InlineSpan::plain(text)],
+        spans: vec![InlineSpan::plain(text)].into(),
         width_px: 500.0,
         theme_version: 1,
         font_version: 1,
     };
-    let layout = build_parley_layout(
+    let layout = build_text_layout(
         &input,
         GuiTheme::light(),
-        &ParleyLayoutOptions {
+        &TextLayoutOptions {
             width: Some(500.0),
             base_text_color: GuiTheme::light().text,
-            ..ParleyLayoutOptions::default()
+            ..TextLayoutOptions::default()
         },
     );
     let mut layouts = HashMap::new();
@@ -127,8 +120,10 @@ fn keyboard_navigation_consumes_parley_layout_cache() {
             surface_id: input.surface_id,
             content_version: input.content_version,
             layout_version: input.layout_version,
+            wrap_width_px: 500.0,
+            text_align: input.text_align,
             input_session_identity: None,
-            snapshot: layout,
+            snapshot: layout.into(),
             accessibility: None,
             bounds: Bounds::new(point(px(0.0), px(0.0)), size(px(500.0), px(24.0))),
             measured_height: 24.0,
@@ -138,12 +133,12 @@ fn keyboard_navigation_consumes_parley_layout_cache() {
 
     let session = cditor_session::EditorSession::new(runtime, false).into_handle();
     assert!(
-        move_caret_with_parley(
+        move_caret_with_text_layout(
             &layouts,
             &Default::default(),
             &mut None,
             &session,
-            ParleyMoveCommand::NextVisual,
+            TextLayoutMoveCommand::NextVisual,
             false,
         )
         .unwrap()
@@ -156,6 +151,29 @@ fn keyboard_navigation_consumes_parley_layout_cache() {
         .unwrap();
     assert!(offset > 0);
     assert!(text.is_char_boundary(offset));
+
+    layouts.get_mut(&1).unwrap().layout_version = session
+        .surface_version(SurfaceId::Block(1))
+        .unwrap()
+        .unwrap()
+        .layout_version
+        .saturating_add(1);
+    assert!(
+        !move_caret_with_text_layout(
+            &layouts,
+            &Default::default(),
+            &mut None,
+            &session,
+            TextLayoutMoveCommand::NextVisual,
+            false,
+        )
+        .unwrap(),
+        "a stale layout version must not answer visual navigation"
+    );
+    assert_eq!(
+        session.text_block_context(1).unwrap().unwrap().caret,
+        Some(offset)
+    );
 }
 
 #[test]
@@ -194,38 +212,37 @@ fn repeated_vertical_navigation_preserves_original_x_across_a_short_line() {
     let mut runtime = paragraph_runtime(text);
     crate::test_support::focus_block_at_offset(&mut runtime, 1, 8);
     let mut layouts = HashMap::new();
-    layouts.insert(
+    let mut layout = crate::text::test_platform_layout(
         1,
-        crate::text::test_platform_layout(
-            1,
-            runtime.block_content_version(1).unwrap(),
-            text,
-            Bounds::new(point(px(0.0), px(0.0)), size(px(500.0), px(80.0))),
-            None,
-        ),
+        runtime.block_content_version(1).unwrap(),
+        text,
+        Bounds::new(point(px(0.0), px(0.0)), size(px(500.0), px(80.0))),
+        None,
     );
+    layout.layout_version = runtime.block_layout_version(1).unwrap();
+    layouts.insert(1, layout);
     let mut preferred_x = None;
     let session = cditor_session::EditorSession::new(runtime, false).into_handle();
 
     assert!(
-        move_caret_with_parley(
+        move_caret_with_text_layout(
             &layouts,
             &Default::default(),
             &mut preferred_x,
             &session,
-            ParleyMoveCommand::NextLine,
+            TextLayoutMoveCommand::NextLine,
             false,
         )
         .unwrap()
     );
     assert!(preferred_x.is_some());
     assert!(
-        move_caret_with_parley(
+        move_caret_with_text_layout(
             &layouts,
             &Default::default(),
             &mut preferred_x,
             &session,
-            ParleyMoveCommand::NextLine,
+            TextLayoutMoveCommand::NextLine,
             false,
         )
         .unwrap()
@@ -240,12 +257,12 @@ fn repeated_vertical_navigation_preserves_original_x_across_a_short_line() {
             >= 20
     );
 
-    move_caret_with_parley(
+    move_caret_with_text_layout(
         &layouts,
         &Default::default(),
         &mut preferred_x,
         &session,
-        ParleyMoveCommand::PreviousVisual,
+        TextLayoutMoveCommand::PreviousVisual,
         false,
     )
     .unwrap();

@@ -1,7 +1,7 @@
 use cditor_core::rich_text::{InlineMark, InlineSpan, RichBlockKind, TextAlign};
 
 use super::*;
-use crate::{ParleyInlineBoxKind, ParleyInlineBoxSpec, ParleyLineHeight, ParleyTextStyleConfig};
+use crate::{InlineBoxKind, InlineBoxSpec, TextLineHeight, TextStyleConfig};
 
 const TEST_BYTES_BUDGET: usize = 16 * 1024 * 1024;
 
@@ -27,15 +27,15 @@ fn input(surface_id: TextLayoutSurfaceId, text: &str) -> TextLayoutInput {
     }
 }
 
-fn options(width: f32) -> ParleyLayoutOptions {
-    ParleyLayoutOptions {
+fn options(width: f32) -> TextLayoutOptions {
+    TextLayoutOptions {
         width: Some(width),
         base_text_color: 0x37352f,
-        base_style: ParleyTextStyleConfig {
-            line_height: ParleyLineHeight::Absolute(24.0),
-            ..ParleyTextStyleConfig::default()
+        base_style: TextStyleConfig {
+            line_height: TextLineHeight::Absolute(24.0),
+            ..TextStyleConfig::default()
         },
-        ..ParleyLayoutOptions::default()
+        ..TextLayoutOptions::default()
     }
 }
 
@@ -58,7 +58,7 @@ fn contains_surface(surface_id: TextLayoutSurfaceId) -> bool {
 
 #[test]
 fn surface_identity_distinguishes_table_cells_with_identical_text_and_versions() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     let first = input(
         TextLayoutSurfaceId::TableCell {
             block_id: 7,
@@ -83,8 +83,51 @@ fn surface_identity_distinguishes_table_cells_with_identical_text_and_versions()
 }
 
 #[test]
+fn cache_probe_never_shapes_or_counts_a_miss() {
+    reset_text_layout_cache_for_tests();
+    let input = input(TextLayoutSurfaceId::Block(11), "probe only");
+    let options = options(200.0);
+
+    assert!(
+        try_cached_text_layout_with_request(&input, &options, TextLayoutCacheRequest::visible())
+            .is_none()
+    );
+    let empty_stats = text_layout_cache_stats();
+    assert_eq!(empty_stats.entries, 0);
+    assert_eq!(empty_stats.misses, 0);
+
+    cached_text_layout(&input, theme(), &options);
+    let cached =
+        try_cached_text_layout_with_request(&input, &options, TextLayoutCacheRequest::visible())
+            .expect("a populated exact key should be returned");
+    assert!(cached.cache_hit);
+    assert_eq!(cached.layout.text(), "probe only");
+}
+
+#[test]
+fn compatible_probe_reuses_same_shape_without_reflow_or_miss_telemetry() {
+    reset_text_layout_cache_for_tests();
+    let input = input(TextLayoutSurfaceId::Block(12), "same shaped text");
+    cached_text_layout(&input, theme(), &options(240.0));
+    let before = text_layout_cache_stats();
+
+    let fallback = try_compatible_text_layout_with_request(
+        &input,
+        &options(120.0),
+        TextLayoutCacheRequest::visible(),
+    )
+    .expect("same shape at an old width is a valid transient fallback");
+    let after = text_layout_cache_stats();
+
+    assert_eq!(fallback.layout.text(), "same shaped text");
+    assert_eq!(before.misses, after.misses);
+    assert_eq!(before.reflows, after.reflows);
+    assert_eq!(after.entries, 1);
+}
+
+#[test]
 fn lru_evicts_the_oldest_entry_within_the_lowest_priority() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     set_text_layout_cache_policy(TextLayoutCachePolicy::new(2, TEST_BYTES_BUDGET));
     let first_surface = TextLayoutSurfaceId::Block(1);
     let second_surface = TextLayoutSurfaceId::Block(2);
@@ -92,25 +135,25 @@ fn lru_evicts_the_oldest_entry_within_the_lowest_priority() {
     let first = input(first_surface, "first");
     let second = input(second_surface, "second");
 
-    cached_parley_layout_with_request(
+    cached_text_layout_with_request(
         &first,
         theme(),
         &options(200.0),
         request(TextLayoutCachePriority::Offscreen, false),
     );
-    cached_parley_layout_with_request(
+    cached_text_layout_with_request(
         &second,
         theme(),
         &options(200.0),
         request(TextLayoutCachePriority::Offscreen, false),
     );
-    cached_parley_layout_with_request(
+    cached_text_layout_with_request(
         &first,
         theme(),
         &options(200.0),
         request(TextLayoutCachePriority::Offscreen, false),
     );
-    cached_parley_layout_with_request(
+    cached_text_layout_with_request(
         &input(third_surface, "third"),
         theme(),
         &options(200.0),
@@ -124,10 +167,10 @@ fn lru_evicts_the_oldest_entry_within_the_lowest_priority() {
 
 #[test]
 fn entry_and_byte_budgets_are_both_enforced() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     set_text_layout_cache_policy(TextLayoutCachePolicy::new(10, 1));
 
-    let result = cached_parley_layout(
+    let result = cached_text_layout(
         &input(TextLayoutSurfaceId::Block(1), "larger than one byte"),
         theme(),
         &options(200.0),
@@ -142,18 +185,18 @@ fn entry_and_byte_budgets_are_both_enforced() {
 
 #[test]
 fn editing_pin_survives_capacity_pressure_and_visible_request_releases_it() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     set_text_layout_cache_policy(TextLayoutCachePolicy::new(1, TEST_BYTES_BUDGET));
     let editing_surface = TextLayoutSurfaceId::Block(1);
     let editing = input(editing_surface, "editing");
 
-    cached_parley_layout_with_request(
+    cached_text_layout_with_request(
         &editing,
         theme(),
         &options(200.0),
         TextLayoutCacheRequest::editing(),
     );
-    cached_parley_layout(
+    cached_text_layout(
         &input(TextLayoutSurfaceId::Block(2), "visible"),
         theme(),
         &options(200.0),
@@ -162,7 +205,7 @@ fn editing_pin_survives_capacity_pressure_and_visible_request_releases_it() {
     assert!(contains_surface(editing_surface));
     assert_eq!(text_layout_cache_stats().pinned_entries, 1);
 
-    let visible_result = cached_parley_layout(&editing, theme(), &options(200.0));
+    let visible_result = cached_text_layout(&editing, theme(), &options(200.0));
     assert!(visible_result.cache_hit);
     let report = apply_text_layout_memory_pressure(TextLayoutMemoryPressure::Critical);
     assert_eq!(report.remaining_entries, 0);
@@ -171,7 +214,7 @@ fn editing_pin_survives_capacity_pressure_and_visible_request_releases_it() {
 
 #[test]
 fn warning_pressure_evicts_offscreen_then_overscan_before_visible_and_editing() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     set_text_layout_cache_policy(TextLayoutCachePolicy::new(4, TEST_BYTES_BUDGET));
     let fixtures = [
         (1, TextLayoutCachePriority::Offscreen),
@@ -180,7 +223,7 @@ fn warning_pressure_evicts_offscreen_then_overscan_before_visible_and_editing() 
         (4, TextLayoutCachePriority::Editing),
     ];
     for (block_id, priority) in fixtures {
-        cached_parley_layout_with_request(
+        cached_text_layout_with_request(
             &input(TextLayoutSurfaceId::Block(block_id), "priority"),
             theme(),
             &options(200.0),
@@ -199,12 +242,12 @@ fn warning_pressure_evicts_offscreen_then_overscan_before_visible_and_editing() 
 
 #[test]
 fn critical_pressure_preserves_explicit_pins_and_reports_over_budget() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     set_text_layout_cache_policy(TextLayoutCachePolicy::new(4, TEST_BYTES_BUDGET));
     let pinned_surface = TextLayoutSurfaceId::Block(1);
     let other_surface = TextLayoutSurfaceId::Block(2);
-    cached_parley_layout(&input(pinned_surface, "pinned"), theme(), &options(200.0));
-    cached_parley_layout(&input(other_surface, "other"), theme(), &options(200.0));
+    cached_text_layout(&input(pinned_surface, "pinned"), theme(), &options(200.0));
+    cached_text_layout(&input(other_surface, "other"), theme(), &options(200.0));
     set_text_layout_surface_pin(pinned_surface, true);
 
     let report = apply_text_layout_memory_pressure(TextLayoutMemoryPressure::Critical);
@@ -218,10 +261,10 @@ fn critical_pressure_preserves_explicit_pins_and_reports_over_budget() {
 
 #[test]
 fn frame_pin_sync_releases_an_offscreen_surface_after_focus_moves() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     set_text_layout_cache_policy(TextLayoutCachePolicy::new(4, TEST_BYTES_BUDGET));
     let previous_surface = TextLayoutSurfaceId::Block(1);
-    cached_parley_layout_with_request(
+    cached_text_layout_with_request(
         &input(previous_surface, "previous focus"),
         theme(),
         &options(200.0),
@@ -238,16 +281,16 @@ fn frame_pin_sync_releases_an_offscreen_surface_after_focus_moves() {
 
 #[test]
 fn stats_distinguish_hits_misses_reflows_and_evictions() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     set_text_layout_cache_policy(TextLayoutCachePolicy::new(2, TEST_BYTES_BUDGET));
     let input = input(
         TextLayoutSurfaceId::Block(1),
         "wrap this text over several words",
     );
 
-    let first = cached_parley_layout(&input, theme(), &options(80.0));
-    let second = cached_parley_layout(&input, theme(), &options(80.0));
-    let reflowed = cached_parley_layout(&input, theme(), &options(400.0));
+    let first = cached_text_layout(&input, theme(), &options(80.0));
+    let second = cached_text_layout(&input, theme(), &options(80.0));
+    let reflowed = cached_text_layout(&input, theme(), &options(400.0));
     let stats = text_layout_cache_stats();
 
     assert_eq!(
@@ -265,13 +308,13 @@ fn stats_distinguish_hits_misses_reflows_and_evictions() {
 
 #[test]
 fn layout_generation_change_reflows_without_reshaping() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     let base = input(TextLayoutSurfaceId::Block(1), "same shape");
-    cached_parley_layout(&base, theme(), &options(200.0));
+    cached_text_layout(&base, theme(), &options(200.0));
     let mut changed = base.clone();
     changed.layout_version += 1;
 
-    let result = cached_parley_layout(&changed, theme(), &options(200.0));
+    let result = cached_text_layout(&changed, theme(), &options(200.0));
 
     assert_eq!(result.strategy, TextRelayoutStrategy::Reflow);
     assert!(result.reflowed);
@@ -279,7 +322,7 @@ fn layout_generation_change_reflows_without_reshaping() {
 
 #[test]
 fn focused_relayout_does_not_invalidate_one_hundred_visible_surfaces() {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     set_text_layout_cache_policy(TextLayoutCachePolicy::new(256, TEST_BYTES_BUDGET));
     let visible = (0..100)
         .map(|index| {
@@ -290,7 +333,7 @@ fn focused_relayout_does_not_invalidate_one_hundred_visible_surfaces() {
         })
         .collect::<Vec<_>>();
     for input in &visible {
-        let result = cached_parley_layout(input, theme(), &options(320.0));
+        let result = cached_text_layout(input, theme(), &options(320.0));
         assert!(matches!(
             result.strategy,
             TextRelayoutStrategy::FullBuild(TextRelayoutFallbackReason::NoPreviousSnapshot)
@@ -299,7 +342,7 @@ fn focused_relayout_does_not_invalidate_one_hundred_visible_surfaces() {
 
     let mut focused = visible[41].clone();
     focused.layout_version += 1;
-    let focused_result = cached_parley_layout_with_request(
+    let focused_result = cached_text_layout_with_request(
         &focused,
         theme(),
         &options(280.0),
@@ -313,7 +356,7 @@ fn focused_relayout_does_not_invalidate_one_hundred_visible_surfaces() {
             continue;
         }
         assert_eq!(
-            cached_parley_layout(input, theme(), &options(320.0)).strategy,
+            cached_text_layout(input, theme(), &options(320.0)).strategy,
             TextRelayoutStrategy::CacheHit
         );
     }
@@ -339,9 +382,9 @@ fn full_build_reports_why_incremental_relayout_is_not_valid() {
     assert_full_build_reason(
         &base,
         |_, options| {
-            options.inline_boxes.push(ParleyInlineBoxSpec {
+            options.inline_boxes.push(InlineBoxSpec {
                 id: 1,
-                kind: ParleyInlineBoxKind::InFlow,
+                kind: InlineBoxKind::InFlow,
                 index: 0,
                 width: 20.0,
                 height: 20.0,
@@ -363,17 +406,17 @@ fn full_build_reports_why_incremental_relayout_is_not_valid() {
 
 fn assert_full_build_reason(
     base: &TextLayoutInput,
-    mutate: impl FnOnce(&mut TextLayoutInput, &mut ParleyLayoutOptions),
+    mutate: impl FnOnce(&mut TextLayoutInput, &mut TextLayoutOptions),
     expected: TextRelayoutFallbackReason,
 ) {
-    clear_parley_layout_cache();
+    reset_text_layout_cache_for_tests();
     let base_options = options(200.0);
-    cached_parley_layout(base, theme(), &base_options);
+    cached_text_layout(base, theme(), &base_options);
     let mut changed = base.clone();
     let mut changed_options = base_options;
     mutate(&mut changed, &mut changed_options);
 
-    let result = cached_parley_layout(&changed, theme(), &changed_options);
+    let result = cached_text_layout(&changed, theme(), &changed_options);
 
     assert_eq!(result.strategy, TextRelayoutStrategy::FullBuild(expected));
     assert!(!result.reflowed);

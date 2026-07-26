@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Text icon - letter T -->
+  <path d="M128 96 h256 v64 h-96 v256 h-64 v-256 h-96 z"
+        fill="white" stroke="none"/>
+</svg>

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{PayloadCachePolicy, PayloadCacheTrimReport};
+use crate::{PayloadCacheMaintenanceBudget, PayloadCachePolicy, PayloadCacheTrimReport};
 
 impl DocumentRuntime {
     /// Acknowledges the exact payload versions included in a successful save.
@@ -17,26 +17,80 @@ impl DocumentRuntime {
         policy: PayloadCachePolicy,
         extra_pins: impl IntoIterator<Item = BlockId>,
     ) -> PayloadCacheTrimReport {
-        self.document.payload_window.refresh_estimated_bytes();
+        self.document
+            .payload_window
+            .restart_cache_maintenance_cycle();
+        self.maintain_payload_cache(
+            policy,
+            extra_pins,
+            PayloadCacheMaintenanceBudget::unbounded(),
+        )
+    }
+
+    /// Advances persistent payload-cache maintenance without exceeding the
+    /// supplied per-callback work budget.
+    pub fn maintain_payload_cache(
+        &mut self,
+        policy: PayloadCachePolicy,
+        extra_pins: impl IntoIterator<Item = BlockId>,
+        budget: PayloadCacheMaintenanceBudget,
+    ) -> PayloadCacheTrimReport {
         let before_entries = self.document.payload_window.payloads.len();
         let before_estimated_bytes = self.document.payload_window.total_estimated_bytes();
+        let mut protected = self.payload_cache_runtime_pins();
+        protected.extend(extra_pins);
 
-        let active_ids = self
-            .document
-            .payload_window
-            .block_range
-            .clone()
+        let slice = self.document.payload_window.maintain_cache_slice(
+            policy,
+            budget,
+            |block_id, _, dirty| !protected.contains(&block_id) && !dirty,
+        );
+        let mut evicted_block_ids = Vec::with_capacity(slice.evicted.len());
+        for evicted in slice.evicted {
+            let block_id = evicted.block_id;
+            self.document.text_models.remove(&block_id);
+            self.document.table_runtimes.remove(&block_id);
+            self.layout
+                .table_horizontal_scroll_offsets
+                .remove(&block_id);
+            self.layout.pending_measured_heights.remove(&block_id);
+            evicted_block_ids.push(block_id);
+        }
+
+        let after_entries = self.document.payload_window.payloads.len();
+        let after_estimated_bytes = self.document.payload_window.total_estimated_bytes();
+        PayloadCacheTrimReport {
+            before_entries,
+            after_entries,
+            before_estimated_bytes,
+            after_estimated_bytes,
+            evicted_entries: evicted_block_ids.len(),
+            evicted_block_ids,
+            byte_estimates_refreshed: slice.byte_estimates_refreshed,
+            lru_candidates_examined: slice.lru_candidates_examined,
+            maintenance_pending: slice.maintenance_pending,
+            over_capacity: after_entries > policy.max_entries
+                || after_estimated_bytes > policy.max_estimated_bytes,
+        }
+    }
+
+    fn payload_cache_runtime_pins(&self) -> HashSet<BlockId> {
+        let mut protected_ranges = vec![self.document.payload_window.block_range.clone()];
+        if let Some(stable) = self.layout.projection_window.stable() {
+            protected_ranges.push(stable.block_range.clone());
+        }
+        if let Some(preparing) = self.layout.projection_window.preparing() {
+            protected_ranges.push(preparing.block_range.clone());
+        }
+        let mut protected = protected_ranges
+            .into_iter()
+            .flatten()
             .filter_map(|visible_index| {
                 self.document
                     .visible_index
                     .id_at_visible_index(visible_index)
             })
-            .collect::<Vec<_>>();
-        let mut protected = active_ids.iter().copied().collect::<HashSet<_>>();
-        for block_id in active_ids {
-            self.document.payload_window.touch(block_id);
-        }
-
+            .collect::<HashSet<_>>();
         if let Some(editing) = self.editing.session.as_ref() {
             protected.extend(editing.pinned_blocks().iter().copied());
         }
@@ -70,45 +124,7 @@ impl DocumentRuntime {
         }
         protected.extend(self.ai_payload_pin_ids());
         protected.extend(self.document.payload_window.loading.iter().copied());
-        protected.extend(extra_pins);
-
-        let dirty = self
-            .document
-            .payload_window
-            .payloads
-            .keys()
-            .copied()
-            .filter(|block_id| self.document.payload_window.is_dirty(*block_id))
-            .collect::<HashSet<_>>();
-        let evicted = self.document.payload_window.evict_to_limits(
-            policy.max_entries,
-            policy.max_estimated_bytes,
-            |block_id, _| !protected.contains(&block_id) && !dirty.contains(&block_id),
-        );
-        let mut evicted_block_ids = Vec::with_capacity(evicted.len());
-        for evicted in evicted {
-            let block_id = evicted.block_id;
-            self.document.text_models.remove(&block_id);
-            self.document.table_runtimes.remove(&block_id);
-            self.layout
-                .table_horizontal_scroll_offsets
-                .remove(&block_id);
-            self.layout.pending_measured_heights.remove(&block_id);
-            evicted_block_ids.push(block_id);
-        }
-
-        let after_entries = self.document.payload_window.payloads.len();
-        let after_estimated_bytes = self.document.payload_window.total_estimated_bytes();
-        PayloadCacheTrimReport {
-            before_entries,
-            after_entries,
-            before_estimated_bytes,
-            after_estimated_bytes,
-            evicted_entries: evicted_block_ids.len(),
-            evicted_block_ids,
-            over_capacity: after_entries > policy.max_entries
-                || after_estimated_bytes > policy.max_estimated_bytes,
-        }
+        protected
     }
 }
 
@@ -131,6 +147,14 @@ mod tests {
         PayloadCachePolicy {
             max_entries,
             max_estimated_bytes: usize::MAX,
+        }
+    }
+
+    fn maintenance_budget(candidates: usize, evictions: usize) -> PayloadCacheMaintenanceBudget {
+        PayloadCacheMaintenanceBudget {
+            max_byte_estimate_refreshes: 4,
+            max_lru_candidates: candidates,
+            max_evictions: evictions,
         }
     }
 
@@ -324,5 +348,67 @@ mod tests {
         assert!(!report.over_capacity);
         assert_eq!(report.after_entries, 128);
         assert_eq!(runtime.document.text_models.len(), 128);
+    }
+
+    #[test]
+    fn persistent_default_keeps_more_than_the_legacy_2048_small_payload_limit() {
+        let mut runtime = runtime_with_paragraph_blocks(4_096);
+        narrow_active_window(&mut runtime, 4_032..4_096);
+
+        let report = runtime.trim_payload_cache(PayloadCachePolicy::persistent_default(), []);
+
+        assert_eq!(report.before_entries, 4_096);
+        assert_eq!(report.after_entries, 4_096);
+        assert_eq!(report.evicted_entries, 0);
+        assert!(!report.over_capacity);
+        assert!(report.after_estimated_bytes < crate::DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES);
+    }
+
+    #[test]
+    fn bounded_maintenance_limits_each_runtime_and_entity_cleanup_slice() {
+        let mut runtime = runtime_with_paragraph_blocks(100);
+        narrow_active_window(&mut runtime, 90..100);
+        let budget = maintenance_budget(11, 7);
+
+        let first = runtime.maintain_payload_cache(entry_policy(50), [], budget);
+
+        assert_eq!(first.evicted_entries, 7);
+        assert!(first.lru_candidates_examined <= 11);
+        assert!(first.maintenance_pending);
+        assert_eq!(runtime.document.text_models.len(), 93);
+
+        let mut pending = first.maintenance_pending;
+        while pending {
+            let report = runtime.maintain_payload_cache(entry_policy(50), [], budget);
+            assert!(report.evicted_entries <= 7);
+            assert!(report.lru_candidates_examined <= 11);
+            pending = report.maintenance_pending;
+        }
+        assert_eq!(runtime.document.payload_window.payloads.len(), 50);
+        assert_eq!(runtime.document.text_models.len(), 50);
+    }
+
+    #[test]
+    fn an_over_capacity_fully_pinned_runtime_has_a_terminal_report() {
+        let mut runtime = runtime_with_paragraph_blocks(37);
+        narrow_active_window(&mut runtime, 0..37);
+        let budget = maintenance_budget(6, 6);
+        let mut examined = 0;
+        let mut slices = 0;
+
+        loop {
+            let report = runtime.maintain_payload_cache(entry_policy(0), [], budget);
+            slices += 1;
+            examined += report.lru_candidates_examined;
+            assert!(report.over_capacity);
+            assert_eq!(report.evicted_entries, 0);
+            if !report.maintenance_pending {
+                break;
+            }
+            assert!(slices < 10, "a pinned cache must not schedule forever");
+        }
+
+        assert_eq!(examined, 37);
+        assert_eq!(slices, 7);
     }
 }

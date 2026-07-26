@@ -106,7 +106,8 @@ impl DocumentRuntime {
                 block_id,
                 axis,
                 index,
-            } => self.table_axis_insert_is_valid(*block_id, *axis, *index),
+                count,
+            } => *count > 0 && self.table_axis_insert_is_valid(*block_id, *axis, *index),
             EditorCommand::TableDeleteAxis {
                 block_id,
                 axis,

@@ -259,7 +259,7 @@ DocumentRuntime
 ### 4.3 依赖方向
 
 ```text
-cditor-app / cditor-sdk
+cditor-desktop / cditor-sdk
   -> cditor-runtime
   -> cditor-text
   -> cditor-core
@@ -1634,11 +1634,11 @@ Shadow path 不能产生第二次写入、重复 undo 或 UI side effect。
 - [x] P0-006 固化 cargo fmt/check/clippy/test 基线和已知 ignored test 清单。
   - 证据：同一基线记录 57 项 ignored test、workspace Clippy 阻断项和复现环境；记录完成不表示 Clippy Gate 已通过。
 - [x] P0-007 建立 100k mixed document、Bidi、large code/table fixture。
-  - 证据：`crates/core/src/fixtures/`（bidi/code/table 确定性生成器 + FNV-1a 语义 checksum manifest，18 项常规测试 + 4 项 full-size ignored 测试通过：100k mixed、10MiB/100k 行 code、50k 行表、500 列表、1k 表文档）；100k mixed 复用 `demo_fixtures`。
+  - 证据：`crates/cditor-core/src/fixtures/`（bidi/code/table 确定性生成器 + FNV-1a 语义 checksum manifest，18 项常规测试 + 4 项 full-size ignored 测试通过：100k mixed、10MiB/100k 行 code、50k 行表、500 列表、1k 表文档）；100k mixed 复用 `demo_fixtures`。
 - [x] P0-008 建立 criterion/自定义 frame benchmark 基线。
-  - 证据：`crates/runtime/benches/frame_baseline.rs`（frame-baseline-v1 harness：open/scroll/editing/structure 四组 headless 场景 + P0-007 fixture manifest，输出 versioned JSON，预算失败非零退出）；报告 `doc/acceptance/2026-07-17-frame-baseline-benchmark.md`（M1 Max full 模式全部通过）。GUI raster 帧不在本基线范围。
+  - 证据：`crates/cditor-test-support/benches/frame_baseline.rs`（frame-baseline-v1 harness：open/scroll/editing/structure 四组 headless 场景 + P0-007 fixture manifest，输出 versioned JSON，预算失败非零退出）；报告 `doc/acceptance/2026-07-17-frame-baseline-benchmark.md`（M1 Max full 模式全部通过）。GUI raster 帧不在本基线范围。
 - [x] P0-009 为 input/layout/storage/sync 定义无内容 telemetry schema。
-  - 证据：`crates/core/src/telemetry/`（envelope、四域事件、round-trip 与 content-free 单测 11 项）；导览见 `doc/architecture/telemetry-schema-v1.md`。schema 从类型上禁止自由文本字段；storage/sync 域的生产发射点属于 Phase 7/8。
+  - 证据：`crates/cditor-core/src/telemetry/`（envelope、四域事件、round-trip 与 content-free 单测 11 项）；导览见 `doc/architecture/telemetry-schema-v1.md`。schema 从类型上禁止自由文本字段；storage/sync 域的生产发射点属于 Phase 7/8。
 - [x] P0-010 加入架构依赖检查：core/runtime 不依赖 GPUI，Parley 只在 text。
 - [x] P0-011 加入非白板 Rust 文件 700 行检查和例外审批机制。
 - [x] P0-012 建立 ADR 模板、migration checklist、manual acceptance 模板。
@@ -1656,28 +1656,28 @@ Gate P0：
 ### Phase 1：ID、Schema 与无损兼容
 
 - [x] P1-001 定义 `PersistentId`、各 typed ID、序列化和排序。
-  - 证据：`crates/core/src/identity/persistent_id.rs`（UUIDv7 `PersistentId` + 13 类 typed newtype，字节序即时间序，JSON hyphenated/二进制 16 字节双形态，5 项单测）。格式裁决见 `doc/architecture/adr/ADR-006-persistent-id-and-order-key.md`。
+  - 证据：`crates/cditor-core/src/identity/persistent_id.rs`（UUIDv7 `PersistentId` + 13 类 typed newtype，字节序即时间序，JSON hyphenated/二进制 16 字节双形态，5 项单测）。格式裁决见 `doc/architecture/adr/ADR-006-persistent-id-and-order-key.md`。
 - [x] P1-002 引入 `RuntimeHandle`/`IdArena`，隔离现有 `u64` hot path。
-  - 证据：`crates/core/src/identity/arena.rs`（双向 arena，handle 从 1 单调分配、永不复用，typed 泛型防跨实体混用，3 项单测）。现有 `crate::ids` u64 别名继续作为热路径；持久层接入随 Phase 7/15。
+  - 证据：`crates/cditor-core/src/identity/arena.rs`（双向 arena，handle 从 1 单调分配、永不复用，typed 泛型防跨实体混用，3 项单测）。现有 `crate::ids` u64 别名继续作为热路径；持久层接入随 Phase 7/15。
 - [x] P1-003 设计并实现 legacy u64 -> UUIDv7/ULID 映射表。
-  - 证据：`crates/core/src/identity/legacy_map.rs`（双向映射、幂等重登记、双向冲突拒绝、按 legacy id 排序的确定性导出与重建，4 项单测）。
+  - 证据：`crates/cditor-core/src/identity/legacy_map.rs`（双向映射、幂等重登记、双向冲突拒绝、按 legacy id 排序的确定性导出与重建，4 项单测）。
 - [x] P1-004 实现离线 ID 生成、时钟回拨和碰撞测试。
-  - 证据：`crates/core/src/identity/generator.rs`（RFC 9562 Method 3：同毫秒单调计数、回拨冻结于最大已见毫秒、计数溢出进位、时钟/熵源可注入；覆盖回拨、溢出、v7 合法性、双设备不碰撞、系统源 6 项单测）。
+  - 证据：`crates/cditor-core/src/identity/generator.rs`（RFC 9562 Method 3：同毫秒单调计数、回拨冻结于最大已见毫秒、计数溢出进位、时钟/熵源可注入；覆盖回拨、溢出、v7 合法性、双设备不碰撞、系统源 6 项单测）。
 - [x] P1-005 选择并实现 fractional order key。
-  - 证据：`crates/core/src/identity/order_key.rs`（base-256 中点算法，非空且不以 0x00 结尾不变量，最短 key，头插/尾插/前缀/0x00 前导边界全覆盖）。裁决见 ADR-006。
+  - 证据：`crates/cditor-core/src/identity/order_key.rs`（base-256 中点算法，非空且不以 0x00 结尾不变量，最短 key，头插/尾插/前缀/0x00 前导边界全覆盖）。裁决见 ADR-006。
 - [x] P1-006 实现局部 rebalance operation 和 concurrent insert 测试。
   - 证据：同文件 `rebalanced_keys`（等距最短 key，不触碰 Block 身份）与 `between_with_entropy`（熵尾缀消歧）；2000 次随机插入全序不变量、同间隙并发插入消歧与再插入、rebalance 保序测试通过。
 - [x] P1-007 为 document/block/operation/clipboard/plugin/database 定义独立 schema version。
-  - 证据：`crates/core/src/schema/mod.rs`（七域独立 `SchemaVersion` 与 `ReadPolicy` 四态矩阵：ReadWrite / 保留未知重写 / 新 major 只读 / 旧 major 需迁移，4 项单测）。
+  - 证据：`crates/cditor-core/src/schema/mod.rs`（七域独立 `SchemaVersion` 与 `ReadPolicy` 四态矩阵：ReadWrite / 保留未知重写 / 新 major 只读 / 旧 major 需迁移，4 项单测）。
 - [x] P1-008 实现 versioned envelope 与 unknown fields/raw fallback。
-  - 证据：`crates/core/src/schema/envelope.rs`（`RawValue` 保存原始字节；新 minor best-effort 解码 + `re_encode_preserving` 顶层未知字段保留；新 major 只读，6 项单测）。嵌套未知字段保留由各 kind migrator 负责。
+  - 证据：`crates/cditor-core/src/schema/envelope.rs`（`RawValue` 保存原始字节；新 minor best-effort 解码 + `re_encode_preserving` 顶层未知字段保留；新 major 只读，6 项单测）。嵌套未知字段保留由各 kind migrator 负责。
 - [x] P1-009 为所有内置 Block 注册 descriptor/capabilities/migrator。
-  - 证据：`crates/core/src/schema/registry.rs`（30 个内置 kind tag 全注册，16 位能力集，重复 tag 拒绝，migrator 调用/透传/缺失路径，5 项单测）。GUI/Runtime 的 `match kind` 能力表迁移到该注册表属于 Phase 5（P5-010）。
+  - 证据：`crates/cditor-core/src/schema/registry.rs`（30 个内置 kind tag 全注册，16 位能力集，重复 tag 拒绝，migrator 调用/透传/缺失路径，5 项单测）。GUI/Runtime 的 `match kind` 能力表迁移到该注册表属于 Phase 5（P5-010）。
 - [x] P1-010 未知 Block 在 load/save/copy/move/native export 后字节不变。
   - 证据：envelope 测试用非常规空白/字段序/转义的 body 走 load -> clone(copy/move) -> serialize(save) -> reload 全程字节相同；unknown tag 落到 lossless fallback descriptor（禁编辑、稳定占位）。经 SQLite/PostgreSQL 存储层的端到端字节不变属于 Phase 7 集成验收。
 - [x] P1-011 downgrade 只读模式和明确错误 UI。
   - 证据：Core `ReadPolicy::ReadOnlyNewerMajor`/`DecodeOutcome::ReadOnlyNewerMajor`
-    负责版本策略；`cditor-app::storage_host` 在真实 SQLite 冷启动中比较
+    负责版本策略；`cditor_desktop::storage_host` 在真实 SQLite 冷启动中比较
     `StorageDocumentMetadata.schema_version` 与 `CURRENT_DOCUMENT_FORMAT`，当前 major 可写、
     较新 major 加载为 `DocumentSchemaAccess::ReadOnlyNewerMajor`、旧 major 明确返回 migration
     error。App wiring 将较新版本访问模式传给 Editor；Editor 保存独立的 host readonly 意图与
@@ -1686,7 +1686,7 @@ Gate P0：
     和升级指引的明确提示，不遮挡正文。SQLite 冷启动集成测试、GPUI component SDK 锁定测试、
     notice 文案和 schema 三态测试覆盖上述链路。
 - [x] P1-012 property test：随机 tree/order 操作保持无环、ID、顺序不变量。
-  - 证据：`crates/core/tests/identity_tree_property.rs`（5 个 seed × 600 步随机 insert/move/remove-subtree/reorder/rebalance，独立校验器逐步断言无环、ID 唯一、parent 存在、sibling OrderKey 严格全序、key 结构不变量；另覆盖 64 层深链 + 单间隙 128 次头插后 rebalance 收敛 ≤ 2 字节、移入自身子树拒绝且状态不变）。基于 Runtime `DocumentIndex` 的同类随机化属于 Phase 4 事务化后的扩展。
+  - 证据：`crates/cditor-core/tests/identity_tree_property.rs`（5 个 seed × 600 步随机 insert/move/remove-subtree/reorder/rebalance，独立校验器逐步断言无环、ID 唯一、parent 存在、sibling OrderKey 严格全序、key 结构不变量；另覆盖 64 层深链 + 单间隙 128 次头插后 rebalance 收敛 ≤ 2 字节、移入自身子树拒绝且状态不变）。基于 Runtime `DocumentIndex` 的同类随机化属于 Phase 4 事务化后的扩展。
 - [x] P1-013 migration dry-run、备份、校验和回滚测试。
   - 证据：`cditor-storage-sqlite::SqliteMigrationManager` 在正式升级前执行 migration ledger/checksum、完整性、外键和三倍数据库 footprint 空间 preflight，以 `VACUUM INTO` 生成并 `fsync` 一致性备份，在隔离副本逐版本 dry-run，再比较权威内容、unknown raw JSON、asset refs 三类 SHA-256；正式阶段失败或在 migration 边界取消会关闭连接并原子恢复备份。`migration_orchestration.rs` 使用真实 v1 schema + unknown plugin fixture 覆盖 v1 -> v4、进度、边界取消、半进度自动恢复、显式 rollback 和原始字节不变；详细记录见 `doc/acceptance/2026-07-22-sqlite-migration-orchestration.md`。
 
@@ -1701,7 +1701,7 @@ Gate P1：
 
 ### Phase 2：cditor-text 与 Parley
 
-- [x] P2-001 新建 `crates/text`，迁移 Parley 直接依赖。
+- [x] P2-001 新建 `crates/cditor-text`，迁移 Parley 直接依赖。
 - [x] P2-002 定义 TextSnapshot/TextStyleRun/TextLayoutInput/TextLayoutSnapshot。
   - 证据：`cditor-text` 已公开规范类型；旧 `ParleyLayoutSnapshot`/`ParleyStyleRun` 仅作为迁移兼容别名。
 - [x] P2-003 实现 paragraph、heading、list、code、cell 共用 layout pipeline。
@@ -1727,20 +1727,22 @@ Gate P1：
 - [x] P2-013 全部 async layout 结果验证 SnapshotIdentity。
   - 证据：Core `SnapshotIdentity` 统一携带 document、structure、surface、content、layout、font、scale、viewport、generation 九个身份维度；Runtime 的 surface-scope layout request 和 document-scope page-window request 在结果应用前执行严格逐项验证。Block 与 table cell 独立版本化，过期 measured height 只能降级为 historical hint，8 项调度测试覆盖所有维度、未知 surface、cell 隔离和分页失效。
 - [x] P2-014 删除/隔离旧 fallback render，不再产生第二套 caret geometry。
-  - 证据：App 已删除手写 `gui/text/layout.rs`、`fallback_render.rs` 和未接入生产的重复 caret overlay；`RichTextPlatformLayout` 从类型上强制持有唯一 Parley snapshot，不再保存 GPUI wrapped lines、可空 Parley 或第二份 text。paint、mouse/table hit-test、keyboard navigation、selection toolbar 和 IME range bounds 均读取该 snapshot；range bounds 已收紧为只要 snapshot 存在就必定返回 Parley selection/caret geometry 的总函数，IME 不再补造 1×24 候选框。缓存缺失时只允许同步构建最小 Parley layout。结构脚本禁止旧文件和旧几何类型重新进入 App，36 项 GUI text 测试及 363 项 App 测试通过；`cditor-editor` 的旧 hit-test 契约未被 App 引用，保持隔离。
+  - 证据：GPUI Editor 已删除手写 `text/layout.rs`、`fallback_render.rs` 和未接入生产的重复 caret overlay；`RichTextPlatformLayout` 从类型上强制持有唯一 Parley snapshot，不再保存 GPUI wrapped lines、可空 Parley 或第二份 text。paint、mouse/table hit-test、keyboard navigation、selection toolbar 和 IME range bounds 均读取该 snapshot；range bounds 已收紧为只要 snapshot 存在就必定返回 Parley selection/caret geometry 的总函数，IME 不再补造 1×24 候选框。缓存缺失时只允许同步构建最小 Parley layout。结构脚本禁止旧文件和旧几何类型重新进入 GPUI Editor。
 - [x] P2-015 fixture：CJK、emoji、combining、Arabic/Hebrew、mixed Bidi、variable font。
-  - 证据：`crates/text/tests/fixtures/text-layout/v1/` 以 schema v1 JSON manifest 和独立 UTF-8 文件固化六类多语种语料，并 vendoring 带 OFL/SHA-256 的 League Spartan `wght` variable font，以及带 Apache-2.0 notice/SHA-256 的 Google Fonts COLRv1 test font。测试校验 manifest/path 安全、grapheme/cluster/方向/emoji/selection/caret 不变量、字体 `fvar` 范围、显式注册、exact bytes、默认/非默认 normalized coordinates、实际 color glyph id 与注册后的 cache 失效；App 再验证 variable/TTC/synthesis/COLRv1 的最终栅格像素。
+  - 证据：`crates/cditor-text/tests/fixtures/text-layout/v1/` 以 schema v1 JSON manifest 和独立 UTF-8 文件固化六类多语种语料，并 vendoring 带 OFL/SHA-256 的 League Spartan `wght` variable font，以及带 Apache-2.0 notice/SHA-256 的 Google Fonts COLRv1 test font。测试校验 manifest/path 安全、grapheme/cluster/方向/emoji/selection/caret 不变量、字体 `fvar` 范围、显式注册、exact bytes、默认/非默认 normalized coordinates、实际 color glyph id 与注册后的 cache 失效；Editor 再验证 variable/TTC/synthesis/COLRv1 的最终栅格像素。
 - [x] P2-016 property test：point -> index -> caret bounds 稳定。
   - 证据：Proptest 用 ASCII、换行、CJK、Korean、Arabic、Hebrew、combining、emoji ZWJ/flag 和标点 token 生成文本，并随机 width、point 与 display scale。两项性质各执行 96 cases：同一 immutable snapshot 上重复执行 point -> index/affinity -> caret bounds 必须一致且漂移不超过 1 device pixel；每个生成 grapheme boundary 均产生有限、正高度的 caret。已保存 RTL、空硬行、overhang 和 mixed-Bidi wrap 的最小 regression seeds；测试不错误要求 Bidi/hard-line 多 affinity caret 可逆。
 - [x] P2-017 visual regression：line break/glyph/caret/selection/underline。
   - 证据：versioned corpus manifest 注册 `visual-layout-v1.json`；测试显式注册带 SHA-256 的 League Spartan variable font，禁止系统 fallback 和 faux synthesis，并在 1x/1.25x/2x 下将逻辑坐标量化为 1/64 device pixel。Golden 同时记录 line text range/metrics、exact font blob/face/variation、glyph ID/position、soft/hard-line affinity caret、跨行/跨 style selection fragments、underline 和 background；默认只读比较，只有显式 `CDITOR_UPDATE_TEXT_VISUAL_GOLDEN=1` 才允许重建。该项是 framework-independent Parley 视觉事实基线，不冒充 macOS/Windows/Linux 的 GPUI raster screenshot gate。
 - [x] P2-018 benchmark：focused relayout、100 visible surfaces、large code。
-  - 证据：`crates/text/benches/text_layout.rs` 提供 quick/standard/full 三档无外部 benchmark framework 的 bench-profile harness，输出 versioned JSON、p50/p95/p99/max、fixture/font/profile/target 信息，并在运行时断言 focused 操作走 `Reflow`、cached frame 走 `CacheHit`。M1 Max/macOS 27 full corpus 中 focused reflow p95 10µs、100 visible cold build p95 2.778ms、100 cached frame p95 147µs；精确 10MiB code full build p95 2.543s、reflow p95 746.951ms。前两项通过当前帧预算，large-code 结果明确证明必须实现内部切片/虚拟化，不能据此勾选 Gate P2 性能预算。完整环境与方法记录在 `doc/acceptance/2026-07-16-cditor-text-benchmark.md`。
+  - 证据：`crates/cditor-text/benches/text_layout.rs` 提供 quick/standard/full 三档无外部 benchmark framework 的 bench-profile harness，输出 versioned JSON、p50/p95/p99/max、fixture/font/profile/target 信息，并在运行时断言 focused 操作走 `Reflow`、cached frame 走 `CacheHit`。M1 Max/macOS 27 full corpus 中 focused reflow p95 10µs、100 visible cold build p95 2.778ms、100 cached frame p95 147µs；精确 10MiB code full build p95 2.543s、reflow p95 746.951ms。前两项通过当前帧预算，large-code 结果明确证明必须实现内部切片/虚拟化，不能据此勾选 Gate P2 性能预算。完整环境与方法记录在 `doc/acceptance/2026-07-16-cditor-text-benchmark.md`。
+- [x] P2-019 物化单一文字几何快照，paint/caret/selection/hit-test 不再各自求几何。
+  - 证据：`TextLayoutSnapshot` 构建时同步发布 eager `TextPaintPlan` 与不可变 `TextGeometrySnapshot`；后者保存 logical line bounds、按视觉顺序排列的 cluster，以及每个合法 UTF-8 标量边界对应的 upstream/downstream caret stop（包含 resolved offset/affinity、line index 和 rect）。`caret_rect`、`selection_rects`、`range_rects`、普通 point hit 和 GPUI caret/selection/IME bounds 均只查询该物化结果，不再在查询阶段调用 `Cursor::geometry`、`Selection::geometry` 或 `Cursor::from_point`；word/line selection 与 visual navigation 只保留 Parley 的语言/移动语义。构建算法按 positioned run 线性扫描，保留 soft-wrap affinity、mixed Bidi、hard-line、空文本与 inline box 间隙；paint plan 的 color glyph 检测从逐 glyph 重复解析字体收口为每 run 解析一次。Parley oracle 自动化逐 UTF-8 boundary/affinity、二维 point 和任意 boundary range 比较 caret/hit/selection，`cditor-text` 65 项与 GPUI text 74 项通过。M1 Max/macOS quick benchmark：focused reflow p95 33µs、100 cached surfaces p95 140µs；1MiB segmented corpus 的 scroll-step p95 11.135ms、edit remeasure p95 11.020ms，均在既有预算内。
 
 Gate P2：
 
 - [x] paint/hit-test/navigation/selection/IME geometry 只来自同一 snapshot。
-  - 证据：`RichTextPlatformLayout` 强制持有单一 Parley snapshot；range bounds、point hit、navigation、paint、selection、caret、IME candidate rect 均读取该实例。range bounds 已成为无 synthetic geometry fallback 的总函数。
+  - 证据：`RichTextPlatformLayout` 强制持有单一 `TextLayoutSnapshot`；snapshot 在发布前同时物化 paint plan 与 `TextGeometrySnapshot`。range bounds、point hit、paint、selection、caret 和 IME candidate rect 查询同一份冻结几何，navigation 读取同 snapshot 内的 Parley 语言语义；range bounds 已成为无 synthetic geometry fallback 的总函数。
 - [ ] 正常输入 geometry fallback rate 为 0。
   - 当前进展：`TextGeometryTelemetry` 按 UI thread 分别记录 range/point/navigation snapshot 查询、同步最小布局 fallback 和 unavailable；`CDITOR_TRACE_INPUT=1` 在 focused text paint 与 fallback 事件中输出累计值和 fallback rate。自动化证明纯 snapshot 路径 rate 为 0，但仍需真实输入/滚动/IME soak 采样后才能勾选。
 - [ ] text layout 达到第 28 节预算。
@@ -1793,7 +1795,7 @@ Gate P3：
 ### Phase 4：Command、Transaction 与 Undo
 
 - [x] P4-001 定义稳定 CommandId、args、query state、outcome、error。
-  - 证据：`crates/editor/src/command.rs` 定义 versioned invocation、受校验的 namespaced `CommandId`、typed `CommandArgs`、source、query enabled/checked/mixed/hidden/reason、outcome 与结构化 error；`command/catalog.rs` 注册 50+ 内建定义，固定参数种类、mutability 和 undo boundary。重复 ID、未知命令、schema 不匹配与 args kind 错配均在 Runtime mutation 前拒绝；9 项 editor command 测试及 App catalog 接入测试通过。
+  - 证据：`crates/cditor-editor-protocol/src/command.rs` 定义 versioned invocation、受校验的 namespaced `CommandId`、typed `CommandArgs`、source、query enabled/checked/mixed/hidden/reason、outcome 与结构化 error；`command/catalog.rs` 注册 50+ 内建定义，固定参数种类、mutability 和 undo boundary。重复 ID、未知命令、schema 不匹配与 args kind 错配均在 Runtime mutation 前拒绝；9 项 editor command 测试及 App catalog 接入测试通过。
 - [x] P4-002 keyboard/toolbar/slash/context menu 全部改用 CommandRouter。
   - 证据：keyboard action 先经 `apply_input_command -> dispatch_command`，其 direct Runtime 调用只存在于 router 选择后的统一 handler；formatting/folding/block toolbar、slash menu、table context menu、code language、AI 均直接 dispatch versioned `CditorCommand`，执行前统一 catalog schema + query gate。测试覆盖每个 keyboard document command 均有 router handler、toolbar/keyboard/SDK command 映射一致、42 个 command query/execute 一致。审计剩余 direct Runtime 点均为 printable/IME、mouse selection、drag/resize/scroll 或异步 load，不属于 command surface；它们仍计入 P4-005/P4-006 和 Gate P4 的 transaction 化欠账。
 - [x] P4-003 SDK/automation/AI apply 接同一 CommandRouter。
@@ -1801,11 +1803,11 @@ Gate P3：
 - [x] P4-004 定义 typed text/block/table/collection/comment/asset operations。
   - 证据：Core 现有 text/block/table operation 基础上新增 `TextEditOperation`、`BlockEditOperation`、`CollectionEditOperation`、`CommentEditOperation`、`AssetEditOperation`；collection 覆盖 schema/view/record/typed property value，comment 覆盖 anchor/thread/message/resolve，asset 覆盖 attach/detach/update 与 upload state。全部 operation 可推导 affected block 和 required permission，经 Operation envelope 与 PostgreSQL JSON roundtrip 不丢类型；Core 33 项 edit 测试及 PostgreSQL domain operation 定向测试通过。该项只声明 typed operation schema，不代表 Phase 10-12 的完整产品生命周期已完成。
 - [x] P4-005 实现 transaction precondition/permission/atomic apply/rollback。
-  - 证据：`crates/runtime/src/document_runtime/transaction_apply.rs`（+ structure/payload/domain/validation 辅助）实现统一消费入口：staging（records 副本 + copy-on-touch payload/attrs/collection records/comment threads/assets）上先应用全部 op，任一 op、permission、transaction revision/structure/content precondition、携带的 before 值或整树 preorder 校验失败则整体拒绝、状态零改动。Text 覆盖普通 Block、Code/HTML、table cell、image caption、collection title；Block/Collection/Comment/Asset typed operation 均已由 applier 消费，stable ID、schema/value 类型、comment quote anchor、asset attachment 均有前置校验。内联 mark/color、structured Markdown/AI Markdown、native rich block paste、跨块 delete、split/merge、empty/leaf/whole-block delete 与 subtree move 均产出带 inverse 的 typed operation，并由同一 applier、同一 external transaction undo/redo 路径消费。跨块嵌套 selection 采用“完整 preorder 删除范围 + preserved tail 重插”计划，避免 orphan 并精确恢复 parent/depth/payload；旧 `StructurePasteUndoStep`/`StructureMoveUndoStep` 及独立栈已删除。table resize/reorder/merge/split/style、image resize、whiteboard commit 与普通 Block Backspace 也已产出 typed operation。preapplied printable/IME 把 owner/surface/content/range/live truth/layout 和 forbidden synchronous work 的所有可恢复校验放在 mutation 前，失败保持 selection、editing、typing、transaction id、undo/redo、payload/model、layout 与 pending queue 全部不变；mutation 后 transaction 构造/入队不可失败，空 replacement 为零 mutation。真实 forbidden-work fail-injection 覆盖失败原子性；普通 RichText、Code、table cell、image caption、collection title 五类 Surface 在独立 Runtime 上仅经 applier 重放，最终 payload、content version、layout version 与 fast path 完全一致。Runtime 全量 504 项、App lib 382+1 ignored 通过。
+  - 证据：`crates/cditor-runtime/src/document_runtime/transaction_apply.rs`（+ structure/payload/domain/validation 辅助）实现统一消费入口：staging（records 副本 + copy-on-touch payload/attrs/collection records/comment threads/assets）上先应用全部 op，任一 op、permission、transaction revision/structure/content precondition、携带的 before 值或整树 preorder 校验失败则整体拒绝、状态零改动。Text 覆盖普通 Block、Code/HTML、table cell、image caption、collection title；Block/Collection/Comment/Asset typed operation 均已由 applier 消费，stable ID、schema/value 类型、comment quote anchor、asset attachment 均有前置校验。内联 mark/color、structured Markdown/AI Markdown、native rich block paste、跨块 delete、split/merge、empty/leaf/whole-block delete 与 subtree move 均产出带 inverse 的 typed operation，并由同一 applier、同一 external transaction undo/redo 路径消费。跨块嵌套 selection 采用“完整 preorder 删除范围 + preserved tail 重插”计划，避免 orphan 并精确恢复 parent/depth/payload；旧 `StructurePasteUndoStep`/`StructureMoveUndoStep` 及独立栈已删除。table resize/reorder/merge/split/style、image resize、whiteboard commit 与普通 Block Backspace 也已产出 typed operation。preapplied printable/IME 把 owner/surface/content/range/live truth/layout 和 forbidden synchronous work 的所有可恢复校验放在 mutation 前，失败保持 selection、editing、typing、transaction id、undo/redo、payload/model、layout 与 pending queue 全部不变；mutation 后 transaction 构造/入队不可失败，空 replacement 为零 mutation。真实 forbidden-work fail-injection 覆盖失败原子性；普通 RichText、Code、table cell、image caption、collection title 五类 Surface 在独立 Runtime 上仅经 applier 重放，最终 payload、content version、layout version 与 fast path 完全一致。Runtime 全量 504 项、App lib 382+1 ignored 通过。
 - [x] P4-006 统一更新 structure/content/layout version 和 dirty range。
   - 证据：applier 提交路径统一——结构变化经 `rebuild_structure_index` 单次推进 structure_version；该函数的生产调用点只剩 applier。每个被触碰 payload 的 content_version 和每个 dirty block 的 layout_version 在一次 transaction 内各推进一次，layout meta 置 dirty，editing session 同步最终 content version；document revision 只在非空变更后推进。`AppliedTransaction` 返回最终 document/structure/content/layout versions、affected blocks 和 preorder dirty range；被删块的 payload/text model/table runtime/attrs/asset refs 同步清理，focus/selection 指向已删块时按不变量清空。回归测试发现并修复两类“双推进”：inline Markdown shortcut 的闭合字符不再二次增长 content version，block/inline shortcut 和 table transaction 的同步测高不再二次增长 layout version；现在逐 transaction 均精确 +1。Collection title、Image caption、Table cell 与 fallback hit-test 的 Parley identity 统一使用 owner `BlockLayoutMeta.layout_version`，不再复用 content version 或固定 0。生产写点审计确认其余 version mutation 只在 applier/fast path；`AsyncVersionController` 对 document/structure/content/layout/font/scale/viewport/generation、width/exact width/theme 全维度拒绝 stale result，payload window generation owner 测试证明旧加载结果不得覆盖本地编辑或新请求。complex block 经 typed payload transaction 共享相同 version/dirty gate。
 - [x] P4-007 定义 ChangeOrigin：user/IME/remote/undo/AI/plugin/import。
-  - 证据：`crates/core/src/edit/origin.rs`（10 个来源 + 三个语义谓词：records_local_undo / breaks_typing_coalescing / marks_document_dirty，serde tag 稳定，5 项单测）；`EditTransaction` 现在直接携带 origin，不再要求授权入口旁路保存来源。App/SDK 旧枚举已删除并复用 core 定义，`change_origin_for_source` 映射 Keyboard/Toolbar/SlashMenu/ContextMenu->User、Ime->Ime、Sdk/Automation->Host、Plugin->Plugin、Ai->Ai、Import->Import。
+  - 证据：`crates/cditor-core/src/edit/origin.rs`（10 个来源 + 三个语义谓词：records_local_undo / breaks_typing_coalescing / marks_document_dirty，serde tag 稳定，5 项单测）；`EditTransaction` 现在直接携带 origin，不再要求授权入口旁路保存来源。App/SDK 旧枚举已删除并复用 core 定义，`change_origin_for_source` 映射 Keyboard/Toolbar/SlashMenu/ContextMenu->User、Ime->Ime、Sdk/Automation->Host、Plugin->Plugin、Ai->Ai、Import->Import。
 - [x] P4-008 typing coalescing，selection/focus/command 边界打断。
   - 证据：Runtime snapshot undo 已按稳定 `SurfaceId` 接入 1 秒 typing merge window，连续输入（含普通空格）只记录一次 before snapshot；普通 Block、table cell、image caption、collection title 全部使用同一合并规则。selection、caret navigation、focus/surface switch、CommandRouter dispatch、composition start、paste、format、软换行、undo/redo 会显式打断；IME commit 保持独立 step。`typing_undo.rs` 7 项测试覆盖四类 surface、time gap、边界、redo 对称恢复，App 测试证明只读 copy 命令也会结束输入组；Runtime 全量 460 项测试通过。
 - [x] P4-009 IME/paste/drag/table/AI 独立 undo step。
@@ -1823,11 +1825,11 @@ Gate P3：
 - [x] P4-012 undo/redo 恢复 selection/scroll UX metadata。
   - 证据：text snapshot 保存 input target、selection range/direction 与语义视口锚点；typed structure transaction 保存 before/after focus、跨 block `DocumentSelection`、whole-block selection 和语义锚点，external transaction undo/redo 直接消费这些 metadata。锚点以 viewport-top block + block 内偏移记录，恢复时经当前 HeightIndex 重解，能承受上方高度变化；每个 undo/redo 路径只 restore 一次。`typing_undo.rs` 覆盖 text/structure anchor、height change、跨块文本选区与整块选区，transaction 测试覆盖外部事务双向恢复。旧 structure move/paste metadata 路径已随独立 undo 栈删除。
 - [x] P4-013 randomized edit -> undo all -> redo all property test。
-  - 证据：`crates/runtime/src/document_runtime/tests/undo_property.rs`——5 seed × 60 步 + 1 × 200 步随机 insert_char/delete_backward/replace_range/Enter split/merge，undo-all 必须精确还原初始语义状态（结构 + 全部 payload 文本），redo-all 必须还原终态，undo/redo 步数对偶；另覆盖空栈 no-op 与 undo 后新编辑清空 redo 分支。该测试发现并推动修复了 split 的 undo 缺陷。
+  - 证据：`crates/cditor-runtime/src/document_runtime/tests/undo_property.rs`——5 seed × 60 步 + 1 × 200 步随机 insert_char/delete_backward/replace_range/Enter split/merge，undo-all 必须精确还原初始语义状态（结构 + 全部 payload 文本），redo-all 必须还原终态，undo/redo 步数对偶；另覆盖空栈 no-op 与 undo 后新编辑清空 redo 分支。该测试发现并推动修复了 split 的 undo 缺陷。
 - [x] P4-014 transaction serialization/version/unknown-op 拒绝测试。
-  - 证据：`crates/core/src/edit/transaction_codec.rs`——EditTransaction 经 Operation 域 envelope 编码；未知 op variant / 损坏 body 使**整个 transaction 拒绝**（不部分应用）；新 major 只读且字节原样保留；旧 major 显式要求迁移；域不匹配拒绝。6 项单测。
+  - 证据：`crates/cditor-core/src/edit/transaction_codec.rs`——EditTransaction 经 Operation 域 envelope 编码；未知 op variant / 损坏 body 使**整个 transaction 拒绝**（不部分应用）；新 major 只读且字节原样保留；旧 major 显式要求迁移；域不匹配拒绝。6 项单测。
 - [x] P4-015 command query 与 execute precondition 一致性测试。
-  - 证据：`crates/app/src/gui/app/command_router_tests.rs`——42 个代表性 command × readonly/无 focus/有 focus+选区三种状态：query 禁用 ⇒ execute 必须报错且 revision 不变；query 启用 ⇒ execute 不得返回前置条件类错误；readonly 下所有 mutating command 必须以 Readonly 理由禁用。
+  - 证据：`crates/cditor-editor-gpui/src/app/command_router_tests/`——代表性 command × readonly/无 focus/有 focus+选区三种状态：query 禁用 ⇒ execute 必须报错且 revision 不变；query 启用 ⇒ execute 不得返回前置条件类错误；readonly 下所有 mutating command 必须以 Readonly 理由禁用。
 
 Gate P4：
 
@@ -1911,15 +1913,16 @@ Gate P4：
     remap，并以结构 validator 回归验证；二维 selection、GUI projection/drag 与 clipboard
     外部格式专项验收尚未接入，因此本项保持未勾选。
 - [ ] P5-009 SyncedBlock/Fragment lifecycle 与循环引用保护。
-- [ ] P5-010 Block capability registry 驱动 slash/transform/menu/query。
+- [x] P5-010 Block capability registry 驱动 slash/transform/menu/query。
+  - 证据：Core `schema::BlockRegistry` 以稳定 kind tag 保存 payload version、16 项语义 capability、migrator 与 unknown fallback，是 Runtime 行为查询的唯一真相；convert target、inline mark、soft-enter/text-surface 和 complex Block menu availability 均读取 registry/共享 keyboard policy，不在 GUI 复制 `match kind` 能力表。GPUI `BlockPresentationRegistry` 只拥有 icon/label/keywords/order，slash 与 transform menu 从它生成，并在初始化及测试中把每个 presentation tag 映射回 Core descriptor；重复/未知 tag、重复/非连续 transform order fail closed。Core registry 5、Runtime capability query 7、GPUI presentation registry 5 项针对性测试通过。
 - [ ] P5-011 native/HTML/Markdown/plain clipboard encode/decode。
   - 当前进展：native rich block、structured Markdown、plain text 与 table clipboard 的主要 decode/apply 路径已存在，其中 native/Markdown block paste 已统一 typed transaction；HTML、完整多格式优先级与 encode 对称性仍需系统验收。
 - [x] P5-012 native clipboard unknown payload 无损和 untrusted validation。
   - 证据：native `CditorClipboardEnvelope` 对 schema/version、8 MiB 总大小、system plain-text 绑定、checksum、Block/fragment 数、全局 span/cell 预算、kind/payload 匹配、重复 ID、前向或缺失 parent、parent/depth 一致性、危险 link/resource、collection 规模和 opaque envelope domain 做 fail-closed 校验。未知 plugin kind 与 `RawValue` body 经 metadata encode/decode 逐字节不变；错误 domain、嵌套 caption `javascript:`、payload 冒充、畸形/超限 metadata、未知 schema/version 和 checksum 篡改均有回归测试。跨 Runtime copy/paste/undo/redo 及双存储证据见 `doc/acceptance/2026-07-22-unknown-plugin-roundtrip.md`。
 - [ ] P5-013 async paste anchor rebase、progress/cancel、单 transaction。
   - 当前进展：同步 rich/Markdown paste 已是单 transaction；异步资源加载的 anchor rebase、progress/cancel 和失败回滚尚未实现。
-- [ ] P5-014 CommonMark/GFM parser adapter 和 RawMarkdown fallback。
-  - 当前进展：现有 Markdown parser 已支持段落、inline marks、嵌套结构与 table，并经 payload-carrying transaction 应用；CommonMark/GFM 一致性 fixtures、未知扩展的 RawMarkdown 无损 fallback 尚未完成。
+- [x] P5-014 CommonMark/GFM parser adapter 和 RawMarkdown fallback。
+  - 证据：Import/Export 直接依赖锁定的 `pulldown-cmark 0.12.2`，全量导入以 CommonMark + GFM tables/task lists/strikethrough/callout 事件及 byte offset 划分顶层 block；可由 typed model 表达的 paragraph/heading/list/task/table/backtick fence/quote 进入既有 `ImportedBlockDocument`，编辑时单行 shortcut 仍保留轻量增量 parser。HTML/inline HTML、footnote、definition list、metadata、heading attributes、math、image、reference/autolink 与 tilde/indented code 等当前不能无损表达的结构整体保留为 `RawMarkdown.raw_fallback`；event range 之外被 parser 消费的 reference definition 也由 source coverage 审计并入 fallback，不丢字节。fixtures 覆盖 wrapped paragraph、typed CommonMark/GFM 矩阵、五类 unsupported block 和 reference definition 原文 export roundtrip；Import/Export 25、Session import 4 项及 all-target strict Clippy 通过。
 - [ ] P5-015 streaming Markdown/HTML/native export 与 warning report。
 - [ ] P5-016 import/export roundtrip fixtures。
 - [ ] P5-017 external app clipboard 人工矩阵。
@@ -1944,10 +1947,10 @@ Gate P5：
   - 证据：`WindowPlanRequest` 同时携带 scroll direction、signed viewport/s velocity、semantic pinned pages 与 Normal/Warning/Critical memory pressure。Planner 对 normal 快速滚动只扩展运动前方 1–5 页；warning 将基础 overscan 减半并限制速度扩展；critical 立即收缩到 target page，绕过 hysteresis/stable-frame/debounce，但永不丢弃 pin。Runtime 从相邻 plan 的 f64 global scroll delta/viewport/frame interval 计算速度，聚焦与选中 Block 映射为 page pins，并公开 memory-pressure 输入；debug overlay 记录最后速度和压力。9 项 planner 单测及 3,500 Block Runtime 集成测试覆盖方向、速度、异常速度、压力收缩、pin、hysteresis、debounce 与诊断状态。
 - [x] P6-005 分离 render/payload/layout prefetch ranges。
   - 证据：`EditorViewProjection` 明确公开三种不同范围：最多 320 Block 的 `render_window.block_range` 决定 UI entity；`payload_prefetch_block_range` 在 Normal/Warning 压力下按速度方向扩大、Critical 时退化为 render range；`layout_prefetch_page_range` 由 WindowPlanner 的 page/hysteresis/pin 策略生成并强制覆盖 render pages。Demo hydration 和真实 storage payload loader 已改为请求 payload prefetch range，paint/code highlight/mermaid/whiteboard 仍只消费 render blocks，因此扩大预取不会扩大 UI 数量；layout range 作为后续 lane scheduler 的独立输入，不再与 payload/render 隐式共用。3,500 Block 集成测试覆盖正常压力三范围分离、coverage 不变量与 critical 收缩。
-- [ ] P6-006 realtime/interactive/visible/prefetch/background lanes。
-  - 当前进展：`LayoutScheduler` 已从 High/Normal/Idle 升级为 Realtime/Interactive/Visible/Prefetch/Background 五条独立 FIFO，task kind 显式映射，严格优先顺序、Prefetch/Background 联合背压、非 idle background defer、交互期 prefetch defer 和五类 queue diagnostics 均有自动化；worker pool 仍保留 interactive/background 两类执行池。尚缺 App/GPUI 实际 layout dispatch 全面改走该 scheduler，故保持未勾选。
-- [ ] P6-007 main-thread frame budget、deadline、cancel、dedupe。
-  - 当前进展：Runtime 已有按 typing/composition/wheel/scrollbar 模式缩减的多维 `MainThreadBudget`、priority heap、同 kind+Block generation dedupe、stale background drop、输入帧保护和 async snapshot identity/version 校验，并有单元测试；`LayoutScheduler` 也消费相同预算模型。尚缺 App/GPUI 的真实 async completion、entity diff、measure apply 全部进入 arbiter，以及基于实际 frame deadline 的停止/续帧和任务 cancellation token 接线，因此保持未勾选。
+- [x] P6-006 realtime/interactive/visible/prefetch/background lanes。
+  - 证据：`LayoutScheduler` 已从 High/Normal/Idle 升级为 Realtime/Interactive/Visible/Prefetch/Background 五条独立 FIFO，task kind 显式映射，严格优先顺序、Prefetch/Background 联合背压、非 idle background defer、交互期 prefetch defer 和五类 queue diagnostics 均有自动化。App 的 `CditorV2View` 持有跨帧共享 scheduler；普通、segmented、表格 cell、caption、collection title 的 shaping/geometry，代码高亮、Mermaid、图片 decode、媒体测高、payload/selection/history、undo/save/flush completion 和 AI stream event 均已进入对应 lane。segmented measured closure 不再创建局部 scheduler，而是按 composition/caret、当前 viewport、overscan 顺序向同一帧预算申请 Realtime/Interactive/Prefetch permit。生产 CPU worker admission 限制 syntax highlight、Mermaid 和原始图片 decode 并发。生产审计确认 Block window 内唯一动态 GPUI 子实体是白板缩略图，已消费 `WindowSwap` entity/window-diff 预算；普通 Block 保持有界轻量 `AnyElement` projection。当前没有远端高度 refinement 的生产提交入口，实际 Background completion 均已接线，frame telemetry 因此真实上报 `scheduler_lanes_connected=true` 及五 lane depth。
+- [x] P6-007 main-thread frame budget、deadline、cancel、dedupe。
+  - 证据：Runtime 的多维 `MainThreadBudget` 按 typing/composition/wheel/scrollbar 模式缩减，统一 arbiter 提供 priority、同 kind+Block generation dedupe、stale background drop 和 async snapshot identity/version 校验。App 在 render 起点消费任务并以 16.667ms absolute deadline 阻止继续 apply；generation 在取任务和执行闭包前双重校验，stale/文档切换执行 cancellation cleanup，输入保护由去重 GPUI timer 唤醒，零延时 foreground pump 保证 headless completion 可推进。所有生产文本 surface 只消费 completion 后同一份 `FrameBudgetState`，exact/compatible cache probe、稳定 skeleton、surface-keyed pending dedupe 与 version-gated apply 替代 measured closure 的无条件 Parley build；segmented 每段声明 byte-scaled shaping/measure cost 并共享该剩余预算。白板实体创建消费 entity/window-diff 维度，CPU worker permit 在完成、取消和文档切换时自动释放。自动化覆盖预算耗尽、lane 顺序、stale-drop、取消清理、输入帧 defer、surface 去重和 segmented overscan 拒绝。
 - [x] P6-008 editing/composition/selection/drag/dirty pin policy。
   - 证据：Runtime payload cache trim 在逐出前合并 active payload window、`EditingSession::pinned_blocks()`（焦点与 IME composition）、whole-block/document selection 两端点、focused table cell、AI/loading、App `extra_pins` 与基于精确 content version 的 dirty set；只有既不受保护又已持久化的 LRU payload 可被逐出，同时释放对应 text/table/layout runtime entity。App persistence bridge 将文字拖选、gutter block drag、图片 resize、表格 resize/reorder/hscroll、slash/code/whiteboard/AI 等进行中会话统一转换为 extra pins。窗口原子切换另由 `ProtectedWindowPins` 保留 focus/composition/selection endpoint，避免跨页 swap 丢失交互实体。新增缓存压力组合测试在同次 trim 中验证 composition、选区端点、drag pin、dirty payload 与 active window 均存活，而未保护的选区中间块可逐出；精确保存版本与原子 swap 已有独立回归测试。
 - [x] P6-009 anchor correction 和 scrollbar drag freeze。
@@ -1963,43 +1966,66 @@ Gate P5：
 - [x] P6-014 long-frame diagnostics 与 fallback telemetry。
   - 证据：新增生产 `diagnostics::frame_telemetry`，由 `CditorV2View::render` 每帧记录实际 App render elapsed、16.667ms deadline、overrun 和 interaction mode；保留最近 240 帧及最近 64 个 long frame，溢出计数明确且不会无界占内存。每个 long-frame snapshot 冻结 pending layout/payload/save queues、五 lane depth schema 与 scheduler wiring 状态、document/payload/page window、rendered/loaded/layout entity 数、payload+undo/platform-layout bytes、cache pressure 和 platform text geometry fallback rate，并分类 layout/payload/persistence/entity/cache/fallback/unattributed 原因。统一线程安全 sink 公开 typed snapshot 与 pretty JSON export，不再依赖零散 `eprintln!`。自动化覆盖 25ms 超帧的 queue/window/entity/cache/reason 完整性、JSON export 和双 bounded ring eviction。P6-006 尚未把生产 dispatch 接到五 lanes，所以当前 export 对五个 lane depth 明确输出 `null` 且 `scheduler_lanes_connected=false`，不会伪造 0；接线完成后沿用同一 schema 填数，不影响本项遥测闭环。
 - [ ] P6-015 10MiB code/超长 text surface 分段 snapshot、visual-line window、局部 reflow 与内部 scroll anchor；禁止整块同步 layout。
-  - 当前进展：`crates/text/src/segmented.rs` 完成机制层——O(n) 硬行分段索引（不 shaping）、仅测量可见窗口、自适应行高估计、编辑只失效所在段、宽度变化保留分段只重测窗口、字节偏移内部锚点；14 项单测含"分段总高 == 整块布局高度"（无换行/软换行/编辑后）精确一致性。`crates/text/benches/segmented_layout.rs` 在 10MiB/549 段语料上：索引 p95 2.5ms、冷窗口 9.7ms、滚动步进 4.8ms、编辑重测 5.0ms、宽度 reflow 窗口 4.7ms，全部在帧/输入预算内（对比整块 build p95 2.543s）。App `RichTextElement`/cache identity/code 高亮的接线未完成。
+  - [x] `cditor-text::SegmentedTextLayout` 提供 O(n) 硬行索引、可见窗口测量、自适应高度、局部编辑/宽度失效和字节锚点；分段总高与整块 Parley 在无换行、软换行和编辑后保持一致。
+  - [x] GPUI code production path 在 256KiB 阈值后切换到 `SegmentedRichTextElement`，只 shaping 内部 `ScrollHandle` 当前 viewport、双向 overscan 和交互端点所在段；10MiB 自动测试证明 cache sync 后 `measured_count == 0`，未整块调用 Parley。
+  - [x] 分段 platform snapshot 把 point hit、caret、range、selection、IME 和跨段键盘导航在 segment-local 与全文 UTF-8 byte offset 间双向转换；caret/selection/marked range 端点即使暂时在 viewport 外也会被有界补测。
+  - [x] syntax highlight span 按段的全文 byte range 精确切片并保留 marks；span 边界、marks、代码主题和 typography 纳入 style fingerprint，高亮异步完成后会失效旧 plain snapshot，不会继续显示无高亮缓存。
+  - [x] 可绘制 Parley snapshot 只保留当前窗口与交互端点段；滚出窗口后保留 exact height、释放 shaped snapshot，回访时只重建该段，避免从头滚到底后退化为全文 layout 常驻。
+  - [x] 测高前捕获内部 byte anchor，局部 reflow 后用同一 anchor 恢复 `ScrollHandle`，不按新总高度比例重算 scroll top。
+  - [x] 普通超长 paragraph/raw text surface 接入 document viewport 的分段绘制、geometry 与 anchor；`DocumentEditorView` 将全局虚拟滚动换算为 block-local text viewport，Text 元素仍只消费通用 `top/height` 契约，测高通过 Runtime 既有语义 anchor 批处理修正。Editor 463 项测试覆盖远距坐标换算、平台 geometry 和高度 anchor。
+  - [x] 对无换行且单硬行超过 segment byte cap 的 10MiB surface 建立确定性降级：仅超限硬行按 UTF-8 scalar boundary 切成有界 fragment，公开 `has_forced_line_fragments` 明确标识非 exact paragraph continuation；普通硬行/软换行仍保持 exact 分段。10MiB CJK 单硬行测试证明只建索引、零 shaping、范围连续且无 byte split。
+  - [ ] 完成真实 GPUI 10MiB code 滚动、输入、IME、选择、高亮切换和 resize soak，留存 frame/cache/anchor telemetry 后再勾选父项。
+  - benchmark 基线：`crates/cditor-text/benches/segmented_layout.rs` 在 10MiB/549 段语料上索引 p95 2.5ms、冷窗口 9.7ms、滚动步进 4.8ms、编辑重测 5.0ms、宽度 reflow 窗口 4.7ms；整块 build p95 2.543s。
 
 Gate P6：
 
-- [ ] projection/payload/layout/UI 数量与总 Block 数解耦。
-- [ ] 100k fixture 达到首帧、输入、滚动和内存预算。
-- [ ] scrollbar drag 和异步测高无反跳。
+- [x] projection/payload/layout/UI 数量与总 Block 数解耦。
+  - 证据：P6-005 的三范围 projection、最多 320 Block 的 render window、独立 payload/layout prefetch、轻量 `AnyElement` Block 投影与受预算约束的白板子实体共同保证 UI 数量不随总 Block 数增长。
+- [x] 100k fixture 达到首帧、输入、滚动和内存预算。
+  - 证据：P6-012 的 100,000 Block mixed acceptance 连续三轮满足 frame p95/max、projection 320、payload 512 与 48MiB gate；P6-014 生产 frame telemetry 保留同一组窗口、队列、缓存与 fallback 指标。
+- [x] scrollbar drag 和异步测高无反跳。
+  - 证据：P6-009 冻结 drag 期间 displayed total/thumb geometry，结束时一次收敛；P6-013 以 2,000 次随机 measured-height/stale result 验证语义 anchor 不变，Editor 的 viewport-local f64/f32 边界测试覆盖远距坐标。
 
 ### Phase 7：SQLite Local-First
 
-- [ ] P7-001 定义 LocalStore port 和 SQLite schema。
-- [ ] P7-002 materialized workspace/page/document/block/payload tables。
-- [ ] P7-003 operation journal/outbox/inbox/ack/checkpoint tables。
-  - 当前进展：`crates/store-sqlite/migrations/0003_operation_journal.sql` + `src/journal.rs`——operation_journal（Operation 域 envelope 原始 JSON + origin tag）、sync_outbox（pending/inflight/acked/rejected 状态机 + attempt/last_error）、journal_checkpoints（吸收点 + 语义 checksum）、单行 crash_marker。inbox 随 Phase 8。
-- [ ] P7-004 transaction + materialized rows + outbox 原子写。
-  - 当前进展：`append_transaction_to_journal` 在单一 SQLite 事务内写 journal + outbox（remote/迁移来源可选不入 outbox）；materialized 行并入同一事务属于 `commit` 批量路径的后续接线。
-- [ ] P7-005 单写 worker、WAL、busy/backpressure policy。
-  - 当前进展：WAL + busy_timeout + `SqliteWriterGate` 单写门已存在；journal API 全部经 writer gate。backpressure 策略未实现。
-- [ ] P7-006 save status 细分 DirtyMemory/SavingLocal/LocallySaved/Syncing/Synced。
-- [ ] P7-007 disk full/busy/permission/corruption 错误 UI 和 close guard。
-- [ ] P7-008 emergency in-memory log/export。
-- [ ] P7-009 startup crash marker、journal replay、checksum。
-  - 当前进展：`begin_session_with_crash_marker`/`mark_clean_shutdown`（启动置 dirty、干净退出置 clean、重启检测 CrashDetected）；`journal_entries_after_checkpoint` 按序输出 replay 输入；端到端测试证明 journal -> `decode_transaction` -> `apply_external_transaction` 重建的 runtime 与在线 runtime 语义一致，未来 major 条目拒绝回放且字节保留。kill -9 逐 commit point 注入属于 P7-014。
-- [ ] P7-010 checkpoint + operation 重建 materialized state。
-  - 当前进展：checkpoint 表 + `record_journal_checkpoint`/`journal_checkpoint_checksum`/`compact_journal`（compact 尊重未确认 outbox）已就绪；从 checkpoint + journal 全量重建 materialized 行属于后续。
-- [ ] P7-011 local FTS/backlink 增量 index。
-- [ ] P7-012 asset manifest/provisional upload state。
+- [x] P7-001 定义 LocalStore port 和 SQLite schema。
+  - 证据：本实现将长期 port 命名为 storage-neutral `cditor_storage::DocumentStorage`，由 `StorageProvider` 组合具体 adapter；port 覆盖 cold load、payload window、原子 save、emergency log、undo blob 与 flush，Runtime/Session 不依赖 SQLx 或 SQLite。`cditor-storage-sqlite/migrations/0001..0004` 是版本化本地 schema，SQLite row/codec/connection/writer 均保持 crate-private。
+- [x] P7-002 materialized workspace/page/document/block/payload tables。
+  - 证据：`0001_initial.sql` 包含 workspaces、documents、blocks、block_attrs、block_payloads、block_layout、page_layout、document_index_snapshot、edit_transactions 等物化表；`0002` 扩展 page layout snapshot。SQLite contract 覆盖创建、保存、重开、窗口加载、unknown payload 原字节和 layout cache。
+- [x] P7-003 operation journal/outbox/inbox/ack/checkpoint tables。
+  - 证据：`0003_operation_journal.sql` 定义 operation_journal（Operation envelope 原始 JSON + origin）、sync_outbox（pending/inflight/acked/rejected + attempt/error）、journal_checkpoints（吸收点 + checksum）和 crash_marker；`0005_sync_inbox_ack.sql` 增加以 `(document_id,batch_id)` 唯一约束去重的 sync_inbox，以及分别保存 pushed outbox id/pulled server cursor 的 sync_ack_cursors。API 对 inbox identity/cursor/envelope 做非空校验，pending pull 每次最多 1,024 条；inbox applied + pull cursor、outbox Acked + push cursor 分别在单一 SQLite 事务推进。41 项 SQLite 测试覆盖网络重试幂等、文档隔离、有界顺序、只 apply 一次和双向 cursor。
+- [x] P7-004 transaction + materialized rows + outbox 原子写。
+  - 证据：SQLite `commit` 在同一个 `sqlx::Transaction` 内写 blocks/attrs/payload/layout/edit_transactions，并对每个本地 `EditTransaction` 幂等复用或创建 operation journal，再创建唯一 pending outbox；remote/migration 不产生上行 outbox。保存前 emergency append 仍先行耐久化，主事务失败可恢复；主事务成功时 materialized + journal identity + outbox 原子提交。集成测试覆盖 emergency row 复用、materialized 后不再被恢复扫描、唯一 outbox 和重复 commit 幂等。
+- [x] P7-005 单写 worker、WAL、busy/backpressure policy。
+  - 证据：SQLite 连接固定 WAL、foreign_keys、busy_timeout、wal_autocheckpoint；进程内同 canonical database path 共享 `SqliteWriterGate`，所有 commit/journal/checkpoint/undo 写路径串行取得 owned permit。超过配置等待时间返回 typed `StorageError::Busy`，不会无界排队；单写锁复用和 timeout 行为有异步测试。
+- [x] P7-006 save status 细分 DirtyMemory/SavingLocal/LocallySaved/Syncing/Synced。
+  - 证据：Editor 内部与公开 SDK 均使用 `DirtyMemory`、`SavingLocal`、`LocallySaved`、`Syncing`、`Synced`、`FailedLocal`、`Readonly` 的 typed 状态；本地事务只有 SQLite commit 成功后才进入 `LocallySaved`，未接远端同步时不会伪装为 `Synced`。关闭规则阻塞内存脏、保存中和本地失败，允许已本地保存、同步中、已同步与只读状态；Editor、SDK 和 component 集成测试覆盖标签、状态映射和关闭决策。
+- [x] P7-007 disk full/busy/permission/corruption 错误 UI 和 close guard。
+  - 证据：`cditor-storage` 为容量耗尽和权限拒绝增加稳定 error variant，SQLite adapter 按 primary/extended result code 及无 code message fallback 将 busy/locked、FULL、PERM/READONLY、CORRUPT/NOTADB 分类；Session 将具体 backend error 转为不泄漏 SQLx 的 `PersistenceFailureKind`，save/emergency-log/flush/timeout 全程不再压成字符串。Editor 对 busy、磁盘满、权限、损坏、超时、I/O 显示不同的持久失败提示，可重试错误提供重试保存，损坏禁止盲目重试；SDK `FailedLocal` 和 `CloseGuard.local_failure/requires_recovery_export` 使宿主在本地失败时禁止静默关闭。SQLite、Session、SDK、Editor 自动化覆盖错误码、跨层 kind round-trip、失败事务恢复、显式重试与 close guard。
+- [x] P7-008 emergency in-memory log/export。
+  - 证据：Runtime 通过只读 `pending_structure_transactions_snapshot` 投影尚未持久化的本地 operation，不 drain、不 acknowledge，也不改变 dirty 状态；Session 将其导出为 format=`cditor-emergency-operations`、version=1 的 `EmergencyExportArtifact`，限制最多 4,096 个 operation 和 64 MiB，空包、错误格式、未知版本与越界输入均显式拒绝。导出结果会重新经过既有 emergency recovery decoder、operation schema/version/order/document identity validator，round-trip 测试证明可生成有效 recovery plan。公开 SDK `RecoveryExport`/`CditorHandle::export_recovery` 与 GPUI component contract 均不泄漏 Runtime 类型；Desktop 集成测试证明 dirty 文档可导出有效恢复包，且导出前后 dirty 状态和 pending operation 完全不变。
+- [x] P7-009 startup crash marker、journal replay、checksum。
+  - 证据：`begin_session_with_crash_marker`/`mark_clean_shutdown` 在启动置 dirty、干净退出置 clean并检测上次异常退出；`journal_entries_after_checkpoint` 按 journal id 输出严格顺序 replay 输入。Session cold start 在暴露 editor 前解码、版本校验并回放 durable emergency operation；集成测试证明 journal -> `decode_transaction` -> `apply_external_transaction` 重建语义等于在线 Runtime，未来 major 条目保持原字节并进入只读恢复。checkpoint 保存 materialized checksum，undo blob 与 migration validation 另有 SHA 校验。逐 commit point 的独立进程 kill -9 仍由 P7-014 跟踪。
+- [x] P7-010 checkpoint + operation 重建 materialized state。
+  - 证据：storage port 定义不依赖 SQLite/Runtime 的 `MaterializedDocumentState`、`MaterializedCheckpoint` 与 `MaterializedRebuildPlan`；SQLite 在单写 gate 内捕获完整 metadata/index/attrs/payload 基线，以 format=`cditor-materialized-checkpoint`、version=1 写入 `runtime_snapshots`，并在同一事务更新已吸收 journal sequence 与 SHA-256 截断 checksum。加载时先校验 checksum、format/version、document identity、唯一 block id、attrs 引用和 payload 全覆盖，再读取 checkpoint 之后的 operation；journal id 必须严格递增，row schema version 必须与 envelope 一致。Session 只负责把 storage-neutral checkpoint 构造成 Runtime 并通过既有 versioned operation validator 顺序回放，不让 SQLite adapter 依赖编辑语义。跨 crate 集成测试覆盖“基线 commit -> checkpoint -> 后续 commit -> checkpoint + operation 重建”等价文本、缺失 checkpoint 和损坏 snapshot 回放前拒绝；Storage 30、SQLite 46、Session 80 项测试及严格 Clippy 通过。
+- [x] P7-011 local FTS/backlink 增量 index。
+  - 证据：`0006_local_query_index.sql` 建立带 workspace/document/block/content-version identity 的 SQLite FTS5、增量状态表和 target 索引；`StorageCapabilities::SQLITE.full_text_search=true`，storage port 暴露 typed `LocalSearchRequest/LocalSearchHit`、`BacklinkRecord` 与有界 rebuild contract，不向 UI 暴露 SQL。SQLite 的异步保存 commit 只为 changed payload 替换 FTS row 和 source backlink，结构删除同步清理投影；搜索强制 workspace scope、可选 document scope、1,000 条硬上限、用户查询 token quoting，并返回 content version 供 stale-result 校验。内部链接只接受稳定 `cditor://document/{DocumentId}` 与 `/block/{BlockId}` identity，inline/table/caption/collection/embed 均扫描，普通网页 URL 不误建 backlink；查询实时计算 target resolved/unresolved。损坏或迁移后的索引可通过单写 gate 下最多 4,096 block/批的 reset/rebuild 恢复，不扫描 UI entity。真实 SQLite 测试覆盖增量替换、scope/version、resolved/unresolved、结构删除和损坏 rebuild；Storage 30、SQLite 52 项测试、migration backup/dry-run/resume 与严格 Clippy 全部通过。
+- [x] P7-012 asset manifest/provisional upload state。
+  - 证据：`0007_asset_manifest.sql` 建立 workspace 级 asset manifest、content-hash lookup、持久 upload session/progress/canonical mapping/error，以及带外键的 `block_assets` 引用；storage port 用 `ProvisionalAssetRequest`、`AssetManifestRecord`、`AssetUploadMutation` 暴露 typed 生命周期，不把上传进度写进 block payload。provisional 创建强制 `LocalPending`、本地 source、MIME/file name 和 64 个十六进制字符的 SHA-256，workspace 内按 content hash 去重；状态机覆盖 LocalPending -> Uploading -> Ready、Failed -> 新 session 重试、Delete，校验 session identity、进度单调且不超过 size、未传满禁止 Complete，旧异步回调不能覆盖新 attempt。Core `AssetEditOperation::Attach/Detach/Update` 在正文 SQLite commit 的同一事务物化 manifest metadata 与 block reference，detach 保留可能被其他 block 使用的 manifest。真实 SQLite 测试覆盖 hash 去重、非法输入、stale session、进度回退/越界、完整上传、失败重试、重开持久化和 attach/detach 原子引用；migration v1 -> v7 backup/dry-run/progress/rollback、SQLite 56、Storage 30、Session 80 项测试和严格 Clippy 均通过。
 - [x] P7-013 migration preflight/backup/progress/resume/rollback。
   - 证据：`crates/cditor-storage-sqlite/src/migration.rs` + `migration/validation.rs`；SQLx ledger 是持久 resume cursor，每个 migration 独立事务提交并在版本边界检查取消、报告进度，重启只运行 remaining versions；备份/dry-run/正式校验/自动与显式 rollback 的 4 项集成测试通过。未来新增单个超大 backfill migration 时仍须按第 18.4 节在该 migration 内增加分批 cursor，不能把一次长 SQL 当成已满足大表进度要求。
-- [ ] P7-014 fault injection：进程在每个 commit point 崩溃。
-- [ ] P7-015 SQLite corruption/recovery copy/只读打开测试。
-- [ ] P7-016 100k local open/save/compact benchmark。
+- [x] P7-014 fault injection：进程在每个 commit point 崩溃。
+  - 证据：SQLite `cfg(test)` commit hook 定义 `transaction_opened`、`materialized_written`、`journal_outbox_written`、`sqlite_commit_returned` 四个确定停点，生产构建不包含停顿逻辑。父测试为每个停点启动独立 Rust test 子进程，等子进程写入 marker 后用 `Child::kill` 在 Unix 发送 SIGKILL（等价 kill -9），随后重开同一 WAL 数据库。前三个未 commit 停点全部恢复 baseline 且 journal/outbox 均为 0；commit 返回后的停点完整保留新 payload 且 journal/outbox 均为 1；四次 `PRAGMA integrity_check` 都为 `ok`。完整 SQLite 58 项测试及 all-target strict Clippy 通过。
+- [x] P7-015 SQLite corruption/recovery copy/只读打开测试。
+  - 证据：`cditor-storage-sqlite::SqliteRecoveryCopy` 在正常 writer/连接关闭后把 main database 与存在的 WAL sidecar 复制到永不覆盖旧副本的独立 recovery 路径；原始字节不被恢复流程修改，副本文件与 Unix 父目录均同步落盘。副本用 `read_only(true)`、单连接和每连接 `PRAGMA query_only=ON` 打开，只公开 `load_materialized_document`，不实现 `DocumentStorage`，因此恢复视图没有 commit/迁移能力；`quick_check` 结果显式区分 `Readable`、`IntegrityCheckFailed`、`Unreadable`，即使 SQLite 无法打开物理损坏文件也保留副本路径和诊断。持久 payload/kind JSON 解码失败现在归类为 `CorruptData` 而非应用侧 `Serialization`。真实 SQLite 测试覆盖完整 materialized read、写 SQL 被拒绝且源库不变、逻辑 JSON 损坏、header 物理损坏、缺失源文件和连续创建不覆盖；SQLite 62 项测试及 all-target strict Clippy 通过。
+- [x] P7-016 100k local open/save/compact benchmark。
+  - 证据：`cditor-test-support/benches/sqlite_local_storage.rs` 使用真实 WAL `SqliteDocumentStorage` 和公开 storage port 建立 100,000 mixed Block 数据库，输出 versioned JSON、环境、p50/p95/max、initial hydration 与 DB/WAL/SHM footprint，并以非零退出执行 open/save 预算。M1 Max/macOS aarch64 full：重开完整 100k index + 128 payload 首窗 p95 76.39ms（<250ms），50 次带 FTS/journal/outbox 的单 block durable save p95 5.83ms/max 14.04ms（<50ms），100k seed 3.52s，完整结构重写 1.77s，materialized checkpoint p95 640.58ms，50 条 acked operation compact 0.41ms，WAL flush 0.35ms。基准先发现 FTS `UNINDEXED` identity DELETE 的近似 O(n²) 扫描；`0008_fts_rowid_projection.sql` + `query_index/write.rs` 改为普通 PK -> 唯一 FTS rowid 映射和 512 Block 有界批量写，4,096 seed 从 1582.73ms 降至 155.94ms，并以测试证明替换复用 rowid、无重复 FTS row。完整方法、边界和结果见 `doc/acceptance/2026-07-25-sqlite-100k-local-storage-benchmark.md`；1.77s full structure snapshot 明确只允许后台执行，后续结构 delta 不能删除该回归指标。
 
 Gate P7：
 
-- [ ] 断电/kill -9 后 committed 内容不丢，未 commit 状态可解释。
-- [ ] 本地保存不占 input 主线程且 p95 达标。
+- [x] 断电/kill -9 后 committed 内容不丢，未 commit 状态可解释。
+- [x] 本地保存不占 input 主线程且 p95 达标。
+  - 证据：GPUI persistence bridge 用 `cx.background_spawn` 执行 `run_storage_save_with_timeout`，Session 的 SQLite future 由命名 `cditor-session-io` 多线程 runtime 驱动，UI entity 只在 background task 完成后应用 success/failure，不在 input handler 同步执行 DB I/O；P7-016 的真实 100k SQLite durable single-block save 50 样本 p95 5.83ms、max 14.04ms，低于 50ms Gate。
 - [ ] PostgreSQL 离线不影响创建、编辑、重启恢复。
 
 ### Phase 8：Sync API 与服务端权威

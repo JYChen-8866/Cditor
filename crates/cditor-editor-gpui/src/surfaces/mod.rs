@@ -3,4 +3,4 @@ pub(crate) mod collection_title;
 pub(crate) mod table_cell;
 pub(crate) mod text;
 
-pub(crate) use text::TextSurfaceRenderState;
+pub(crate) use text::{TextSurfaceInteractionGeometry, TextSurfaceRenderState};

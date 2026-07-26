@@ -62,8 +62,7 @@ impl DocumentRuntime {
             let payload = self
                 .document
                 .payload_window
-                .payloads
-                .get_mut(&focused.block_id)
+                .get_mut(focused.block_id)
                 .ok_or_else(|| format!("missing payload for block {}", focused.block_id))?;
             payload.payload = next_table_payload;
             payload.content_version = payload.content_version.saturating_add(1);

@@ -1,0 +1,20 @@
+# Build artifacts
+/target/
+/web/pkg/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# WASM build artifacts
+*.wasm
+!web/pkg/*.wasm

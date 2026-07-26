@@ -62,12 +62,12 @@ impl DocumentRuntime {
                 EditorCommand::DeleteSelection => {
                     self.delete_active_selection().map_err(apply_error)?
                 }
-                EditorCommand::ApplyClipboardData {
-                    text,
-                    metadata_json,
-                } => self
-                    .apply_clipboard_data(&text, metadata_json.as_deref())
-                    .map_err(apply_error)?,
+                EditorCommand::ApplyClipboardData { .. } => {
+                    return Err(ProtocolError::new(
+                        ProtocolErrorCode::InvalidArguments,
+                        "raw clipboard data must be planned by cditor-session",
+                    ));
+                }
                 EditorCommand::InsertImageAsset { payload } => {
                     let (image, trailing) = self
                         .insert_image_asset_after_focused(payload)
@@ -203,7 +203,7 @@ impl DocumentRuntime {
                         AiApplyCommandMode::Replace => AiApplyMode::Replace,
                         AiApplyCommandMode::InsertAfter => AiApplyMode::InsertAfter,
                     };
-                    self.apply_ai_preview(mode).map_err(apply_error)?
+                    self.apply_ai_preview(mode, None).map_err(apply_error)?
                 }
                 EditorCommand::TableToggleHeader { block_id, axis } => {
                     affected_blocks.push(block_id);
@@ -228,11 +228,12 @@ impl DocumentRuntime {
                     block_id,
                     axis,
                     index,
+                    count,
                 } => {
                     affected_blocks.push(block_id);
                     match axis {
-                        TableAxis::Row => self.insert_table_row(block_id, index),
-                        TableAxis::Column => self.insert_table_column(block_id, index),
+                        TableAxis::Row => self.insert_table_rows(block_id, index, count),
+                        TableAxis::Column => self.insert_table_columns(block_id, index, count),
                     }
                     .map_err(apply_error)?
                 }
@@ -568,6 +569,7 @@ mod tests {
                 height: TableTrackSize::Auto,
             }],
             columns: vec![TableColumnPayload::default()],
+            header_rows: 1,
             ..TablePayload::default()
         };
         let mut runtime = DocumentRuntime::from_payloads(
@@ -587,7 +589,8 @@ mod tests {
                 EditorCommand::TableInsertAxis {
                     block_id: 1,
                     axis: TableAxis::Row,
-                    index: 1,
+                    index: 0,
+                    count: 3,
                 },
                 CommandSource::Toolbar,
             ))
@@ -596,10 +599,18 @@ mod tests {
         let BlockPayload::Table(table) = runtime.block_payload_record(1).unwrap().payload else {
             panic!("table payload");
         };
-        assert_eq!(table.row_count(), 2);
+        assert_eq!(table.row_count(), 4);
+        assert_eq!(table.header_rows, 4);
         assert_eq!(runtime.revision(), before_revision + 1);
         assert_eq!(outcome.transaction_ids.len(), 1);
         assert_eq!(outcome.affected_blocks, vec![1]);
+
+        assert!(runtime.undo_focused_block().unwrap());
+        let BlockPayload::Table(table) = runtime.block_payload_record(1).unwrap().payload else {
+            panic!("table payload after undo");
+        };
+        assert_eq!(table.row_count(), 1);
+        assert_eq!(table.header_rows, 1);
     }
 
     #[test]

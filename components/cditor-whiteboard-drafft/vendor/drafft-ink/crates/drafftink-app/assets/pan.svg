@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Pan / Hand icon -->
+  <g fill="none" stroke="white" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Palm -->
+    <path d="M160 280 L160 400 Q160 440 200 440 L360 440 Q400 440 400 400 L400 200"/>
+    <!-- Fingers -->
+    <path d="M160 280 L160 160 Q160 120 200 120 Q240 120 240 160 L240 240"/>
+    <path d="M240 240 L240 120 Q240 80 280 80 Q320 80 320 120 L320 240"/>
+    <path d="M320 240 L320 140 Q320 100 360 100 Q400 100 400 140 L400 240"/>
+    <!-- Thumb -->
+    <path d="M160 320 L100 280 Q60 260 80 220 Q100 180 140 200 L160 220"/>
+  </g>
+</svg>

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use gpui::Context;
+use gpui::{App, Context};
 
 use cditor_core::ids::BlockId;
 
@@ -18,6 +18,22 @@ use cditor_runtime::DocumentRuntime;
 use cditor_session::{EditorSession, EditorSessionHandle};
 
 impl CditorV2View {
+    pub(crate) fn set_caret_blink_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.focus
+            .caret_blink
+            .update(cx, |blink, cx| blink.set_enabled(enabled, cx));
+    }
+
+    pub(crate) fn pause_caret_blink(&mut self, cx: &mut Context<Self>) {
+        self.focus
+            .caret_blink
+            .update(cx, |blink, cx| blink.pause(cx));
+    }
+
+    pub(crate) fn caret_blink_visible(&self, cx: &App) -> bool {
+        self.focus.caret_blink.read(cx).visible()
+    }
+
     pub(crate) fn ready_session(&self) -> Option<&EditorSessionHandle> {
         match &self.state {
             CditorViewState::Ready(session) => Some(session),
@@ -42,6 +58,7 @@ impl CditorV2View {
             status: EditorStatusUiState::new(effective_readonly, requested_readonly),
             interaction: InteractionUiState::default(),
             cache: RenderCacheState::default(),
+            scheduling: Default::default(),
         }
     }
 
@@ -52,6 +69,8 @@ impl CditorV2View {
         self.features.reset_session();
         self.overlay.reset();
         self.cache.reset_session();
+        self.scheduling.main_thread.clear();
+        self.scheduling.workers = Default::default();
     }
 
     pub fn new(cx: &mut Context<Self>) -> Self {
@@ -137,12 +156,37 @@ impl CditorV2View {
         Self::compose(
             CditorViewState::Loading {
                 message: message.into(),
+                progress: None,
             },
             show_debug,
             readonly,
             readonly,
             cx,
         )
+    }
+
+    pub fn loading_with_progress_options(
+        message: impl Into<String>,
+        initial_progress: u8,
+        show_debug: bool,
+        readonly: bool,
+        _autosave_interval: Option<Duration>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::compose(
+            CditorViewState::Loading {
+                message: message.into(),
+                progress: Some(initial_progress.min(100)),
+            },
+            show_debug,
+            readonly,
+            readonly,
+            cx,
+        )
+    }
+
+    pub fn apply_load_progress(&mut self, message: impl Into<String>, progress: u8) -> bool {
+        self.state.apply_load_progress(message, progress)
     }
 
     pub fn load_failed(
@@ -190,7 +234,7 @@ impl CditorV2View {
             return;
         }
         self.status.dirty = true;
-        self.status.save_status = EditorSaveStatus::Dirty;
+        self.status.save_status = EditorSaveStatus::DirtyMemory;
         schedule_storage_autosave(self, cx);
     }
 
@@ -210,6 +254,26 @@ impl CditorV2View {
         self.interaction
             .table_scroll_state
             .handle(block_id, offset_x)
+    }
+
+    pub(crate) fn code_scroll_handle(&mut self, block_id: BlockId) -> gpui::ScrollHandle {
+        self.interaction
+            .code_scroll_handles
+            .entry(block_id)
+            .or_default()
+            .clone()
+    }
+
+    pub(crate) fn request_code_caret_reveal_after_line_break(&mut self, block_id: BlockId) {
+        self.interaction
+            .code_caret_reveal_after_line_break
+            .insert(block_id);
+    }
+
+    pub(crate) fn take_code_caret_reveal_after_line_break(&mut self, block_id: BlockId) -> bool {
+        self.interaction
+            .code_caret_reveal_after_line_break
+            .remove(&block_id)
     }
 
     pub(crate) fn stable_table_viewport_measurement(

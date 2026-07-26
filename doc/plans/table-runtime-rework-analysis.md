@@ -66,12 +66,12 @@
 
 V2 相关文件主要在：
 
-- `crates/core/src/rich_text/table.rs`
-- `crates/core/src/rich_text/payload.rs`
-- `crates/runtime/src/document_runtime/*`
-- `crates/app/src/gui/block/table.rs`
-- `crates/app/src/gui/input/mouse.rs`
-- `crates/app/src/gui/app/input/keyboard.rs`
+- `crates/cditor-core/src/rich_text/table.rs`
+- `crates/cditor-core/src/rich_text/payload.rs`
+- `crates/cditor-runtime/src/document_runtime/*`
+- `crates/cditor-editor-gpui/src/features/table/mod.rs`
+- `crates/cditor-editor-gpui/src/input/mouse.rs`
+- `crates/cditor-editor-gpui/src/input/keyboard.rs`
 
 ### 表格只是 BlockPayload 的一个 variant
 
@@ -107,7 +107,7 @@ V2 的表格焦点存在 `DocumentRuntime.focused_table_cell: Option<FocusedTabl
 
 ### 表格渲染没有独立 entity runtime
 
-`crates/app/src/gui/block/table.rs` 现在用 `TableCellTextElement` 直接渲染 cell 文本，layout 信息回写到 `CditorV2View.table_cell_layouts`。
+`crates/cditor-editor-gpui/src/features/table/mod.rs` 现在用 `TableCellTextElement` 直接渲染 cell 文本，layout 信息回写到 `CditorV2View.table_cell_layouts`。
 
 这能画出来，但没有旧版那种稳定 cell entity：
 
@@ -169,7 +169,7 @@ V2 应该照旧版思路重做表格，而不是继续在通用路径上补判�
 在 engine 里建立独立模块，例如：
 
 ```text
-crates/runtime/src/document_runtime/table/
+crates/cditor-runtime/src/document_runtime/table/
   mod.rs
   runtime.rs
   focus.rs
@@ -248,7 +248,7 @@ GUI 不应该自己猜 table 是否有效；如果 block 是 table，projection 
 照旧版 `CditorTableCell` 的思路，在 app 层建立：
 
 ```text
-crates/app/src/gui/block/table/
+crates/cditor-editor-gpui/src/features/table/
   mod.rs
   row.rs
   cell.rs
@@ -312,7 +312,7 @@ slash menu 插入 table 时，不能先改 kind 再等后续 normalize。应该�
 
 ### Phase 1: 收口 table invariant
 
-- [ ] 新建 `crates/runtime/src/document_runtime/table/`。
+- [ ] 新建 `crates/cditor-runtime/src/document_runtime/table/`。
 - [ ] 移动默认 2x2 构造、payload normalize、table kind 转换逻辑到 table 模块。
 - [ ] 删除散落在多个文件里的重复 `default_table_payload` 判断。
 - [ ] 给 `kind=Table + 非 table payload`、`kind=Table + 空 table payload`、`table -> paragraph`、`paragraph -> table` 写集中单测。
@@ -335,7 +335,7 @@ slash menu 插入 table 时，不能先改 kind 再等后续 normalize。应该�
 
 ### Phase 4: GUI 拆出 table component
 
-- [ ] 把 `crates/app/src/gui/block/table.rs` 拆成目录模块。
+- [ ] 把 `crates/cditor-editor-gpui/src/features/table/mod.rs` 拆成目录模块。
 - [ ] 建立 `TableCellComponent` 或等价的稳定 cell state。
 - [ ] cell component 接管点击定位、caret、selection、IME bounds。
 - [ ] table renderer 只负责结构布局和装饰。
@@ -371,7 +371,7 @@ slash menu 插入 table 时，不能先改 kind 再等后续 normalize。应该�
 
 改动范围：
 
-- `crates/runtime/src/document_runtime/tests.rs`
+- `crates/cditor-runtime/src/document_runtime/tests.rs`
 - 必要时新增更小的测试 helper
 
 要补的测试：
@@ -386,7 +386,7 @@ slash menu 插入 table 时，不能先改 kind 再等后续 normalize。应该�
 
 ```text
 cargo test -p cditor-runtime table --lib
-cargo test -p cditor-app table --lib
+cargo test -p cditor-desktop table --lib
 ```
 
 这一步不解决问题也可以，但必须让后续每次改动都能测出是否退化。
@@ -398,7 +398,7 @@ cargo test -p cditor-app table --lib
 新增目录：
 
 ```text
-crates/runtime/src/document_runtime/table/
+crates/cditor-runtime/src/document_runtime/table/
   mod.rs
   defaults.rs
   invariant.rs
@@ -412,15 +412,15 @@ crates/runtime/src/document_runtime/table/
 
 需要迁移的现有逻辑：
 
-- `crates/runtime/src/document_runtime/mod.rs` 里的 `normalize_payload_for_kind`
-- `crates/runtime/src/document_runtime/mod.rs` 里的 `default_table_payload`
-- `crates/runtime/src/document_runtime/text_payload.rs` 里的 table 分支
-- `crates/runtime/src/document_runtime/structure_edit.rs` 里的 table payload 构造分支
+- `crates/cditor-runtime/src/document_runtime/mod.rs` 里的 `normalize_payload_for_kind`
+- `crates/cditor-runtime/src/document_runtime/mod.rs` 里的 `default_table_payload`
+- `crates/cditor-runtime/src/document_runtime/text_payload.rs` 里的 table 分支
+- `crates/cditor-runtime/src/document_runtime/structure_edit.rs` 里的 table payload 构造分支
 
 完成标准：
 
 - 全项目只有 table 模块能创建默认 table payload。
-- `rg "default_table_payload|normalize_payload_for_kind" crates/runtime/src/document_runtime` 能确认没有散落实现。
+- `rg "default_table_payload|normalize_payload_for_kind" crates/cditor-runtime/src/document_runtime` 能确认没有散落实现。
 - `cargo test -p cditor-runtime table --lib` 通过。
 
 ### Step 2: 引入 engine 层 TableRuntime
@@ -430,7 +430,7 @@ crates/runtime/src/document_runtime/table/
 新增目录：
 
 ```text
-crates/runtime/src/document_runtime/table/
+crates/cditor-runtime/src/document_runtime/table/
   runtime.rs
   edit.rs
   focus.rs
@@ -501,12 +501,12 @@ pub struct TableViewState {
 
 ### Step 4: GUI 表格拆目录，但先复用现有绘制
 
-这一步不要先追求完整重写视觉。先把 `crates/app/src/gui/block/table.rs` 拆干净，让输入和绘制边界清楚。
+这一步不要先追求完整重写视觉。先把 `crates/cditor-editor-gpui/src/features/table/mod.rs` 拆干净，让输入和绘制边界清楚。
 
 目标目录：
 
 ```text
-crates/app/src/gui/block/table/
+crates/cditor-editor-gpui/src/features/table/
   mod.rs
   render.rs
   cell.rs
@@ -527,7 +527,7 @@ crates/app/src/gui/block/table/
 
 完成标准：
 
-- `crates/app/src/gui/block/table.rs` 不再是大文件。
+- `crates/cditor-editor-gpui/src/features/table/mod.rs` 不再是大文件。
 - 鼠标点击、滚轮、选中、hover 行为保持现状。
 - 不引入视觉回退。
 
@@ -580,10 +580,10 @@ structure commands
 
 需要检查：
 
-- `crates/app/src/gui/app/input/keyboard.rs`
-- `crates/app/src/gui/input/mouse.rs`
-- `crates/app/src/gui/overlay/slash_menu.rs`
-- `crates/app/src/gui/block/code/toolbar/mod.rs`
+- `crates/cditor-editor-gpui/src/input/keyboard.rs`
+- `crates/cditor-editor-gpui/src/input/mouse.rs`
+- `crates/cditor-editor-gpui/src/overlays/slash_menu.rs`
+- `crates/cditor-editor-gpui/src/block/code/toolbar/mod.rs`
 
 完成标准：
 
@@ -597,10 +597,10 @@ PostgreSQL 保存不能写入中间态。table block 保存前要从 `TableRunti
 
 需要检查：
 
-- `crates/store-postgres/src/stores/payload.rs`
-- `crates/runtime/src/document_runtime/payload_window.rs`
-- `crates/app/src/api/cold_start.rs`
-- `crates/app/src/gui/app/persistence_bridge.rs`
+- `crates/cditor-storage-postgres/src/stores/payload.rs`
+- `crates/cditor-runtime/src/document_runtime/payload_window.rs`
+- `crates/cditor-session/src/cold_start.rs`
+- `crates/cditor-editor-gpui/src/editor_view/persistence_bridge.rs`
 - app 层触发保存的 dirty snapshot
 
 规则：

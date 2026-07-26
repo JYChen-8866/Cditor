@@ -189,11 +189,11 @@ fn load_window_around(
     let end = (target_index + 33).min(fixture.records.len());
     let request = runtime.plan_payload_window_load(start..end);
     let records = payload_records_for_ids(request.block_ids.iter().copied());
-    let decision = runtime.apply_payload_window_result(PayloadWindowLoadResult {
+    let decision = runtime.apply_payload_window_result(PayloadWindowLoadResult::prepare(
         request,
         records,
-        missing_block_ids: Vec::new(),
-    });
+        Vec::new(),
+    ));
     if matches!(
         decision,
         cditor_runtime::content::payload_window::PayloadWindowApplyDecision::Applied

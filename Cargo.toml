@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/cditor-ai",
+    "crates/cditor-ai-openai",
     "crates/cditor-core",
     "crates/cditor-editor-protocol",
     "crates/cditor-theme",
@@ -12,19 +13,31 @@ members = [
     "crates/cditor-viewport",
     "crates/cditor-editor-gpui",
     "crates/cditor-import-export",
-    "crates/cditor-api",
-    "crates/cditor-app",
+    "crates/cditor-sdk",
+    "apps/cditor-desktop",
     "crates/cditor-test-support",
     "crates/cditor-text",
+    "components/cditor-component",
     "components/cditor-whiteboard",
 ]
-default-members = ["crates/cditor-app"]
+exclude = ["components/cditor-whiteboard-drafft"]
+default-members = ["apps/cditor-desktop"]
 resolver = "3"
 
 [workspace.package]
 version = "0.2.6"
 edition = "2024"
 license = "GPL-3.0-or-later"
+
+[profile.editor-dev]
+inherits = "dev"
+opt-level = 2
+debug = 1
+debug-assertions = true
+overflow-checks = true
+lto = "off"
+incremental = true
+codegen-units = 16
 
 [profile.release]
 opt-level = 3

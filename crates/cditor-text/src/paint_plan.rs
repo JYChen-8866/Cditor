@@ -1,45 +1,45 @@
 use parley::{FontData, FontStyle, Layout, PositionedLayoutItem};
 use skrifa::{FontRef, MetadataProvider, raw::TableProvider, string::StringId};
 
-use super::ParleyBrush;
+use super::TextBrush;
 use crate::{
     FontFaceKey, FontInstanceKey, FontSynthesisKey, FontVariationSettingKey,
     font_identity::font_blob_digest,
 };
 
 #[derive(Debug, Clone)]
-pub struct ParleyPaintPlan {
-    pub runs: Vec<ParleyPaintRun>,
-    pub backgrounds: Vec<ParleyPaintBackground>,
+pub struct TextPaintPlan {
+    pub runs: Vec<TextPaintRun>,
+    pub backgrounds: Vec<TextPaintBackground>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ParleyPaintRun {
-    pub font: ParleyPaintFont,
+pub struct TextPaintRun {
+    pub font: TextPaintFont,
     pub text_range: std::ops::Range<usize>,
     pub is_rtl: bool,
     pub font_size: f32,
-    pub brush: ParleyBrush,
-    pub glyphs: Vec<ParleyPaintGlyph>,
+    pub brush: TextBrush,
+    pub glyphs: Vec<TextPaintGlyph>,
     pub decoration_x: f32,
     pub decoration_width: f32,
     pub baseline: f32,
-    pub underline: Option<ParleyPaintDecoration>,
-    pub strikethrough: Option<ParleyPaintDecoration>,
+    pub underline: Option<TextPaintDecoration>,
+    pub strikethrough: Option<TextPaintDecoration>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ParleyPaintFont {
+pub struct TextPaintFont {
     data: FontData,
     instance_key: FontInstanceKey,
     pub family: String,
     pub weight: f32,
-    pub style: ParleyPaintFontStyle,
+    pub style: TextPaintFontStyle,
     pub synthesized: bool,
     pub normalized_coords: Vec<i16>,
 }
 
-impl ParleyPaintFont {
+impl TextPaintFont {
     pub fn instance_key(&self) -> &FontInstanceKey {
         &self.instance_key
     }
@@ -62,14 +62,14 @@ impl ParleyPaintFont {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParleyPaintFontStyle {
+pub enum TextPaintFontStyle {
     Normal,
     Italic,
     Oblique,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ParleyPaintGlyph {
+pub struct TextPaintGlyph {
     pub id: u32,
     pub x: f32,
     pub y: f32,
@@ -77,21 +77,21 @@ pub struct ParleyPaintGlyph {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ParleyPaintDecoration {
+pub struct TextPaintDecoration {
     pub color: u32,
     pub offset: f32,
     pub size: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ParleyPaintBackground {
-    pub rect: super::ParleyRect,
+pub struct TextPaintBackground {
+    pub rect: super::TextLayoutRect,
     pub color: u32,
     pub radius: f32,
 }
 
-impl ParleyPaintPlan {
-    pub(crate) fn from_layout(layout: &Layout<ParleyBrush>, scale: f32) -> Self {
+impl TextPaintPlan {
+    pub(crate) fn from_layout(layout: &Layout<TextBrush>, scale: f32) -> Self {
         let mut runs = Vec::new();
         let mut backgrounds = Vec::new();
         for line in layout.lines() {
@@ -106,8 +106,8 @@ impl ParleyPaintPlan {
                 let x = glyph_run.offset() / scale;
                 let width = glyph_run.advance() / scale;
                 if let Some(color) = brush.background {
-                    backgrounds.push(ParleyPaintBackground {
-                        rect: super::ParleyRect {
+                    backgrounds.push(TextPaintBackground {
+                        rect: super::TextLayoutRect {
                             x: x - f32::from(brush.background_padding_x),
                             y: line_metrics.block_min_coord / scale
                                 + f32::from(brush.background_padding_y),
@@ -140,19 +140,22 @@ impl ParleyPaintPlan {
                     ),
                 );
                 let family = font_family_name(&font).unwrap_or_else(|| "system-ui".to_owned());
+                let font_ref = FontRef::from_index(font.data.data(), font.index).ok();
                 let glyphs = glyph_run
                     .positioned_glyphs()
-                    .map(|glyph| ParleyPaintGlyph {
+                    .map(|glyph| TextPaintGlyph {
                         id: glyph.id,
                         x: glyph.x / scale,
                         y: glyph.y / scale,
-                        color: is_color_glyph(&font, glyph.id),
+                        color: font_ref
+                            .as_ref()
+                            .is_some_and(|font| font_ref_has_color_glyph(font, glyph.id)),
                     })
                     .collect();
                 let underline = style
                     .underline
                     .as_ref()
-                    .map(|decoration| ParleyPaintDecoration {
+                    .map(|decoration| TextPaintDecoration {
                         color: decoration.brush.foreground,
                         offset: decoration.offset.unwrap_or(metrics.underline_offset) / scale,
                         size: decoration.size.unwrap_or(metrics.underline_size) / scale,
@@ -161,22 +164,22 @@ impl ParleyPaintPlan {
                     style
                         .strikethrough
                         .as_ref()
-                        .map(|decoration| ParleyPaintDecoration {
+                        .map(|decoration| TextPaintDecoration {
                             color: decoration.brush.foreground,
                             offset: decoration.offset.unwrap_or(metrics.strikethrough_offset)
                                 / scale,
                             size: decoration.size.unwrap_or(metrics.strikethrough_size) / scale,
                         });
-                runs.push(ParleyPaintRun {
-                    font: ParleyPaintFont {
+                runs.push(TextPaintRun {
+                    font: TextPaintFont {
                         data: font,
                         instance_key,
                         family,
                         weight: run.font_attrs().weight.value(),
                         style: match run.font_attrs().style {
-                            FontStyle::Normal => ParleyPaintFontStyle::Normal,
-                            FontStyle::Italic => ParleyPaintFontStyle::Italic,
-                            FontStyle::Oblique(_) => ParleyPaintFontStyle::Oblique,
+                            FontStyle::Normal => TextPaintFontStyle::Normal,
+                            FontStyle::Italic => TextPaintFontStyle::Italic,
+                            FontStyle::Oblique(_) => TextPaintFontStyle::Oblique,
                         },
                         synthesized: run.synthesis().any(),
                         normalized_coords: run.normalized_coords().to_vec(),
@@ -209,13 +212,6 @@ fn font_family_name(font: &FontData) -> Option<String> {
                 .english_or_first()
         })
         .map(|name| name.to_string())
-}
-
-fn is_color_glyph(font: &FontData, glyph_id: u32) -> bool {
-    let Ok(font_ref) = FontRef::from_index(font.data.data(), font.index) else {
-        return false;
-    };
-    font_ref_has_color_glyph(&font_ref, glyph_id)
 }
 
 pub(crate) fn font_ref_has_color_glyph(font_ref: &FontRef<'_>, glyph_id: u32) -> bool {

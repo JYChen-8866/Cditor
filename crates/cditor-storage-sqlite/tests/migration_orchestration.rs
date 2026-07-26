@@ -145,7 +145,7 @@ async fn open_runs_backup_dry_run_validation_and_preserves_unknown_bytes() {
         .last_migration_report()
         .expect("migration report must remain inspectable");
     assert_eq!(report.plan.source_version, 1);
-    assert_eq!(report.plan.target_version, 4);
+    assert_eq!(report.plan.target_version, 8);
     assert_eq!(
         report
             .plan
@@ -153,7 +153,7 @@ async fn open_runs_backup_dry_run_validation_and_preserves_unknown_bytes() {
             .iter()
             .map(|migration| migration.version)
             .collect::<Vec<_>>(),
-        vec![2, 3, 4]
+        vec![2, 3, 4, 5, 6, 7, 8]
     );
     assert!(report.backup_path.is_file());
     assert_eq!(report.before.checksums, report.dry_run.checksums);
@@ -161,7 +161,7 @@ async fn open_runs_backup_dry_run_validation_and_preserves_unknown_bytes() {
     let backup_path = report.backup_path.clone();
     store.pool().close().await;
 
-    assert_eq!(migration_version(&path).await, 4);
+    assert_eq!(migration_version(&path).await, 8);
     assert_eq!(
         raw_fixture_values(&path).await,
         (
@@ -209,7 +209,7 @@ async fn progress_reports_each_safe_resume_boundary() {
                 .filter(|event| event.stage == stage && event.migration_version.is_some())
                 .map(|event| event.migration_version.unwrap())
                 .collect::<Vec<_>>(),
-            vec![2, 3, 4]
+            vec![2, 3, 4, 5, 6, 7, 8]
         );
     }
     assert!(events.iter().any(|event| {

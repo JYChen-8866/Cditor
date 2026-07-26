@@ -1,414 +1,236 @@
-use std::collections::BTreeSet;
 use std::ops::Range;
 
-use crate::scroll::VirtualScrollTarget;
-use crate::window::{RenderWindow, RenderWindowError};
-use cditor_core::ids::BlockId;
-
+/// Lifecycle phase for the viewport window currently being presented.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowLoadState {
     CurrentStable,
     PreparingNext,
-    PlaceholderShown,
-    ReadyToSwap,
+    ColdPlaceholder,
+    Failed,
 }
 
+/// Geometry and presentation identity of one bounded document window.
+///
+/// `visible_block_range` is the minimum readiness core. Overscan blocks may
+/// remain cold without allowing a missing viewport block into an atomic swap.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PageWindowRequest {
-    pub generation: u64,
+pub struct WindowCommitTarget {
+    pub structure_version: u64,
     pub page_range: Range<usize>,
-    pub target: VirtualScrollTarget,
+    pub block_range: Range<usize>,
+    pub visible_block_range: Range<usize>,
+    pub presented_scroll_top: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ProtectedWindowPins {
-    pub focus_block: Option<BlockId>,
-    pub composition_block: Option<BlockId>,
-    pub selection_endpoint_blocks: BTreeSet<BlockId>,
-}
-
-impl ProtectedWindowPins {
-    pub fn protected_blocks(&self) -> BTreeSet<BlockId> {
-        let mut blocks = self.selection_endpoint_blocks.clone();
-        if let Some(block_id) = self.focus_block {
-            blocks.insert(block_id);
-        }
-        if let Some(block_id) = self.composition_block {
-            blocks.insert(block_id);
-        }
-        blocks
+impl WindowCommitTarget {
+    fn same_window_as(&self, other: &Self) -> bool {
+        self.structure_version == other.structure_version
+            && self.page_range == other.page_range
+            && self.block_range == other.block_range
+            && self.visible_block_range == other.visible_block_range
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum WindowCommitDecision {
+    Stable(WindowCommitTarget),
+    ColdPlaceholder(WindowCommitTarget),
+    FailedTarget {
+        target: WindowCommitTarget,
+        stable: Option<WindowCommitTarget>,
+    },
+}
+
+/// Single source of truth for desired, preparing, and stable window identity.
+///
+/// Storage/layout owners decide readiness; this coordinator only owns the
+/// framework-independent lifecycle. A ready target is committed atomically in
+/// the same synchronous projection transaction that builds the visible frame.
+#[derive(Debug)]
 pub struct WindowCommitCoordinator {
-    pub state: WindowLoadState,
-    pub current_generation: u64,
-    pub stable_window: Option<RenderWindow>,
-    pub displayed_placeholder: Option<RenderWindow>,
-    pending_request: Option<PageWindowRequest>,
-    prepared_next: Option<RenderWindow>,
-    anchor_restore_used_for_generation: Option<u64>,
+    generation: u64,
+    state: WindowLoadState,
+    desired: Option<WindowCommitTarget>,
+    preparing: Option<WindowCommitTarget>,
+    stable: Option<WindowCommitTarget>,
+}
+
+impl Default for WindowCommitCoordinator {
+    fn default() -> Self {
+        Self {
+            generation: 0,
+            state: WindowLoadState::ColdPlaceholder,
+            desired: None,
+            preparing: None,
+            stable: None,
+        }
+    }
 }
 
 impl WindowCommitCoordinator {
-    pub fn new(initial_window: Option<RenderWindow>) -> Self {
-        Self {
-            state: WindowLoadState::CurrentStable,
-            current_generation: 0,
-            stable_window: initial_window,
-            displayed_placeholder: None,
-            pending_request: None,
-            prepared_next: None,
-            anchor_restore_used_for_generation: None,
-        }
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
-    pub fn request_window(
-        &mut self,
-        page_range: Range<usize>,
-        target: VirtualScrollTarget,
-    ) -> PageWindowRequest {
-        self.current_generation = self.current_generation.saturating_add(1);
-        let request = PageWindowRequest {
-            generation: self.current_generation,
-            page_range,
-            target,
-        };
-        self.pending_request = Some(request.clone());
-        self.prepared_next = None;
-        self.displayed_placeholder = None;
-        self.state = WindowLoadState::PreparingNext;
-        request
+    pub fn state(&self) -> WindowLoadState {
+        self.state
     }
 
-    pub fn show_placeholder(
-        &mut self,
-        generation: u64,
-        placeholder: RenderWindow,
-    ) -> Result<WindowCommitEvent, WindowCommitError> {
-        self.ensure_current_generation(generation)?;
-        if !placeholder.is_placeholder() {
-            return Err(WindowCommitError::PlaceholderExpected);
-        }
-        self.displayed_placeholder = Some(placeholder);
-        self.state = WindowLoadState::PlaceholderShown;
-        Ok(WindowCommitEvent::PlaceholderShown { generation })
+    pub fn stable(&self) -> Option<&WindowCommitTarget> {
+        self.stable.as_ref()
     }
 
-    pub fn prepare_loaded_window(
-        &mut self,
-        generation: u64,
-        window: RenderWindow,
-    ) -> Result<WindowCommitEvent, WindowCommitError> {
-        self.ensure_current_generation(generation)?;
-        if window.is_placeholder() {
-            return Err(WindowCommitError::LoadedWindowExpected);
-        }
-        self.prepared_next = Some(window);
-        self.state = WindowLoadState::ReadyToSwap;
-        Ok(WindowCommitEvent::ReadyToSwap { generation })
+    pub fn preparing(&self) -> Option<&WindowCommitTarget> {
+        self.preparing.as_ref()
     }
 
-    pub fn fail_request(
+    pub fn reconcile(
         &mut self,
-        generation: u64,
-    ) -> Result<WindowCommitEvent, WindowCommitError> {
-        self.ensure_current_generation(generation)?;
-        self.prepared_next = None;
-        self.displayed_placeholder = None;
-        self.pending_request = None;
-        self.state = WindowLoadState::CurrentStable;
-        Ok(WindowCommitEvent::LoadFailedKeptStable { generation })
-    }
-
-    pub fn atomic_swap(
-        &mut self,
-        generation: u64,
-        protected_pins: &ProtectedWindowPins,
-    ) -> Result<SwapOutcome, WindowCommitError> {
-        self.ensure_current_generation(generation)?;
-        if self.state != WindowLoadState::ReadyToSwap {
-            return Err(WindowCommitError::NotReadyToSwap(self.state));
+        desired: WindowCommitTarget,
+        desired_ready: bool,
+        stable_valid: bool,
+        desired_failed: bool,
+    ) -> WindowCommitDecision {
+        let invalidated_stable = self.stable.is_some() && !stable_valid;
+        if !stable_valid {
+            self.stable = None;
         }
 
-        let next = self
-            .prepared_next
-            .take()
-            .ok_or(WindowCommitError::MissingPreparedWindow)?;
-        let old = self.stable_window.replace(next);
-        self.displayed_placeholder = None;
-        self.pending_request = None;
-        self.state = WindowLoadState::CurrentStable;
-
-        let retained_protected_blocks =
-            retained_protected_blocks(old.as_ref(), self.stable_window.as_ref(), protected_pins);
-        let should_restore_anchor = self.anchor_restore_used_for_generation != Some(generation);
-        self.anchor_restore_used_for_generation = Some(generation);
-
-        Ok(SwapOutcome {
-            generation,
-            should_restore_anchor,
-            retained_protected_blocks,
-        })
-    }
-
-    pub fn visible_window(&self) -> Option<&RenderWindow> {
-        self.displayed_placeholder
+        let desired_changed = self
+            .desired
             .as_ref()
-            .or(self.stable_window.as_ref())
-    }
-
-    pub fn trace_frame(&self) -> WindowCommitTraceFrame {
-        WindowCommitTraceFrame {
-            state: self.state,
-            generation: self.current_generation,
-            has_stable_window: self.stable_window.is_some(),
-            has_placeholder: self.displayed_placeholder.is_some(),
-            has_prepared_next: self.prepared_next.is_some(),
+            .is_none_or(|current| !current.same_window_as(&desired));
+        if desired_changed || invalidated_stable {
+            self.generation = self.generation.saturating_add(1);
         }
-    }
+        self.desired = Some(desired.clone());
 
-    fn ensure_current_generation(&self, generation: u64) -> Result<(), WindowCommitError> {
-        if generation == self.current_generation {
-            Ok(())
+        if desired_ready {
+            self.preparing = Some(desired);
+            let committed = self
+                .preparing
+                .take()
+                .expect("a ready window target was prepared");
+            self.stable = Some(committed.clone());
+            self.state = WindowLoadState::CurrentStable;
+            return WindowCommitDecision::Stable(committed);
+        }
+
+        self.preparing = Some(desired.clone());
+        if desired_failed {
+            let stable = self.stable.clone();
+            self.preparing = None;
+            self.state = WindowLoadState::Failed;
+            return WindowCommitDecision::FailedTarget {
+                target: desired,
+                stable,
+            };
+        }
+
+        if let Some(stable) = self.stable.clone() {
+            self.state = WindowLoadState::PreparingNext;
+            WindowCommitDecision::Stable(stable)
         } else {
-            Err(WindowCommitError::StaleGeneration {
-                current: self.current_generation,
-                received: generation,
-            })
+            self.state = WindowLoadState::ColdPlaceholder;
+            WindowCommitDecision::ColdPlaceholder(desired)
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SwapOutcome {
-    pub generation: u64,
-    pub should_restore_anchor: bool,
-    pub retained_protected_blocks: BTreeSet<BlockId>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WindowCommitEvent {
-    PlaceholderShown { generation: u64 },
-    ReadyToSwap { generation: u64 },
-    LoadFailedKeptStable { generation: u64 },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WindowCommitTraceFrame {
-    pub state: WindowLoadState,
-    pub generation: u64,
-    pub has_stable_window: bool,
-    pub has_placeholder: bool,
-    pub has_prepared_next: bool,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum WindowCommitError {
-    StaleGeneration { current: u64, received: u64 },
-    PlaceholderExpected,
-    LoadedWindowExpected,
-    NotReadyToSwap(WindowLoadState),
-    MissingPreparedWindow,
-    RenderWindow(RenderWindowError),
-}
-
-impl From<RenderWindowError> for WindowCommitError {
-    fn from(error: RenderWindowError) -> Self {
-        Self::RenderWindow(error)
-    }
-}
-
-fn retained_protected_blocks(
-    old: Option<&RenderWindow>,
-    next: Option<&RenderWindow>,
-    pins: &ProtectedWindowPins,
-) -> BTreeSet<BlockId> {
-    let mut retained = BTreeSet::new();
-    for block_id in pins.protected_blocks() {
-        let in_next = next.is_some_and(|window| window.entities.contains_key(&block_id));
-        let in_old = old.is_some_and(|window| window.entities.contains_key(&block_id));
-        if in_next || in_old {
-            retained.insert(block_id);
-        }
-    }
-    retained
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scroll::{ScrollPrecision, VirtualScrollTarget};
-    use cditor_core::layout::{BlockHeightIndex, HeightConfidence, HeightEstimate};
 
-    #[test]
-    fn fast_remote_scroll_discards_stale_generations() {
-        let initial = loaded_window(0..1, 0..2, &[1, 2], 1).unwrap();
-        let mut coordinator = WindowCommitCoordinator::new(Some(initial));
-        let request_10 = coordinator.request_window(10..11, target(10_000.0));
-        let request_40 = coordinator.request_window(40..41, target(40_000.0));
-        let request_80 = coordinator.request_window(80..81, target(80_000.0));
-
-        assert!(matches!(
-            coordinator.prepare_loaded_window(
-                request_10.generation,
-                loaded_window(10..11, 20..22, &[20, 21], 2).unwrap()
-            ),
-            Err(WindowCommitError::StaleGeneration { .. })
-        ));
-        assert!(matches!(
-            coordinator.prepare_loaded_window(
-                request_40.generation,
-                loaded_window(40..41, 80..82, &[80, 81], 3).unwrap()
-            ),
-            Err(WindowCommitError::StaleGeneration { .. })
-        ));
-        assert!(
-            coordinator
-                .prepare_loaded_window(
-                    request_80.generation,
-                    loaded_window(80..81, 160..162, &[160, 161], 4).unwrap()
-                )
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn delayed_page_load_keeps_stable_window_and_can_show_placeholder() {
-        let initial = loaded_window(0..1, 0..2, &[1, 2], 1).unwrap();
-        let mut coordinator = WindowCommitCoordinator::new(Some(initial));
-        let request = coordinator.request_window(50..51, target(50_000.0));
-        let placeholder = RenderWindow::placeholder(crate::window::PlaceholderWindow {
-            page_range: 50..51,
-            block_range: 100..110,
-            height: 1_000.0,
-            target_anchor: None,
-        });
-
-        coordinator
-            .show_placeholder(request.generation, placeholder)
-            .unwrap();
-
-        let trace = coordinator.trace_frame();
-        assert_eq!(trace.state, WindowLoadState::PlaceholderShown);
-        assert!(trace.has_stable_window);
-        assert!(trace.has_placeholder);
-        assert!(coordinator.visible_window().unwrap().is_placeholder());
-    }
-
-    #[test]
-    fn load_failure_removes_placeholder_and_keeps_current_stable() {
-        let initial = loaded_window(0..1, 0..2, &[1, 2], 1).unwrap();
-        let mut coordinator = WindowCommitCoordinator::new(Some(initial.clone()));
-        let request = coordinator.request_window(5..6, target(5_000.0));
-        coordinator
-            .show_placeholder(
-                request.generation,
-                RenderWindow::placeholder(crate::window::PlaceholderWindow {
-                    page_range: 5..6,
-                    block_range: 10..12,
-                    height: 200.0,
-                    target_anchor: None,
-                }),
-            )
-            .unwrap();
-
-        coordinator.fail_request(request.generation).unwrap();
-
-        assert_eq!(coordinator.state, WindowLoadState::CurrentStable);
-        assert!(coordinator.displayed_placeholder.is_none());
-        assert_eq!(coordinator.stable_window, Some(initial));
-    }
-
-    #[test]
-    fn ready_to_swap_atomic_swap_restores_anchor_once() {
-        let initial = loaded_window(0..1, 0..2, &[1, 2], 1).unwrap();
-        let mut coordinator = WindowCommitCoordinator::new(Some(initial));
-        let request = coordinator.request_window(1..2, target(100.0));
-        coordinator
-            .prepare_loaded_window(
-                request.generation,
-                loaded_window(1..2, 2..4, &[3, 4], 2).unwrap(),
-            )
-            .unwrap();
-
-        let first = coordinator
-            .atomic_swap(request.generation, &ProtectedWindowPins::default())
-            .unwrap();
-
-        assert_eq!(coordinator.state, WindowLoadState::CurrentStable);
-        assert!(first.should_restore_anchor);
-        assert_eq!(coordinator.stable_window.as_ref().unwrap().page_range, 1..2);
-    }
-
-    #[test]
-    fn swap_frame_trace_never_reports_half_loaded_window_as_visible() {
-        let initial = loaded_window(0..1, 0..2, &[1, 2], 1).unwrap();
-        let mut coordinator = WindowCommitCoordinator::new(Some(initial));
-        let request = coordinator.request_window(9..10, target(9_000.0));
-
-        let preparing_trace = coordinator.trace_frame();
-        assert_eq!(preparing_trace.state, WindowLoadState::PreparingNext);
-        assert!(preparing_trace.has_stable_window);
-        assert!(!preparing_trace.has_prepared_next);
-
-        coordinator
-            .prepare_loaded_window(
-                request.generation,
-                loaded_window(9..10, 18..20, &[18, 19], 2).unwrap(),
-            )
-            .unwrap();
-        let ready_trace = coordinator.trace_frame();
-        assert_eq!(ready_trace.state, WindowLoadState::ReadyToSwap);
-        assert!(ready_trace.has_stable_window);
-        assert!(ready_trace.has_prepared_next);
-    }
-
-    #[test]
-    fn protected_focus_composition_selection_blocks_are_retained_across_swap() {
-        let initial = loaded_window(0..1, 0..3, &[1, 2, 3], 1).unwrap();
-        let mut coordinator = WindowCommitCoordinator::new(Some(initial));
-        let request = coordinator.request_window(1..2, target(100.0));
-        coordinator
-            .prepare_loaded_window(
-                request.generation,
-                loaded_window(1..2, 3..6, &[3, 4, 5], 2).unwrap(),
-            )
-            .unwrap();
-        let pins = ProtectedWindowPins {
-            focus_block: Some(2),
-            composition_block: Some(3),
-            selection_endpoint_blocks: BTreeSet::from([5]),
-        };
-
-        let outcome = coordinator.atomic_swap(request.generation, &pins).unwrap();
-
-        assert_eq!(outcome.retained_protected_blocks, BTreeSet::from([2, 3, 5]));
-    }
-
-    fn loaded_window(
-        page_range: Range<usize>,
-        block_range: Range<usize>,
-        block_ids: &[BlockId],
-        generation: u64,
-    ) -> Result<RenderWindow, RenderWindowError> {
-        let heights = BlockHeightIndex::new(
-            block_ids
-                .iter()
-                .map(|_| HeightEstimate::new(24.0, HeightConfidence::Exact, 0.0)),
-        )
-        .unwrap();
-        RenderWindow::loaded(page_range, block_range, block_ids, heights, generation)
-    }
-
-    fn target(global_scroll_top: f64) -> VirtualScrollTarget {
-        VirtualScrollTarget {
-            block_id: None,
-            block_index: None,
-            offset_in_block: 0.0,
-            global_scroll_top,
-            precision: ScrollPrecision::Estimated,
+    fn target(start: usize, scroll_top: f64) -> WindowCommitTarget {
+        WindowCommitTarget {
+            structure_version: 1,
+            page_range: start / 10..start / 10 + 1,
+            block_range: start..start + 10,
+            visible_block_range: start + 2..start + 6,
+            presented_scroll_top: scroll_top,
         }
+    }
+
+    #[test]
+    fn cold_target_stays_placeholder_until_ready_then_commits_atomically() {
+        let mut coordinator = WindowCommitCoordinator::default();
+        let cold = target(100, 3_200.0);
+
+        assert_eq!(
+            coordinator.reconcile(cold.clone(), false, false, false),
+            WindowCommitDecision::ColdPlaceholder(cold.clone())
+        );
+        assert_eq!(coordinator.state(), WindowLoadState::ColdPlaceholder);
+        assert_eq!(coordinator.generation(), 1);
+
+        assert_eq!(
+            coordinator.reconcile(cold.clone(), true, false, false),
+            WindowCommitDecision::Stable(cold.clone())
+        );
+        assert_eq!(coordinator.stable(), Some(&cold));
+        assert_eq!(coordinator.state(), WindowLoadState::CurrentStable);
+    }
+
+    #[test]
+    fn preparing_remote_target_keeps_the_last_stable_window() {
+        let mut coordinator = WindowCommitCoordinator::default();
+        let stable = target(0, 0.0);
+        let desired = target(100, 3_200.0);
+        coordinator.reconcile(stable.clone(), true, false, false);
+
+        assert_eq!(
+            coordinator.reconcile(desired.clone(), false, true, false),
+            WindowCommitDecision::Stable(stable)
+        );
+        assert_eq!(coordinator.preparing(), Some(&desired));
+        assert_eq!(coordinator.state(), WindowLoadState::PreparingNext);
+    }
+
+    #[test]
+    fn latest_target_advances_generation_but_scroll_within_one_target_does_not() {
+        let mut coordinator = WindowCommitCoordinator::default();
+        coordinator.reconcile(target(0, 0.0), true, false, false);
+        let first_generation = coordinator.generation();
+        coordinator.reconcile(target(0, 12.0), true, true, false);
+        assert_eq!(coordinator.generation(), first_generation);
+
+        coordinator.reconcile(target(100, 3_200.0), false, true, false);
+        assert_eq!(coordinator.generation(), first_generation + 1);
+        coordinator.reconcile(target(200, 6_400.0), false, true, false);
+        assert_eq!(coordinator.generation(), first_generation + 2);
+    }
+
+    #[test]
+    fn terminal_failure_releases_preparing_and_keeps_stable_for_retry() {
+        let mut coordinator = WindowCommitCoordinator::default();
+        let stable = target(0, 0.0);
+        let failed = target(100, 3_200.0);
+        coordinator.reconcile(stable.clone(), true, false, false);
+
+        assert_eq!(
+            coordinator.reconcile(failed.clone(), false, true, true),
+            WindowCommitDecision::FailedTarget {
+                target: failed,
+                stable: Some(stable.clone()),
+            }
+        );
+        assert_eq!(coordinator.stable(), Some(&stable));
+        assert!(coordinator.preparing().is_none());
+        assert_eq!(coordinator.state(), WindowLoadState::Failed);
+    }
+
+    #[test]
+    fn invalidated_stable_window_falls_back_to_cold_placeholder() {
+        let mut coordinator = WindowCommitCoordinator::default();
+        coordinator.reconcile(target(0, 0.0), true, false, false);
+        let generation = coordinator.generation();
+        let desired = target(100, 3_200.0);
+
+        assert_eq!(
+            coordinator.reconcile(desired.clone(), false, false, false),
+            WindowCommitDecision::ColdPlaceholder(desired)
+        );
+        assert!(coordinator.stable().is_none());
+        assert_eq!(coordinator.generation(), generation + 1);
     }
 }

@@ -27,14 +27,14 @@ crates/
 ```
 
 `cditor-whiteboard` belongs at `components/cditor-whiteboard`. It must not live under
-`crates/app`, because the board has its own model, serialization, editing UI,
+`crates/cditor-editor-gpui`, because the board has its own model, serialization, editing UI,
 thumbnail renderer, examples, and assets. The app depends on cditor-whiteboard; the
 dependency must never point in the opposite direction.
 
 ## Dependency direction
 
 ```text
-cditor-core <- cditor-runtime <- cditor-app -> cditor-whiteboard
+cditor-core <- cditor-runtime <- cditor-desktop -> cditor-whiteboard
       ^              ^               |
       |              |               +-> GPUI thumbnail entities
       +--------------+------------------> opaque scene_json only
@@ -44,7 +44,7 @@ Rules:
 
 1. `cditor-core` owns the block payload contract, not the board scene types.
 2. `cditor-runtime` treats scene JSON as opaque document data.
-3. `cditor-app` parses scene JSON and maps editor theme tokens.
+3. `cditor-desktop` parses scene JSON and maps editor theme tokens.
 4. `cditor-whiteboard` never imports cditor crates.
 5. PostgreSQL stores scene JSON; thumbnail state is reconstructible cache data.
 

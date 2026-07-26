@@ -76,11 +76,13 @@ impl MainThreadBudget {
 pub enum MainThreadWorkKind {
     CompositionCaret,
     KeyInput,
+    EditingTextShape,
     VisibleSelection,
     WheelScroll,
     CurrentWindowMeasure,
     WindowSwap,
     AsyncMeasureApply,
+    PlatformGeometryApply,
     Prefetch,
     PersistenceCallback,
     FtsUpdate,
@@ -93,11 +95,13 @@ impl MainThreadWorkKind {
         match self {
             Self::CompositionCaret => 100,
             Self::KeyInput => 90,
+            Self::EditingTextShape => 85,
             Self::VisibleSelection => 80,
             Self::WheelScroll => 70,
             Self::CurrentWindowMeasure => 60,
             Self::WindowSwap => 50,
             Self::AsyncMeasureApply => 40,
+            Self::PlatformGeometryApply => 40,
             Self::Prefetch => 30,
             Self::PersistenceCallback => 20,
             Self::FtsUpdate => 10,
@@ -109,7 +113,10 @@ impl MainThreadWorkKind {
     pub const fn is_drop_stale(self) -> bool {
         matches!(
             self,
-            Self::RemoteHeightRefinement
+            Self::EditingTextShape
+                | Self::CurrentWindowMeasure
+                | Self::AsyncMeasureApply
+                | Self::RemoteHeightRefinement
                 | Self::Prefetch
                 | Self::FtsUpdate
                 | Self::ImageDecodeApply
@@ -332,10 +339,16 @@ impl MainThreadBudgetArbiter {
 
     pub fn run_frame(&mut self, budget: MainThreadBudget, mode: InteractionMode) -> FrameRunResult {
         let mut frame = budget.for_mode(mode);
+        self.run_frame_with_budget(&mut frame)
+    }
+
+    /// Select work against a caller-owned frame budget so later main-thread
+    /// phases can consume the same remaining allowance.
+    pub fn run_frame_with_budget(&mut self, frame: &mut FrameBudgetState) -> FrameRunResult {
+        let mode = frame.mode;
         let mut deferred = Vec::new();
         let mut applied = Vec::new();
         let mut outcomes = Vec::new();
-
         while let Some(task) = self.heap.pop() {
             if self.is_stale(&task) {
                 outcomes.push(TaskOutcome::DroppedStale(task.id));
@@ -539,5 +552,35 @@ mod tests {
             vec![1]
         );
         assert!(result.outcomes.contains(&TaskOutcome::Deferred(2)));
+    }
+
+    #[test]
+    fn caller_owned_budget_is_shared_with_later_inline_work() {
+        let mut arbiter = MainThreadBudgetArbiter::default();
+        arbiter.enqueue_async_result(MainThreadTask::new(
+            1,
+            MainThreadWorkKind::CurrentWindowMeasure,
+            1,
+            Some(7),
+            WorkCost::sync_ms(2.0),
+        ));
+        let mut frame = MainThreadBudget {
+            layout_budget_ms: 3.0,
+            ..MainThreadBudget::default()
+        }
+        .for_mode(InteractionMode::Idle);
+
+        let result = arbiter.run_frame_with_budget(&mut frame);
+        let later = MainThreadTask::new(
+            2,
+            MainThreadWorkKind::CurrentWindowMeasure,
+            1,
+            Some(8),
+            WorkCost::sync_ms(1.5),
+        );
+
+        assert_eq!(result.applied.len(), 1);
+        assert_eq!(frame.consumed.sync_ms, 2.0);
+        assert!(!frame.can_run(&later));
     }
 }

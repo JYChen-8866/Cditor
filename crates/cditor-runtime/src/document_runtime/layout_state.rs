@@ -8,13 +8,24 @@ pub(super) struct LayoutState {
     pub(super) scroll: VirtualScrollState,
     pub(super) table_horizontal_scroll_offsets: HashMap<BlockId, f32>,
     pub(super) payload_window_generation: u64,
+    pub(super) payload_prefetch_residency_probe: Option<PayloadResidencyProbe>,
     pub(super) window_planner: WindowPlanner,
     pub(super) last_planned_scroll_top: f64,
     pub(super) window_plan_clock_ms: u64,
     pub(super) window_memory_pressure: WindowMemoryPressure,
+    pub(super) projection_window: ProjectionWindowCommitState,
     pub(super) pending_measured_heights: HashMap<BlockId, PendingMeasuredHeight>,
     pub(super) dirty: bool,
     pub(super) scrollbar_drag: Option<ScrollbarDragSession>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PayloadResidencyProbe {
+    pub(super) block_range: Range<usize>,
+    pub(super) structure_version: u64,
+    pub(super) visibility_version: u64,
+    pub(super) residency_revision: u64,
+    pub(super) resident: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -11,6 +11,9 @@
 本文固定结构重构开始前的 workspace 依赖、公开 API、状态字段和巨型文件基线。
 后续验收必须与本基线比较，不能仅以“已移动文件”判定完成。
 
+> 以下 crate 名称和路径是 `a0f88d32` 的迁移前历史快照，不代表当前 workspace。当前结构
+> 以 `doc/architecture/project-structure.md` 为准。
+
 ## 2. Workspace 内部依赖
 
 ```text

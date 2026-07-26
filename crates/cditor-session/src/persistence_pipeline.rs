@@ -2,16 +2,19 @@ use std::time::{Duration, Instant};
 use std::{error::Error, fmt};
 
 use cditor_runtime::DocumentRuntime;
-use cditor_storage::{StorageSaveBatch, StorageSaveOutcome, StorageSession};
+use cditor_storage::{StorageError, StorageSaveBatch, StorageSaveOutcome};
 use tokio::sync::oneshot;
 
-use crate::{PersistenceCaptureRequest, project_persistence_save_capture};
+use crate::{
+    DocumentPersistence, PersistenceCaptureRequest, PersistenceFailure, PersistenceFailureKind,
+    SessionIoExecutor, project_persistence_save_capture,
+};
 
 pub const DEFAULT_STORAGE_SAVE_DEBOUNCE: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone)]
 pub struct StorageSaveRequest {
-    session: StorageSession,
+    session: DocumentPersistence,
     batch: StorageSaveBatch,
     generation: u64,
     revision: u64,
@@ -48,14 +51,15 @@ pub enum PersistenceBarrierKind {
 pub enum PersistencePipelineError {
     Cancelled,
     Unavailable(String),
-    Storage(String),
+    Storage(PersistenceFailure),
 }
 
 impl fmt::Display for PersistencePipelineError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Cancelled => formatter.write_str("persistence operation was cancelled"),
-            Self::Unavailable(message) | Self::Storage(message) => formatter.write_str(message),
+            Self::Unavailable(message) => formatter.write_str(message),
+            Self::Storage(failure) => failure.fmt(formatter),
         }
     }
 }
@@ -100,7 +104,7 @@ impl ReadyPersistenceBarrier {
 
 #[derive(Debug, Default)]
 pub struct PersistencePipeline {
-    session: Option<StorageSession>,
+    session: Option<DocumentPersistence>,
     debounce_scheduled: bool,
     saving: bool,
     flushes_in_flight: usize,
@@ -118,7 +122,7 @@ impl PersistencePipeline {
         Self::default()
     }
 
-    pub fn for_session(session: StorageSession, autosave_interval: Option<Duration>) -> Self {
+    pub fn for_session(session: DocumentPersistence, autosave_interval: Option<Duration>) -> Self {
         Self {
             session: Some(session),
             autosave_interval,
@@ -145,13 +149,13 @@ impl PersistencePipeline {
         self.debounce_scheduled = false;
     }
 
-    pub fn session(&self) -> Option<&StorageSession> {
+    pub fn session(&self) -> Option<&DocumentPersistence> {
         self.session.as_ref()
     }
 
     pub fn set_session(
         &mut self,
-        session: Option<StorageSession>,
+        session: Option<DocumentPersistence>,
         autosave_interval: Option<Duration>,
     ) {
         self.cancel_barriers(PersistencePipelineError::Cancelled);
@@ -237,8 +241,8 @@ impl PersistencePipeline {
         (save, flush)
     }
 
-    pub fn fail_barriers(&mut self, message: &str) {
-        self.cancel_barriers(PersistencePipelineError::Storage(message.to_owned()));
+    pub fn fail_barriers(&mut self, failure: &PersistenceFailure) {
+        self.cancel_barriers(PersistencePipelineError::Storage(failure.clone()));
     }
 
     pub fn begin_backend_flush(&mut self) {
@@ -315,14 +319,15 @@ impl PersistencePipeline {
 
 pub async fn save_storage_batch(
     request: &StorageSaveRequest,
-) -> Result<StorageSaveOutcome, String> {
+) -> Result<StorageSaveOutcome, PersistenceFailure> {
     let emergency_sequence =
         if request.session.capabilities().emergency_log && !request.batch.transactions.is_empty() {
             request
                 .session
                 .append_emergency_transactions(&request.batch.transactions)
                 .await
-                .map_err(|error| format!("cannot write durable emergency log: {error}"))?
+                .map_err(PersistenceFailure::from)
+                .map_err(|error| error.with_context("cannot write durable emergency log"))?
                 .through_sequence
         } else {
             None
@@ -331,7 +336,7 @@ pub async fn save_storage_batch(
         .session
         .commit(request.batch.clone())
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(PersistenceFailure::from)?;
     if let Some(sequence) = emergency_sequence {
         // A failed cleanup is harmless: adapters filter materialized
         // transactions on recovery and a later compaction can remove the row.
@@ -341,6 +346,24 @@ pub async fn save_storage_batch(
             .await;
     }
     Ok(outcome)
+}
+
+pub fn run_storage_save_with_timeout(
+    request: &StorageSaveRequest,
+    timeout: Duration,
+) -> Result<StorageSaveOutcome, PersistenceFailure> {
+    SessionIoExecutor::shared()
+        .run(async {
+            tokio::time::timeout(timeout, save_storage_batch(request))
+                .await
+                .map_err(|_| StorageError::Timeout {
+                    operation: "storage save",
+                    timeout,
+                })
+                .map_err(PersistenceFailure::from)?
+        })
+        .map_err(|message| PersistenceFailure::new(PersistenceFailureKind::Io, message))
+        .and_then(|result| result)
 }
 
 #[cfg(test)]
@@ -496,7 +519,7 @@ mod tests {
             }],
         );
         StorageSaveRequest {
-            session: StorageSession::new(storage, 1),
+            session: DocumentPersistence::new(storage, 1),
             batch: StorageSaveBatch {
                 document_id: 1,
                 layout_key: None,
@@ -514,7 +537,7 @@ mod tests {
 
     fn pipeline(autosave_interval: Option<Duration>) -> PersistencePipeline {
         PersistencePipeline::for_session(
-            StorageSession::new(Arc::new(NoopStorage), 1),
+            DocumentPersistence::new(Arc::new(NoopStorage), 1),
             autosave_interval,
         )
     }

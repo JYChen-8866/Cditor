@@ -406,7 +406,7 @@ fn merged_table_cell_geometry_updates_after_row_and_column_resize() {
         .find(|cell| cell.position == (TableCellPosition { row: 0, col: 0 }))
         .expect("merged cell");
     assert_eq!(table_view.visible_cells.len(), 1);
-    assert_eq!(merged.width_px, 300.0);
+    assert_eq!(merged.width_px, 720.0);
     assert_eq!(merged.height_px, 100.0);
 }
 

@@ -203,13 +203,17 @@ impl DocumentRuntime {
             .payload_window
             .payloads
             .values()
-            .cloned()
+            .map(|payload| payload.as_ref().clone())
             .map(|payload| self.table_runtime_payload_record(payload.block_id, payload))
             .collect()
     }
 
     pub fn drain_pending_structure_transactions(&mut self) -> Vec<EditTransaction> {
         self.transactions.pending.drain(..).collect()
+    }
+
+    pub fn pending_structure_transactions_snapshot(&self) -> Vec<EditTransaction> {
+        self.transactions.pending.to_vec()
     }
 
     pub fn restore_pending_structure_transactions(
@@ -347,7 +351,11 @@ impl DocumentRuntime {
         let payload = ensure_table_payload_for_kind(&kind, payload);
         let editable_text = editable_text_for_payload(&payload);
         if let Some(index) = self.document.index.index_of(block_id) {
-            let height_estimate = estimate_block_height(&kind, &payload, DEFAULT_LAYOUT_WIDTH_PX);
+            let height_estimate = estimate_block_height(
+                &kind,
+                &payload,
+                cditor_core::layout::layout_width_for_kind(&kind),
+            );
             self.document.index.kind_tags[index] = kind_tag_for_rich_block_kind(&kind);
             if !matches!(kind, RichBlockKind::Heading { .. } | RichBlockKind::Toggle) {
                 self.document.index.flags[index] &= !cditor_core::document::BLOCK_FLAG_FOLDED;
@@ -374,7 +382,7 @@ impl DocumentRuntime {
             None => 1,
         };
         let mut updated_record = None;
-        if let Some(record) = self.document.payload_window.payloads.get_mut(&block_id) {
+        if let Some(record) = self.document.payload_window.get_mut(block_id) {
             record.kind = kind;
             record.payload = payload;
             record.content_version = content_version;

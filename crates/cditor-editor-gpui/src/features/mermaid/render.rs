@@ -1,14 +1,11 @@
 use cditor_core::ids::BlockId;
-use cditor_core::layout::COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX;
+use cditor_core::layout::{BODY_BLOCK_CONTENT_WIDTH_PX, COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX};
 use gpui::{
     AnyElement, App, Entity, ImageSource, InteractiveElement, IntoElement, ParentElement,
     RenderImage, Styled, div, img, px, rgb,
 };
 
-use crate::block::chrome::{
-    BLOCK_GUTTER_WIDTH_PX, BLOCK_PREFIX_WIDTH_PX, BLOCK_ROW_GAP_PX, BLOCK_SHELL_OUTER_PADDING_X_PX,
-};
-use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
+use crate::block::chrome::BLOCK_CONTENT_BORDER_WIDTH_PX;
 use crate::editor_view::CditorV2View;
 use crate::features::media::schedule_rendered_media_height_report;
 use crate::image_preview::open_image_preview;
@@ -18,13 +15,11 @@ use super::{MermaidRenderCache, MermaidRenderStatus};
 
 const MERMAID_TOOLBAR_HEIGHT_PX: f32 = 28.0;
 const MERMAID_BODY_PADDING_PX: f32 = 8.0;
+const MERMAID_FRAME_RADIUS_PX: f32 = 6.0;
 const MERMAID_LOADING_BODY_HEIGHT_PX: f32 = 188.0;
 const MERMAID_MAX_IMAGE_HEIGHT_PX: f32 = 1200.0;
-const MERMAID_MAX_IMAGE_WIDTH_PX: f32 = DEFAULT_DOCUMENT_CONTENT_WIDTH_PX
-    - BLOCK_SHELL_OUTER_PADDING_X_PX * 2.0
-    - BLOCK_GUTTER_WIDTH_PX
-    - BLOCK_ROW_GAP_PX
-    - BLOCK_PREFIX_WIDTH_PX
+const MERMAID_MAX_IMAGE_WIDTH_PX: f32 = BODY_BLOCK_CONTENT_WIDTH_PX as f32
+    - BLOCK_CONTENT_BORDER_WIDTH_PX * 2.0
     - MERMAID_BODY_PADDING_PX * 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -76,7 +71,7 @@ pub(crate) fn render_mermaid_block(
         .relative()
         .w_full()
         .h_full()
-        .rounded(px(8.0))
+        .rounded(px(MERMAID_FRAME_RADIUS_PX))
         .bg(rgb(theme.code_background))
         .overflow_hidden()
         .child(
@@ -241,6 +236,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn mermaid_frame_uses_the_prototype_radius() {
+        assert_eq!(MERMAID_FRAME_RADIUS_PX, 6.0);
+    }
+
+    #[test]
     fn error_summary_uses_only_the_first_line() {
         assert_eq!(concise_error("parse failed\nstack detail"), "parse failed");
         assert_eq!(concise_error(""), "未知错误");
@@ -252,11 +252,11 @@ mod tests {
 
     #[test]
     fn preview_geometry_tracks_intrinsic_aspect_ratio_and_full_block_height() {
-        let image = test_render_image(1496, 600);
+        let image = test_render_image(1404, 600);
         let geometry = mermaid_preview_geometry(&image);
 
-        assert_eq!(MERMAID_MAX_IMAGE_WIDTH_PX, 748.0);
-        assert_eq!(geometry.image_width_px, 748.0);
+        assert_eq!(MERMAID_MAX_IMAGE_WIDTH_PX, 702.0);
+        assert_eq!(geometry.image_width_px, 702.0);
         assert_eq!(geometry.image_height_px, 300.0);
         assert_eq!(geometry.body_height_px, 316.0);
         assert_eq!(geometry.block_height_px, 360.0);

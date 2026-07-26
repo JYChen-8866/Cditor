@@ -4,6 +4,7 @@ use cditor_whiteboard::{Scene, WhiteboardView};
 use gpui::{AppContext, Context};
 
 use crate::editor_view::{CditorV2View, CditorViewState};
+use crate::features::whiteboard::WhiteboardBackendEntity;
 use crate::features::whiteboard::whiteboard_style_fn;
 use crate::overlays::WhiteboardEditorSession;
 use crate::theme::GuiTheme;
@@ -23,6 +24,18 @@ impl CditorV2View {
             return false;
         };
         let readonly = self.status.readonly;
+        if let Some(board) = self.cache.whiteboard_thumbnails.checkout_drafft(block_id) {
+            self.features.whiteboard_editor = Some(WhiteboardEditorSession { block_id, board });
+            cx.notify();
+            return true;
+        }
+        if let Ok(board) =
+            super::backend::try_create_drafft_board(&scene_json, readonly, block_id, cx)
+        {
+            self.features.whiteboard_editor = Some(WhiteboardEditorSession { block_id, board });
+            cx.notify();
+            return true;
+        }
         let style = whiteboard_style_fn(GuiTheme::light());
         let host = cx.entity().downgrade();
         let board = cx.new(|board_cx| {
@@ -63,7 +76,10 @@ impl CditorV2View {
             }
             board
         });
-        self.features.whiteboard_editor = Some(WhiteboardEditorSession { block_id, board });
+        self.features.whiteboard_editor = Some(WhiteboardEditorSession {
+            block_id,
+            board: WhiteboardBackendEntity::Legacy(board),
+        });
         cx.notify();
         true
     }
@@ -75,7 +91,16 @@ impl CditorV2View {
         // Flush the final scene state back to the runtime payload before dropping
         // the board entity. This ensures edits made since the last on_change fire
         // are not lost.
-        let scene_json = session.board.read(cx).scene().to_json();
+        let scene_json = session
+            .board
+            .scene_json(cx)
+            .unwrap_or_else(|| "{}".to_owned());
+        let is_drafft = session.board.is_drafft();
+        if is_drafft {
+            self.cache
+                .whiteboard_thumbnails
+                .checkin(session.block_id, session.board.clone());
+        }
         if let Some(session_handle) = self.ready_session() {
             let result = session_handle.dispatch_with_snapshot(CommandEnvelope::new(
                 EditorCommand::UpdateWhiteboardScene {
@@ -87,9 +112,11 @@ impl CditorV2View {
             if let Ok(snapshot) = result
                 && snapshot.outcome.changed()
             {
-                self.cache
-                    .whiteboard_thumbnails
-                    .invalidate(session.block_id);
+                if !is_drafft {
+                    self.cache
+                        .whiteboard_thumbnails
+                        .invalidate(session.block_id);
+                }
                 self.mark_dirty_at_revision(
                     cditor_core::edit::ChangeOrigin::User,
                     snapshot.revision,
@@ -99,5 +126,32 @@ impl CditorV2View {
         }
         cx.notify();
         true
+    }
+
+    pub(crate) fn persist_drafft_scene(
+        &mut self,
+        block_id: BlockId,
+        scene_json: String,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(session) = self.ready_session() else {
+            return;
+        };
+        let Ok(snapshot) = session.dispatch_with_snapshot(CommandEnvelope::new(
+            EditorCommand::UpdateWhiteboardScene {
+                block_id,
+                scene_json,
+            },
+            CommandSource::Toolbar,
+        )) else {
+            return;
+        };
+        if snapshot.outcome.changed() {
+            self.mark_dirty_at_revision(
+                cditor_core::edit::ChangeOrigin::User,
+                snapshot.revision,
+                cx,
+            );
+        }
     }
 }

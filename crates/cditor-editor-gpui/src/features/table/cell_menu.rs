@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn cell_menu_is_anchored_to_the_scrolled_cell_right_edge() {
         let table_view = TableViewState {
-            table: TablePayload::default(),
+            table: TablePayload::default().into(),
             visible_cells: vec![TableVisibleCell {
                 position: TableCellPosition { row: 1, col: 2 },
                 row_span: 1,
@@ -266,7 +266,7 @@ mod tests {
                 width_px: 120.0,
                 height_px: 36.0,
                 header: false,
-                spans: Vec::new(),
+                spans: Default::default(),
                 background_color: None,
                 align: TableCellAlign::Left,
             }],
@@ -437,7 +437,7 @@ mod tests {
         horizontal_scroll_offset_px: f32,
     ) -> TableViewState {
         TableViewState {
-            table: TablePayload::default(),
+            table: TablePayload::default().into(),
             visible_cells: vec![TableVisibleCell {
                 position: TableCellPosition { row: 0, col: 0 },
                 row_span: 1,
@@ -447,7 +447,7 @@ mod tests {
                 width_px: cell_width_px,
                 height_px: 36.0,
                 header: false,
-                spans: Vec::new(),
+                spans: Default::default(),
                 background_color: None,
                 align: TableCellAlign::Left,
             }],

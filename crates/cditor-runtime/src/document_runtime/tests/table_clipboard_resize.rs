@@ -137,49 +137,6 @@ fn paste_table_clipboard_at_focused_cell_expands_table_and_supports_undo_redo() 
 }
 
 #[test]
-fn paste_delimited_table_text_at_focused_cell_supports_tsv_csv_and_expansion() {
-    let mut runtime = DocumentRuntime::from_payloads(
-        1,
-        vec![BlockPayloadRecord::rich_text(20, RichBlockKind::Table, "")],
-        720.0,
-    );
-    runtime.focus_table_cell_at_offset(20, 0, 1, 0).unwrap();
-
-    assert!(
-        runtime
-            .paste_delimited_table_text_at_focused_cell("A\tB\nC\tD")
-            .unwrap()
-    );
-
-    let payload = runtime.block_payload_record(20).unwrap();
-    let BlockPayload::Table(table) = payload.payload else {
-        panic!("expected table payload");
-    };
-    assert_eq!(table.row_count(), 3);
-    assert_eq!(table.column_count(), 3);
-    assert_eq!(table.cell_plain_text(0, 1).as_deref(), Some("A"));
-    assert_eq!(table.cell_plain_text(1, 2).as_deref(), Some("D"));
-
-    runtime.focus_table_cell_at_offset(20, 0, 0, 0).unwrap();
-    assert!(
-        runtime
-            .paste_delimited_table_text_at_focused_cell("\"x,y\",z")
-            .unwrap()
-    );
-    let payload = runtime.block_payload_record(20).unwrap();
-    let BlockPayload::Table(table) = payload.payload else {
-        panic!("expected table payload");
-    };
-    assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("x,y"));
-    assert_eq!(table.cell_plain_text(0, 1).as_deref(), Some("z"));
-    assert!(
-        !runtime
-            .paste_delimited_table_text_at_focused_cell("plain")
-            .unwrap()
-    );
-}
-
-#[test]
 fn table_track_resize_updates_payload_projection_and_content_version() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
 
@@ -212,14 +169,14 @@ fn table_track_resize_updates_payload_projection_and_content_version() {
         .table_view
         .as_ref()
         .expect("table projection");
-    assert_eq!(table_view.width_px, 300.0);
+    assert_eq!(table_view.width_px, 720.0);
     assert_eq!(table_view.height_px, 92.0);
     let resized_cell = table_view
         .visible_cells
         .iter()
         .find(|cell| cell.position == (TableCellPosition { row: 1, col: 1 }))
         .expect("resized cell");
-    assert_eq!(resized_cell.x_px, 120.0);
+    assert_eq!(resized_cell.x_px, 540.0);
     assert_eq!(resized_cell.y_px, 36.0);
     assert_eq!(resized_cell.width_px, 180.0);
     assert_eq!(resized_cell.height_px, 56.0);
@@ -320,7 +277,7 @@ fn table_column_width_change_recomputes_auto_row_height_from_wrapping() {
 
     assert!(
         runtime
-            .set_table_column_width(10, 0, TableTrackSize::Px(360))
+            .set_table_column_width(10, 0, TableTrackSize::Px(800))
             .unwrap()
     );
 

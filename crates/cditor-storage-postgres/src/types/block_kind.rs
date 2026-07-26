@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn rich_block_kind_to_db(kind: &RichBlockKind) -> String {
+pub(crate) fn rich_block_kind_to_db(kind: &RichBlockKind) -> String {
     match kind {
         RichBlockKind::Paragraph => "paragraph".to_owned(),
         RichBlockKind::Heading { level } => format!("heading:{level}"),
@@ -38,7 +38,7 @@ pub fn rich_block_kind_to_db(kind: &RichBlockKind) -> String {
     }
 }
 
-pub fn rich_block_kind_from_db(value: &str) -> RichBlockKind {
+pub(crate) fn rich_block_kind_from_db(value: &str) -> RichBlockKind {
     if let Some(level) = value.strip_prefix("heading:") {
         return RichBlockKind::Heading {
             level: level.parse::<u8>().unwrap_or(1).clamp(1, 6),

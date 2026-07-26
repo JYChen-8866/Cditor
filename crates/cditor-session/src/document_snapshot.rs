@@ -105,7 +105,24 @@ pub fn project_focused_text_block_context(
     project_text_block_context(runtime, runtime.focused_block_id()?)
 }
 
+pub fn project_focused_block_kind(runtime: &DocumentRuntime) -> Option<(BlockId, RichBlockKind)> {
+    let block_id = runtime.focused_block_id()?;
+    runtime.block_kind(block_id).map(|kind| (block_id, kind))
+}
+
 impl EditorSessionHandle {
+    /// Returns only the focused block identity and kind, without cloning its payload.
+    pub fn focused_block_kind(&self) -> Result<Option<(BlockId, RichBlockKind)>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_focused_block_kind(&session.runtime))
+    }
+
     pub fn committed_block_plain_text(
         &self,
         block_id: BlockId,
@@ -272,6 +289,41 @@ mod tests {
         assert!(context.caret.is_some());
         assert!(handle.block_attrs(block_id).unwrap().is_some());
         assert!(handle.block_attrs(u64::MAX).unwrap().is_none());
+    }
+
+    #[test]
+    fn focused_block_kind_projects_identity_without_text_context() {
+        let block_id = 41;
+        let runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                block_id,
+                RichBlockKind::Code {
+                    language: Some("rust".to_owned()),
+                },
+                "fn main() {}",
+            )],
+            720.0,
+        );
+        let handle = EditorSession::new(runtime, false).into_handle();
+        handle
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::FocusBlock { block_id },
+                CommandSource::Sdk,
+            ))
+            .unwrap();
+
+        let focused = handle.focused_block_kind().unwrap();
+
+        assert_eq!(
+            focused,
+            Some((
+                block_id,
+                RichBlockKind::Code {
+                    language: Some("rust".to_owned()),
+                }
+            ))
+        );
     }
 
     #[test]

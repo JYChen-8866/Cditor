@@ -8,6 +8,7 @@
 - [大文档富文本架构](large-document-rich-text-architecture.md)
 - [大文档实现状态](large-document-rich-text-implementation-status.md)
 - [当前工程结构](architecture/project-structure.md)
+- [Workspace 依赖图快照](architecture/dependency-graph-v2.txt)
 - [V2 GUI 架构](architecture/v2-rich-text-editor-gui-architecture.md)
 - [数据库实现方案](architecture/database-implementation-plan.md)
 - [SQLite/PostgreSQL 双后端设计](architecture/sqlite-postgres-dual-backend-design.md)
@@ -42,4 +43,4 @@
 
 ## 历史迁移资料
 
-[历史迁移目录](archive/migrations/README.md)与[历史模块拆分记录](archive/refactors/2026-07-module-split-plan.md)用于保留迁移背景，不代表当前目录和命令。当前 crate 与脚本入口以项目根目录 [README](../README.md) 为准。
+[历史迁移目录](archive/migrations/README.md)、[历史模块拆分记录](archive/refactors/2026-07-module-split-plan.md)与 [V2 目录迁移记录](archive/architecture/architecture-v2-migration-record.md)用于保留迁移背景，不代表当前目录和命令。当前 crate 与脚本入口以项目根目录 [README](../README.md) 为准。

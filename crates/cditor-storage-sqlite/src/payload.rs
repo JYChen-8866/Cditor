@@ -7,7 +7,7 @@ use cditor_core::ids::DocumentId;
 use cditor_core::rich_text::{BlockPayload, BlockPayloadRecord, kind_tag_for_rich_block_kind};
 use cditor_storage::{LoadedPayloadBatch, StorageError, StorageResult};
 
-use crate::error::{serialization_error, sqlite_error};
+use crate::error::{corrupt_json, serialization_error, sqlite_error};
 use crate::ids::{block_id_from_sqlite, block_id_to_sqlite, document_id_to_sqlite};
 use crate::storage::SqliteDocumentStorage;
 use crate::util::{checked_i64, checked_u64};
@@ -50,8 +50,8 @@ impl SqliteDocumentStorage {
                 })?;
                 let kind_json: String = row.try_get("kind_json").map_err(sqlite_error)?;
                 let payload_json: String = row.try_get("payload_json").map_err(sqlite_error)?;
-                let payload: BlockPayload =
-                    serde_json::from_str(&payload_json).map_err(serialization_error)?;
+                let payload: BlockPayload = serde_json::from_str(&payload_json)
+                    .map_err(|error| corrupt_json("block payload", error))?;
                 payload
                     .validate_opaque_envelope_domain()
                     .map_err(|message| {
@@ -65,7 +65,8 @@ impl SqliteDocumentStorage {
                             row.try_get("content_version").map_err(sqlite_error)?,
                             "content_version",
                         )?,
-                        kind: serde_json::from_str(&kind_json).map_err(serialization_error)?,
+                        kind: serde_json::from_str(&kind_json)
+                            .map_err(|error| corrupt_json("block kind", error))?,
                         payload,
                     },
                 );

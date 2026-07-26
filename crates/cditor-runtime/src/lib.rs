@@ -1,4 +1,5 @@
 pub mod content;
+mod diagnostics;
 pub mod document_runtime;
 pub mod editing;
 pub mod projection;
@@ -8,16 +9,6 @@ pub use cditor_core::demo_fixtures::{
     LARGE_MIXED_DEMO_BLOCKS, LARGE_MIXED_DEMO_DOCUMENT_ID, large_mixed_demo_document,
     large_mixed_rich_text_document,
 };
-pub use cditor_import_export::paste_import::{
-    ClipboardInput, MediaMetadataTask, NormalizedPasteBlock, PasteImportConfig,
-    PasteImportPipeline, PasteImportResult, PastePipelinePhase, PasteProgress, PasteRunOptions,
-    PayloadPersistTask, PendingMediaResource,
-};
-pub use cditor_import_export::security::{
-    DataUrlPolicy, EmbedPolicy, ExternalContentPolicy, ExternalResourceAction,
-    ExternalResourceDecision, ExternalResourceKind, FileUrlPolicy, PrivacyMode,
-    RemoteResourcePolicy, SanitizedHtml, SvgPolicy, sanitize_external_html,
-};
 pub use content::media_cache::{
     MediaCache, MediaCacheEntry, MediaCachePolicy, MediaCacheStats, MediaDecodeDecision,
     MediaDecodeKind, MediaDecodeLane, MediaDecodeRequest, MediaDecodeTrigger, MediaMetadata,
@@ -25,18 +16,18 @@ pub use content::media_cache::{
 };
 pub use content::payload_cache::{
     DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES, DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES,
-    PayloadCachePolicy, PayloadCacheTrimReport,
+    PayloadCacheMaintenanceBudget, PayloadCachePolicy, PayloadCacheTrimReport,
 };
 pub use content::payload_window::PayloadWindow;
 pub use document_runtime::{
     AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionOutcome, AiSessionRequest,
     AiSessionSnapshot, AiSessionStatus, AiStreamApplyResult, CompositionFocusTransition,
-    DocumentRuntime, DocumentTextSelectionFragment, RealtimeInput, RealtimeInputError,
-    RealtimeInputOutcome, RealtimeInputRequest, RichTextDelta, RichTextSelectionSnapshot,
-    RuntimeAiTarget, SelectionMaterializationApplyDecision, SelectionMaterializationRequest,
-    TableClipboardSnapshot, TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult,
-    TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot, TextSurfaceSnapshotIdentity,
-    TransactionApplyError,
+    DocumentRuntime, DocumentTextSelectionFragment, ImportApplicationReport, RealtimeInput,
+    RealtimeInputError, RealtimeInputOutcome, RealtimeInputRequest, RichTextDelta,
+    RichTextSelectionSnapshot, RuntimeAiTarget, SelectionMaterializationApplyDecision,
+    SelectionMaterializationRequest, TableClipboardSnapshot, TextSurface, TextSurfaceCapabilities,
+    TextSurfaceEditResult, TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot,
+    TextSurfaceSnapshotIdentity, TransactionApplyError,
 };
 pub use editing::composition::{
     CompositionCancelResult, CompositionCommitResult, CompositionController, CompositionError,
@@ -57,8 +48,8 @@ pub use projection::list::{
 };
 pub use projection::view::{
     AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus, EditorViewProjection,
-    PayloadWindowFailureView, TableCellPosition, TableViewState, TableVisibleCell,
-    ViewBlockSnapshot,
+    PayloadWindowFailureView, TableCellPosition, TableCellSpansSnapshot, TablePayloadSnapshot,
+    TableViewState, TableVisibleCell, ViewBlockSnapshot,
 };
 pub use scheduling::async_version_control::{
     AsyncLayoutVersion, AsyncResultDecision, AsyncTaskKind as RuntimeAsyncTaskKind,

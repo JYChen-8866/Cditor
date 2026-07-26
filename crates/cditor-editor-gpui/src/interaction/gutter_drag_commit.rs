@@ -1,21 +1,25 @@
 use gpui::Context;
 
 use crate::editor_view::CditorV2View;
+use cditor_core::block::GutterBlockReleaseKind;
 use cditor_editor_protocol::command::{CommandSource, EditorCommand};
 
 use super::geometry::parent_drop_target_from_rects;
+use super::gutter_action::GutterToolbarTransition;
 
 impl CditorV2View {
     pub(crate) fn commit_gutter_block_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.interaction.gutter_block_drag.take() else {
+        let Some(drag) = super::take_drag(&mut self.interaction.gutter_block_drag) else {
             self.interaction.gutter_drag_auto_scroll_scheduled = false;
             return false;
         };
-        if drag.exceeded_threshold {
-            clear_committed_gutter_action(&mut self.interaction.action_block_id, drag.block_id);
-            self.overlay.gutter_toolbar_block_id = None;
-            self.overlay.block_transform_menu_open = false;
-            self.overlay.color_menu_open = false;
+        match drag.release_kind() {
+            GutterBlockReleaseKind::Click => self
+                .transition_gutter_toolbar(GutterToolbarTransition::ClickReleased(drag.block_id)),
+            GutterBlockReleaseKind::Drag => {
+                clear_committed_gutter_action(&mut self.interaction.action_block_id, drag.block_id);
+                self.transition_gutter_toolbar(GutterToolbarTransition::DragReleased);
+            }
         }
         self.interaction.gutter_drag_auto_scroll_scheduled = false;
         let Some(target) = drag.target.filter(|_| drag.exceeded_threshold) else {

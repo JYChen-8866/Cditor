@@ -3,12 +3,40 @@ use uuid::Uuid;
 
 use cditor_core::layout::{PageLayout, PageLayoutIndex, PagePolicy};
 use cditor_storage::layout_cache::{LayoutCacheKey, deserialize_confidence, serialize_confidence};
-use cditor_storage::{StoragePageLayoutPage, StoragePageLayoutSnapshot, StorageResult};
+use cditor_storage::{
+    StorageError, StoragePageLayoutPage, StoragePageLayoutSnapshot, StorageResult, StorageSaveBatch,
+};
 
 use crate::error::sqlite_error;
 use crate::ids::{block_id_from_sqlite, block_id_to_sqlite, document_id_to_sqlite};
 use crate::storage::SqliteDocumentStorage;
 use crate::util::{checked_i64, checked_u64};
+
+pub(crate) fn validate_page_layout_batch(
+    batch: &StorageSaveBatch,
+    snapshot: &StoragePageLayoutSnapshot,
+) -> StorageResult<()> {
+    if snapshot.visible_index_version < 0 {
+        return Err(StorageError::CorruptData(
+            "page layout visible index version cannot be negative".to_owned(),
+        ));
+    }
+    if snapshot.structure_version != batch.structure_version {
+        return Err(StorageError::CorruptData(format!(
+            "page layout structure version {} does not match save batch {}",
+            snapshot.structure_version, batch.structure_version
+        )));
+    }
+    if batch
+        .layout_key
+        .is_none_or(|key| key.hash_key() != snapshot.layout_key_hash)
+    {
+        return Err(StorageError::CorruptData(
+            "page layout key does not match save batch layout key".to_owned(),
+        ));
+    }
+    Ok(())
+}
 
 impl SqliteDocumentStorage {
     pub(crate) async fn load_page_layout_snapshot(

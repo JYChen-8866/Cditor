@@ -373,7 +373,7 @@ impl RichBlockRecord {
 }
 
 fn default_estimated_height(kind: &RichBlockKind, payload: &BlockPayload) -> f64 {
-    crate::layout::estimate_block_height(kind, payload, crate::layout::DEFAULT_LAYOUT_WIDTH_PX)
+    crate::layout::estimate_block_height(kind, payload, crate::layout::layout_width_for_kind(kind))
         .height
 }
 

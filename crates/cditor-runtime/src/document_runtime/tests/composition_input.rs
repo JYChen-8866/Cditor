@@ -67,8 +67,7 @@ fn stale_input_session_content_version_is_rejected() {
     runtime
         .document
         .payload_window
-        .payloads
-        .get_mut(&1)
+        .get_mut(1)
         .unwrap()
         .content_version += 1;
 

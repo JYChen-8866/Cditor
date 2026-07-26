@@ -1,27 +1,26 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use parley::{Layout, PositionedLayoutItem};
 
-use super::{ParleyAlignment, ParleyBrush, ParleyInlineBoxKind};
-use crate::{ParleyPaintPlan, TextSnapshot};
+use super::{InlineBoxKind, TextAlignment, TextBrush};
+use crate::{TextGeometrySnapshot, TextPaintPlan, TextSnapshot};
 
 #[derive(Clone)]
 pub struct TextLayoutSnapshot {
     pub(crate) inner: Arc<ParleyLayoutData>,
 }
 
-pub type ParleyLayoutSnapshot = TextLayoutSnapshot;
-
 pub(crate) struct ParleyLayoutData {
     pub text: TextSnapshot,
-    pub layout: Layout<ParleyBrush>,
+    pub layout: Layout<TextBrush>,
     pub clusters: Arc<[TextClusterSnapshot]>,
+    pub geometry: TextGeometrySnapshot,
     pub estimated_bytes: usize,
     pub display_scale: f32,
     pub width: Option<f32>,
-    pub alignment: ParleyAlignment,
+    pub alignment: TextAlignment,
     pub quantize: bool,
-    pub paint_plan: OnceLock<ParleyPaintPlan>,
+    pub paint_plan: TextPaintPlan,
 }
 
 impl std::fmt::Debug for TextLayoutSnapshot {
@@ -45,21 +44,19 @@ pub struct TextLineSnapshot {
     pub bottom: f32,
     pub advance: f32,
     pub offset: f32,
+    pub logical_left: f32,
+    pub logical_right: f32,
 }
-
-pub type ParleyLineSnapshot = TextLineSnapshot;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PositionedInlineBox {
     pub id: u64,
-    pub kind: ParleyInlineBoxKind,
+    pub kind: InlineBoxKind,
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
 }
-
-pub type ParleyPositionedInlineBox = PositionedInlineBox;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextClusterSnapshot {
@@ -78,25 +75,29 @@ pub struct TextClusterSnapshot {
 impl TextLayoutSnapshot {
     pub(crate) fn new(
         text: TextSnapshot,
-        layout: Layout<ParleyBrush>,
+        layout: Layout<TextBrush>,
         display_scale: f32,
         width: Option<f32>,
-        alignment: ParleyAlignment,
+        alignment: TextAlignment,
         quantize: bool,
     ) -> Self {
         let clusters = collect_cluster_snapshots(&layout);
-        let estimated_bytes = estimate_layout_bytes(&text, &layout, &clusters);
+        let geometry = TextGeometrySnapshot::from_layout(&text, &layout, display_scale);
+        let paint_plan = TextPaintPlan::from_layout(&layout, display_scale);
+        let estimated_bytes = estimate_layout_bytes(&text, &layout, &clusters)
+            .saturating_add(geometry.estimated_bytes());
         Self {
             inner: Arc::new(ParleyLayoutData {
                 text,
                 layout,
                 clusters,
+                geometry,
                 estimated_bytes,
                 display_scale,
                 width,
                 alignment,
                 quantize,
-                paint_plan: OnceLock::new(),
+                paint_plan,
             }),
         }
     }
@@ -141,29 +142,12 @@ impl TextLayoutSnapshot {
         self.inner.width
     }
 
-    pub fn alignment(&self) -> ParleyAlignment {
+    pub fn alignment(&self) -> TextAlignment {
         self.inner.alignment
     }
 
-    pub fn line_snapshots(&self) -> Vec<TextLineSnapshot> {
-        let scale = self.inner.display_scale;
-        self.inner
-            .layout
-            .lines()
-            .enumerate()
-            .map(|(index, line)| {
-                let metrics = line.metrics();
-                TextLineSnapshot {
-                    index,
-                    text_range: line.text_range(),
-                    baseline: metrics.baseline / scale,
-                    top: metrics.block_min_coord / scale,
-                    bottom: metrics.block_max_coord / scale,
-                    advance: metrics.advance / scale,
-                    offset: metrics.offset / scale,
-                }
-            })
-            .collect()
+    pub fn line_snapshots(&self) -> &[TextLineSnapshot] {
+        self.inner.geometry.lines()
     }
 
     pub fn inline_boxes(&self) -> Vec<PositionedInlineBox> {
@@ -175,7 +159,7 @@ impl TextLayoutSnapshot {
             .filter_map(|item| match item {
                 PositionedLayoutItem::InlineBox(inline_box) => Some(PositionedInlineBox {
                     id: inline_box.id,
-                    kind: ParleyInlineBoxKind::from_parley(inline_box.kind),
+                    kind: InlineBoxKind::from_parley(inline_box.kind),
                     x: inline_box.x / scale,
                     y: inline_box.y / scale,
                     width: inline_box.width / scale,
@@ -201,7 +185,11 @@ impl TextLayoutSnapshot {
         self.inner.estimated_bytes
     }
 
-    pub fn reflow(&self, width: Option<f32>, alignment: ParleyAlignment) -> Self {
+    pub fn geometry(&self) -> &TextGeometrySnapshot {
+        &self.inner.geometry
+    }
+
+    pub fn reflow(&self, width: Option<f32>, alignment: TextAlignment) -> Self {
         let mut layout = self.inner.layout.clone();
         layout.break_all_lines(width.map(|width| width.max(0.0) * self.inner.display_scale));
         layout.align(alignment.as_parley(), parley::AlignmentOptions::default());
@@ -215,18 +203,16 @@ impl TextLayoutSnapshot {
         )
     }
 
-    pub(crate) fn layout(&self) -> &Layout<ParleyBrush> {
+    pub(crate) fn layout(&self) -> &Layout<TextBrush> {
         &self.inner.layout
     }
 
-    pub fn paint_plan(&self) -> &ParleyPaintPlan {
-        self.inner.paint_plan.get_or_init(|| {
-            ParleyPaintPlan::from_layout(&self.inner.layout, self.inner.display_scale)
-        })
+    pub fn paint_plan(&self) -> &TextPaintPlan {
+        &self.inner.paint_plan
     }
 }
 
-fn collect_cluster_snapshots(layout: &Layout<ParleyBrush>) -> Arc<[TextClusterSnapshot]> {
+fn collect_cluster_snapshots(layout: &Layout<TextBrush>) -> Arc<[TextClusterSnapshot]> {
     let mut clusters = Vec::new();
     for (line_index, line) in layout.lines().enumerate() {
         for run in line.runs() {
@@ -254,7 +240,7 @@ fn collect_cluster_snapshots(layout: &Layout<ParleyBrush>) -> Arc<[TextClusterSn
 
 fn estimate_layout_bytes(
     text: &TextSnapshot,
-    layout: &Layout<ParleyBrush>,
+    layout: &Layout<TextBrush>,
     clusters: &[TextClusterSnapshot],
 ) -> usize {
     let mut glyph_count = 0usize;
@@ -284,6 +270,6 @@ fn estimate_layout_bytes(
                 .len()
                 .saturating_mul(std::mem::size_of::<TextLineSnapshot>()),
         )
-        .saturating_add(glyph_count.saturating_mul(std::mem::size_of::<crate::ParleyPaintGlyph>()))
+        .saturating_add(glyph_count.saturating_mul(std::mem::size_of::<crate::TextPaintGlyph>()))
         .saturating_add(inline_box_count.saturating_mul(std::mem::size_of::<PositionedInlineBox>()))
 }

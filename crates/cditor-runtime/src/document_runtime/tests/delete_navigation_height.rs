@@ -103,6 +103,27 @@ fn last_empty_block_is_not_deleted() {
 }
 
 #[test]
+fn last_empty_page_title_is_not_deleted_or_downgraded() {
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Heading { level: 1 }, 0, None, "")]);
+    runtime.focus_block_at_offset(1, 0).unwrap();
+
+    assert!(!runtime.delete_backward().unwrap());
+    assert_eq!(runtime.document.index.total_count(), 1);
+    assert_eq!(
+        runtime.block_kind(1),
+        Some(RichBlockKind::Heading { level: 1 })
+    );
+
+    assert!(!runtime.delete_forward().unwrap());
+    assert_eq!(runtime.document.index.total_count(), 1);
+    assert_eq!(
+        runtime.block_kind(1),
+        Some(RichBlockKind::Heading { level: 1 })
+    );
+}
+
+#[test]
 fn delete_at_end_merges_next_block_into_current() {
     let mut runtime = runtime_with_kind_depths_and_text(vec![
         (RichBlockKind::Paragraph, 0, None, "a"),
@@ -265,20 +286,23 @@ fn backspace_at_start_resets_textual_block_styles_to_paragraph() {
     for kind in kinds {
         let mut runtime = DocumentRuntime::from_payloads(
             1,
-            vec![BlockPayloadRecord::rich_text(1, kind.clone(), "keep text")],
+            vec![
+                BlockPayloadRecord::rich_text(1, RichBlockKind::Heading { level: 1 }, "Page title"),
+                BlockPayloadRecord::rich_text(2, kind.clone(), "keep text"),
+            ],
             720.0,
         );
-        runtime.focus_block_at_offset(1, 0).unwrap();
+        runtime.focus_block_at_offset(2, 0).unwrap();
 
         assert!(runtime.delete_backward().unwrap(), "{kind:?} should reset");
 
         let projection = runtime.projection_for_window();
-        assert_eq!(projection.blocks[0].kind, RichBlockKind::Paragraph);
-        let BlockPayloadView::Loaded(payload) = &projection.blocks[0].payload else {
+        assert_eq!(projection.blocks[1].kind, RichBlockKind::Paragraph);
+        let BlockPayloadView::Loaded(payload) = &projection.blocks[1].payload else {
             panic!("payload should be loaded");
         };
         assert_eq!(payload.plain_text(), "keep text");
-        assert_eq!(projection.blocks[0].caret_offset, Some(0));
+        assert_eq!(projection.blocks[1].caret_offset, Some(0));
     }
 }
 

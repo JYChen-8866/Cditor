@@ -7,8 +7,7 @@ pub use render_window::{
     RenderWindowError,
 };
 pub use window_commit::{
-    PageWindowRequest, ProtectedWindowPins, SwapOutcome, WindowCommitCoordinator,
-    WindowCommitError, WindowCommitEvent, WindowCommitTraceFrame, WindowLoadState,
+    WindowCommitCoordinator, WindowCommitDecision, WindowCommitTarget, WindowLoadState,
 };
 pub use window_planner::{
     KeepReason, ScrollDirection, WindowMemoryPressure, WindowPlanDecision, WindowPlanRequest,

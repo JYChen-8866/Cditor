@@ -3,11 +3,11 @@ use gpui::{Pixels, px};
 use crate::theme::GuiTheme;
 use cditor_core::layout::{NOTION_TABLE_CELL_LINE_HEIGHT_PX, NOTION_TABLE_CELL_PADDING_Y_PX};
 
-pub(super) const V1_TABLE_RADIUS_PX: f32 = 0.0;
+pub(super) const V1_TABLE_RADIUS_PX: f32 = 4.0;
 #[cfg(test)]
 pub(super) const V1_TABLE_CELL_MIN_WIDTH_PX: f32 = 120.0;
-pub(super) const V1_TABLE_CELL_PADDING_X_PX: f32 = 10.0;
-pub(super) const V1_TABLE_CELL_PADDING_Y_PX: f32 = NOTION_TABLE_CELL_PADDING_Y_PX as f32;
+pub(crate) const V1_TABLE_CELL_PADDING_X_PX: f32 = 10.0;
+pub(crate) const V1_TABLE_CELL_PADDING_Y_PX: f32 = NOTION_TABLE_CELL_PADDING_Y_PX as f32;
 pub(super) const V1_TABLE_EMPTY_PADDING_PX: f32 = 8.0;
 pub(super) const TABLE_AXIS_HANDLE_SIZE_PX: f32 = 14.0;
 pub(super) const TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX: f32 = 22.0;
@@ -110,6 +110,11 @@ pub(super) fn table_active_border_color(theme: GuiTheme) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn table_frame_uses_the_prototype_radius() {
+        assert_eq!(V1_TABLE_RADIUS_PX, 4.0);
+    }
 
     #[test]
     fn table_background_accepts_persisted_notion_palette_hex_values() {

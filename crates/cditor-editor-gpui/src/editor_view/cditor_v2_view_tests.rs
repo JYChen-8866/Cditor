@@ -1,6 +1,6 @@
 use super::*;
 use crate::editor_view::GuiPlatformInputTarget;
-use crate::features::code::{V1_CODE_CONTENT_PADDING_TOP_PX, V1_CODE_CONTENT_PADDING_X_PX};
+use crate::features::code::{V1_CODE_TEXT_OFFSET_TOP_PX, V1_CODE_TEXT_OFFSET_X_PX};
 use crate::input::ime::adapter::{
     code_language_input_target_allows, platform_input_target_allows, platform_selected_text_range,
 };
@@ -36,7 +36,7 @@ fn update_composition(
 
 #[test]
 fn save_status_for_mode_respects_readonly() {
-    assert_eq!(save_status_for_mode(false), EditorSaveStatus::Clean);
+    assert_eq!(save_status_for_mode(false), EditorSaveStatus::LocallySaved);
     assert_eq!(save_status_for_mode(true), EditorSaveStatus::Readonly);
 }
 
@@ -44,9 +44,12 @@ fn save_status_for_mode_respects_readonly() {
 fn cditor_view_state_can_swap_from_loading_to_ready_or_failed() {
     let mut state = CditorViewState::Loading {
         message: "loading".to_owned(),
+        progress: Some(0),
     };
 
     assert!(state.is_loading());
+    assert!(state.apply_load_progress("loading records", 45));
+    assert!(!state.apply_load_progress("stale progress", 20));
     state.apply_loaded_session(
         cditor_session::EditorSession::new(DocumentRuntime::demo(), false).into_handle(),
     );
@@ -456,11 +459,27 @@ fn fallback_text_metrics_include_list_prefix_and_indent() {
         },
     );
 
-    let metrics = fallback_text_metrics_for_block(&list_block, GuiTheme::light());
+    let metrics = fallback_text_metrics_for_block(
+        &list_block,
+        GuiTheme::light(),
+        crate::document::DocumentLayoutMetrics::default(),
+    );
 
     assert!(
         metrics.origin_x_in_block_px
-            >= 8.0 + 48.0 + 24.0 + 8.0 + f64::from(crate::block::chrome::BLOCK_PREFIX_WIDTH_PX)
+            >= f64::from(
+                crate::document::DocumentBlockGeometry::for_kind(
+                    &list_block.kind,
+                    crate::document::DocumentLayoutMetrics::default(),
+                )
+                .shell_left_px
+                    + crate::block::chrome::BlockChromeStyle::from_snapshot(
+                        &list_block,
+                        GuiTheme::light(),
+                    )
+                    .horizontal_geometry()
+                    .text_left_px
+            )
     );
     assert!(metrics.width_px > 0.0);
 }
@@ -482,8 +501,16 @@ fn fallback_text_origins_align_heading_and_root_paragraph_marker_lanes() {
         cditor_core::block::BlockChromeSnapshot::plain(),
     );
 
-    let heading = fallback_text_metrics_for_block(&heading, GuiTheme::light());
-    let paragraph = fallback_text_metrics_for_block(&paragraph, GuiTheme::light());
+    let heading = fallback_text_metrics_for_block(
+        &heading,
+        GuiTheme::light(),
+        crate::document::DocumentLayoutMetrics::default(),
+    );
+    let paragraph = fallback_text_metrics_for_block(
+        &paragraph,
+        GuiTheme::light(),
+        crate::document::DocumentLayoutMetrics::default(),
+    );
 
     assert_eq!(heading.origin_x_in_block_px, paragraph.origin_x_in_block_px);
 }
@@ -505,8 +532,16 @@ fn fallback_todo_text_starts_after_checkbox_at_shared_surface_origin() {
         cditor_core::block::BlockChromeSnapshot::plain(),
     );
 
-    let todo = fallback_text_metrics_for_block(&todo, GuiTheme::light());
-    let paragraph = fallback_text_metrics_for_block(&paragraph, GuiTheme::light());
+    let todo = fallback_text_metrics_for_block(
+        &todo,
+        GuiTheme::light(),
+        crate::document::DocumentLayoutMetrics::default(),
+    );
+    let paragraph = fallback_text_metrics_for_block(
+        &paragraph,
+        GuiTheme::light(),
+        crate::document::DocumentLayoutMetrics::default(),
+    );
 
     assert_eq!(
         todo.origin_x_in_block_px,
@@ -527,16 +562,24 @@ fn fallback_text_metrics_include_v1_code_content_padding() {
         cditor_core::block::BlockChromeSnapshot::plain(),
     );
 
-    let code = fallback_text_metrics_for_block(&code_block, GuiTheme::light());
-    let paragraph = fallback_text_metrics_for_block(&paragraph, GuiTheme::light());
+    let code = fallback_text_metrics_for_block(
+        &code_block,
+        GuiTheme::light(),
+        crate::document::DocumentLayoutMetrics::default(),
+    );
+    let paragraph = fallback_text_metrics_for_block(
+        &paragraph,
+        GuiTheme::light(),
+        crate::document::DocumentLayoutMetrics::default(),
+    );
 
     assert_eq!(
         code.origin_y_in_block_px,
-        4.0 + 1.0 + f64::from(V1_CODE_CONTENT_PADDING_TOP_PX)
+        4.0 + 1.0 + f64::from(V1_CODE_TEXT_OFFSET_TOP_PX)
     );
     assert_eq!(
         code.origin_x_in_block_px,
-        paragraph.origin_x_in_block_px + f64::from(V1_CODE_CONTENT_PADDING_X_PX)
+        paragraph.origin_x_in_block_px + f64::from(V1_CODE_TEXT_OFFSET_X_PX)
     );
 }
 
@@ -564,6 +607,7 @@ fn gutter_drag_drop_target_uses_midpoints_and_skips_source_subtree() {
             text_origin_y_in_block_px: 0.0,
             text_width_px: 860.0,
             supports_children: true,
+            ..ProjectedBlockRect::default()
         },
         ProjectedBlockRect {
             block_id: 2,
@@ -576,6 +620,7 @@ fn gutter_drag_drop_target_uses_midpoints_and_skips_source_subtree() {
             text_origin_y_in_block_px: 0.0,
             text_width_px: 836.0,
             supports_children: false,
+            ..ProjectedBlockRect::default()
         },
         ProjectedBlockRect {
             block_id: 3,
@@ -588,6 +633,7 @@ fn gutter_drag_drop_target_uses_midpoints_and_skips_source_subtree() {
             text_origin_y_in_block_px: 0.0,
             text_width_px: 860.0,
             supports_children: false,
+            ..ProjectedBlockRect::default()
         },
     ];
 
@@ -607,82 +653,5 @@ fn gutter_drag_drop_target_uses_midpoints_and_skips_source_subtree() {
     );
 }
 
-#[test]
-fn parent_drop_target_uses_previous_supported_block_outside_source_subtree() {
-    let rects = vec![
-        ProjectedBlockRect {
-            block_id: 1,
-            visible_index: 0,
-            depth: 0,
-            document_top: 0.0,
-            document_bottom: 40.0,
-            indent_px: 0.0,
-            text_origin_x_in_block_px: 0.0,
-            text_origin_y_in_block_px: 0.0,
-            text_width_px: 860.0,
-            supports_children: true,
-        },
-        ProjectedBlockRect {
-            block_id: 2,
-            visible_index: 1,
-            depth: 1,
-            document_top: 40.0,
-            document_bottom: 80.0,
-            indent_px: 24.0,
-            text_origin_x_in_block_px: 24.0,
-            text_origin_y_in_block_px: 0.0,
-            text_width_px: 836.0,
-            supports_children: true,
-        },
-        ProjectedBlockRect {
-            block_id: 3,
-            visible_index: 2,
-            depth: 0,
-            document_top: 80.0,
-            document_bottom: 120.0,
-            indent_px: 0.0,
-            text_origin_x_in_block_px: 0.0,
-            text_origin_y_in_block_px: 0.0,
-            text_width_px: 860.0,
-            supports_children: false,
-        },
-        ProjectedBlockRect {
-            block_id: 4,
-            visible_index: 3,
-            depth: 0,
-            document_top: 120.0,
-            document_bottom: 160.0,
-            indent_px: 0.0,
-            text_origin_x_in_block_px: 0.0,
-            text_origin_y_in_block_px: 0.0,
-            text_width_px: 860.0,
-            supports_children: true,
-        },
-    ];
-
-    assert_eq!(
-        parent_drop_target_from_rects(
-            &rects,
-            1,
-            BlockDropTarget {
-                insert_before_block_id: Some(4),
-                target_visible_index: 3,
-            },
-        ),
-        None
-    );
-    assert_eq!(
-        parent_drop_target_from_rects(
-            &rects,
-            3,
-            BlockDropTarget {
-                insert_before_block_id: Some(4),
-                target_visible_index: 3,
-            },
-        ),
-        Some(ParentDropTarget {
-            parent_id: 2,
-            sibling_index: usize::MAX,
-        })
-    );
-}
+#[path = "cditor_v2_view_tests/gutter_parent.rs"]
+mod gutter_parent;

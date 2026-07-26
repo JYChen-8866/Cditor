@@ -377,7 +377,7 @@ impl DocumentRuntime {
         let focused_table_cell = snapshot.focused_table_cell;
         self.replace_block_kind_and_payload(block_id, snapshot.kind, snapshot.payload)?;
         let _ = self.refresh_table_block_height(block_id)?;
-        if let Some(payload) = self.document.payload_window.payloads.get_mut(&block_id) {
+        if let Some(payload) = self.document.payload_window.get_mut(block_id) {
             payload.content_version = snapshot.content_version;
         }
         match input_target {

@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 
 use cditor_core::rich_text::InlineSpan;
 
-use super::{ParleyAlignment, ParleyLayoutOptions, ParleyLayoutSnapshot, build_parley_layout};
+use super::{TextAlignment, TextLayoutOptions, TextLayoutSnapshot, build_text_layout};
 use crate::{TextLayoutInput, TextLayoutSurfaceId, TextTheme};
 
 const DEFAULT_LAYOUT_CACHE_MAX_ENTRIES: usize = 512;
@@ -123,20 +123,16 @@ pub struct TextShapeKey {
     pub inline_objects_fingerprint: u64,
 }
 
-pub type ParleyShapeKey = TextShapeKey;
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TextLayoutKey {
     pub shape: TextShapeKey,
     pub layout_version: u64,
     pub width_bits: Option<u32>,
-    pub alignment: ParleyAlignment,
+    pub alignment: TextAlignment,
 }
 
-pub type ParleyLayoutKey = TextLayoutKey;
-
 impl TextLayoutKey {
-    pub fn from_input(input: &TextLayoutInput, options: &ParleyLayoutOptions) -> Self {
+    pub fn from_input(input: &TextLayoutInput, options: &TextLayoutOptions) -> Self {
         Self {
             shape: TextShapeKey {
                 surface_id: input.surface_id,
@@ -177,18 +173,16 @@ pub enum TextRelayoutStrategy {
 #[derive(Debug, Clone)]
 pub struct CachedTextLayout {
     pub key: TextLayoutKey,
-    pub layout: ParleyLayoutSnapshot,
+    pub layout: TextLayoutSnapshot,
     pub cache_hit: bool,
     pub reflowed: bool,
     pub estimated_bytes: usize,
     pub strategy: TextRelayoutStrategy,
 }
 
-pub type CachedParleyLayout = CachedTextLayout;
-
 #[derive(Debug)]
 struct TextLayoutCacheEntry {
-    layout: ParleyLayoutSnapshot,
+    layout: TextLayoutSnapshot,
     estimated_bytes: usize,
     priority: TextLayoutCachePriority,
 }
@@ -239,7 +233,7 @@ impl TextLayoutCache {
         &mut self,
         key: &TextLayoutKey,
         priority: TextLayoutCachePriority,
-    ) -> Option<ParleyLayoutSnapshot> {
+    ) -> Option<TextLayoutSnapshot> {
         let entry = self.entries.get_mut(key)?;
         entry.priority = priority;
         let layout = entry.layout.clone();
@@ -247,7 +241,7 @@ impl TextLayoutCache {
         Some(layout)
     }
 
-    fn compatible_shape(&self, key: &TextLayoutKey) -> Option<ParleyLayoutSnapshot> {
+    fn compatible_shape(&self, key: &TextLayoutKey) -> Option<TextLayoutSnapshot> {
         self.order.iter().rev().find_map(|candidate| {
             (candidate.shape == key.shape)
                 .then(|| {
@@ -293,7 +287,7 @@ impl TextLayoutCache {
     fn insert(
         &mut self,
         key: TextLayoutKey,
-        layout: ParleyLayoutSnapshot,
+        layout: TextLayoutSnapshot,
         priority: TextLayoutCachePriority,
     ) {
         let estimated_bytes = layout.estimated_bytes().max(1);
@@ -420,20 +414,68 @@ impl TextLayoutCache {
     }
 }
 
-pub fn cached_parley_layout(
+pub fn cached_text_layout(
     input: &TextLayoutInput,
     theme: TextTheme,
-    options: &ParleyLayoutOptions,
-) -> CachedParleyLayout {
-    cached_parley_layout_with_request(input, theme, options, TextLayoutCacheRequest::visible())
+    options: &TextLayoutOptions,
+) -> CachedTextLayout {
+    cached_text_layout_with_request(input, theme, options, TextLayoutCacheRequest::visible())
 }
 
-pub fn cached_parley_layout_with_request(
+pub fn try_cached_text_layout_with_request(
+    input: &TextLayoutInput,
+    options: &TextLayoutOptions,
+    request: TextLayoutCacheRequest,
+) -> Option<CachedTextLayout> {
+    let key = TextLayoutKey::from_input(input, options);
+    TEXT_LAYOUT_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.prepare_request(input.surface_id, request);
+        let layout = cache.get(&key, request.priority)?;
+        cache.hits = cache.hits.saturating_add(1);
+        let estimated_bytes = layout.estimated_bytes();
+        Some(CachedTextLayout {
+            key,
+            layout,
+            cache_hit: true,
+            reflowed: false,
+            estimated_bytes,
+            strategy: TextRelayoutStrategy::CacheHit,
+        })
+    })
+}
+
+/// Returns the newest snapshot with the same shaped text/style identity without
+/// reflowing it to the requested width. This is a paintable one-frame fallback
+/// while a scheduler-admitted reflow is pending.
+pub fn try_compatible_text_layout_with_request(
+    input: &TextLayoutInput,
+    options: &TextLayoutOptions,
+    request: TextLayoutCacheRequest,
+) -> Option<CachedTextLayout> {
+    let key = TextLayoutKey::from_input(input, options);
+    TEXT_LAYOUT_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.prepare_request(input.surface_id, request);
+        let layout = cache.compatible_shape(&key)?;
+        let estimated_bytes = layout.estimated_bytes();
+        Some(CachedTextLayout {
+            key,
+            layout,
+            cache_hit: true,
+            reflowed: false,
+            estimated_bytes,
+            strategy: TextRelayoutStrategy::CacheHit,
+        })
+    })
+}
+
+pub fn cached_text_layout_with_request(
     input: &TextLayoutInput,
     theme: TextTheme,
-    options: &ParleyLayoutOptions,
+    options: &TextLayoutOptions,
     request: TextLayoutCacheRequest,
-) -> CachedParleyLayout {
+) -> CachedTextLayout {
     let key = TextLayoutKey::from_input(input, options);
     TEXT_LAYOUT_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
@@ -461,7 +503,7 @@ pub fn cached_parley_layout_with_request(
         } else {
             let reason = cache.full_build_reason(&key);
             (
-                build_parley_layout(input, theme, options),
+                build_text_layout(input, theme, options),
                 TextRelayoutStrategy::FullBuild(reason),
             )
         };
@@ -524,7 +566,7 @@ fn marks_fingerprint(spans: &[InlineSpan]) -> u64 {
     hasher.finish()
 }
 
-fn typography_fingerprint(input: &TextLayoutInput, options: &ParleyLayoutOptions) -> u64 {
+fn typography_fingerprint(input: &TextLayoutInput, options: &TextLayoutOptions) -> u64 {
     let mut hasher = DefaultHasher::new();
     format!("{:?}", input.kind).hash(&mut hasher);
     options.quantize.hash(&mut hasher);
@@ -537,7 +579,7 @@ fn typography_fingerprint(input: &TextLayoutInput, options: &ParleyLayoutOptions
     hasher.finish()
 }
 
-fn inline_objects_fingerprint(options: &ParleyLayoutOptions) -> u64 {
+fn inline_objects_fingerprint(options: &TextLayoutOptions) -> u64 {
     let mut hasher = DefaultHasher::new();
     for inline_box in &options.inline_boxes {
         inline_box.id.hash(&mut hasher);
@@ -556,7 +598,7 @@ pub(crate) fn clear_text_layout_cache() {
 }
 
 #[cfg(test)]
-pub(super) fn clear_parley_layout_cache() {
+pub(super) fn reset_text_layout_cache_for_tests() {
     clear_text_layout_cache();
 }
 

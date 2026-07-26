@@ -50,6 +50,7 @@ pub struct GuiTheme {
     pub table_active_border: u32,
     pub skeleton: u32,
     pub danger: u32,
+    pub scrollbar_track: u32,
     pub scrollbar: u32,
     pub scrollbar_hover: u32,
 }
@@ -93,6 +94,7 @@ impl GuiTheme {
             table_active_border: 0x2383e2,
             skeleton: 0xededeb,
             danger: 0xeb5757,
+            scrollbar_track: 0xf1f1ef,
             scrollbar: 0xc7c7c5,
             scrollbar_hover: 0x9b9a97,
         }
@@ -136,6 +138,7 @@ impl GuiTheme {
             table_active_border: 0x529cca,
             skeleton: 0x343434,
             danger: 0xff7369,
+            scrollbar_track: 0x2f2f2f,
             scrollbar: 0x555555,
             scrollbar_hover: 0x737373,
         }
@@ -179,6 +182,7 @@ impl GuiTheme {
             ColorToken::TableActiveBorder => self.table_active_border,
             ColorToken::Skeleton => self.skeleton,
             ColorToken::Danger => self.danger,
+            ColorToken::ScrollbarTrack => self.scrollbar_track,
             ColorToken::Scrollbar => self.scrollbar,
             ColorToken::ScrollbarHover => self.scrollbar_hover,
         }
@@ -198,6 +202,7 @@ mod tests {
             ColorToken::Danger,
             ColorToken::CodeBackground,
             ColorToken::TableActiveBorder,
+            ColorToken::ScrollbarTrack,
             ColorToken::ScrollbarHover,
         ];
         for token in tokens {

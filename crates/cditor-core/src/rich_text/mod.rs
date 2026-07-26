@@ -3,6 +3,8 @@ pub mod block_kind;
 pub mod columns;
 pub mod document;
 pub mod inline;
+mod markdown_inline;
+mod markdown_shortcuts;
 pub mod payload;
 pub mod span_splice;
 pub mod table;
@@ -18,6 +20,13 @@ pub use document::{
     RichTextDocument, RichTextFormatVersion, SortKey,
 };
 pub use inline::{InlineColorTarget, InlineMark, InlineSpan, plain_text_from_spans};
+pub use markdown_inline::{
+    InlineMarkdownParseResult, parse_inline_markdown, parse_inline_markdown_extended,
+};
+pub use markdown_shortcuts::{
+    block_kind_shortcut_with_marker_len, code_fence_shortcut, looks_like_markdown,
+    markdown_inline_shortcut_spans, parse_callout_marker,
+};
 pub use payload::{
     BlockPayload, BlockPayloadRecord, BlockPayloadView, CollectionPayload, CollectionPropertyKind,
     CollectionPropertyPayload, CollectionViewLayout, CollectionViewPayload, ColumnsGroupPayload,
@@ -26,5 +35,5 @@ pub use payload::{
 pub use span_splice::{DelimiterPairDetection, detect_delimiter_at_caret, splice_spans_at_range};
 pub use table::{
     TableCellAlign, TableCellMerge, TableCellPayload, TableCellStyle, TableColumnPayload,
-    TableHeaderStyle, TablePayload, TableRange, TableRowPayload, TableTrackSize,
+    TableHeaderStyle, TablePayload, TableRange, TableRowPayload, TableTrackSize, paste_table_at,
 };

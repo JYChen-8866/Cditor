@@ -5,25 +5,32 @@ use gpui::{
 use crate::block::placeholder::{
     render_empty_ai_hint, render_error, render_loading, render_placeholder,
 };
-use crate::document::DEFAULT_DOCUMENT_CONTENT_WIDTH_PX;
+use crate::document::DocumentTextViewport;
 use crate::editor_view::CditorV2View;
 use crate::features::code::highlight::{CodeHighlightCache, code_theme_item};
 use crate::features::media::render_image_block;
 use crate::features::table::render_table_block;
 use crate::features::table::{
-    TableAxisSelection, TableCellRangeSelection, TableReorderPreview, TableResizePreview,
+    TableAxisSelection, TableCellRangeSelection, TableCellSelection, TableReorderPreview,
+    TableResizePreview,
 };
 use crate::features::text::collection::render_collection_block;
 use crate::features::whiteboard::{WhiteboardThumbnailCache, render_whiteboard_thumbnail};
-use crate::text::{RichTextElement, RichTextLayoutInput};
+use crate::text::{
+    RichTextElement, RichTextLayoutInput, SegmentedRichTextElement, SegmentedTextViewport,
+};
 use crate::{presentation::rich_text::render_payload_text, theme::GuiTheme};
 use cditor_core::edit::SelectionRange;
 use cditor_core::rich_text::{BlockPayload, BlockPayloadView};
 use cditor_runtime::ViewBlockSnapshot;
 
+const EMPTY_PAGE_TITLE_PLACEHOLDER: &str = "新页面";
+
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_block_content(
     block: &ViewBlockSnapshot,
+    text_layout_width_px: f64,
+    text_viewport: DocumentTextViewport,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
@@ -31,9 +38,12 @@ pub(crate) fn render_block_content(
     table_resize_preview: Option<TableResizePreview>,
     table_reorder_preview: Option<TableReorderPreview>,
     table_range_selection: Option<TableCellRangeSelection>,
+    table_cell_selection: Option<TableCellSelection>,
     suppress_text_input: bool,
     table_selection: Option<TableAxisSelection>,
     table_scroll_handle: Option<ScrollHandle>,
+    code_scroll_handle: Option<ScrollHandle>,
+    code_caret_reveal_after_line_break: bool,
     code_highlights: &CodeHighlightCache,
     code_highlight_theme: &'static str,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
@@ -51,6 +61,7 @@ pub(crate) fn render_block_content(
                     block.marked_range.clone(),
                     table_selection,
                     table_range_selection,
+                    table_cell_selection,
                     table_resize_preview,
                     table_reorder_preview,
                     table_scroll_handle,
@@ -93,20 +104,18 @@ pub(crate) fn render_block_content(
                     view,
                 );
             }
-            if let Some(mut input) = RichTextLayoutInput::from_snapshot(
-                block,
-                f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX),
-                1,
-                1,
-            ) {
+            if let Some(mut input) =
+                RichTextLayoutInput::from_snapshot(block, text_layout_width_px, 1, 1)
+            {
                 if matches!(
                     block.kind,
                     cditor_core::rich_text::RichBlockKind::Code { .. }
-                ) && let Some(spans) = code_highlights.spans(block.block_id)
+                ) && let Some(spans) =
+                    code_highlights.spans(block.block_id, input.content_version)
                 {
-                    input.spans = spans.to_vec();
+                    input.spans = spans;
                 }
-                let text_len = input.spans.iter().map(|span| span.text.len()).sum();
+                let text_len = input.text_len();
                 let selection_range = if block.selection_overlay {
                     None
                 } else {
@@ -123,7 +132,45 @@ pub(crate) fn render_block_content(
                 } else {
                     theme
                 };
+                let segmented_viewport = if matches!(
+                    block.kind,
+                    cditor_core::rich_text::RichBlockKind::Code { .. }
+                ) {
+                    code_scroll_handle
+                        .clone()
+                        .map(SegmentedTextViewport::internal_scroll)
+                } else {
+                    Some(SegmentedTextViewport::document(
+                        text_viewport.local_top_px,
+                        text_viewport.height_px,
+                    ))
+                };
+                if cditor_text::requires_segmentation(text_len)
+                    && let Some(segmented_viewport) = segmented_viewport
+                {
+                    return SegmentedRichTextElement::new(
+                        input,
+                        text_theme,
+                        caret_for_text_input(block.caret_offset, suppress_text_input),
+                        block
+                            .caret_affinity
+                            .unwrap_or(cditor_core::edit::TextAffinity::Downstream),
+                        block.marked_range.clone(),
+                        selection_range,
+                        block.attrs.color.as_deref().and_then(parse_block_hex_color),
+                        segmented_viewport,
+                        crate::text::element::RichTextInputHandler {
+                            view,
+                            focus,
+                            focused: text_input_active(block.focused, suppress_text_input),
+                            table_cell_position: None,
+                        },
+                    )
+                    .render();
+                }
                 let text_element = RichTextElement::new(input, text_theme)
+                    .with_prewarmed_layout()
+                    .with_placeholder(page_title_placeholder(block, text_len))
                     .with_base_text_color(
                         block.attrs.color.as_deref().and_then(parse_block_hex_color),
                     )
@@ -138,6 +185,15 @@ pub(crate) fn render_block_content(
                     )
                     .with_marked_range(block.marked_range.clone())
                     .with_selection_range(selection_range)
+                    .with_caret_reveal_scroll_handle(
+                        (code_caret_reveal_after_line_break
+                            && matches!(
+                                block.kind,
+                                cditor_core::rich_text::RichBlockKind::Code { .. }
+                            ))
+                        .then_some(code_scroll_handle)
+                        .flatten(),
+                    )
                     .with_input_handler(
                         view,
                         focus,
@@ -165,7 +221,7 @@ pub(crate) fn render_block_content(
     }
 }
 
-fn parse_block_hex_color(value: &str) -> Option<u32> {
+pub(crate) fn parse_block_hex_color(value: &str) -> Option<u32> {
     let hex = value.strip_prefix('#').unwrap_or(value);
     (hex.len() == 6)
         .then(|| u32::from_str_radix(hex, 16).ok())
@@ -180,6 +236,7 @@ fn should_show_empty_ai_hint(
     block.focused
         && !suppress_text_input
         && text_len == 0
+        && page_title_placeholder(block, text_len).is_none()
         && matches!(
             block.kind,
             cditor_core::rich_text::RichBlockKind::Paragraph
@@ -191,6 +248,17 @@ fn should_show_empty_ai_hint(
                 | cditor_core::rich_text::RichBlockKind::Toggle
                 | cditor_core::rich_text::RichBlockKind::Callout { .. }
         )
+}
+
+fn page_title_placeholder(block: &ViewBlockSnapshot, text_len: usize) -> Option<&'static str> {
+    (text_len == 0
+        && block.visible_index == 0
+        && block.depth == 0
+        && matches!(
+            block.kind,
+            cditor_core::rich_text::RichBlockKind::Heading { level: 1 }
+        ))
+    .then_some(EMPTY_PAGE_TITLE_PLACEHOLDER)
 }
 
 fn text_input_active(block_focused: bool, suppress_text_input: bool) -> bool {
@@ -233,15 +301,7 @@ mod tests {
             })
             .unwrap();
 
-        assert!(
-            RichTextLayoutInput::from_snapshot(
-                block,
-                f64::from(DEFAULT_DOCUMENT_CONTENT_WIDTH_PX),
-                1,
-                1,
-            )
-            .is_some()
-        );
+        assert!(RichTextLayoutInput::from_snapshot(block, 718.0, 1, 1).is_some());
     }
 
     #[test]
@@ -262,6 +322,24 @@ mod tests {
         assert!(!should_show_empty_ai_hint(&block, true, 0));
         block.focused = false;
         assert!(!should_show_empty_ai_hint(&block, false, 0));
+    }
+
+    #[test]
+    fn empty_first_h1_uses_page_title_placeholder_instead_of_ai_hint() {
+        let runtime = DocumentRuntime::empty();
+        let mut block = runtime.projection_for_window().blocks[0].clone();
+        block.focused = true;
+
+        assert_eq!(
+            page_title_placeholder(&block, 0),
+            Some(EMPTY_PAGE_TITLE_PLACEHOLDER)
+        );
+        assert!(!should_show_empty_ai_hint(&block, false, 0));
+        assert_eq!(page_title_placeholder(&block, 1), None);
+
+        let mut non_title_h1 = block;
+        non_title_h1.visible_index = 1;
+        assert_eq!(page_title_placeholder(&non_title_h1, 0), None);
     }
 
     #[test]

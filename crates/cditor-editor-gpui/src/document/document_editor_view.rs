@@ -2,14 +2,16 @@ use std::collections::HashMap;
 
 use gpui::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Styled, div, prelude::FluentBuilder, px,
+    ParentElement, ScrollHandle, Styled, div, prelude::FluentBuilder, px,
 };
 
 use crate::block::{
     BlockActionState, BlockDragOverlaySnapshot, BlockView, render_block_drag_overlay,
 };
-use crate::document::DocumentSurface;
-use crate::document::{DEFAULT_DOCUMENT_CONTENT_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
+use crate::document::{
+    DEFAULT_DOCUMENT_TOP_INSET_PX, DocumentBlockGeometry, DocumentLayoutMetrics, DocumentSurface,
+    DocumentTextGeometry, DocumentTextViewport,
+};
 use crate::editor_view::CditorV2View;
 use crate::editor_view::TableScrollSnapshot;
 use crate::features::code::highlight::CodeHighlightCache;
@@ -20,14 +22,16 @@ use crate::features::table::{
     TableChromeOverlays, TableReorderPreview, TableResizePreview, render_table_axis_overlays,
     render_table_axis_toolbar, render_table_cell_menu, render_table_chrome_viewport,
     render_table_resize_overlays, table_axis_track_sizes, table_chrome_viewport_origins,
-    table_content_editor_origin, table_toolbar_editor_origin,
+    table_content_editor_origin, table_content_viewport_height_px,
+    table_projected_viewport_width_px, table_toolbar_editor_origin,
 };
 use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::CodeLanguageEditState;
 use crate::menu_metrics::MenuViewportBounds;
 use crate::overlays::render_editor_overlays;
 use crate::overlays::table::{
-    render_table_horizontal_scrollbar, render_table_reorder_preview_overlay,
+    TableReorderOverlayViewport, render_table_horizontal_scrollbar,
+    render_table_reorder_preview_overlay,
 };
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
@@ -121,6 +125,8 @@ impl DocumentEditorView {
         code_highlight_theme: &'static str,
         suppress_document_text_input: bool,
         table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
+        code_scroll_handles: &HashMap<BlockId, ScrollHandle>,
+        code_caret_reveal_after_line_break: &std::collections::HashSet<BlockId>,
         code_highlights: &CodeHighlightCache,
         mermaid_renders: &MermaidRenderCache,
         mermaid_source_blocks: &std::collections::HashSet<BlockId>,
@@ -128,6 +134,7 @@ impl DocumentEditorView {
         cx: &mut App,
     ) -> AnyElement {
         let block_view = BlockView::new(self.theme);
+        let document_layout = DocumentLayoutMetrics::for_viewport(editor_viewport_width_px);
         let menu_viewport = document_overlay_menu_viewport(
             editor_viewport_width_px,
             editor_viewport_height_px,
@@ -140,20 +147,43 @@ impl DocumentEditorView {
             .blocks
             .iter()
             .map(|block| {
+                let block_geometry = DocumentBlockGeometry::for_block(block, document_layout);
+                let text_geometry =
+                    DocumentTextGeometry::for_block(block, self.theme, document_layout);
+                let text_layout_width_px = text_geometry.width_px;
                 let top = block_y;
                 let height = block.layout.effective_height();
                 block_y += height;
+                let text_viewport = DocumentTextViewport::for_block(
+                    top,
+                    text_geometry.origin_y_px,
+                    projection.before_window_height,
+                    projection.scroll.global_scroll_top,
+                    editor_viewport_height_px,
+                    document_layout.top_inset_px,
+                );
                 if let Some(table_view) = &block.table_view {
                     let local_top = top as f32;
-                    let content_origin = table_content_editor_origin(block, local_top, self.theme);
-                    let grid_origin = table_toolbar_editor_origin(block, local_top, self.theme);
+                    let content_origin =
+                        table_content_editor_origin(block, local_top, self.theme, document_layout);
+                    let grid_origin =
+                        table_toolbar_editor_origin(block, local_top, self.theme, document_layout);
                     let row_track_sizes = table_axis_track_sizes(table_view, TableAxis::Row);
                     let column_track_sizes = table_axis_track_sizes(table_view, TableAxis::Column);
                     let scroll_snapshot = table_scroll_snapshots.get(&block.block_id);
+                    let offset_y = scroll_snapshot
+                        .map(|snapshot| snapshot.offset_y)
+                        .unwrap_or(0.0);
                     let viewport_width_px = scroll_snapshot
                         .and_then(|snapshot| snapshot.viewport_measurement)
                         .map(|measurement| measurement.viewport_width_px)
-                        .unwrap_or(table_view.width_px);
+                        .unwrap_or_else(|| {
+                            table_projected_viewport_width_px(block, self.theme, document_layout)
+                        });
+                    let viewport_height_px = scroll_snapshot
+                        .and_then(|snapshot| snapshot.viewport_measurement)
+                        .map(|measurement| measurement.viewport_height_px)
+                        .unwrap_or_else(|| table_content_viewport_height_px(table_view.height_px));
                     if let Some(scroll_snapshot) = scroll_snapshot
                         && let Some(measurement) = scroll_snapshot.viewport_measurement
                         && let Some(scrollbar) = render_table_horizontal_scrollbar(
@@ -169,7 +199,7 @@ impl DocumentEditorView {
                     {
                         table_overlay_elements.push(scrollbar);
                     }
-                    let chrome_origins = table_chrome_viewport_origins();
+                    let chrome_origins = table_chrome_viewport_origins(offset_y);
                     let mut table_chrome = TableChromeOverlays {
                         viewport: render_table_resize_overlays(
                             block.block_id,
@@ -186,7 +216,6 @@ impl DocumentEditorView {
                         table_axis_selection,
                         table_range_selection,
                         table_view.focused_cell,
-                        table_cell_selection,
                         &row_track_sizes,
                         &column_track_sizes,
                         chrome_origins,
@@ -196,11 +225,10 @@ impl DocumentEditorView {
                     table_chrome.viewport.extend(axis_chrome.viewport);
                     table_chrome.top_edge.extend(axis_chrome.top_edge);
                     table_chrome.left_edge.extend(axis_chrome.left_edge);
-                    table_chrome.right_edge.extend(axis_chrome.right_edge);
                     table_overlay_elements.push(render_table_chrome_viewport(
                         content_origin,
                         viewport_width_px,
-                        table_view.height_px,
+                        viewport_height_px,
                         table_chrome,
                     ));
                     if let Some(selection) = table_axis_menu_selection
@@ -209,7 +237,7 @@ impl DocumentEditorView {
                         table_overlay_elements.push(render_table_axis_toolbar(
                             selection,
                             table_view,
-                            grid_origin,
+                            table_axis_overlay_origin(grid_origin, selection.axis, offset_y),
                             table_menu_ui,
                             readonly,
                             self.theme,
@@ -223,7 +251,7 @@ impl DocumentEditorView {
                         && let Some(menu) = render_table_cell_menu(
                             selection,
                             table_view,
-                            content_origin,
+                            offset_table_origin_y(content_origin, offset_y),
                             menu_viewport,
                             table_menu_ui,
                             readonly,
@@ -236,7 +264,12 @@ impl DocumentEditorView {
                     if let Some(reorder_preview) = render_table_reorder_preview_overlay(
                         block.block_id,
                         table_view,
-                        grid_origin,
+                        TableReorderOverlayViewport {
+                            origin: grid_origin,
+                            width_px: viewport_width_px,
+                            height_px: viewport_height_px,
+                            content_offset_y: offset_y,
+                        },
                         table_reorder_preview,
                         self.theme,
                     ) {
@@ -245,8 +278,8 @@ impl DocumentEditorView {
                 }
                 div()
                     .absolute()
-                    .left_0()
-                    .right_0()
+                    .left(px(block_geometry.shell_left_px))
+                    .w(px(block_geometry.shell_width_px))
                     .top(px(top as f32))
                     .h(px(height as f32))
                     .child({
@@ -256,6 +289,8 @@ impl DocumentEditorView {
                             hovered_block_id == Some(block.block_id) && !action.dragging;
                         block_view.render(
                             block,
+                            text_layout_width_px,
+                            text_viewport,
                             view.clone(),
                             focus.clone(),
                             code_language_focus.clone(),
@@ -274,6 +309,8 @@ impl DocumentEditorView {
                             }),
                             table_range_selection
                                 .filter(|selection| selection.block_id == block.block_id),
+                            table_cell_selection
+                                .filter(|selection| selection.block_id == block.block_id),
                             code_language_edit,
                             code_theme_menu_block_id == Some(block.block_id),
                             code_highlight_theme,
@@ -281,6 +318,8 @@ impl DocumentEditorView {
                             table_scroll_snapshots
                                 .get(&block.block_id)
                                 .map(|snapshot| snapshot.handle.clone()),
+                            code_scroll_handles.get(&block.block_id).cloned(),
+                            code_caret_reveal_after_line_break.contains(&block.block_id),
                             code_highlights,
                             mermaid_renders,
                             mermaid_source_blocks.contains(&block.block_id),
@@ -311,13 +350,17 @@ impl DocumentEditorView {
             .left_0()
             .right_0()
             .top_0()
-            .child(render_editor_overlays(projection, self.theme))
+            .child(render_editor_overlays(
+                projection,
+                self.theme,
+                document_layout,
+            ))
             .children(table_overlay_elements)
             .when_some(drag_overlay, |this, overlay| {
                 this.child(render_block_drag_overlay(overlay, self.theme))
             })
             .into_any_element();
-        let retry_range = projection.render_window.block_range.clone();
+        let retry_range = projection.payload_visible_block_range.clone();
         let retry_view = view.clone();
         let on_placeholder_retry = projection.placeholder_window_failure.as_ref().map(|_| {
             Box::new(
@@ -329,11 +372,12 @@ impl DocumentEditorView {
                 },
             ) as crate::document::skeleton_window::PlaceholderRetryHandler
         });
-        let mut surface = DocumentSurface::with_scroll(
+        let mut surface = DocumentSurface::with_scroll_and_layout(
             projection.before_window_height,
             projection.placeholder_window_height,
             projection.after_window_height,
             projection.scroll.global_scroll_top,
+            document_layout,
         );
         surface.placeholder_window_error = projection.placeholder_window_error.clone();
         surface.placeholder_window_failure = projection.placeholder_window_failure.clone();
@@ -346,14 +390,36 @@ impl DocumentEditorView {
     }
 }
 
+fn offset_table_origin_y(
+    origin: crate::features::table::TableToolbarEditorOrigin,
+    offset_y: f32,
+) -> crate::features::table::TableToolbarEditorOrigin {
+    crate::features::table::TableToolbarEditorOrigin {
+        x_px: origin.x_px,
+        y_px: origin.y_px + offset_y,
+    }
+}
+
+fn table_axis_overlay_origin(
+    origin: crate::features::table::TableToolbarEditorOrigin,
+    axis: TableAxis,
+    offset_y: f32,
+) -> crate::features::table::TableToolbarEditorOrigin {
+    match axis {
+        TableAxis::Row => offset_table_origin_y(origin, offset_y),
+        TableAxis::Column => origin,
+    }
+}
+
 fn document_overlay_menu_viewport(
     editor_width_px: f32,
     editor_height_px: f32,
     scroll_top: f64,
     window_start_global_y: f64,
 ) -> MenuViewportBounds {
-    let content_left = ((editor_width_px - DEFAULT_DOCUMENT_CONTENT_WIDTH_PX) / 2.0).max(0.0);
-    let left = -content_left;
+    let document_layout = DocumentLayoutMetrics::for_viewport(editor_width_px);
+    let page_left = ((editor_width_px - document_layout.page_width_px) / 2.0).max(0.0);
+    let left = -page_left;
     let top = (scroll_top - window_start_global_y) as f32 - DEFAULT_DOCUMENT_TOP_INSET_PX;
     MenuViewportBounds {
         left,
@@ -441,8 +507,8 @@ mod tests {
     fn menu_viewport_is_expressed_in_centered_document_overlay_coordinates() {
         let viewport = document_overlay_menu_viewport(1_200.0, 800.0, 0.0, 0.0);
 
-        assert_eq!(viewport.left, -170.0);
-        assert_eq!(viewport.right, 1_030.0);
+        assert_eq!(viewport.left, 0.0);
+        assert_eq!(viewport.right, 1_200.0);
         assert_eq!(viewport.top, -32.0);
         assert_eq!(viewport.bottom, 768.0);
     }

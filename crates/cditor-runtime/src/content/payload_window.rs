@@ -1,13 +1,29 @@
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::ops::Range;
+use std::sync::Arc;
 
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::BlockPayloadRecord;
 
 use super::payload_cache::estimated_payload_record_bytes;
+use super::payload_preparation::{PreparedPayloadRecord, prepare_payload_records};
+
+mod cache_maintenance;
 
 pub const MAX_PAYLOAD_WINDOW_LOAD_ATTEMPTS: u8 = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PayloadLoadPriority {
+    Prefetch,
+    Visible,
+    Emergency,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PayloadLoadOwner {
+    generation: u64,
+    priority: PayloadLoadPriority,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PayloadWindowLoadRequest {
@@ -19,8 +35,22 @@ pub struct PayloadWindowLoadRequest {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayloadWindowLoadResult {
     pub request: PayloadWindowLoadRequest,
-    pub records: Vec<BlockPayloadRecord>,
+    pub records: Vec<PreparedPayloadRecord>,
     pub missing_block_ids: Vec<BlockId>,
+}
+
+impl PayloadWindowLoadResult {
+    pub fn prepare(
+        request: PayloadWindowLoadRequest,
+        records: Vec<BlockPayloadRecord>,
+        missing_block_ids: Vec<BlockId>,
+    ) -> Self {
+        Self {
+            request,
+            records: prepare_payload_records(records),
+            missing_block_ids,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,17 +62,22 @@ pub enum PayloadWindowApplyDecision {
 #[derive(Debug, Clone, Default)]
 pub struct PayloadWindow {
     pub block_range: Range<usize>,
-    pub payloads: HashMap<BlockId, BlockPayloadRecord>,
+    pub payloads: HashMap<BlockId, Arc<BlockPayloadRecord>>,
     pub loading: HashSet<BlockId>,
-    loading_generations: HashMap<BlockId, u64>,
+    loading_generations: HashMap<BlockId, PayloadLoadOwner>,
     pub failed: HashMap<BlockId, String>,
     pub failure_attempts: HashMap<BlockId, u8>,
     persisted_versions: HashMap<BlockId, u64>,
     last_access: HashMap<BlockId, u64>,
-    access_order: BinaryHeap<Reverse<(u64, BlockId)>>,
+    access_order: BTreeSet<(u64, BlockId)>,
     access_clock: u64,
     estimated_bytes_by_block: HashMap<BlockId, usize>,
+    estimated_bytes_dirty: HashSet<BlockId>,
+    estimated_bytes_dirty_queue: VecDeque<BlockId>,
     total_estimated_bytes: usize,
+    maintenance_cursor: Option<(u64, BlockId)>,
+    maintenance_cycle_active: bool,
+    residency_revision: u64,
 }
 
 impl PayloadWindow {
@@ -56,23 +91,38 @@ impl PayloadWindow {
             failure_attempts: HashMap::new(),
             persisted_versions: HashMap::new(),
             last_access: HashMap::new(),
-            access_order: BinaryHeap::new(),
+            access_order: BTreeSet::new(),
             access_clock: 0,
             estimated_bytes_by_block: HashMap::new(),
+            estimated_bytes_dirty: HashSet::new(),
+            estimated_bytes_dirty_queue: VecDeque::new(),
             total_estimated_bytes: 0,
+            maintenance_cursor: None,
+            maintenance_cycle_active: false,
+            residency_revision: 0,
         }
     }
 
     /// Inserts a local record while preserving the last known persisted version.
     /// New records and records whose version changed therefore remain dirty.
     pub fn insert(&mut self, payload: BlockPayloadRecord) {
+        let estimated_bytes = estimated_payload_record_bytes(&payload);
+        self.insert_shared(Arc::new(payload), estimated_bytes);
+    }
+
+    fn insert_shared(&mut self, payload: Arc<BlockPayloadRecord>, estimated_bytes: usize) {
         let block_id = payload.block_id;
-        self.loading.remove(&payload.block_id);
-        self.loading_generations.remove(&payload.block_id);
-        self.failed.remove(&payload.block_id);
-        self.failure_attempts.remove(&payload.block_id);
-        self.replace_estimated_size(block_id, estimated_payload_record_bytes(&payload));
+        let was_resident = self.payloads.contains_key(&block_id);
+        self.loading.remove(&block_id);
+        self.loading_generations.remove(&block_id);
+        self.failed.remove(&block_id);
+        self.failure_attempts.remove(&block_id);
+        self.replace_estimated_size(block_id, estimated_bytes);
+        self.clear_estimated_size_dirty(block_id);
         self.payloads.insert(block_id, payload);
+        if !was_resident {
+            self.residency_revision = self.residency_revision.saturating_add(1);
+        }
         self.touch(block_id);
     }
 
@@ -84,31 +134,53 @@ impl PayloadWindow {
         self.persisted_versions.insert(block_id, content_version);
     }
 
+    /// Inserts a storage record whose expensive preparation already completed
+    /// off the main thread.
+    pub fn insert_loaded_prepared(&mut self, payload: PreparedPayloadRecord) {
+        let block_id = payload.block_id();
+        let content_version = payload.content_version();
+        let (record, estimated_bytes) = payload.into_parts();
+        self.insert_shared(record, estimated_bytes);
+        self.persisted_versions.insert(block_id, content_version);
+    }
+
     pub fn get(&self, block_id: BlockId) -> Option<&BlockPayloadRecord> {
+        self.payloads.get(&block_id).map(Arc::as_ref)
+    }
+
+    pub fn get_shared(&self, block_id: BlockId) -> Option<&Arc<BlockPayloadRecord>> {
         self.payloads.get(&block_id)
     }
 
-    pub fn remove(&mut self, block_id: BlockId) -> Option<BlockPayloadRecord> {
-        self.remove_internal(block_id, true)
+    pub fn get_mut(&mut self, block_id: BlockId) -> Option<&mut BlockPayloadRecord> {
+        if !self.payloads.contains_key(&block_id) {
+            return None;
+        }
+        self.mark_estimated_size_dirty(block_id);
+        self.restart_cache_maintenance_cycle();
+        self.payloads.get_mut(&block_id).map(Arc::make_mut)
     }
 
-    fn remove_internal(
-        &mut self,
-        block_id: BlockId,
-        compact_access_order: bool,
-    ) -> Option<BlockPayloadRecord> {
+    pub fn remove(&mut self, block_id: BlockId) -> Option<Arc<BlockPayloadRecord>> {
+        self.remove_internal(block_id)
+    }
+
+    fn remove_internal(&mut self, block_id: BlockId) -> Option<Arc<BlockPayloadRecord>> {
         self.loading.remove(&block_id);
         self.loading_generations.remove(&block_id);
         self.failed.remove(&block_id);
         self.failure_attempts.remove(&block_id);
         self.persisted_versions.remove(&block_id);
-        self.last_access.remove(&block_id);
+        if let Some(stamp) = self.last_access.remove(&block_id) {
+            self.access_order.remove(&(stamp, block_id));
+        }
+        self.clear_estimated_size_dirty(block_id);
         if let Some(bytes) = self.estimated_bytes_by_block.remove(&block_id) {
             self.total_estimated_bytes = self.total_estimated_bytes.saturating_sub(bytes);
         }
         let removed = self.payloads.remove(&block_id);
-        if compact_access_order {
-            self.compact_access_order_if_needed();
+        if removed.is_some() {
+            self.residency_revision = self.residency_revision.saturating_add(1);
         }
         removed
     }
@@ -119,16 +191,22 @@ impl PayloadWindow {
         }
         self.access_clock = self.access_clock.saturating_add(1);
         let stamp = self.access_clock;
-        self.last_access.insert(block_id, stamp);
-        self.access_order.push(Reverse((stamp, block_id)));
-        self.compact_access_order_if_needed();
+        if let Some(previous) = self.last_access.insert(block_id, stamp) {
+            self.access_order.remove(&(previous, block_id));
+        }
+        self.access_order.insert((stamp, block_id));
     }
 
     pub fn mark_persisted_versions(&mut self, versions: &[(BlockId, u64)]) {
+        let mut changed = false;
         for &(block_id, content_version) in versions {
             if self.payloads.contains_key(&block_id) {
-                self.persisted_versions.insert(block_id, content_version);
+                changed |= self.persisted_versions.insert(block_id, content_version)
+                    != Some(content_version);
             }
+        }
+        if changed {
+            self.restart_cache_maintenance_cycle();
         }
     }
 
@@ -143,72 +221,61 @@ impl PayloadWindow {
         self.total_estimated_bytes
     }
 
-    /// Recalculates sizes at a cache-maintenance boundary. Edits may mutate a
-    /// loaded record in place, so input handling stays allocation-free and the
-    /// less frequent trim pass accounts for the new capacity.
-    pub fn refresh_estimated_bytes(&mut self) {
-        self.estimated_bytes_by_block.clear();
-        self.total_estimated_bytes = 0;
-        for (&block_id, payload) in &self.payloads {
-            let bytes = estimated_payload_record_bytes(payload);
-            self.estimated_bytes_by_block.insert(block_id, bytes);
-            self.total_estimated_bytes = self.total_estimated_bytes.saturating_add(bytes);
-        }
-    }
-
-    /// Evicts a batch in one LRU scan. Pinned or dirty candidates are deferred
-    /// until the whole pass finishes, avoiding repeated scans when a large
-    /// protected set is older than the clean records being released.
-    pub fn evict_to_limits(
-        &mut self,
-        max_entries: usize,
-        max_estimated_bytes: usize,
-        mut can_evict: impl FnMut(BlockId, &BlockPayloadRecord) -> bool,
-    ) -> Vec<BlockPayloadRecord> {
-        let mut evicted = Vec::new();
-        let mut protected = Vec::new();
-        while self.payloads.len() > max_entries || self.total_estimated_bytes > max_estimated_bytes
-        {
-            let mut candidate = None;
-            while let Some(Reverse((stamp, block_id))) = self.access_order.pop() {
-                if self.last_access.get(&block_id).copied() != Some(stamp) {
-                    continue;
-                }
-                let Some(payload) = self.payloads.get(&block_id) else {
-                    self.last_access.remove(&block_id);
-                    continue;
-                };
-                if !can_evict(block_id, payload) {
-                    protected.push(Reverse((stamp, block_id)));
-                    continue;
-                }
-                candidate = Some(block_id);
-                break;
-            }
-            let Some(block_id) = candidate else {
-                break;
-            };
-            if let Some(payload) = self.remove_internal(block_id, false) {
-                evicted.push(payload);
-            }
-        }
-        self.access_order.extend(protected);
-        self.compact_access_order_if_needed();
-        evicted
+    pub fn residency_revision(&self) -> u64 {
+        self.residency_revision
     }
 
     pub fn mark_loading(&mut self, block_id: BlockId, generation: u64) {
+        self.mark_loading_with_priority(block_id, generation, PayloadLoadPriority::Visible);
+    }
+
+    pub fn mark_loading_with_priority(
+        &mut self,
+        block_id: BlockId,
+        generation: u64,
+        priority: PayloadLoadPriority,
+    ) {
         self.loading.insert(block_id);
-        self.loading_generations.insert(block_id, generation);
+        self.loading_generations.insert(
+            block_id,
+            PayloadLoadOwner {
+                generation,
+                priority,
+            },
+        );
+    }
+
+    pub fn loading_priority(&self, block_id: BlockId) -> Option<PayloadLoadPriority> {
+        self.loading_generations
+            .get(&block_id)
+            .map(|owner| owner.priority)
     }
 
     pub fn finish_loading(&mut self, block_id: BlockId, generation: u64) -> bool {
-        if self.loading_generations.get(&block_id).copied() != Some(generation) {
+        if self
+            .loading_generations
+            .get(&block_id)
+            .map(|owner| owner.generation)
+            != Some(generation)
+        {
             return false;
         }
         self.loading.remove(&block_id);
         self.loading_generations.remove(&block_id);
         true
+    }
+
+    pub fn cancel_loading_generation(&mut self, generation: u64) -> usize {
+        let block_ids = self
+            .loading_generations
+            .iter()
+            .filter_map(|(&block_id, owner)| (owner.generation == generation).then_some(block_id))
+            .collect::<Vec<_>>();
+        for block_id in &block_ids {
+            self.loading.remove(block_id);
+            self.loading_generations.remove(block_id);
+        }
+        block_ids.len()
     }
 
     pub fn mark_failed(&mut self, block_id: BlockId, message: impl Into<String>) {
@@ -231,16 +298,17 @@ impl PayloadWindow {
         self.total_estimated_bytes = self.total_estimated_bytes.saturating_add(bytes);
     }
 
-    fn compact_access_order_if_needed(&mut self) {
-        let max_len = self.last_access.len().saturating_mul(4).saturating_add(64);
-        if self.access_order.len() <= max_len {
-            return;
+    fn mark_estimated_size_dirty(&mut self, block_id: BlockId) {
+        if self.estimated_bytes_dirty.insert(block_id) {
+            self.estimated_bytes_dirty_queue.push_back(block_id);
         }
-        self.access_order = self
-            .last_access
-            .iter()
-            .map(|(&block_id, &stamp)| Reverse((stamp, block_id)))
-            .collect();
+    }
+
+    fn clear_estimated_size_dirty(&mut self, block_id: BlockId) {
+        self.estimated_bytes_dirty.remove(&block_id);
+        if self.estimated_bytes_dirty.is_empty() {
+            self.estimated_bytes_dirty_queue.clear();
+        }
     }
 }
 
@@ -273,13 +341,42 @@ mod tests {
     }
 
     #[test]
+    fn cancelling_a_generation_only_releases_its_loading_markers() {
+        let mut window = PayloadWindow::new(0..3);
+        window.mark_loading(1, 7);
+        window.mark_loading(2, 7);
+        window.mark_loading(3, 8);
+
+        assert_eq!(window.cancel_loading_generation(7), 2);
+        assert!(!window.loading.contains(&1));
+        assert!(!window.loading.contains(&2));
+        assert!(window.loading.contains(&3));
+        assert!(!window.finish_loading(1, 7));
+        assert!(window.finish_loading(3, 8));
+    }
+
+    #[test]
+    fn higher_priority_owner_can_replace_prefetch_without_accepting_its_late_result() {
+        let mut window = PayloadWindow::new(0..1);
+        window.mark_loading_with_priority(1, 7, PayloadLoadPriority::Prefetch);
+        window.mark_loading_with_priority(1, 8, PayloadLoadPriority::Visible);
+
+        assert_eq!(
+            window.loading_priority(1),
+            Some(PayloadLoadPriority::Visible)
+        );
+        assert!(!window.finish_loading(1, 7));
+        assert!(window.finish_loading(1, 8));
+    }
+
+    #[test]
     fn eviction_is_lru_and_skips_protected_records() {
         let mut window = PayloadWindow::new(0..0);
         window.insert_loaded(payload(1, 1, "one"));
         window.insert_loaded(payload(2, 1, "two"));
         window.insert_loaded(payload(3, 1, "three"));
 
-        let evicted = window.evict_to_limits(2, usize::MAX, |block_id, _| block_id != 1);
+        let evicted = window.evict_to_limits(2, usize::MAX, |block_id, _, _| block_id != 1);
         assert_eq!(evicted[0].block_id, 2);
         assert!(window.get(1).is_some());
         assert!(window.get(2).is_none());
@@ -296,9 +393,41 @@ mod tests {
         assert!(!window.is_dirty(1));
         assert!(
             window
-                .evict_to_limits(0, usize::MAX, |_, _| true)
+                .evict_to_limits(0, usize::MAX, |_, _, _| true)
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn residency_revision_changes_only_when_membership_changes() {
+        let mut window = PayloadWindow::new(0..0);
+        assert_eq!(window.residency_revision(), 0);
+
+        window.insert_loaded(payload(1, 1, "one"));
+        let inserted_revision = window.residency_revision();
+        assert!(inserted_revision > 0);
+
+        window.insert_loaded(payload(1, 2, "updated"));
+        assert_eq!(window.residency_revision(), inserted_revision);
+        assert!(window.remove(99).is_none());
+        assert_eq!(window.residency_revision(), inserted_revision);
+
+        assert!(window.remove(1).is_some());
+        assert!(window.residency_revision() > inserted_revision);
+    }
+
+    #[test]
+    fn prepared_storage_record_moves_its_arc_and_byte_estimate_into_residency() {
+        let mut window = PayloadWindow::new(0..1);
+        let prepared = PreparedPayloadRecord::prepare(payload(1, 7, &"x".repeat(8_192)));
+        let expected_bytes = prepared.estimated_bytes();
+        let shared = prepared.record().clone();
+
+        window.insert_loaded_prepared(prepared);
+
+        assert!(Arc::ptr_eq(window.get_shared(1).unwrap(), &shared));
+        assert_eq!(window.total_estimated_bytes(), expected_bytes);
+        assert!(!window.is_dirty(1));
     }
 
     #[test]
@@ -309,7 +438,7 @@ mod tests {
         }
         let mut predicate_calls = 0;
 
-        let evicted = window.evict_to_limits(100, usize::MAX, |block_id, _| {
+        let evicted = window.evict_to_limits(100, usize::MAX, |block_id, _, _| {
             predicate_calls += 1;
             block_id > 100
         });

@@ -5,9 +5,12 @@ use crate::diagnostics::frame_telemetry::{
     FrameWindowSnapshot, record_app_frame,
 };
 use crate::editor_view::CditorV2View;
+use gpui::WindowId;
 
 impl CditorV2View {
-    pub(crate) fn record_frame_telemetry(&self, elapsed: Duration) {
+    pub(crate) fn record_frame_telemetry(&self, window_id: WindowId, elapsed: Duration) {
+        let scheduler_depths = self.scheduling.main_thread.lane_depths();
+        let scheduler_pending = self.scheduling.main_thread.pending_len();
         let diagnostics = self
             .ready_session()
             .and_then(|session| session.diagnostics_snapshot().ok());
@@ -35,20 +38,20 @@ impl CditorV2View {
             .map(|snapshot| {
                 (
                     FrameQueueSnapshot {
-                        pending_layout_tasks: snapshot.pending_layout_tasks,
+                        pending_layout_tasks: snapshot
+                            .pending_layout_tasks
+                            .saturating_add(scheduler_pending),
                         pending_payload_loads: snapshot.pending_payload_loads,
                         pending_saves: self
                             .ready_session()
                             .and_then(|session| session.persistence_snapshot().ok())
                             .map_or(0, |snapshot| snapshot.pending_operations),
-                        // P6-006 keeps this false until all GPUI dispatch is routed
-                        // through the five production scheduler lanes.
-                        scheduler_lanes_connected: false,
-                        realtime_lane_depth: None,
-                        interactive_lane_depth: None,
-                        visible_lane_depth: None,
-                        prefetch_lane_depth: None,
-                        background_lane_depth: None,
+                        scheduler_lanes_connected: true,
+                        realtime_lane_depth: Some(scheduler_depths.realtime),
+                        interactive_lane_depth: Some(scheduler_depths.interactive),
+                        visible_lane_depth: Some(scheduler_depths.visible),
+                        prefetch_lane_depth: Some(scheduler_depths.prefetch),
+                        background_lane_depth: Some(scheduler_depths.background),
                     },
                     FrameWindowSnapshot {
                         document_blocks: snapshot.document_blocks,
@@ -69,13 +72,17 @@ impl CditorV2View {
                 )
             })
             .unwrap_or_default();
-        let platform_layout_bytes = self
+        let text_layout_cache = crate::text::text_layout_cache_stats();
+        let platform_geometry_bytes = self
             .cache
             .text_layouts
-            .estimated_bytes()
-            .saturating_add(self.cache.table_cell_layouts.estimated_bytes())
-            .saturating_add(self.cache.text_surface_layouts.estimated_bytes());
-        record_app_frame(AppFrameTelemetryInput {
+            .estimated_metadata_bytes()
+            .saturating_add(self.cache.table_cell_layouts.estimated_metadata_bytes())
+            .saturating_add(self.cache.text_surface_layouts.estimated_metadata_bytes());
+        let platform_layout_bytes = text_layout_cache
+            .estimated_bytes
+            .saturating_add(platform_geometry_bytes);
+        let input = AppFrameTelemetryInput {
             elapsed,
             interaction,
             queues,
@@ -85,11 +92,14 @@ impl CditorV2View {
                 payload_and_undo_bytes,
                 platform_layout_bytes,
                 payload_cache_over_budget: payload_over_budget,
-                platform_layout_cache_over_budget: self.cache.text_layouts.is_over_budget()
+                platform_layout_cache_over_budget: text_layout_cache.over_budget_due_to_pins
+                    || self.cache.text_layouts.is_over_budget()
                     || self.cache.table_cell_layouts.is_over_budget()
                     || self.cache.text_surface_layouts.is_over_budget(),
             },
             text_geometry_fallback_rate: crate::text::text_geometry_telemetry().fallback_rate(),
-        });
+        };
+        crate::diagnostics::fps_trace::trace_gpui_frames(window_id, &input);
+        record_app_frame(input);
     }
 }

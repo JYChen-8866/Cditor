@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use cditor_core::ids::BlockId;
-pub use cditor_import_export::media_resource::{MediaResourceId, MediaStableBox};
+pub use cditor_core::media_resource::{MediaResourceId, MediaStableBox};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MediaCachePolicy {

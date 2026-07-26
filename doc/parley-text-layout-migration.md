@@ -43,7 +43,7 @@ cluster、glyph advance 或换行结果可能不同，会造成绘制、光标�
 
 ## 3. 模块边界
 
-新增 `crates/app/src/gui/text/parley/`，按职责拆分：
+新增 `crates/cditor-editor-gpui/src/text/parley/`，按职责拆分：
 
 | 模块 | 职责 |
 |---|---|
@@ -201,14 +201,14 @@ inline box。
 ```text
 cargo fmt --all -- --check                  passed
 cargo check --workspace                     passed, no warnings
-cargo test -p cditor-app --lib              363 passed, 1 ignored (Docker/Postgres)
+cargo test -p cditor-desktop --lib              363 passed, 1 ignored (Docker/Postgres)
 cargo test -p cditor-runtime --lib          416 passed
 cargo test -p cditor-text --lib             38 passed
 Parley paint/raster adapter tests           17 passed
 GUI text-focused tests                      36 passed
 ```
 
-实机启动 `CDITOR_SMALL_DEMO=1 cargo run -p cditor-app` 成功；既有人工检查确认主富文本 CJK、
+实机启动 `CDITOR_SMALL_DEMO=1 cargo run -p cditor-desktop` 成功；既有人工检查确认主富文本 CJK、
 列表和 table surface 非空白且布局正常。本轮 session/composition identity smoke 因 macOS
 辅助功能权限拒绝而无法自动输入，不能据此确认 live typing 或候选框位置。自动化测试覆盖
 emoji ZWJ、Arabic/Hebrew mixed Bidi、soft-wrap affinity、IME geometry identity、table cell

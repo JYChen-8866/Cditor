@@ -133,19 +133,19 @@ struct VisualCaseSpec {
     spans: Vec<InlineSpan>,
     width: f32,
     display_scale: f32,
-    alignment: ParleyAlignment,
+    alignment: TextAlignment,
     carets: Vec<CaretSpec>,
     selections: Vec<SelectionSpec>,
 }
 
 struct CaretSpec {
     label: &'static str,
-    position: ParleyTextPosition,
+    position: TextLayoutPosition,
 }
 
 struct SelectionSpec {
     label: &'static str,
-    selection: ParleySelection,
+    selection: TextLayoutSelection,
 }
 
 #[test]
@@ -212,24 +212,24 @@ fn snapshot_case(block_id: u64, spec: VisualCaseSpec) -> VisualCase {
         theme_version: 1,
         font_version: 1,
     };
-    let options = ParleyLayoutOptions {
+    let options = TextLayoutOptions {
         width: Some(spec.width),
         display_scale: spec.display_scale,
         quantize: true,
         alignment: spec.alignment,
         base_text_color: 0x37352f,
         mono_font_family: FIXTURE_FONT_FAMILY.to_owned(),
-        base_style: ParleyTextStyleConfig {
+        base_style: TextStyleConfig {
             font_family: FIXTURE_FONT_FAMILY.to_owned(),
             font_size: 18.0,
             font_weight: 100.0,
             font_variations: "'wght' 450".to_owned(),
-            line_height: ParleyLineHeight::Absolute(26.0),
-            ..ParleyTextStyleConfig::default()
+            line_height: TextLineHeight::Absolute(26.0),
+            ..TextStyleConfig::default()
         },
-        ..ParleyLayoutOptions::default()
+        ..TextLayoutOptions::default()
     };
-    let layout = build_parley_layout(&input, visual_theme(), &options);
+    let layout = build_text_layout(&input, visual_theme(), &options);
     let paint_plan = layout.paint_plan();
 
     VisualCase {
@@ -241,7 +241,7 @@ fn snapshot_case(block_id: u64, spec: VisualCaseSpec) -> VisualCase {
         height: to_units(layout.height(), spec.display_scale),
         lines: layout
             .line_snapshots()
-            .into_iter()
+            .iter()
             .map(|line| GoldenLine {
                 index: line.index,
                 text_range: [line.text_range.start, line.text_range.end],
@@ -331,7 +331,7 @@ fn wrapped_case() -> VisualCaseSpec {
         spans: vec![InlineSpan::plain(text)],
         width: 142.0,
         display_scale: 1.0,
-        alignment: ParleyAlignment::Start,
+        alignment: TextAlignment::Start,
         carets: vec![
             caret("start", 0, TextAffinity::Downstream),
             caret("soft-wrap-upstream", 19, TextAffinity::Upstream),
@@ -367,7 +367,7 @@ fn decorated_case() -> VisualCaseSpec {
         spans,
         width: 210.0,
         display_scale: 1.25,
-        alignment: ParleyAlignment::Center,
+        alignment: TextAlignment::Center,
         carets: vec![
             caret("link-start", 6, TextAffinity::Downstream),
             caret("mark-start", 26, TextAffinity::Downstream),
@@ -384,7 +384,7 @@ fn hard_line_case() -> VisualCaseSpec {
         spans: vec![InlineSpan::plain(text)],
         width: 240.0,
         display_scale: 2.0,
-        alignment: ParleyAlignment::End,
+        alignment: TextAlignment::End,
         carets: vec![
             caret("ligature-interior", 2, TextAffinity::Downstream),
             caret("hard-line-upstream", 14, TextAffinity::Upstream),
@@ -412,16 +412,16 @@ fn visual_theme() -> TextTheme {
 fn caret(label: &'static str, offset: usize, affinity: TextAffinity) -> CaretSpec {
     CaretSpec {
         label,
-        position: ParleyTextPosition { offset, affinity },
+        position: TextLayoutPosition { offset, affinity },
     }
 }
 
 fn selection(label: &'static str, start: usize, end: usize) -> SelectionSpec {
     SelectionSpec {
         label,
-        selection: ParleySelection {
-            anchor: ParleyTextPosition::downstream(start),
-            focus: ParleyTextPosition {
+        selection: TextLayoutSelection {
+            anchor: TextLayoutPosition::downstream(start),
+            focus: TextLayoutPosition {
                 offset: end,
                 affinity: TextAffinity::Upstream,
             },
@@ -466,7 +466,7 @@ fn assert_visual_coverage(golden: &VisualGolden) {
     );
 }
 
-fn position_snapshot(position: ParleyTextPosition) -> GoldenPosition {
+fn position_snapshot(position: TextLayoutPosition) -> GoldenPosition {
     GoldenPosition {
         offset: position.offset,
         affinity: affinity_name(position.affinity),
@@ -480,7 +480,7 @@ fn affinity_name(affinity: TextAffinity) -> &'static str {
     }
 }
 
-fn rect_snapshot(rect: ParleyRect, scale: f32) -> GoldenRect {
+fn rect_snapshot(rect: TextLayoutRect, scale: f32) -> GoldenRect {
     GoldenRect {
         x: to_units(rect.x, scale),
         y: to_units(rect.y, scale),

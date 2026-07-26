@@ -45,8 +45,8 @@
 cditor-core rich_text::markdown                  24 passed
 cditor-runtime rich_text_edit                    15 passed
 cditor-runtime table::layout                      4 passed
-cditor-app gui::block::table                     40 passed
-cditor-app gui::block::whiteboard                 3 passed
+cditor-desktop gui::block::table                     40 passed
+cditor-desktop gui::block::whiteboard                 3 passed
 ```
 
 针对本轮新增的 clipboard/selection/delete 审计，补充验证了：
@@ -55,8 +55,8 @@ cditor-app gui::block::whiteboard                 3 passed
 cditor-runtime selection_scroll                  15 passed
 cditor-runtime delete_navigation_height          18 passed
 cditor-runtime conversion_clipboard_media        11 passed
-cditor-app gui::input::clipboard                  1 passed
-cditor-app gui::app::input::keyboard              4 passed
+cditor-desktop gui::input::clipboard                  1 passed
+cditor-desktop gui::app::input::keyboard              4 passed
 ```
 
 测试通过并不表示现象不存在：现有测试主要验证纯函数和静态 parser，缺少用户实际触发的“连续输入/GUI 组合链路”和像素级渲染验收。当前还有一个 `flush_plain_span` dead-code warning。
@@ -106,10 +106,10 @@ cditor-app gui::app::input::keyboard              4 passed
 
 关键证据：
 
-- `crates/core/src/rich_text/payload.rs:60` 把白板的通用纯文本投影写成固定字符串 `whiteboard`。
-- `crates/runtime/src/document_runtime/focus.rs:21-35` 对任意 block 都创建 `InputTarget::BlockText`。
-- `crates/runtime/src/document_runtime/structure_edit.rs:75-142` 的 Enter 逻辑只保护了 Table。
-- `crates/runtime/src/document_runtime/text_payload.rs:377-385` 会把所有未显式支持的 payload 转成 plain text 后拆分。
+- `crates/cditor-core/src/rich_text/payload.rs:60` 把白板的通用纯文本投影写成固定字符串 `whiteboard`。
+- `crates/cditor-runtime/src/document_runtime/focus.rs:21-35` 对任意 block 都创建 `InputTarget::BlockText`。
+- `crates/cditor-runtime/src/document_runtime/structure_edit.rs:75-142` 的 Enter 逻辑只保护了 Table。
+- `crates/cditor-runtime/src/document_runtime/text_payload.rs:377-385` 会把所有未显式支持的 payload 转成 plain text 后拆分。
 - 拆分时原 record 的 `kind` 仍可能是 `Whiteboard`，但 payload 已变成 `RichText`，形成 kind/payload 不变量破坏；这解释了“空白板骨架 + 另一个 whiteboard 文本 block”。
 
 ### 2.2 正确设计
@@ -298,7 +298,7 @@ Scene::to_json（全 scene 序列化）
   -> host cx.notify（重绘整个 Cditor view/projection/overlays）
 ```
 
-`components/cditor-whiteboard/src/lib.rs:3233-3240` 会在变更 flush 时做全量 `scene.to_json()`；`crates/app/src/gui/app/cditor_v2_view/whiteboard.rs:40-53` 又在每次回调更新 host runtime 并 mark dirty。standalone 没有 Cditor 的 projection、虚拟窗口、缩略图、保存状态和根 view 重绘成本。因此“单独流畅、集成卡”首先应怀疑 host invalidation 和全量 snapshot 频率，而不是先改 canvas 绘制。
+当前拆分后的 `components/cditor-whiteboard/src/view/history_templates.rs` 会在变更 flush 时做全量 `scene.to_json()`；`crates/cditor-editor-gpui/src/features/whiteboard/actions.rs` 又在每次回调更新 host runtime 并 mark dirty。standalone 没有 Cditor 的 projection、虚拟窗口、缩略图、保存状态和根 view 重绘成本。因此“单独流畅、集成卡”首先应怀疑 host invalidation 和全量 snapshot 频率，而不是先改 canvas 绘制。
 
 白板自身仍有第二层成本：render 时会扫描 elements、建立 visible id set、retain caches、再构造 layers；文件过大也让优化边界不清晰。但这部分在 standalone 同样存在，应通过对比 trace 决定优先级。
 
@@ -530,10 +530,10 @@ Paste
 
 关键证据：
 
-- `crates/app/src/gui/input/clipboard.rs:35-40` 只用字符串相等判断内部富快照是否仍有效。
-- `crates/app/src/gui/app/input/keyboard.rs:158-171` 系统剪贴板只写 `ClipboardItem::new_string`，富内容仅留在 View 内存。
-- `crates/app/src/gui/app/input/keyboard.rs:369-400` 粘贴时依赖内存快照和纯文本匹配。
-- `crates/runtime/src/document_runtime/selection.rs:205-224` 对跨 block 文本选区直接返回 `None`，所以跨 block 复制只可能得到纯文本。
+- `crates/cditor-editor-gpui/src/input/clipboard.rs:35-40` 只用字符串相等判断内部富快照是否仍有效。
+- `crates/cditor-editor-gpui/src/input/keyboard.rs:158-171` 系统剪贴板只写 `ClipboardItem::new_string`，富内容仅留在 View 内存。
+- `crates/cditor-editor-gpui/src/input/keyboard.rs:369-400` 粘贴时依赖内存快照和纯文本匹配。
+- `crates/cditor-runtime/src/document_runtime/selection.rs:205-224` 对跨 block 文本选区直接返回 `None`，所以跨 block 复制只可能得到纯文本。
 - 整 block selection 使用 `selected_block_ids`，但 Copy/Cut 只查询 `selected_focused_text`，不会生成 block snapshot。
 
 因此当前实现存在四个确定问题：
@@ -638,7 +638,7 @@ DocumentSelection
   -> overlay left = 0, right = 0
 ```
 
-`crates/app/src/gui/overlay/selection_overlay.rs:47-53` 对所有 full block fragment 从 editor 内容列的 `x=0` 画到 `right=0`。这个范围包含 shell 左 padding、缩进槽、gutter 和 row gap，因此中间 block 的 gutter 被一起染色。端点 block 使用 text element 的 platform range bounds，只画文字行，所以截图中只有中间 full fragment 特别宽。
+`crates/cditor-editor-gpui/src/overlays/selection_overlay.rs:47-53` 对所有 full block fragment 从 editor 内容列的 `x=0` 画到 `right=0`。这个范围包含 shell 左 padding、缩进槽、gutter 和 row gap，因此中间 block 的 gutter 被一起染色。端点 block 使用 text element 的 platform range bounds，只画文字行，所以截图中只有中间 full fragment 特别宽。
 
 这和 GUTTER-SELECT 的“整 block 选择不要包含 gutter”共享同一几何原则，但数据来源不同：
 
@@ -782,18 +782,18 @@ IME composition selection
 
 ### 9.1 ARCH-SIZE：超大文件未拆分
 
-明确超过技能建议的 700 行阈值：
+重构前明确超过技能建议的 700 行阈值；下表保留为历史问题基线，Phase 8 已完成语义拆分：
 
 | 文件 | 当前行数 | 问题 |
 | --- | ---: | --- |
 | `components/cditor-whiteboard/src/lib.rs` | 10902 | model、camera、input、render、toolbar、menu、thumbnail、IME、tests 全部混合 |
 | `components/cditor-whiteboard/src/font.rs` | 922 | shaping、layout、wrap、caret/selection geometry 与 tests 混合 |
 
-`crates/core/src/rich_text/markdown/inline.rs` 为 677 行，虽然尚未超过阈值，但已经同时承担 atomics、delimiter pairing、unclosed 检查、span build 与 tests，本次修复后必然越界，应提前拆。
+`crates/cditor-core/src/rich_text/markdown/inline.rs` 为 677 行，虽然尚未超过阈值，但已经同时承担 atomics、delimiter pairing、unclosed 检查、span build 与 tests，本次修复后必然越界，应提前拆。
 
-- [ ] **ARCH-SIZE-01** 保持 `cditor-whiteboard` public API 稳定，按 `model/camera/geometry/render/input/tools/thumbnail/embed/persistence` 分阶段拆分。
-- [ ] **ARCH-SIZE-02** `font.rs` 拆为 `font_face`、`shaping`、`line_break`、`caret_geometry`、`decoration`。
-- [ ] **ARCH-SIZE-03** 每次只做行为不变迁移，保留/迁移原单测，增加 standalone screenshot smoke test。
+- [x] **ARCH-SIZE-01** 保持 `cditor-whiteboard` public API 稳定，按 model/view/geometry/paint/render/input/embedded 职责完成拆分。
+- [x] **ARCH-SIZE-02** `font.rs` 已拆为布局引擎、布局数据类型和测试模块。
+- [x] **ARCH-SIZE-03** 以行为不变迁移保留并迁移原单测；whiteboard 47 项测试和严格 Clippy 通过。
 - [ ] **ARCH-SIZE-04** inline Markdown 按 8.3 的职责拆分。
 
 ### 9.2 ARCH-COMPLEX：复杂 block 抽象只存在于模型测试，在线路径未接入
@@ -817,7 +817,7 @@ runtime 同时维护 `document_selection`、`focused_text_selection`、`selected
 
 ### 9.4 ARCH-PERSIST：组合根正确，但保存协调仍贴近 GUI
 
-`cditor-app` 作为组合根直接依赖 `sqlx` 和 `cditor-storage-postgres` 是允许的；`cditor-runtime` 已改为只接收中立 cold-start 数据与 payload-window 结果。剩余问题是 `gui/persistence/postgres_saver.rs` 仍持有 `PgPool`、构造具体 store、从 runtime drain transaction 并组装 save batch，保存协调与根 View 生命周期耦合较紧。
+`cditor-desktop` 作为组合根直接依赖 `sqlx` 和 `cditor-storage-postgres` 是允许的；`cditor-runtime` 已改为只接收中立 cold-start 数据与 payload-window 结果。剩余问题是 `gui/persistence/postgres_saver.rs` 仍持有 `PgPool`、构造具体 store、从 runtime drain transaction 并组装 save batch，保存协调与根 View 生命周期耦合较紧。
 
 - [ ] **ARCH-PERSIST-01** 在 app service 层定义 `PersistenceCoordinator`，只向 GUI 暴露命令与状态投影。
 - [ ] **ARCH-PERSIST-02** Postgres adapter 留在 store-postgres；GUI 只发送 SaveRequested/Dirty 事件并消费 SaveStatus projection。
@@ -881,7 +881,7 @@ Zed 最近更新的 Mermaid 功能确实已经拆成独立 crate：`crates/merma
 - 直接 git 依赖整个 Zed 仓库也不合适：本项目 GPUI 固定在提交 `1d217ee39d381ac101b7cf49d3d22451ac1093fe`，而 Zed main 的 `mermaid_render` 依赖其当前 workspace GPUI，容易引入第二套 GPUI 类型与更大的依赖图。
 - `mermaid_render` 明确采用 `GPL-3.0-or-later`。本仓库根目录目前没有统一 LICENSE，虽然 `cditor-whiteboard` 已声明 GPL，但仍需先明确整个 Cditor 的发布许可证。复制 Zed 源码必须保留许可证与 attribution；若产品需闭源或采用宽松许可证，就不应复制这部分 GPL 代码。
 
-当前项目已经具备 Mermaid block 的数据骨架：`RichBlockKind::Mermaid`、slash menu、持久化 kind 和稳定高度规则都存在，但 `crates/app/src/gui/block/block_view.rs` 仍把 Mermaid 与 RawMarkdown 一起按代码框显示。因此不需要改数据格式，缺的是 renderer、异步任务、缓存与 GUI image adapter。
+当前项目已经具备 Mermaid block 的数据骨架：`RichBlockKind::Mermaid`、slash menu、持久化 kind 和稳定高度规则都存在，但 `crates/cditor-editor-gpui/src/block/block_view.rs` 仍把 Mermaid 与 RawMarkdown 一起按代码框显示。因此不需要改数据格式，缺的是 renderer、异步任务、缓存与 GUI image adapter。
 
 ### 10.1A 2026-07-12 实施状态
 
@@ -889,7 +889,7 @@ Zed 最近更新的 Mermaid 功能确实已经拆成独立 crate：`crates/merma
 
 已完成：
 
-- [x] `cditor-app` 接入 Zed `mermaid_render`，app 明确声明 `GPL-3.0-or-later`，补充 GPL/Apache 文本和 third-party notice。
+- [x] `cditor-desktop` 接入 Zed `mermaid_render`，app 明确声明 `GPL-3.0-or-later`，补充 GPL/Apache 文本和 third-party notice。
 - [x] 新建 `gui/block/mermaid/{cache,render,theme}`，没有把渲染逻辑塞回 `block_view.rs`。
 - [x] 可见窗口内按 block/content version/source hash/theme 建缓存；离开窗口或换文档时释放 task/cache。
 - [x] `merman -> raster-safe SVG -> GPUI RenderImage` 全部在 background task 执行，完成后只 notify 当前 editor。
@@ -897,7 +897,7 @@ Zed 最近更新的 Mermaid 功能确实已经拆成独立 crate：`crates/merma
 - [x] 默认预览、源码切换、loading、首行错误回退；预览态拦截隐藏源码修改，Enter 在 block 后创建 paragraph。
 - [x] Mermaid 被定义为 Markdown source input capability；源码态 Enter 插入换行而不拆 block。
 - [x] 增加 256 KiB source 上限、真实 SVG 渲染测试和 `foreignObject` 断言。
-- [x] `cargo check -p cditor-app` 通过；`cditor-app --lib` 217 passed、1 ignored；10w block demo 使用 runtime shader 模式可启动且无 renderer panic。
+- [x] `cargo check -p cditor-desktop` 通过；`cditor-desktop --lib` 217 passed、1 ignored；10w block demo 使用 runtime shader 模式可启动且无 renderer panic。
 
 仍未完成：按 SVG intrinsic ratio 动态更新 exact block height、DPI/resize golden、100 Mermaid block 性能 trace、更多 diagram 类型 golden 和导出 SVG/图片。这些继续保留在下方任务中。
 

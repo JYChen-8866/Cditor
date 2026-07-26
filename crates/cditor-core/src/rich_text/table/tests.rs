@@ -112,6 +112,25 @@ fn insert_delete_and_move_rows_preserve_cells_and_row_sizes() {
 }
 
 #[test]
+fn batch_insert_rows_and_columns_preserves_shape_and_header_extent() {
+    let mut table = table_2_by_3();
+    table.header_rows = 1;
+    table.header_cols = 1;
+
+    assert!(table.insert_rows(0, 3).unwrap());
+    assert_eq!(table.row_count(), 5);
+    assert_eq!(table.header_rows, 4);
+    assert!(table.rows[..3].iter().all(|row| row.cells.len() == 3));
+
+    assert!(table.insert_columns(0, 2).unwrap());
+    assert_eq!(table.column_count(), 5);
+    assert_eq!(table.header_cols, 3);
+    assert!(table.rows.iter().all(|row| row.cells.len() == 5));
+    assert!(table.insert_rows(0, 0).is_err());
+    assert!(table.insert_columns(0, 0).is_err());
+}
+
+#[test]
 fn duplicate_row_preserves_cell_content_and_row_size() {
     let mut table = table_2_by_3();
     table.set_row_height(0, TableTrackSize::Px(44)).unwrap();

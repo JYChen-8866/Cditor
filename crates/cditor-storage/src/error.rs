@@ -5,7 +5,7 @@ use crate::backend::StorageBackendKind;
 
 pub type StorageResult<T> = Result<T, StorageError>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StorageError {
     InvalidConfiguration(String),
     Migration {
@@ -24,6 +24,8 @@ pub enum StorageError {
     Busy {
         waited: Duration,
     },
+    CapacityExhausted(String),
+    PermissionDenied(String),
     Timeout {
         operation: &'static str,
         timeout: Duration,
@@ -56,6 +58,12 @@ impl fmt::Display for StorageError {
                 "storage remained busy for {:.1} seconds",
                 waited.as_secs_f64()
             ),
+            Self::CapacityExhausted(message) => {
+                write!(formatter, "storage capacity exhausted: {message}")
+            }
+            Self::PermissionDenied(message) => {
+                write!(formatter, "storage permission denied: {message}")
+            }
             Self::Timeout { operation, timeout } => write!(
                 formatter,
                 "{operation} timed out after {:.1} seconds",

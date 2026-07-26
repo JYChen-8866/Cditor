@@ -27,6 +27,8 @@ pub enum WorkerTaskKind {
     ViewportMeasure,
     RemoteHeightRefinement,
     RemoteTextShaping,
+    SyntaxHighlight,
+    MermaidRender,
     ImageDecode,
     FtsIndex,
     ThumbnailDecode,
@@ -41,6 +43,8 @@ impl WorkerTaskKind {
             | Self::ViewportMeasure => WorkerLane::Interactive,
             Self::RemoteHeightRefinement
             | Self::RemoteTextShaping
+            | Self::SyntaxHighlight
+            | Self::MermaidRender
             | Self::ImageDecode
             | Self::FtsIndex
             | Self::ThumbnailDecode => WorkerLane::Background,

@@ -1,11 +1,14 @@
 pub mod block;
+pub mod clipboard;
 pub mod demo_fixtures;
 pub mod document;
 pub mod edit;
 pub mod fixtures;
 pub mod identity;
 pub mod ids;
+pub mod import_plan;
 pub mod layout;
+pub mod media_resource;
 pub mod rich_text;
 pub mod schema;
 pub mod telemetry;

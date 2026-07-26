@@ -8,7 +8,7 @@ pub(super) fn sync_payload_from_model_after_replace(
     replaced_range: Range<usize>,
     inserted_text: &str,
 ) {
-    if let Some(payload) = payload_window.payloads.get_mut(&block_id) {
+    if let Some(payload) = payload_window.get_mut(block_id) {
         payload.content_version = content_version;
         payload.payload = text_payload_for_existing_after_replace(
             &payload.payload,

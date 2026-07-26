@@ -1,8 +1,101 @@
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use cditor_core::ids::{BlockId, SurfaceId};
 
 use crate::editor_view::CditorV2View;
 use crate::surfaces::table_cell::TableCellLayoutKey;
 use crate::text::RichTextPlatformLayout;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct TextLayoutApplyKey {
+    surface_id: SurfaceId,
+    content_version: u64,
+    layout_version: u64,
+    wrap_width_bits: u32,
+    text_align_discriminant: u8,
+    input_generations: Option<[u64; 4]>,
+    text_fingerprint: u64,
+    bounds_bits: [u32; 4],
+}
+
+impl TextLayoutApplyKey {
+    fn from_layout(layout: &RichTextPlatformLayout) -> Self {
+        Self {
+            surface_id: layout.surface_id,
+            content_version: layout.content_version,
+            layout_version: layout.layout_version,
+            wrap_width_bits: layout.wrap_width_px.to_bits(),
+            text_align_discriminant: match layout.text_align {
+                cditor_core::rich_text::TextAlign::Start => 0,
+                cditor_core::rich_text::TextAlign::Center => 1,
+                cditor_core::rich_text::TextAlign::End => 2,
+            },
+            input_generations: layout.input_session_identity.map(|identity| {
+                [
+                    identity.session_id,
+                    identity.target_generation,
+                    identity.selection_generation,
+                    identity.composition_generation,
+                ]
+            }),
+            text_fingerprint: {
+                let mut hasher = DefaultHasher::new();
+                layout.snapshot.text().hash(&mut hasher);
+                hasher.finish()
+            },
+            bounds_bits: [
+                f32::from(layout.bounds.origin.x).to_bits(),
+                f32::from(layout.bounds.origin.y).to_bits(),
+                f32::from(layout.bounds.size.width).to_bits(),
+                f32::from(layout.bounds.size.height).to_bits(),
+            ],
+        }
+    }
+}
+
+pub(crate) fn queue_text_layout_apply(
+    view: &mut CditorV2View,
+    layout: &RichTextPlatformLayout,
+) -> Option<TextLayoutApplyKey> {
+    let key = TextLayoutApplyKey::from_layout(layout);
+    let current = if let Some(position) = layout.table_cell_position {
+        view.cache.table_cell_layouts.get(&TableCellLayoutKey {
+            block_id: layout.block_id,
+            row: position.row,
+            col: position.col,
+        })
+    } else if matches!(layout.surface_id, SurfaceId::Block(_)) {
+        view.cache.text_layouts.get(&layout.block_id)
+    } else {
+        view.cache.text_surface_layouts.get(&layout.surface_id)
+    };
+    if current.is_some_and(|current| TextLayoutApplyKey::from_layout(current) == key)
+        || !view.cache.pending_text_layout_applies.insert(key)
+    {
+        None
+    } else {
+        Some(key)
+    }
+}
+
+pub(crate) fn accept_queued_text_layout(
+    view: &mut CditorV2View,
+    key: TextLayoutApplyKey,
+    layout: RichTextPlatformLayout,
+) -> bool {
+    view.cache.pending_text_layout_applies.remove(&key);
+    let current = view.ready_session().is_some_and(|session| {
+        session
+            .surface_version(layout.surface_id)
+            .ok()
+            .flatten()
+            .is_some_and(|version| {
+                version.content_version == layout.content_version
+                    && version.layout_version == layout.layout_version
+            })
+    });
+    current && accept_text_layout(view, layout)
+}
 
 fn table_trace_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -15,7 +108,7 @@ fn table_trace_enabled() -> bool {
 
 fn trace_table(event: &str, details: impl std::fmt::Display) {
     if table_trace_enabled() {
-        eprintln!("[cditor][table][gui][{event}] {details}");
+        crate::diagnostics::stderr::write(format_args!("[cditor][table][gui][{event}] {details}"));
     }
 }
 

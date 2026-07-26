@@ -1,28 +1,40 @@
-use std::ops::Range;
-
-use cditor_core::edit::TextAffinity;
 use cditor_core::layout::block_metrics::{
     NOTION_BODY_LINE_HEIGHT_PX, NOTION_HEADING_1_LINE_HEIGHT_PX, NOTION_HEADING_2_LINE_HEIGHT_PX,
     NOTION_HEADING_3_LINE_HEIGHT_PX,
 };
-use cditor_core::rich_text::{InlineSpan, RichBlockKind};
-use gpui::{Bounds, FontStyle, FontWeight, Pixels, Size, point, px};
+use cditor_core::rich_text::RichBlockKind;
+use gpui::{AvailableSpace, Bounds, FontStyle, FontWeight, Pixels, Size, point, px};
 
 use super::super::{
-    ParleyAlignment, ParleyBrush, ParleyFontSlant, ParleyInlineBoxSpec, ParleyLayoutOptions,
-    ParleyLayoutSnapshot, ParleyLineHeight, ParleySelection, ParleyTextPosition,
-    ParleyTextStyleConfig, RichTextLayoutInput,
+    InlineBoxSpec, RichTextLayoutInput, TextAlignment, TextBrush, TextFontSlant, TextLayoutOptions,
+    TextLineHeight, TextStyleConfig,
 };
 use super::RichTextTypography;
 use crate::presentation::rich_text::NOTION_MONO_FONT_FAMILY;
 use crate::theme::GuiTheme;
 
-pub(in crate::text) fn plain_text_from_spans(spans: &[InlineSpan]) -> String {
-    spans.iter().map(|span| span.text.as_str()).collect()
+pub(in crate::text) fn measured_wrap_width(
+    known_width: Option<Pixels>,
+    available_width: AvailableSpace,
+    projected_width_px: f64,
+) -> Pixels {
+    if let Some(width) = known_width {
+        return width.max(px(1.0));
+    }
+    if let AvailableSpace::Definite(width) = available_width {
+        return width.max(px(1.0));
+    }
+
+    let projected_width_px = if projected_width_px.is_finite() {
+        projected_width_px.max(1.0) as f32
+    } else {
+        1.0
+    };
+    px(projected_width_px)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(in crate::text) fn parley_layout_options(
+pub(crate) fn text_layout_options(
     input: &RichTextLayoutInput,
     theme: GuiTheme,
     block_text_color: Option<u32>,
@@ -32,8 +44,8 @@ pub(in crate::text) fn parley_layout_options(
     display_scale: f32,
     width: Option<f32>,
     typography: RichTextTypography,
-    inline_boxes: Vec<ParleyInlineBoxSpec>,
-) -> ParleyLayoutOptions {
+    inline_boxes: Vec<InlineBoxSpec>,
+) -> TextLayoutOptions {
     let text_size = text_size_for(&input.kind, typography);
     let line_height = line_height_for(&input.kind, typography);
     let base_text_color =
@@ -48,35 +60,35 @@ pub(in crate::text) fn parley_layout_options(
     } else {
         inherited_family
     };
-    ParleyLayoutOptions {
+    TextLayoutOptions {
         width,
         display_scale,
-        alignment: ParleyAlignment::from_core(input.text_align),
+        alignment: TextAlignment::from_core(input.text_align),
         base_text_color,
-        base_style: ParleyTextStyleConfig {
+        base_style: TextStyleConfig {
             font_family: font_family.to_owned(),
             font_size: f32::from(text_size),
             font_slant: match inherited_style {
-                FontStyle::Normal => ParleyFontSlant::Normal,
-                FontStyle::Italic => ParleyFontSlant::Italic,
-                FontStyle::Oblique => ParleyFontSlant::Oblique,
+                FontStyle::Normal => TextFontSlant::Normal,
+                FontStyle::Italic => TextFontSlant::Italic,
+                FontStyle::Oblique => TextFontSlant::Oblique,
             },
             font_weight: typography
                 .font_weight
                 .unwrap_or_else(|| base_font_weight_for_kind(&input.kind, inherited_weight))
                 .0,
-            brush: ParleyBrush {
+            brush: TextBrush {
                 foreground: base_text_color,
                 background: None,
-                ..ParleyBrush::default()
+                ..TextBrush::default()
             },
-            line_height: ParleyLineHeight::Absolute(f32::from(line_height)),
+            line_height: TextLineHeight::Absolute(f32::from(line_height)),
             strikethrough: is_completed_todo(&input.kind),
-            ..ParleyTextStyleConfig::default()
+            ..TextStyleConfig::default()
         },
         mono_font_family: NOTION_MONO_FONT_FAMILY.to_owned(),
         inline_boxes,
-        ..ParleyLayoutOptions::default()
+        ..TextLayoutOptions::default()
     }
 }
 
@@ -100,27 +112,9 @@ pub(in crate::text) fn line_height_for(
         .unwrap_or_else(|| line_height_for_kind(kind, text_size_for(kind, typography)))
 }
 
-pub(in crate::text) fn parley_range_rects(
-    layout: &ParleyLayoutSnapshot,
-    range: Range<usize>,
-) -> Vec<super::super::ParleyRect> {
-    let start = range.start.min(layout.text().len());
-    let end = range.end.min(layout.text().len()).max(start);
-    if start == end {
-        return Vec::new();
-    }
-    layout.selection_rects(ParleySelection {
-        anchor: ParleyTextPosition::downstream(start),
-        focus: ParleyTextPosition {
-            offset: end,
-            affinity: TextAffinity::Upstream,
-        },
-    })
-}
-
-pub(in crate::text) fn parley_rect_to_bounds(
+pub(in crate::text) fn text_rect_to_bounds(
     parent: Bounds<Pixels>,
-    rect: super::super::ParleyRect,
+    rect: super::super::TextLayoutRect,
 ) -> Bounds<Pixels> {
     Bounds::new(
         point(parent.left() + px(rect.x), parent.top() + px(rect.y)),
@@ -175,4 +169,45 @@ pub(in crate::text) fn text_color_for_kind(kind: &RichBlockKind, theme: GuiTheme
 
 pub(in crate::text) fn is_completed_todo(kind: &RichBlockKind) -> bool {
     matches!(kind, RichBlockKind::Todo { checked: true })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn measured_wrap_width_prefers_final_or_definite_parent_width() {
+        assert_eq!(
+            measured_wrap_width(Some(px(640.0)), AvailableSpace::Definite(px(320.0)), 720.0,),
+            px(640.0)
+        );
+        assert_eq!(
+            measured_wrap_width(None, AvailableSpace::Definite(px(480.0)), 720.0),
+            px(480.0)
+        );
+    }
+
+    #[test]
+    fn intrinsic_measurement_keeps_the_projected_document_track_width() {
+        assert_eq!(
+            measured_wrap_width(None, AvailableSpace::MinContent, 684.0),
+            px(684.0)
+        );
+        assert_eq!(
+            measured_wrap_width(None, AvailableSpace::MaxContent, 684.0),
+            px(684.0)
+        );
+    }
+
+    #[test]
+    fn measured_wrap_width_rejects_degenerate_widths() {
+        assert_eq!(
+            measured_wrap_width(None, AvailableSpace::Definite(px(0.0)), 720.0),
+            px(1.0)
+        );
+        assert_eq!(
+            measured_wrap_width(None, AvailableSpace::MinContent, f64::NAN),
+            px(1.0)
+        );
+    }
 }

@@ -1,5 +1,5 @@
-//! P7-003/004/009 基础层测试：journal/outbox 原子性、checkpoint、crash
-//! marker，以及 journal -> envelope 解码 -> Runtime 回放的端到端恢复。
+// P7-003/004/009 基础层测试：journal/outbox 原子性、checkpoint、crash
+// marker，以及 journal -> envelope 解码 -> Runtime 回放的端到端恢复。
 
 use cditor_core::edit::{
     ChangeOrigin, EditOperation, EditTransaction, EditTransactionKind, decode_transaction,
@@ -8,7 +8,8 @@ use cditor_core::edit::{
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
 use cditor_core::schema::{SchemaDomain, SchemaVersion};
 use cditor_runtime::DocumentRuntime;
-use cditor_storage::DocumentStorage;
+use cditor_storage::layout_cache::LayoutCacheKey;
+use cditor_storage::{DocumentStorage, LoadDocumentRequest, StorageSaveBatch};
 use cditor_storage_sqlite::{
     OutboxState, SqliteDocumentStorage, SqliteStorageOptions, StartupRecovery,
 };
@@ -40,6 +41,26 @@ fn sample_transaction(id: u64, text: &str) -> EditTransaction {
 fn envelope_json(transaction: &EditTransaction) -> String {
     let envelope = encode_transaction(transaction).expect("encode");
     serde_json::to_string(&envelope).expect("serialize envelope")
+}
+
+fn load_request(document_id: u64) -> LoadDocumentRequest {
+    LoadDocumentRequest {
+        document_id,
+        workspace_id: 1,
+        initial_payload_window_blocks: 16,
+        visible_index_version: cditor_storage::DOCUMENT_INDEX_VISIBLE_VERSION,
+        layout_key: LayoutCacheKey {
+            width_bucket: 10,
+            exact_width_px: 800,
+            content_version: 1,
+            attrs_version: 0,
+            style_version: 0,
+            font_version: 0,
+            theme_version: 0,
+            scale_factor_milli: 1000,
+        },
+        page_policy_version: cditor_core::layout::PAGE_POLICY_VERSION,
+    }
 }
 
 #[tokio::test]
@@ -211,6 +232,119 @@ async fn outbox_rows_are_written_atomically_with_journal() {
         store.outbox_entries(7).await.unwrap()[0].state,
         OutboxState::Acked
     );
+    assert_eq!(
+        store
+            .sync_ack_cursor(7)
+            .await
+            .unwrap()
+            .unwrap()
+            .pushed_outbox_id,
+        Some(outbox[0].outbox_id)
+    );
+}
+
+#[tokio::test]
+async fn inbox_is_idempotent_bounded_and_advances_pull_cursor_with_apply() {
+    let dir = TempDir::new().unwrap();
+    let store = open_store(&dir).await;
+
+    assert!(
+        store
+            .enqueue_inbox(7, "batch-a", "cursor-1", r#"{"ops":[1]}"#)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !store
+            .enqueue_inbox(7, "batch-a", "cursor-1", r#"{"ops":[1]}"#)
+            .await
+            .unwrap(),
+        "network retry must not duplicate an inbox batch"
+    );
+    store
+        .enqueue_inbox(7, "batch-b", "cursor-2", r#"{"ops":[2]}"#)
+        .await
+        .unwrap();
+    store
+        .enqueue_inbox(8, "other-document", "cursor-x", "{}")
+        .await
+        .unwrap();
+
+    let first = store.pending_inbox(7, 1).await.unwrap();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].batch_id, "batch-a");
+    assert!(
+        store
+            .mark_inbox_applied(first[0].inbox_id, "cursor-1")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !store
+            .mark_inbox_applied(first[0].inbox_id, "cursor-1")
+            .await
+            .unwrap(),
+        "an applied inbox row must not apply twice"
+    );
+    assert_eq!(
+        store
+            .sync_ack_cursor(7)
+            .await
+            .unwrap()
+            .unwrap()
+            .pulled_cursor
+            .as_deref(),
+        Some("cursor-1")
+    );
+    assert_eq!(store.pending_inbox(7, 10).await.unwrap()[0].batch_id, "batch-b");
+    assert_eq!(store.pending_inbox(8, 10).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn materialized_commit_reuses_emergency_journal_and_creates_outbox_atomically() {
+    let dir = TempDir::new().unwrap();
+    let store = open_store(&dir).await;
+    store.load_document(load_request(7)).await.unwrap();
+    let edit = sample_transaction(41, "durable");
+
+    let emergency = store
+        .append_emergency_transactions(7, std::slice::from_ref(&edit))
+        .await
+        .unwrap();
+    let journal_id = emergency.through_sequence.unwrap() as i64;
+    assert!(store.outbox_entries(7).await.unwrap().is_empty());
+
+    let batch = StorageSaveBatch {
+        document_id: 7,
+        layout_key: None,
+        payloads: Vec::new(),
+        index_records: Vec::new(),
+        structure_version: 1,
+        transactions: vec![edit.clone()],
+        block_attrs: Vec::new(),
+        page_layout_snapshot: None,
+    };
+    store.commit(batch.clone()).await.unwrap();
+
+    let journal = store.journal_entries_after_checkpoint(7).await.unwrap();
+    let outbox = store.outbox_entries(7).await.unwrap();
+    assert_eq!(journal.len(), 1, "commit must reuse the emergency row");
+    assert_eq!(journal[0].journal_id, journal_id);
+    assert_eq!(outbox.len(), 1);
+    assert_eq!(outbox[0].journal_id, journal_id);
+    assert_eq!(outbox[0].state, OutboxState::Pending);
+    assert!(
+        store
+            .load_emergency_transactions(7)
+            .await
+            .unwrap()
+            .is_empty(),
+        "the same SQLite commit must materialize the transaction"
+    );
+
+    store.commit(batch).await.unwrap();
+    assert_eq!(store.journal_entries_after_checkpoint(7).await.unwrap().len(), 1);
+    assert_eq!(store.outbox_entries(7).await.unwrap().len(), 1);
 }
 
 #[tokio::test]

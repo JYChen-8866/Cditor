@@ -3,6 +3,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentB
 use crate::document::layout_metrics::DocumentLayoutMetrics;
 use crate::document::skeleton_window::{
     PlaceholderRetryHandler, render_document_skeleton_window, render_document_window_error,
+    render_document_window_error_banner,
 };
 use crate::theme::GuiTheme;
 use cditor_runtime::PayloadWindowFailureView;
@@ -41,13 +42,29 @@ impl DocumentSurface {
         )
     }
 
+    #[cfg(test)]
     pub fn with_scroll(
         before_window_height: f64,
         placeholder_window_height: Option<f64>,
         after_window_height: f64,
         scroll_top: f64,
     ) -> Self {
-        let metrics = DocumentLayoutMetrics::default();
+        Self::with_scroll_and_layout(
+            before_window_height,
+            placeholder_window_height,
+            after_window_height,
+            scroll_top,
+            DocumentLayoutMetrics::default(),
+        )
+    }
+
+    pub fn with_scroll_and_layout(
+        before_window_height: f64,
+        placeholder_window_height: Option<f64>,
+        after_window_height: f64,
+        scroll_top: f64,
+        metrics: DocumentLayoutMetrics,
+    ) -> Self {
         Self {
             page_width_px: metrics.page_width_px,
             content_width_px: metrics.content_width_px,
@@ -77,18 +94,38 @@ impl DocumentSurface {
         overlay: Option<AnyElement>,
         on_placeholder_retry: Option<PlaceholderRetryHandler>,
     ) -> AnyElement {
-        let placeholder = self.placeholder_window_height.map(|height| {
-            let viewport_offset = (self.scroll_top - self.before_window_height).max(0.0);
-            match (
-                self.placeholder_window_failure.as_ref(),
-                on_placeholder_retry,
-            ) {
-                (Some(failure), Some(on_retry)) => {
-                    render_document_window_error(height, viewport_offset, failure, on_retry, theme)
-                }
-                _ => render_document_skeleton_window(height, viewport_offset, theme),
-            }
-        });
+        let viewport_offset = (self.scroll_top - self.before_window_height).max(0.0);
+        let (placeholder, stable_failure_banner) = match (
+            self.placeholder_window_height,
+            self.placeholder_window_failure.as_ref(),
+            on_placeholder_retry,
+        ) {
+            (Some(height), Some(failure), Some(on_retry)) => (
+                Some(render_document_window_error(
+                    height,
+                    viewport_offset,
+                    failure,
+                    on_retry,
+                    theme,
+                )),
+                None,
+            ),
+            (Some(height), _, _) => (
+                Some(render_document_skeleton_window(
+                    height,
+                    viewport_offset,
+                    theme,
+                )),
+                None,
+            ),
+            (None, Some(failure), Some(on_retry)) => (
+                None,
+                Some(render_document_window_error_banner(
+                    failure, on_retry, theme,
+                )),
+            ),
+            (None, _, _) => (None, None),
+        };
         div()
             .flex_1()
             .flex()
@@ -130,7 +167,8 @@ impl DocumentSurface {
                                         .top(px(self.overlay_top_px()))
                                         .child(overlay),
                                 )
-                            }),
+                            })
+                            .when_some(stable_failure_banner, |this, banner| this.child(banner)),
                     ),
             )
             .into_any_element()
@@ -145,8 +183,8 @@ mod tests {
     fn document_surface_uses_stable_frameless_page_metrics() {
         let surface = DocumentSurface::new(10.0, 20.0);
 
-        assert_eq!(surface.page_width_px, 860.0);
-        assert_eq!(surface.content_width_px, 860.0);
+        assert_eq!(surface.page_width_px, 1296.0);
+        assert_eq!(surface.content_width_px, 1296.0);
         assert_eq!(surface.min_height_px, 640.0);
         assert_eq!(surface.top_inset_px, 32.0);
         assert_eq!(surface.before_window_height, 10.0);
@@ -165,5 +203,15 @@ mod tests {
         let far_surface = DocumentSurface::with_scroll(20_000_000.25, None, 20.0, 20_000_128.25);
         assert_eq!(far_surface.window_top_px(), -128.0);
         assert_eq!(far_surface.overlay_top_px(), -128.0);
+
+        let narrow_surface = DocumentSurface::with_scroll_and_layout(
+            0.0,
+            None,
+            0.0,
+            0.0,
+            DocumentLayoutMetrics::for_viewport(700.0),
+        );
+        assert_eq!(narrow_surface.page_width_px, 700.0);
+        assert_eq!(narrow_surface.content_width_px, 700.0);
     }
 }

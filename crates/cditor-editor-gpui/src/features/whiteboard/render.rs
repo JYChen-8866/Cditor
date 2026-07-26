@@ -3,11 +3,14 @@ use gpui::{
 };
 
 use crate::editor_view::CditorV2View;
+use crate::skeleton::{SkeletonItem, SkeletonVariant};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 
 use super::WHITEBOARD_THUMBNAIL_HEIGHT_PX;
 use super::cache::WhiteboardThumbnailCache;
+
+const WHITEBOARD_FRAME_RADIUS_PX: f32 = 6.0;
 
 fn should_open_editor(click_count: usize) -> bool {
     click_count >= 2
@@ -21,27 +24,72 @@ pub(crate) fn render_whiteboard_thumbnail(
 ) -> AnyElement {
     let mut frame = div()
         .id(("whiteboard-thumbnail", block_id))
+        .relative()
         .w_full()
         .h(px(WHITEBOARD_THUMBNAIL_HEIGHT_PX))
-        .rounded(px(3.0))
+        .rounded(px(WHITEBOARD_FRAME_RADIUS_PX))
         .border_1()
         .border_color(rgb(theme.border))
         .bg(rgb(theme.page))
+        .overflow_hidden();
+    if let Some(board) = cache.entity(block_id) {
+        let is_drafft = board.is_drafft();
+        frame = frame
+            .child(board.render())
+            .child(expand_button(block_id, theme, view.clone()));
+        if !is_drafft {
+            frame = frame.cursor_pointer().on_mouse_down(
+                gpui::MouseButton::Left,
+                move |event, _window, cx| {
+                    if !should_open_editor(event.click_count) {
+                        return;
+                    }
+                    view.update(cx, |view, cx| {
+                        view.open_whiteboard_editor_from_gui(block_id, cx);
+                    });
+                    cx.stop_propagation();
+                },
+            );
+        }
+    } else {
+        frame = frame.child(
+            SkeletonItem::new(SkeletonVariant::Image)
+                .height_px(WHITEBOARD_THUMBNAIL_HEIGHT_PX)
+                .render(theme),
+        );
+    }
+    frame.into_any_element()
+}
+
+fn expand_button(
+    block_id: BlockId,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+) -> impl IntoElement {
+    div()
+        .id(("whiteboard-expand", block_id))
+        .absolute()
+        .top(px(10.0))
+        .right(px(10.0))
+        .w(px(30.0))
+        .h(px(30.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(5.0))
+        .bg(rgb(theme.surface))
+        .border_1()
+        .border_color(rgb(theme.border))
+        .text_color(rgb(theme.text))
         .cursor_pointer()
-        .on_mouse_down(gpui::MouseButton::Left, move |event, _window, cx| {
-            if !should_open_editor(event.click_count) {
-                return;
-            }
+        .hover(move |style| style.bg(rgb(theme.hover_surface)))
+        .on_mouse_down(gpui::MouseButton::Left, move |_event, _window, cx| {
             view.update(cx, |view, cx| {
                 view.open_whiteboard_editor_from_gui(block_id, cx);
             });
             cx.stop_propagation();
         })
-        .overflow_hidden();
-    if let Some(board) = cache.entity(block_id) {
-        frame = frame.child(board);
-    }
-    frame.into_any_element()
+        .child("↗")
 }
 
 #[cfg(test)]
@@ -58,5 +106,6 @@ mod tests {
     #[test]
     fn thumbnail_height_matches_the_stable_block_inner_box() {
         assert_eq!(WHITEBOARD_THUMBNAIL_HEIGHT_PX, 472.0);
+        assert_eq!(WHITEBOARD_FRAME_RADIUS_PX, 6.0);
     }
 }

@@ -61,11 +61,13 @@ impl CditorV2View {
         }
 
         let generation = self.overlay.color_menu_hover_generation;
+        let document_epoch = self.focus.document_epoch().current();
         let delay = cx.background_executor().timer(Duration::from_millis(140));
         cx.spawn(async move |view, cx| {
             delay.await;
             let _ = view.update(cx, |view, cx| {
-                if view.overlay.color_menu_hover_generation == generation
+                if view.focus.document_epoch().matches(document_epoch)
+                    && view.overlay.color_menu_hover_generation == generation
                     && view.overlay.color_menu_open
                 {
                     view.overlay.color_menu_open = false;

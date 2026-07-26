@@ -45,7 +45,6 @@ impl CditorV2View {
         self.interaction.scrollbar_drag = None;
         self.interaction.image_resize_drag = None;
         self.interaction.table_resize_drag = None;
-        self.interaction.table_hscroll_drag = None;
         self.interaction.table_interaction_mode = GuiTableInteractionMode::Reordering {
             block_id,
             axis,
@@ -108,7 +107,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn commit_table_reorder_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = self.interaction.table_reorder_drag.take() else {
+        let Some(drag) = super::take_drag(&mut self.interaction.table_reorder_drag) else {
             return false;
         };
         self.interaction.action_block_id = self

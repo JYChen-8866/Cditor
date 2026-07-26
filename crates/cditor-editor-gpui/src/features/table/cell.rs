@@ -32,7 +32,6 @@ pub(super) fn render_table_cell(
 ) -> AnyElement {
     let row_index = cell.position.row;
     let cell_index = cell.position.col;
-    let active = is_active_cell(focused_cell, row_index, cell_index);
     let range_selected = table_range_selection
         .map(|selection| selection.selects_cell(block_id, row_index, cell_index))
         .unwrap_or(false);
@@ -67,7 +66,7 @@ pub(super) fn render_table_cell(
                 } else {
                     table_cell_background(theme, cell.header, cell.background_color.as_deref())
                 }))
-                .when(!active && !selected, |this| {
+                .when(table_cell_hover_enabled(focused_cell, selected), |this| {
                     this.hover(move |style| style.bg(rgb(hover_background)))
                 })
                 .cursor_text()
@@ -114,4 +113,23 @@ pub(super) fn is_active_cell(
     col: usize,
 ) -> bool {
     focused_cell == Some(TableCellPosition { row, col })
+}
+
+fn table_cell_hover_enabled(focused_cell: Option<TableCellPosition>, selected: bool) -> bool {
+    focused_cell.is_none() && !selected
+}
+
+#[cfg(test)]
+mod hover_tests {
+    use super::*;
+
+    #[test]
+    fn focused_cell_chrome_suppresses_neighbor_cell_hover() {
+        assert!(!table_cell_hover_enabled(
+            Some(TableCellPosition { row: 0, col: 0 }),
+            false,
+        ));
+        assert!(!table_cell_hover_enabled(None, true));
+        assert!(table_cell_hover_enabled(None, false));
+    }
 }

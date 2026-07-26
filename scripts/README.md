@@ -10,10 +10,11 @@
 常用命令：
 
 ```bash
-./scripts/dev/run_editor.sh
 ./scripts/dev/run_editor_postgres.sh
 ./scripts/dev/run_editor_sqlite.sh
 ./scripts/dev/check_structure.sh
+./scripts/dev/check_dependency_graph.sh
+./scripts/dev/check_feature_matrix.sh
 ./scripts/dev/check_workspace.sh
 ./scripts/database/bootstrap_remote_postgres.sh
 ./scripts/database/open_remote_postgres_tunnel.sh
@@ -30,8 +31,18 @@ docker compose up -d postgres
 ./scripts/dev/run_editor_sqlite.sh
 ```
 
-`run_editor.sh` 为兼容入口，等价于 `run_editor_postgres.sh`。两个脚本都默认打开
-document `1`，并支持下列覆盖变量：
+两个脚本默认使用 workspace 的 `editor-dev` profile。它会优化 GPUI、Taffy 和文本布局
+热路径，同时保留增量编译、调试断言和有限调试信息，适合日常运行大文档。默认的 Cargo
+`dev` profile 仍可用于纯调试；发布构建继续使用独立的 `release` profile。
+
+显式 Cargo profile 参数优先，不会与脚本默认值叠加：
+
+```bash
+./scripts/dev/run_editor_sqlite.sh --release
+./scripts/dev/run_editor_postgres.sh --profile editor-dev
+```
+
+两个后端脚本都默认打开 document `1`，并支持下列覆盖变量：
 
 | 脚本 | 环境变量 | 默认值 |
 | --- | --- | --- |
@@ -43,4 +54,4 @@ document `1`，并支持下列覆盖变量：
 脚本会显式清除另一个后端的选择变量，避免 shell 中遗留的环境变量选错后端。
 `CDITOR_DRY_RUN=1` 可仅验证配置而不启动 GUI；PostgreSQL URL 的值不会输出到终端。
 
-`check_structure.sh` 检查非白板源码的 700 行上限、废弃路径、Core/Runtime/GPUI 依赖边界，以及 Parley 只能由 `cditor-text` 直接使用；`check_workspace.sh` 会先执行该检查，再运行格式、编译和测试。
+`check_structure.sh` 检查所有 Rust 源码的 700 行上限、废弃路径、Core/Runtime/GPUI 依赖边界，以及 Parley 只能由 `cditor-text` 直接使用；`check_workspace.sh` 会先执行结构、依赖图、feature matrix，再运行格式、严格 Clippy 和测试。

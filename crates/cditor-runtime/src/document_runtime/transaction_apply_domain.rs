@@ -86,8 +86,11 @@ pub(super) fn apply_block_operation(
                 record.payload = after_payload.clone();
             }
             let next_kind_tag = kind_tag_for_rich_block_kind(after_kind);
-            let height_estimate =
-                estimate_block_height(after_kind, after_payload, DEFAULT_LAYOUT_WIDTH_PX);
+            let height_estimate = estimate_block_height(
+                after_kind,
+                after_payload,
+                cditor_core::layout::layout_width_for_kind(after_kind),
+            );
             let layout = &mut staging.records[position].layout_meta;
             layout.estimated_height = height_estimate.height;
             layout.measured_height = None;

@@ -98,6 +98,53 @@ pub fn render_document_window_error(
         .into_any_element()
 }
 
+pub fn render_document_window_error_banner(
+    failure: &PayloadWindowFailureView,
+    on_retry: PlaceholderRetryHandler,
+    theme: GuiTheme,
+) -> AnyElement {
+    div()
+        .absolute()
+        .left_0()
+        .right_0()
+        .top(px(12.0))
+        .flex()
+        .justify_center()
+        .child(
+            div()
+                .max_w(px(560.0))
+                .rounded(px(6.0))
+                .border_1()
+                .border_color(rgb(theme.border))
+                .bg(rgb(theme.panel))
+                .px_3()
+                .py_2()
+                .flex()
+                .items_center()
+                .gap_3()
+                .text_color(rgb(theme.text))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_sm()
+                        .child(format!("目标位置加载失败：{}", failure.message)),
+                )
+                .child(
+                    div()
+                        .id("cditor-payload-window-retry-banner")
+                        .px_3()
+                        .py_1()
+                        .rounded(px(6.0))
+                        .border_1()
+                        .border_color(rgb(theme.border))
+                        .cursor_pointer()
+                        .child(retry_label(failure))
+                        .on_mouse_down(MouseButton::Left, on_retry),
+                ),
+        )
+        .into_any_element()
+}
+
 pub type PlaceholderRetryHandler = Box<
     dyn for<'event, 'window, 'app> Fn(&'event MouseDownEvent, &'window mut Window, &'app mut App)
         + 'static,

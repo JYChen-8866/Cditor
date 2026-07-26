@@ -615,24 +615,28 @@ fn drag_commit_commands_dispatch_once_with_typed_payloads() {
 }
 
 #[test]
-fn clipboard_and_image_payload_commands_own_import_mutations() {
+fn raw_clipboard_is_rejected_at_runtime_and_typed_image_payload_still_applies() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "start ")]);
     runtime.focus_block_at_offset(1, 6).unwrap();
 
-    let paste = dispatch(
-        &mut runtime,
-        EditorCommand::ApplyClipboardData {
-            text: "a\r\nb".to_owned(),
-            metadata_json: Some("{invalid".to_owned()),
-        },
+    let error = runtime
+        .dispatch(CommandEnvelope::new(
+            EditorCommand::ApplyClipboardData {
+                text: "a\r\nb".to_owned(),
+                metadata_json: Some("{invalid".to_owned()),
+            },
+            CommandSource::Import,
+        ))
+        .unwrap_err();
+    assert_eq!(
+        error.code,
+        cditor_editor_protocol::ProtocolErrorCode::InvalidArguments
     );
-    assert!(paste.changed());
     assert_eq!(
         runtime.block_payload_record(1).unwrap().plain_text(),
-        "start a\nb"
+        "start "
     );
-    assert_eq!(paste.transaction_ids.len(), 1);
 
     let image = dispatch(
         &mut runtime,

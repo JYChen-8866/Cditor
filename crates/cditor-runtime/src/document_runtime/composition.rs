@@ -310,8 +310,8 @@ impl DocumentRuntime {
     pub(super) fn payload_with_composition_preview(
         &self,
         block_id: BlockId,
-        mut payload: BlockPayloadRecord,
-    ) -> BlockPayloadRecord {
+        mut payload: Arc<BlockPayloadRecord>,
+    ) -> Arc<BlockPayloadRecord> {
         if self
             .active_composition()
             .is_some_and(|composition| composition.block_id == block_id)
@@ -328,15 +328,16 @@ impl DocumentRuntime {
                     preview_text.clone(),
                 )
             {
-                payload.payload = table_payload;
+                Arc::make_mut(&mut payload).payload = table_payload;
             } else if matches!(
                 self.input_session_target(),
                 Some(InputTarget::ImageCaption { .. } | InputTarget::CollectionTitle { .. })
-            ) || matches!(payload.payload, BlockPayload::Table(_))
+            ) || matches!(&payload.payload, BlockPayload::Table(_))
             {
                 return payload;
             } else {
-                payload.payload = text_payload_for_existing(&payload.payload, &preview_text);
+                let next_payload = text_payload_for_existing(&payload.payload, &preview_text);
+                Arc::make_mut(&mut payload).payload = next_payload;
             }
         }
         payload

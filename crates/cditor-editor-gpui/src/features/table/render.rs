@@ -1,22 +1,31 @@
 use std::ops::Range;
 
+use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, ScrollHandle,
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
+use crate::interaction::scrollbar::{
+    InternalScrollbarTrackStyle, render_internal_vertical_scrollbar,
+};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
-use cditor_core::layout::TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;
-use cditor_core::rich_text::{InlineSpan, TableCellAlign, plain_text_from_spans};
-use cditor_runtime::{TableCellPosition, TableViewState};
+use cditor_core::layout::{
+    STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX, TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX,
+};
+use cditor_core::rich_text::{TableCellAlign, plain_text_from_spans};
+use cditor_runtime::{TableCellPosition, TableCellSpansSnapshot, TableViewState};
 
+use super::active_border::render_active_cell_border;
 use super::cell::{is_active_cell, render_table_cell};
+use super::cell_handle::render_active_cell_menu_handle;
+use super::chrome::table_content_cell_rect;
 use super::grid::render_table_grid;
 use super::reorder::TableReorderPreview;
 use super::resize::{TableResizePreview, table_view_with_resize_preview};
-use super::selection::{TableAxisSelection, TableCellRangeSelection};
+use super::selection::{TableAxisSelection, TableCellRangeSelection, TableCellSelection};
 use super::style::{
     V1_TABLE_EMPTY_PADDING_PX, V1_TABLE_RADIUS_PX, table_border_color, table_surface_background,
 };
@@ -33,6 +42,7 @@ pub(crate) fn render_table_block(
     marked_range: Option<Range<usize>>,
     table_selection: Option<TableAxisSelection>,
     table_range_selection: Option<TableCellRangeSelection>,
+    table_cell_selection: Option<TableCellSelection>,
     table_resize_preview: Option<TableResizePreview>,
     _table_reorder_preview: Option<TableReorderPreview>,
     table_scroll_handle: Option<ScrollHandle>,
@@ -41,6 +51,8 @@ pub(crate) fn render_table_block(
 ) -> AnyElement {
     let table_view = table_view_with_resize_preview(block_id, table_view, table_resize_preview);
     let table_view = table_view.as_ref();
+    let viewport_height_px = table_content_viewport_height_px(table_view.height_px);
+    let vertical_overflow = table_view.height_px > viewport_height_px + 0.5;
     if table_view.visible_cells.is_empty() {
         trace_table(
             "render.empty",
@@ -58,6 +70,43 @@ pub(crate) fn render_table_block(
             focused_cell_offset = table_view.focused_cell_offset,
         ),
     );
+    let active_cell_chrome = table_view
+        .focused_cell
+        .filter(|_| {
+            table_selection.is_none()
+                && !table_range_selection.is_some_and(|selection| selection.is_multi_cell())
+        })
+        .and_then(|focused_cell| {
+            table_content_cell_rect(table_view, focused_cell.row, focused_cell.col).map(|rect| {
+                let origin = super::toolbar::TableToolbarEditorOrigin {
+                    x_px: 0.0,
+                    y_px: 0.0,
+                };
+                let border = render_active_cell_border(
+                    rect,
+                    origin,
+                    focused_cell.row == 0,
+                    focused_cell.col == 0,
+                    theme,
+                );
+                let menu_handle = render_active_cell_menu_handle(
+                    focused_cell,
+                    rect,
+                    table_cell_selection.is_some_and(|selection| {
+                        selection.block_id == block_id
+                            && selection.row == focused_cell.row
+                            && selection.col == focused_cell.col
+                    }),
+                    origin,
+                    theme,
+                    view.clone(),
+                    block_id,
+                );
+                [border, menu_handle]
+            })
+        })
+        .into_iter()
+        .flatten();
     let table_content = div()
         .relative()
         // Fixed track size so the table keeps its intrinsic width and overflows
@@ -110,21 +159,51 @@ pub(crate) fn render_table_block(
                     )
                 }))
                 .child(render_table_grid(table_view, theme)),
-        );
+        )
+        .children(active_cell_chrome);
 
     // Always wrap in a horizontally scrollable viewport that fills the available
-    // content width. A narrow table sits at its natural width with no overflow;
+    // current block track. The shared document geometry centers that track and
+    // grows it with the intrinsic table width up to the Full track limit.
     // a table wider than the viewport overflows and can be scrolled sideways.
     let mut viewport = div()
         .id(("table_scroll_container", block_id))
-        .w_full()
+        .flex_1()
+        .h(px(viewport_height_px))
         .min_w(px(0.0))
         .flex()
-        .overflow_x_scroll();
+        .overflow_scroll();
     if let Some(handle) = &table_scroll_handle {
         viewport = viewport.track_scroll(handle);
     }
     let viewport = viewport.child(table_content);
+    let vertical_scrollbar = vertical_overflow
+        .then_some(table_scroll_handle.as_ref())
+        .flatten()
+        .map(|handle| {
+            render_internal_vertical_scrollbar(
+                ("table-vertical-scrollbar", block_id).into(),
+                handle,
+                viewport_height_px,
+                table_view.height_px,
+                theme,
+                InternalScrollbarTrackStyle {
+                    background: table_surface_background(theme),
+                    separator: table_border_color(theme),
+                },
+            )
+        });
+    let viewport_frame = div()
+        .relative()
+        .w_full()
+        .h(px(viewport_height_px))
+        .flex()
+        .bg(rgb(table_surface_background(theme)))
+        .when(vertical_overflow, |frame| {
+            frame.on_scroll_wheel(|_event, _window, cx| cx.stop_propagation())
+        })
+        .child(viewport)
+        .children(vertical_scrollbar);
 
     // The custom horizontal scrollbar is rendered by the editor overlay layer.
     // This wrapper only reserves chrome height so following blocks are laid out
@@ -134,8 +213,12 @@ pub(crate) fn render_table_block(
         .w_full()
         .min_w(px(0.0))
         .pb(px(TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX as f32))
-        .child(viewport)
+        .child(viewport_frame)
         .into_any_element()
+}
+
+pub(crate) fn table_content_viewport_height_px(content_height_px: f32) -> f32 {
+    content_height_px.min(STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX as f32)
 }
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
@@ -143,7 +226,7 @@ fn render_table_cell_content(
     block_id: BlockId,
     content_version: u64,
     layout_version: u64,
-    spans: Vec<InlineSpan>,
+    spans: TableCellSpansSnapshot,
     active: bool,
     focused_cell_offset: Option<usize>,
     focused_cell_affinity: cditor_core::edit::TextAffinity,
@@ -156,7 +239,7 @@ fn render_table_cell_content(
     position: TableCellPosition,
     align: TableCellAlign,
 ) -> AnyElement {
-    let text = plain_text_from_spans(&spans);
+    let text = plain_text_from_spans(spans.as_ref());
     if active {
         trace_table(
             "render.active_cell",
@@ -198,4 +281,15 @@ fn render_empty_table(theme: GuiTheme) -> AnyElement {
         .text_color(rgb(theme.muted))
         .child("Empty table")
         .into_any_element()
+}
+
+#[cfg(test)]
+mod viewport_tests {
+    use super::table_content_viewport_height_px;
+
+    #[test]
+    fn table_content_viewport_keeps_short_tables_and_caps_tall_tables() {
+        assert_eq!(table_content_viewport_height_px(144.0), 144.0);
+        assert_eq!(table_content_viewport_height_px(720.0), 320.0);
+    }
 }

@@ -24,9 +24,11 @@ impl DocumentRuntime {
             self.layout.payload_window_generation.saturating_add(1);
         let generation = self.layout.payload_window_generation;
         for block_id in &missing {
-            self.document
-                .payload_window
-                .mark_loading(*block_id, generation);
+            self.document.payload_window.mark_loading_with_priority(
+                *block_id,
+                generation,
+                PayloadLoadPriority::Emergency,
+            );
         }
         Ok(Some(PayloadWindowLoadRequest {
             generation,
@@ -60,33 +62,25 @@ impl DocumentRuntime {
     ) -> Option<PayloadWindowLoadRequest> {
         let bounded_range = self.bounded_payload_window_range(block_range);
         let block_ids = self.payload_window_block_ids(&bounded_range);
-        let range_changed = self.document.payload_window.block_range != bounded_range;
-        let has_missing = block_ids
-            .iter()
-            .any(|block_id| !self.document.payload_window.payloads.contains_key(block_id));
         let missing_block_ids = block_ids
             .iter()
             .copied()
             .filter(|block_id| {
                 !self.document.payload_window.payloads.contains_key(block_id)
-                    && !self.document.payload_window.loading.contains(block_id)
+                    && self
+                        .document
+                        .payload_window
+                        .loading_priority(*block_id)
+                        .is_none_or(|priority| priority < PayloadLoadPriority::Visible)
                     && self.document.payload_window.can_retry(*block_id)
             })
             .collect::<Vec<_>>();
 
-        if !range_changed && missing_block_ids.is_empty() {
-            return None;
-        }
-        // A previously visited window can already be resident even though it is
-        // not the active range. Switch to it without invalidating an in-flight
-        // generation. Likewise, if every missing block is already loading, keep
-        // that generation alive and wait for its result.
+        // Planning owns only I/O intent. The presented/active range is changed
+        // by the projection window commit after its visible core is resident.
         if missing_block_ids.is_empty() {
-            if !has_missing {
-                self.document.payload_window.block_range = bounded_range;
-                for block_id in block_ids {
-                    self.document.payload_window.touch(block_id);
-                }
+            for block_id in block_ids {
+                self.document.payload_window.touch(block_id);
             }
             return None;
         }
@@ -94,7 +88,6 @@ impl DocumentRuntime {
         self.layout.payload_window_generation =
             self.layout.payload_window_generation.saturating_add(1);
         let generation = self.layout.payload_window_generation;
-        self.document.payload_window.block_range = bounded_range.clone();
         for &block_id in &block_ids {
             if self
                 .document
@@ -118,6 +111,41 @@ impl DocumentRuntime {
         })
     }
 
+    pub fn plan_payload_prefetch_load_if_needed(
+        &mut self,
+        block_range: Range<usize>,
+    ) -> Option<PayloadWindowLoadRequest> {
+        let bounded_range = self.bounded_payload_window_range(block_range);
+        let missing_block_ids = self
+            .payload_window_block_ids(&bounded_range)
+            .into_iter()
+            .filter(|block_id| {
+                !self.document.payload_window.payloads.contains_key(block_id)
+                    && !self.document.payload_window.loading.contains(block_id)
+                    && self.document.payload_window.can_retry(*block_id)
+            })
+            .collect::<Vec<_>>();
+        if missing_block_ids.is_empty() {
+            return None;
+        }
+
+        self.layout.payload_window_generation =
+            self.layout.payload_window_generation.saturating_add(1);
+        let generation = self.layout.payload_window_generation;
+        for block_id in &missing_block_ids {
+            self.document.payload_window.mark_loading_with_priority(
+                *block_id,
+                generation,
+                PayloadLoadPriority::Prefetch,
+            );
+        }
+        Some(PayloadWindowLoadRequest {
+            generation,
+            block_range: bounded_range,
+            block_ids: missing_block_ids,
+        })
+    }
+
     pub fn plan_payload_window_load(
         &mut self,
         block_range: Range<usize>,
@@ -126,7 +154,6 @@ impl DocumentRuntime {
             self.layout.payload_window_generation.saturating_add(1);
         let generation = self.layout.payload_window_generation;
         let bounded_range = self.bounded_payload_window_range(block_range);
-        self.document.payload_window.block_range = bounded_range.clone();
         let block_ids = self.payload_window_block_ids(&bounded_range);
 
         for block_id in &block_ids {
@@ -150,13 +177,26 @@ impl DocumentRuntime {
         &mut self,
         result: PayloadWindowLoadResult,
     ) -> PayloadWindowApplyDecision {
+        self.apply_payload_result(result, PayloadMissingPolicy::PublishFailure)
+    }
+
+    pub fn apply_payload_prefetch_result(
+        &mut self,
+        result: PayloadWindowLoadResult,
+    ) -> PayloadWindowApplyDecision {
+        self.apply_payload_result(result, PayloadMissingPolicy::ReleaseOwnership)
+    }
+
+    fn apply_payload_result(
+        &mut self,
+        result: PayloadWindowLoadResult,
+        missing_policy: PayloadMissingPolicy,
+    ) -> PayloadWindowApplyDecision {
         let expected_generation = self.layout.payload_window_generation;
         let result_generation = result.request.generation;
         let is_current = result_generation == expected_generation;
-        if is_current {
-            self.document.payload_window.block_range = result.request.block_range.clone();
-        }
         for payload in result.records {
+            let block_id = payload.block_id();
             // Results from an older viewport are still valid cache data. Apply
             // them only while that request still owns the loading marker, so a
             // late database response can never overwrite a local edit or a newer
@@ -164,19 +204,18 @@ impl DocumentRuntime {
             if !self
                 .document
                 .payload_window
-                .finish_loading(payload.block_id, result_generation)
+                .finish_loading(block_id, result_generation)
             {
                 continue;
             }
-            let mut payload = normalize_payload_record_for_kind(payload);
-            self.sync_table_runtime_from_loaded_record(&mut payload);
-            self.document.payload_window.insert_loaded(payload);
+            self.document.payload_window.insert_loaded_prepared(payload);
         }
         for block_id in result.missing_block_ids {
             if self
                 .document
                 .payload_window
                 .finish_loading(block_id, result_generation)
+                && missing_policy == PayloadMissingPolicy::PublishFailure
             {
                 self.document
                     .payload_window
@@ -194,6 +233,12 @@ impl DocumentRuntime {
 
     pub fn payload_window_generation(&self) -> u64 {
         self.layout.payload_window_generation
+    }
+
+    pub fn cancel_payload_window_load(&mut self, generation: u64) -> usize {
+        self.document
+            .payload_window
+            .cancel_loading_generation(generation)
     }
 
     pub fn apply_payload_window_load_error(
@@ -214,6 +259,26 @@ impl DocumentRuntime {
                     .payload_window
                     .mark_failed(block_id, message.clone());
             }
+        }
+        if request_generation != expected_generation {
+            return PayloadWindowApplyDecision::DiscardedStaleGeneration {
+                expected: expected_generation,
+                actual: request_generation,
+            };
+        }
+        PayloadWindowApplyDecision::Applied
+    }
+
+    pub fn apply_payload_prefetch_load_error(
+        &mut self,
+        request: PayloadWindowLoadRequest,
+    ) -> PayloadWindowApplyDecision {
+        let expected_generation = self.layout.payload_window_generation;
+        let request_generation = request.generation;
+        for block_id in request.block_ids {
+            self.document
+                .payload_window
+                .finish_loading(block_id, request_generation);
         }
         if request_generation != expected_generation {
             return PayloadWindowApplyDecision::DiscardedStaleGeneration {
@@ -257,7 +322,10 @@ impl DocumentRuntime {
     }
 
     fn payload_window_block_ids(&self, block_range: &Range<usize>) -> Vec<BlockId> {
-        let mut block_ids = Vec::new();
+        // Interaction pins are at most three ids. Keep their legacy ordering,
+        // then append the visible sequence without repeatedly searching the
+        // growing result vector. VisibleDocumentIndex guarantees unique ids.
+        let mut block_ids = Vec::with_capacity(block_range.len().saturating_add(3));
         if let Some(block_id) = self.focused_block_id() {
             push_unique(&mut block_ids, block_id);
         }
@@ -269,15 +337,23 @@ impl DocumentRuntime {
                 push_unique(&mut block_ids, last);
             }
         }
+        let interaction_pin_count = block_ids.len();
         for visible_index in block_range.clone() {
             if let Some(block_id) = self
                 .document
                 .visible_index
                 .id_at_visible_index(visible_index)
+                && !block_ids[..interaction_pin_count].contains(&block_id)
             {
-                push_unique(&mut block_ids, block_id);
+                block_ids.push(block_id);
             }
         }
         block_ids
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PayloadMissingPolicy {
+    PublishFailure,
+    ReleaseOwnership,
 }

@@ -1,0 +1,16 @@
+[package]
+name = "cditor-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "cditor_sdk"
+
+[dependencies]
+async-trait = "0.1"
+cditor-ai = { path = "../cditor-ai" }
+cditor-core = { path = "../cditor-core" }
+cditor-editor-protocol = { path = "../cditor-editor-protocol" }
+cditor-storage = { path = "../cditor-storage" }
+thiserror = "1"

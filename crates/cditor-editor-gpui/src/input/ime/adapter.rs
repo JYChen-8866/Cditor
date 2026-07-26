@@ -10,7 +10,7 @@ use crate::input::ime::{
 use crate::input::trace::trace_input;
 use crate::input::{SINGLE_LINE_INPUT_FONT_SIZE_PX, single_line_text_offset_for_x};
 use crate::platform::{is_single_line_break_commit, normalize_external_line_endings};
-use crate::text::{platform_index_for_point, record_unavailable_geometry};
+use crate::text::record_unavailable_geometry;
 use cditor_runtime::InputTarget;
 
 use super::support::{
@@ -243,6 +243,7 @@ impl EntityInputHandler for CditorV2View {
     }
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.pause_caret_blink(cx);
         if let Some(selection) = self.interaction.table_interaction_mode.axis_selection() {
             if table_menu_input_target_allows(self.input.target, selection.block_id) {
                 self.overlay.table_menu_ui.unmark();
@@ -312,6 +313,7 @@ impl EntityInputHandler for CditorV2View {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pause_caret_blink(cx);
         if let Some(selection) = self.interaction.table_interaction_mode.axis_selection() {
             if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return;
@@ -390,6 +392,7 @@ impl EntityInputHandler for CditorV2View {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.pause_caret_blink(cx);
         if let Some(selection) = self.interaction.table_interaction_mode.axis_selection() {
             if !table_menu_input_target_allows(self.input.target, selection.block_id) {
                 return;
@@ -530,11 +533,13 @@ impl EntityInputHandler for CditorV2View {
                 row,
                 col,
             } if target_block_id == block_id => {
-                let Some(cache) = self.current_table_cell_layout_cache(current, block_id, row, col)
+                let Some(geometry) =
+                    self.resolved_table_cell_text_geometry(current, block_id, row, col)
                 else {
                     record_unavailable_geometry();
                     return None;
                 };
+                let cache = geometry.layout();
                 if !platform_input_geometry_allows(
                     self.input.target,
                     self.input.session_identity,
@@ -545,7 +550,10 @@ impl EntityInputHandler for CditorV2View {
                     record_unavailable_geometry();
                     return None;
                 }
-                let utf8 = platform_index_for_point(cache, point).min(text.len());
+                let utf8 = geometry
+                    .position_for_window_point(point)
+                    .offset
+                    .min(text.len());
                 Some(utf8_to_utf16_offset(text, utf8))
             }
             InputTarget::BlockText {
@@ -565,7 +573,15 @@ impl EntityInputHandler for CditorV2View {
                     record_unavailable_geometry();
                     return None;
                 }
-                let utf8 = platform_index_for_point(cache, point).min(text.len());
+                let Some(geometry) = self.projected_text_geometry_for_block(current, block_id)
+                else {
+                    record_unavailable_geometry();
+                    return None;
+                };
+                let utf8 = geometry
+                    .position_for_window_point(point)
+                    .offset
+                    .min(text.len());
                 let utf16 = utf8_to_utf16_offset(text, utf8);
                 trace_input(
                     "character_index_for_point",

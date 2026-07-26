@@ -1,6 +1,10 @@
 use super::*;
 use cditor_editor_protocol::projection::ProjectionRequest;
 
+mod payload_readiness;
+mod placeholder;
+mod window_planning;
+
 impl DocumentRuntime {
     pub fn block_content_version(&self, block_id: BlockId) -> Option<u64> {
         self.document
@@ -23,12 +27,15 @@ impl DocumentRuntime {
     }
 
     pub fn block_payload_record(&self, block_id: BlockId) -> Option<BlockPayloadRecord> {
-        self.document
-            .payload_window
-            .get(block_id)
-            .cloned()
-            .map(|payload| self.table_runtime_payload_record(block_id, payload))
-            .map(|payload| self.payload_with_composition_preview(block_id, payload))
+        let payload = self.document.payload_window.get_shared(block_id)?.clone();
+        let payload = if self.document.table_runtimes.contains_key(&block_id) {
+            Arc::new(self.table_runtime_payload_record(block_id, payload.as_ref().clone()))
+        } else {
+            payload
+        };
+        Some(Arc::unwrap_or_clone(
+            self.payload_with_composition_preview(block_id, payload),
+        ))
     }
 
     pub fn projection_for_window(&self) -> EditorViewProjection {
@@ -45,14 +52,75 @@ impl DocumentRuntime {
         // still maintained for layout and scroll geometry, but must not decide how
         // many block entities are created in a frame. This is the same bounded
         // path used by the synthetic 100k fixture and by resident/PG documents.
-        let (page_range, block_range) = self.viewport_window_ranges();
-        layout_prefetch_page_range.start = layout_prefetch_page_range.start.min(page_range.start);
-        layout_prefetch_page_range.end = layout_prefetch_page_range.end.max(page_range.end);
-        let payload_prefetch_block_range = self.payload_prefetch_range(&block_range);
+        let desired_ranges = self.viewport_window_ranges();
+        layout_prefetch_page_range.start = layout_prefetch_page_range
+            .start
+            .min(desired_ranges.page_range.start);
+        layout_prefetch_page_range.end = layout_prefetch_page_range
+            .end
+            .max(desired_ranges.page_range.end);
+        let payload_prefetch_block_range = self.payload_prefetch_range(&desired_ranges.block_range);
         self.ensure_demo_payload_window(&payload_prefetch_block_range);
-        self.hydrate_payload_runtime_state_for_range(block_range.clone());
-        let mut projection = self.projection_for_ranges(page_range, block_range);
+
+        let desired = ProjectionWindowTarget {
+            structure_version: self.document.visible_index.source_structure_version,
+            page_range: desired_ranges.page_range.clone(),
+            block_range: desired_ranges.block_range.clone(),
+            visible_block_range: desired_ranges.visible_block_range.clone(),
+            presented_scroll_top: self.layout.scroll.global_scroll_top,
+        };
+        let desired_ready = self.payloads_resident_for(&desired.visible_block_range);
+        let payload_prefetch_resident = desired_ready
+            && self.payloads_resident_for_prefetch_cached(&payload_prefetch_block_range);
+        let desired_failed = self.payload_terminal_failure_for(&desired.visible_block_range);
+        let stable = self.layout.projection_window.stable().cloned();
+        let stable_valid = stable.as_ref().is_some_and(|stable| {
+            stable.structure_version == self.document.visible_index.source_structure_version
+                && self.payloads_resident_for(&stable.visible_block_range)
+        });
+        let decision = self.layout.projection_window.reconcile(
+            desired,
+            desired_ready,
+            stable_valid,
+            desired_failed,
+        );
+        let mut projection = match decision {
+            ProjectionWindowDecision::Stable(stable) => {
+                self.document.payload_window.block_range = stable.block_range.clone();
+                let mut projection =
+                    self.projection_for_ranges(stable.page_range, stable.block_range);
+                projection.scroll.global_scroll_top = stable.presented_scroll_top;
+                projection
+            }
+            ProjectionWindowDecision::ColdPlaceholder(desired)
+            | ProjectionWindowDecision::FailedTarget {
+                target: desired,
+                stable: None,
+            } => self.placeholder_projection_for_ranges_with_visible_core(
+                desired.page_range,
+                desired.block_range,
+                desired.visible_block_range,
+            ),
+            ProjectionWindowDecision::FailedTarget {
+                target,
+                stable: Some(stable),
+            } => {
+                self.document.payload_window.block_range = stable.block_range.clone();
+                let mut projection =
+                    self.projection_for_ranges(stable.page_range, stable.block_range);
+                projection.scroll.global_scroll_top = stable.presented_scroll_top;
+                projection.placeholder_window_failure =
+                    self.payload_failure_view_for(&target.visible_block_range);
+                projection.placeholder_window_error = projection
+                    .placeholder_window_failure
+                    .as_ref()
+                    .map(|failure| failure.message.clone());
+                projection
+            }
+        };
+        projection.payload_visible_block_range = desired_ranges.visible_block_range;
         projection.payload_prefetch_block_range = payload_prefetch_block_range;
+        projection.payload_prefetch_resident = payload_prefetch_resident;
         projection.layout_prefetch_page_range = layout_prefetch_page_range;
         log_runtime_timing(
             "runtime.projection_for_window_planned",
@@ -60,31 +128,6 @@ impl DocumentRuntime {
             Some(projection.blocks.len()),
         );
         projection
-    }
-
-    fn payload_prefetch_range(&self, render_range: &Range<usize>) -> Range<usize> {
-        if render_range.is_empty() {
-            return render_range.clone();
-        }
-        let velocity = self
-            .layout
-            .window_planner
-            .debug_overlay()
-            .last_velocity_viewports_per_second;
-        let velocity_steps = ((velocity.abs() / 3.0).floor() as usize).min(4);
-        let (base, velocity_step) = match self.layout.window_memory_pressure {
-            WindowMemoryPressure::Normal => (128usize, 64usize),
-            WindowMemoryPressure::Warning => (48usize, 32usize),
-            WindowMemoryPressure::Critical => (0usize, 0usize),
-        };
-        let directional = velocity_steps * velocity_step;
-        let before = base + usize::from(velocity < 0.0) * directional;
-        let after = base + usize::from(velocity > 0.0) * directional;
-        render_range.start.saturating_sub(before)
-            ..render_range
-                .end
-                .saturating_add(after)
-                .min(self.document.visible_index.total_visible_count())
     }
 
     pub fn projection(&mut self, request: ProjectionRequest) -> EditorViewProjection {
@@ -106,109 +149,6 @@ impl DocumentRuntime {
             0..self.layout.page_layout.page_count(),
             0..self.document.visible_index.total_visible_count(),
         )
-    }
-
-    fn viewport_window_ranges(&self) -> (Range<usize>, Range<usize>) {
-        let total_visible = self.document.visible_index.total_visible_count();
-        if total_visible == 0 {
-            return (0..0, 0..0);
-        }
-        let current = self
-            .target_for_global_offset(self.layout.scroll.global_scroll_top)
-            .map(|target| target.block_index)
-            .unwrap_or(0)
-            .min(total_visible - 1);
-        let viewport_end = self
-            .layout
-            .height_index
-            .block_at_offset(
-                self.layout.scroll.global_scroll_top + self.layout.scroll.viewport_height,
-            )
-            .map(|hit| hit.index)
-            .unwrap_or(current)
-            .min(total_visible - 1);
-        let overscan = 48usize;
-        let max_blocks = 320usize;
-        let start = current.saturating_sub(overscan);
-        let natural_end = viewport_end.saturating_add(overscan + 1).min(total_visible);
-        let end = natural_end
-            .min(start.saturating_add(max_blocks))
-            .max(start + 1);
-        let start_page = self
-            .layout
-            .page_layout
-            .page_for_block_index(start)
-            .unwrap_or(0)
-            .min(self.layout.page_layout.page_count().saturating_sub(1));
-        let end_page = self
-            .layout
-            .page_layout
-            .page_for_block_index(end.saturating_sub(1))
-            .unwrap_or(start_page)
-            .saturating_add(1)
-            .min(self.layout.page_layout.page_count());
-        (
-            start_page..end_page.max(start_page.saturating_add(1)),
-            start..end,
-        )
-    }
-
-    fn ensure_demo_payload_window(&mut self, block_range: &Range<usize>) {
-        let Some(count) = self.document.demo_payload_count else {
-            return;
-        };
-        if block_range.is_empty() || self.payload_window_covers(block_range) {
-            return;
-        }
-
-        let total_visible = self.document.visible_index.total_visible_count();
-        let preload = 256usize;
-        let start = block_range.start.saturating_sub(preload);
-        let end = block_range.end.saturating_add(preload).min(total_visible);
-        let payload_range = start..end;
-        let start_time = Instant::now();
-        let payloads = cditor_core::demo_fixtures::large_mixed_demo_payload_records(
-            payload_range.clone(),
-            count,
-        );
-        let payload_count = payloads.len();
-
-        self.document.payload_window = PayloadWindow::new(payload_range.clone());
-        self.document.text_models.clear();
-        self.document.table_runtimes.clear();
-        for payload in payloads {
-            let mut payload = normalize_payload_record_for_kind(payload);
-            self.sync_table_runtime_from_loaded_record(&mut payload);
-            self.document.payload_window.insert_loaded(payload);
-        }
-        eprintln!(
-            "[cditor][timing] demo_payload_window range={:?} payloads={} elapsed_ms={:.2}",
-            payload_range,
-            payload_count,
-            start_time.elapsed().as_secs_f64() * 1000.0
-        );
-    }
-
-    fn block_range_for_page_window(&self, page_range: &Range<usize>) -> Range<usize> {
-        let total_visible = self.document.visible_index.total_visible_count();
-        let page_count = self.layout.page_layout.page_count();
-        if page_range.is_empty() || page_count == 0 || total_visible == 0 {
-            return 0..0;
-        }
-
-        let start_page = page_range.start.min(page_count);
-        let end_page = page_range.end.min(page_count);
-        if start_page >= end_page {
-            return 0..0;
-        }
-
-        let start = self.layout.page_layout.pages[start_page]
-            .block_start
-            .min(total_visible);
-        let end = self.layout.page_layout.pages[end_page - 1]
-            .block_end()
-            .min(total_visible);
-        start..end.max(start)
     }
 
     fn projection_for_ranges(
@@ -251,27 +191,32 @@ impl DocumentRuntime {
             1,
         )
         .expect("projection render window is valid");
-        let selection_fragments = self
-            .selection
-            .document_selection
-            .and_then(|selection| selection.normalize(&self.document.index).ok())
-            .and_then(|selection| {
-                selection
-                    .visible_selection_fragments(
-                        block_range.clone(),
-                        &self.document.index,
-                        &self.document.visible_index,
-                        |block_id| {
-                            self.document
-                                .text_models
-                                .get(&block_id)
-                                .map(|model| model.len())
-                                .unwrap_or(0)
-                        },
-                    )
-                    .ok()
-            })
-            .unwrap_or_default();
+        let selection_fragments =
+            self.selection
+                .document_selection
+                .and_then(|selection| selection.normalize(&self.document.index).ok())
+                .and_then(|selection| {
+                    selection
+                        .visible_selection_fragments(
+                            block_range.clone(),
+                            &self.document.index,
+                            &self.document.visible_index,
+                            |block_id| {
+                                self.document
+                                    .text_models
+                                    .get(&block_id)
+                                    .map(|model| model.len())
+                                    .or_else(|| {
+                                        self.document.payload_window.get(block_id).and_then(
+                                            |record| editable_text_len_for_payload(&record.payload),
+                                        )
+                                    })
+                                    .unwrap_or(0)
+                            },
+                        )
+                        .ok()
+                })
+                .unwrap_or_default();
         let selection_ranges = selection_fragments
             .into_iter()
             .map(|fragment| (fragment.block_id, fragment.range))
@@ -293,9 +238,18 @@ impl DocumentRuntime {
                     .and_then(|_| self.active_composition_marked_range());
                 let payload = self.document
                     .payload_window
-                    .get(*block_id)
+                    .get_shared(*block_id)
                     .cloned()
-                    .map(|payload| self.table_runtime_payload_record(*block_id, payload))
+                    .map(|payload| {
+                        if self.document.table_runtimes.contains_key(block_id) {
+                            Arc::new(self.table_runtime_payload_record(
+                                *block_id,
+                                payload.as_ref().clone(),
+                            ))
+                        } else {
+                            payload
+                        }
+                    })
                     .map(|payload| self.payload_with_composition_preview(*block_id, payload))
                     .map(BlockPayloadView::Loaded)
                     .unwrap_or(BlockPayloadView::Placeholder {
@@ -343,9 +297,20 @@ impl DocumentRuntime {
                     .focused_table_cell_selection_state()
                     .filter(|(focused_block_id, _, _, _, _, _)| focused_block_id == block_id)
                     .map(|(_, _, _, range, _, _)| range);
-                let table_view = self.table_runtime(*block_id).map(|runtime| {
+                let table_payload = self
+                    .table_runtime(*block_id)
+                    .map(|runtime| {
+                        TablePayloadSnapshot::from_shared_table(runtime.shared_table().clone())
+                    })
+                    .or_else(|| match &payload {
+                        BlockPayloadView::Loaded(record) => {
+                            TablePayloadSnapshot::from_record(record.clone())
+                        }
+                        _ => None,
+                    });
+                let table_view = table_payload.map(|table| {
                     table::table_view_state_from_payload(
-                        runtime.table(),
+                        table,
                         focused_table_cell,
                         focused_table_cell_offset,
                         focused_table_cell_affinity,
@@ -439,9 +404,12 @@ impl DocumentRuntime {
         EditorViewProjection {
             document_id: self.document_id,
             viewport_revision: 0,
+            window_generation: self.layout.projection_window.generation(),
             scroll: self.layout.scroll,
             render_window,
+            payload_visible_block_range: block_range.clone(),
             payload_prefetch_block_range: block_range.clone(),
+            payload_prefetch_resident: self.payloads_resident_for(&block_range),
             layout_prefetch_page_range: page_range.clone(),
             blocks,
             ai_preview: self.ai_preview_for_block_range(&block_range),
@@ -454,140 +422,6 @@ impl DocumentRuntime {
             total_visible_blocks,
             debug,
         }
-    }
-
-    fn payload_window_covers(&self, block_range: &Range<usize>) -> bool {
-        if block_range.is_empty() {
-            return true;
-        }
-        if self.document.payload_window.block_range.start > block_range.start
-            || block_range.end > self.document.payload_window.block_range.end
-        {
-            return false;
-        }
-        block_range.clone().all(|visible_index| {
-            self.document
-                .visible_index
-                .id_at_visible_index(visible_index)
-                .is_some_and(|block_id| {
-                    self.document
-                        .payload_window
-                        .payloads
-                        .contains_key(&block_id)
-                })
-        })
-    }
-
-    fn payload_window_has_any(&self, block_range: &Range<usize>) -> bool {
-        block_range.clone().any(|visible_index| {
-            self.document
-                .visible_index
-                .id_at_visible_index(visible_index)
-                .is_some_and(|block_id| {
-                    self.document
-                        .payload_window
-                        .payloads
-                        .contains_key(&block_id)
-                })
-        })
-    }
-
-    fn placeholder_projection_for_ranges(
-        &self,
-        page_range: Range<usize>,
-        block_range: Range<usize>,
-    ) -> EditorViewProjection {
-        let total_visible_blocks = self.document.visible_index.total_visible_count();
-        let before_window_height = self
-            .layout
-            .height_index
-            .offset_of_block(block_range.start)
-            .unwrap_or(0.0);
-        let placeholder_height = self.height_for_block_range(&block_range);
-        let placeholder_window_failure = block_range.clone().find_map(|visible_index| {
-            let block_id = self
-                .document
-                .visible_index
-                .id_at_visible_index(visible_index)?;
-            let message = self.document.payload_window.failed.get(&block_id)?.clone();
-            let attempts = self
-                .document
-                .payload_window
-                .failure_attempts
-                .get(&block_id)
-                .copied()
-                .unwrap_or(0);
-            Some(crate::projection::view::PayloadWindowFailureView {
-                message,
-                attempts,
-                max_attempts: crate::content::payload_window::MAX_PAYLOAD_WINDOW_LOAD_ATTEMPTS,
-                automatic_retry_pending: self.document.payload_window.can_retry(block_id),
-            })
-        });
-        let placeholder_window_error = placeholder_window_failure
-            .as_ref()
-            .map(|failure| failure.message.clone());
-        let render_window = RenderWindow::placeholder(PlaceholderWindow {
-            page_range: page_range.clone(),
-            block_range: block_range.clone(),
-            height: placeholder_height,
-            target_anchor: self
-                .target_for_global_offset(self.layout.scroll.global_scroll_top)
-                .map(|target| cditor_viewport::scroll::ScrollAnchor {
-                    block_id: target.block_id,
-                    offset_in_block: target.offset_in_block,
-                    viewport_y: 0.0,
-                }),
-        });
-        let down_placer_height = self.down_placer_height();
-        let after_window_height = (self
-            .scroll_extent_height(self.layout.page_layout.total_height())
-            - before_window_height
-            - placeholder_height)
-            .max(0.0);
-        let debug = DebugOverlaySnapshot::from_scroll_state(
-            &self.layout.scroll,
-            0,
-            render_window.page_range.clone(),
-        )
-        .with_entity_stats(0, 0);
-        EditorViewProjection {
-            document_id: self.document_id,
-            viewport_revision: 0,
-            scroll: self.layout.scroll,
-            render_window,
-            payload_prefetch_block_range: block_range.clone(),
-            layout_prefetch_page_range: page_range.clone(),
-            blocks: Vec::new(),
-            ai_preview: None,
-            before_window_height,
-            placeholder_window_height: Some(placeholder_height),
-            placeholder_window_error,
-            placeholder_window_failure,
-            after_window_height,
-            down_placer_height,
-            total_visible_blocks,
-            debug,
-        }
-    }
-
-    fn height_for_block_range(&self, block_range: &Range<usize>) -> f64 {
-        let start = block_range.start.min(self.layout.height_index.len());
-        let end = block_range
-            .end
-            .min(self.layout.height_index.len())
-            .max(start);
-        let start_offset = self
-            .layout
-            .height_index
-            .offset_of_block(start)
-            .unwrap_or(0.0);
-        let end_offset = self
-            .layout
-            .height_index
-            .offset_of_block(end)
-            .unwrap_or(start_offset);
-        (end_offset - start_offset).max(0.0)
     }
 }
 

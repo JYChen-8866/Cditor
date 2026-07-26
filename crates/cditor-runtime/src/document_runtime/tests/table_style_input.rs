@@ -172,12 +172,7 @@ fn table_runtime_survives_stale_empty_payload_snapshot() {
 
     runtime.focus_table_cell(10, 0, 1).unwrap();
     runtime.insert_char('!').unwrap();
-    let payload = runtime
-        .document
-        .payload_window
-        .payloads
-        .get_mut(&10)
-        .unwrap();
+    let payload = runtime.document.payload_window.get_mut(10).unwrap();
     payload.payload = BlockPayload::Table(cditor_core::rich_text::TablePayload::default());
     payload.content_version = payload.content_version.saturating_add(1);
 

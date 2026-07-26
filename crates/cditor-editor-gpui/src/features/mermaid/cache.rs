@@ -4,9 +4,10 @@ use std::sync::{Arc, OnceLock};
 
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayloadView, RichBlockKind};
-use cditor_runtime::EditorViewProjection;
+use cditor_runtime::{EditorViewProjection, MainThreadWorkKind, WorkCost, WorkerTaskKind};
 use gpui::{AppContext, Context, RenderImage, Task};
 
+use crate::app::worker_admission::{EditorWorkerAdmission, WorkerPermit};
 use crate::editor_view::CditorV2View;
 use crate::theme::GuiTheme;
 
@@ -32,15 +33,29 @@ struct MermaidRenderEntry {
     _task: Option<Task<()>>,
 }
 
+struct MermaidRenderRequest {
+    block_id: BlockId,
+    content_version: u64,
+    source_hash: u64,
+    source: String,
+    theme: GuiTheme,
+    fallback: Option<Arc<RenderImage>>,
+}
+
 impl MermaidRenderEntry {
     fn new(
-        content_version: u64,
-        source_hash: u64,
-        source: String,
-        theme: GuiTheme,
-        fallback: Option<Arc<RenderImage>>,
+        request: MermaidRenderRequest,
+        permit: WorkerPermit,
         cx: &mut Context<CditorV2View>,
     ) -> Self {
+        let MermaidRenderRequest {
+            block_id,
+            content_version,
+            source_hash,
+            source,
+            theme,
+            fallback,
+        } = request;
         let result = Arc::new(OnceLock::new());
         if let Err(message) = validate_source(&source) {
             let _ = result.set(Err(message.into()));
@@ -60,6 +75,7 @@ impl MermaidRenderEntry {
         let task = cx.spawn(async move |view, cx| {
             let rendered = cx
                 .background_spawn(async move {
+                    let _permit = permit;
                     let svg = mermaid_render::render_to_svg(&source, &render_theme)
                         .map_err(|error| Arc::<str>::from(format!("{error:#}")))?;
                     renderer
@@ -67,8 +83,19 @@ impl MermaidRenderEntry {
                         .map_err(|error| Arc::<str>::from(error.to_string()))
                 })
                 .await;
-            let _ = result_for_task.set(rendered);
-            let _ = view.update(cx, |_view, cx| cx.notify());
+            let _ = view.update(cx, |view, cx| {
+                view.enqueue_main_thread_apply(
+                    MainThreadWorkKind::ImageDecodeApply,
+                    content_version,
+                    Some(block_id),
+                    WorkCost::image_decode_apply(),
+                    move |_view, cx| {
+                        let _ = result_for_task.set(rendered);
+                        cx.notify();
+                    },
+                    cx,
+                );
+            });
         });
 
         Self {
@@ -117,6 +144,7 @@ impl MermaidRenderCache {
         &mut self,
         projection: &EditorViewProjection,
         theme: GuiTheme,
+        worker_admission: &EditorWorkerAdmission,
         cx: &mut Context<CditorV2View>,
     ) {
         let visible = projection
@@ -151,13 +179,27 @@ impl MermaidRenderCache {
             {
                 continue;
             }
+            let Some(permit) = worker_admission.try_acquire(WorkerTaskKind::MermaidRender) else {
+                continue;
+            };
             let fallback = self
                 .entries
                 .remove(&block_id)
                 .and_then(|entry| entry.best_image());
             self.entries.insert(
                 block_id,
-                MermaidRenderEntry::new(content_version, hash, source, theme, fallback, cx),
+                MermaidRenderEntry::new(
+                    MermaidRenderRequest {
+                        block_id,
+                        content_version,
+                        source_hash: hash,
+                        source,
+                        theme,
+                        fallback,
+                    },
+                    permit,
+                    cx,
+                ),
             );
         }
     }

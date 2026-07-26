@@ -5,6 +5,8 @@ use std::sync::{
 };
 
 pub const DEFAULT_AI_STREAM_CAPACITY: usize = 64;
+pub type AiStreamSender = async_channel::Sender<AiStreamEvent>;
+pub type AiStreamReceiver = async_channel::Receiver<AiStreamEvent>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AiTaskKind {
@@ -94,22 +96,17 @@ pub trait AiProvider: Send + Sync {
     fn stream(
         &self,
         request: AiProviderRequest,
-        sender: async_channel::Sender<AiStreamEvent>,
+        sender: AiStreamSender,
         cancellation: AiCancellationToken,
     ) -> Result<(), AiProviderError>;
 }
 
-pub fn bounded_ai_stream(
-    capacity: usize,
-) -> (
-    async_channel::Sender<AiStreamEvent>,
-    async_channel::Receiver<AiStreamEvent>,
-) {
+pub fn bounded_ai_stream(capacity: usize) -> (AiStreamSender, AiStreamReceiver) {
     async_channel::bounded(capacity.max(1))
 }
 
-pub(crate) fn send_stream_event(
-    sender: &async_channel::Sender<AiStreamEvent>,
+pub fn send_ai_stream_event(
+    sender: &AiStreamSender,
     event: AiStreamEvent,
     cancellation: &AiCancellationToken,
 ) -> Result<(), AiProviderError> {

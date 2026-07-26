@@ -1,9 +1,9 @@
-use std::{collections::HashMap, ops::Range};
+use std::ops::Range;
 
-use gpui::{Bounds, Pixels, point, px};
+use gpui::{Bounds, Pixels};
 
-use crate::block::chrome::{block_gutter_left_px, block_gutter_top_px};
-use crate::document::{DEFAULT_DOCUMENT_PAGE_WIDTH_PX, DEFAULT_DOCUMENT_TOP_INSET_PX};
+use crate::block::chrome::block_gutter_top_px;
+use crate::document::{DEFAULT_DOCUMENT_TOP_INSET_PX, DocumentLayoutMetrics};
 use crate::interaction::geometry::ProjectedBlockRect;
 use crate::menu_metrics::EditorViewport;
 use crate::overlays::{
@@ -12,13 +12,12 @@ use crate::overlays::{
     block_transform_menu_top_offset, color_menu_geometry, floating_toolbar_position,
     gutter_floating_toolbar_position,
 };
-use crate::text::{RichTextPlatformLayout, platform_range_bounds};
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayload, InlineColorTarget, InlineMark, InlineSpan};
 #[cfg(test)]
 use cditor_runtime::DocumentRuntime;
 use cditor_session::EditorSessionHandle;
-use cditor_session::{ToolbarContextRequest, ToolbarContextSnapshot, VersionedSelectionFragment};
+use cditor_session::{ToolbarContextRequest, ToolbarContextSnapshot};
 
 #[cfg(test)]
 use super::actions::inline_mark_for_toolbar_action;
@@ -27,7 +26,7 @@ use super::color::selected_spans_color;
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn formatting_toolbar_state(
     context: Option<&ToolbarContextSnapshot>,
-    text_layouts: &HashMap<cditor_core::ids::BlockId, RichTextPlatformLayout>,
+    text_selection_bounds: Option<Bounds<Pixels>>,
     readonly: bool,
     conflicting_overlay_open: bool,
     viewport: EditorViewport,
@@ -51,8 +50,9 @@ pub(crate) fn formatting_toolbar_state(
         let rect = projected_block_rects
             .iter()
             .find(|rect| rect.block_id == block_id)?;
-        let page_left = ((viewport.width - DEFAULT_DOCUMENT_PAGE_WIDTH_PX) / 2.0).max(0.0);
-        let gutter_left = page_left + block_gutter_left_px(rect.indent_px);
+        let document_layout = DocumentLayoutMetrics::for_viewport(viewport.width);
+        let page_left = ((viewport.width - document_layout.page_width_px) / 2.0).max(0.0);
+        let gutter_left = page_left + rect.gutter_left_px;
         let gutter_top = (rect.document_top - context.global_scroll_top) as f32
             + DEFAULT_DOCUMENT_TOP_INSET_PX
             + block_gutter_top_px();
@@ -192,9 +192,7 @@ pub(crate) fn formatting_toolbar_state(
         return None;
     }
     if !context.cross_block_fragments.is_empty() {
-        let fragments = &context.cross_block_fragments;
-        let bounds =
-            viewport.window_bounds_to_local(cross_block_selection_bounds(text_layouts, fragments)?);
+        let bounds = viewport.window_bounds_to_local(text_selection_bounds?);
         let (x, y) = floating_toolbar_position(
             f32::from(bounds.left()),
             f32::from(bounds.top()),
@@ -241,11 +239,7 @@ pub(crate) fn formatting_toolbar_state(
     }
     let payload = context.focused_payload.as_ref()?;
     let spans = toolbar_spans_for_payload(&payload.payload)?;
-    let layout = text_layouts.get(&block_id)?;
-    if payload.content_version != layout.content_version {
-        return None;
-    }
-    let bounds = viewport.window_bounds_to_local(platform_range_bounds(layout, range.clone()));
+    let bounds = viewport.window_bounds_to_local(text_selection_bounds?);
     let (x, y) = floating_toolbar_position(
         f32::from(bounds.left()),
         f32::from(bounds.top()),
@@ -285,30 +279,6 @@ pub(crate) fn formatting_toolbar_state(
         color_menu_open,
         last_color_action,
     })
-}
-
-fn cross_block_selection_bounds(
-    text_layouts: &HashMap<BlockId, RichTextPlatformLayout>,
-    fragments: &[VersionedSelectionFragment],
-) -> Option<Bounds<Pixels>> {
-    let mut fragment_bounds = fragments.iter().filter_map(|fragment| {
-        let layout = text_layouts.get(&fragment.fragment.block_id)?;
-        (fragment.content_version == layout.content_version)
-            .then(|| platform_range_bounds(layout, fragment.fragment.range.clone()))
-    });
-    let first = fragment_bounds.next()?;
-    Some(fragment_bounds.fold(first, |combined, bounds| {
-        Bounds::from_corners(
-            point(
-                px(f32::from(combined.left()).min(f32::from(bounds.left()))),
-                px(f32::from(combined.top()).min(f32::from(bounds.top()))),
-            ),
-            point(
-                px(f32::from(combined.right()).max(f32::from(bounds.right()))),
-                px(f32::from(combined.bottom()).max(f32::from(bounds.bottom()))),
-            ),
-        )
-    }))
 }
 
 fn toolbar_spans_for_payload(payload: &BlockPayload) -> Option<&[InlineSpan]> {
@@ -425,7 +395,7 @@ mod tests {
         EmbedPayload, FilePayload, ImagePayload, RichBlockKind, TablePayload, WhiteboardPayload,
     };
     use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
-    use gpui::size;
+    use gpui::{px, size};
     fn dispatch(runtime: &mut DocumentRuntime, command: EditorCommand) -> bool {
         runtime
             .dispatch(CommandEnvelope::new(command, CommandSource::Sdk))
@@ -470,7 +440,7 @@ mod tests {
         assert!(
             formatting_toolbar_state(
                 Some(&context),
-                &HashMap::new(),
+                None,
                 false,
                 false,
                 EditorViewport::from_size(size(px(900.0), px(700.0))),
@@ -498,12 +468,13 @@ mod tests {
             text_origin_y_in_block_px: 0.0,
             text_width_px: 500.0,
             supports_children: false,
+            ..ProjectedBlockRect::default()
         };
 
         let context = formatting_toolbar_context(Some(&runtime), Some(1)).unwrap();
         let state = formatting_toolbar_state(
             Some(&context),
-            &HashMap::new(),
+            None,
             false,
             false,
             EditorViewport::from_size(size(px(900.0), px(700.0))),

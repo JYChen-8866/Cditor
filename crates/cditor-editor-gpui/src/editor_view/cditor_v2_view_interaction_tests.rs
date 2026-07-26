@@ -19,6 +19,7 @@ fn parent_drop_target_computes_direct_child_sibling_index() {
             text_origin_y_in_block_px: 0.0,
             text_width_px: 860.0,
             supports_children: true,
+            ..ProjectedBlockRect::default()
         },
         ProjectedBlockRect {
             block_id: 11,
@@ -31,6 +32,7 @@ fn parent_drop_target_computes_direct_child_sibling_index() {
             text_origin_y_in_block_px: 0.0,
             text_width_px: 836.0,
             supports_children: false,
+            ..ProjectedBlockRect::default()
         },
         ProjectedBlockRect {
             block_id: 12,
@@ -43,6 +45,7 @@ fn parent_drop_target_computes_direct_child_sibling_index() {
             text_origin_y_in_block_px: 0.0,
             text_width_px: 836.0,
             supports_children: false,
+            ..ProjectedBlockRect::default()
         },
         ProjectedBlockRect {
             block_id: 20,
@@ -55,6 +58,7 @@ fn parent_drop_target_computes_direct_child_sibling_index() {
             text_origin_y_in_block_px: 0.0,
             text_width_px: 860.0,
             supports_children: false,
+            ..ProjectedBlockRect::default()
         },
     ];
 

@@ -1,72 +1,13 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-
-use async_trait::async_trait;
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
-use cditor_storage::{
-    DocumentStorage, LoadDocumentRequest, LoadedDocument, LoadedPayloadBatch, StorageBackendKind,
-    StorageCapabilities, StorageResult, StorageSaveBatch, StorageSaveOutcome,
-};
-use gpui::{AppContext, TestAppContext};
+use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
+use cditor_test_support::fail_first_persistence_fixture;
+use gpui::TestAppContext;
 
 use super::*;
 
-#[derive(Debug, Default)]
-struct FailFirstStorage {
-    attempts: AtomicUsize,
-    transaction_counts: Mutex<Vec<usize>>,
-}
-
-#[async_trait]
-impl DocumentStorage for FailFirstStorage {
-    fn backend_kind(&self) -> StorageBackendKind {
-        StorageBackendKind::Custom
-    }
-
-    fn capabilities(&self) -> StorageCapabilities {
-        StorageCapabilities {
-            emergency_log: false,
-            ..StorageCapabilities::SQLITE
-        }
-    }
-
-    async fn load_document(&self, _request: LoadDocumentRequest) -> StorageResult<LoadedDocument> {
-        unreachable!("the persistence test starts from an in-memory runtime")
-    }
-
-    async fn load_payloads(
-        &self,
-        _document_id: cditor_core::ids::DocumentId,
-        _block_ids: &[cditor_core::ids::BlockId],
-    ) -> StorageResult<LoadedPayloadBatch> {
-        unreachable!("the persistence test does not load payload windows")
-    }
-
-    async fn commit(&self, batch: StorageSaveBatch) -> StorageResult<StorageSaveOutcome> {
-        self.transaction_counts
-            .lock()
-            .unwrap()
-            .push(batch.transactions.len());
-        if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
-            return Err(cditor_storage::StorageError::Backend {
-                backend: StorageBackendKind::Custom,
-                message: "injected first-save failure".to_owned(),
-            });
-        }
-        Ok(StorageSaveOutcome {
-            saved_structure_version: batch.saved_structure_version(),
-            saved_payload_versions: batch
-                .payloads
-                .iter()
-                .map(|payload| (payload.block_id, payload.content_version))
-                .collect(),
-        })
-    }
-}
-
 #[gpui::test]
 fn failed_save_restores_transactions_and_explicit_retry_cleans_document(cx: &mut TestAppContext) {
-    let storage = Arc::new(FailFirstStorage::default());
+    let (persistence, storage) = fail_first_persistence_fixture(1, Some(std::time::Duration::ZERO));
     let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(
         1,
         (1..=3)
@@ -92,16 +33,12 @@ fn failed_save_restores_transactions_and_explicit_retry_cleans_document(cx: &mut
             .unwrap()
             .changed()
     );
-    let session = StorageSession::new(storage.clone(), 1);
-    let view = cx.new(|cx| {
+    let (view, cx) = cx.add_window_view(|_window, cx| {
         CditorV2View::from_runtime_with_persistence_options(
             runtime,
             false,
             false,
-            Some(cditor_session::PersistencePipeline::for_session(
-                session,
-                Some(std::time::Duration::ZERO),
-            )),
+            Some(persistence),
             cx,
         )
     });
@@ -113,8 +50,14 @@ fn failed_save_restores_transactions_and_explicit_retry_cleans_document(cx: &mut
     cx.run_until_parked();
     assert!(matches!(
         view.read_with(cx, |view, _| view.sdk_save_status()),
-        cditor_api::document::SaveStatus::Failed(message) if message.contains("injected")
+        cditor_sdk::document::SaveStatus::FailedLocal(failure)
+            if failure.kind == cditor_sdk::document::SaveFailureKind::Other
+                && failure.message.contains("injected")
     ));
+    let close_guard = view.read_with(cx, |view, _| view.sdk_close_guard());
+    assert!(!close_guard.can_close_safely);
+    assert!(close_guard.requires_recovery_export);
+    assert!(close_guard.local_failure.is_some());
     assert_eq!(
         view.read_with(cx, |view, _| {
             view.ready_session()
@@ -131,7 +74,7 @@ fn failed_save_restores_transactions_and_explicit_retry_cleans_document(cx: &mut
     assert_eq!(report.saved_blocks, 3);
     assert_eq!(
         view.read_with(cx, |view, _| view.sdk_save_status()),
-        cditor_api::document::SaveStatus::Clean
+        cditor_sdk::document::SaveStatus::LocallySaved
     );
-    assert_eq!(*storage.transaction_counts.lock().unwrap(), vec![1, 1]);
+    assert_eq!(storage.transaction_counts(), vec![1, 1]);
 }

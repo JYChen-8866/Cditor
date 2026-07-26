@@ -60,11 +60,14 @@ impl CditorV2View {
             .flatten();
 
         if let Some(generation) = self.overlay.selection_toolbar_delay.observe(target) {
+            let document_epoch = self.focus.document_epoch().current();
             let delay = cx.background_executor().timer(SELECTION_TOOLBAR_DELAY);
             cx.spawn(async move |view, cx| {
                 delay.await;
                 let _ = view.update(cx, |view, cx| {
-                    if view.overlay.selection_toolbar_delay.reveal(generation) {
+                    if view.focus.document_epoch().matches(document_epoch)
+                        && view.overlay.selection_toolbar_delay.reveal(generation)
+                    {
                         cx.notify();
                     }
                 });

@@ -1,28 +1,28 @@
 use cditor_core::edit::{EditTransaction, ExternalUndoBlobRef, UndoExternalizationJob};
-use cditor_storage::{LoadedPayloadBatch, StorageError, StorageSession};
+use cditor_storage::{LoadedPayloadBatch, StorageError};
 
-use crate::{EditorSessionHandle, session::busy_error};
+use crate::{DocumentPersistence, EditorSessionHandle, SessionIoExecutor, session::busy_error};
 
 #[derive(Debug, Clone)]
 pub struct PayloadStorageRequest {
-    session: StorageSession,
+    session: DocumentPersistence,
 }
 
 #[derive(Debug, Clone)]
 pub struct UndoBlobReadRequest {
-    session: StorageSession,
+    session: DocumentPersistence,
     reference: ExternalUndoBlobRef,
 }
 
 #[derive(Debug)]
 pub struct UndoBlobWriteRequest {
-    session: StorageSession,
+    session: DocumentPersistence,
     job: UndoExternalizationJob,
 }
 
 #[derive(Debug)]
 pub struct UndoBlobDeleteRequest {
-    session: StorageSession,
+    session: DocumentPersistence,
     references: Vec<ExternalUndoBlobRef>,
 }
 
@@ -99,6 +99,37 @@ pub async fn execute_undo_blob_read(
     Ok((request.reference, transaction))
 }
 
+pub fn run_payload_load(
+    request: PayloadStorageRequest,
+    block_ids: &[u64],
+    timeout: std::time::Duration,
+    operation: &'static str,
+) -> Result<LoadedPayloadBatch, String> {
+    SessionIoExecutor::shared()
+        .run(async move {
+            tokio::time::timeout(timeout, execute_payload_load(request, block_ids))
+                .await
+                .map_err(|_| StorageError::Timeout { operation, timeout })?
+        })
+        .and_then(|result| result.map_err(|error| error.to_string()))
+}
+
+pub fn run_undo_blob_read(
+    request: UndoBlobReadRequest,
+    timeout: std::time::Duration,
+) -> Result<(ExternalUndoBlobRef, EditTransaction), String> {
+    SessionIoExecutor::shared()
+        .run(async move {
+            tokio::time::timeout(timeout, execute_undo_blob_read(request))
+                .await
+                .map_err(|_| StorageError::Timeout {
+                    operation: "history hydration",
+                    timeout,
+                })?
+        })
+        .and_then(|result| result.map_err(|error| error.to_string()))
+}
+
 pub async fn execute_undo_blob_write(
     request: UndoBlobWriteRequest,
 ) -> (
@@ -121,18 +152,19 @@ pub fn run_undo_blob_write(
     timeout: std::time::Duration,
 ) -> (UndoExternalizationJob, Result<ExternalUndoBlobRef, String>) {
     let UndoBlobWriteRequest { session, job } = request;
-    let result = cditor_storage::block_on_storage(async {
-        tokio::time::timeout(
-            timeout,
-            session.write_undo_blob(job.snapshot_id, job.block_count, &job.transaction),
-        )
-        .await
-        .map_err(|_| StorageError::Timeout {
-            operation: "undo blob write",
-            timeout,
-        })?
-    })
-    .and_then(|result| result.map_err(|error| error.to_string()));
+    let result = SessionIoExecutor::shared()
+        .run(async {
+            tokio::time::timeout(
+                timeout,
+                session.write_undo_blob(job.snapshot_id, job.block_count, &job.transaction),
+            )
+            .await
+            .map_err(|_| StorageError::Timeout {
+                operation: "undo blob write",
+                timeout,
+            })?
+        })
+        .and_then(|result| result.map_err(|error| error.to_string()));
     (job, result)
 }
 
@@ -156,17 +188,18 @@ pub fn run_undo_blob_delete(
     timeout: std::time::Duration,
 ) -> Vec<ExternalUndoBlobRef> {
     let references = request.references.clone();
-    cditor_storage::block_on_storage(async move {
-        tokio::time::timeout(timeout, execute_undo_blob_delete(request))
-            .await
-            .map_err(|_| StorageError::Timeout {
-                operation: "undo blob cleanup",
-                timeout,
-            })
-    })
-    .ok()
-    .and_then(Result::ok)
-    .unwrap_or(references)
+    SessionIoExecutor::shared()
+        .run(async move {
+            tokio::time::timeout(timeout, execute_undo_blob_delete(request))
+                .await
+                .map_err(|_| StorageError::Timeout {
+                    operation: "undo blob cleanup",
+                    timeout,
+                })
+        })
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(references)
 }
 
 #[cfg(test)]

@@ -65,7 +65,7 @@ pub(super) fn sync_payload_after_replace_with_typing_marks(
         );
         return;
     };
-    let Some(record) = payload_window.payloads.get(&block_id) else {
+    let Some(record) = payload_window.get(block_id) else {
         return;
     };
     if !matches!(record.payload, BlockPayload::RichText { .. }) {
@@ -80,8 +80,7 @@ pub(super) fn sync_payload_after_replace_with_typing_marks(
         return;
     }
     let record = payload_window
-        .payloads
-        .get_mut(&block_id)
+        .get_mut(block_id)
         .expect("payload existence checked above");
     let BlockPayload::RichText { spans } = &record.payload else {
         unreachable!("payload kind checked above");

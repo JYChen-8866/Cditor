@@ -1,0 +1,86 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/drafftink",
+    "crates/drafftink-core",
+    "crates/drafftink-render",
+    "crates/drafftink-widgets",
+    "crates/drafftink-app",
+    "crates/drafftink-server",
+]
+
+[workspace.package]
+version = "0.1.1"
+edition = "2024"
+license = "AGPL-3.0"
+rust-version = "1.86"
+
+[workspace.dependencies]
+# Geometry and color primitives (match vello master requirements)
+kurbo = { version = "0.12", features = ["serde"] }
+peniko = "0.5"
+
+# Rendering - use git master for wgpu 27 compatibility
+vello = "0.6.0"
+roughr = "0.12"
+rough_vello = "0.13"
+
+# Windowing and GPU
+winit = "0.30"
+wgpu = "27"  # Match vello master and egui 0.33
+
+# UI
+egui = "0.33"
+egui-wgpu = "0.33"
+egui-winit = { version = "0.33", default-features = false }
+egui_extras = { version = "0.33", features = ["svg"] }
+
+# Async
+pollster = "0.4"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# WASM dependencies
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = "0.3"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+console_log = "1"
+web-time = "1.1"
+
+# Utilities
+uuid = { version = "1.11", features = ["v4", "js", "serde"] }
+
+# File dialogs (native only)
+rfd = "0.15"
+
+# Clipboard (native only)
+arboard = "3"
+
+# PNG encoding
+png = "0.17"
+
+[profile.release]
+lto = true
+opt-level = "z"
+codegen-units = 1
+
+[profile.release-wasm]
+inherits = "release"
+opt-level = "z"
+lto = true
+
+[patch.crates-io]
+# Use vello from git until a new version with wgpu 27 support is published to crates.io
+# Current vello 0.6.0 uses wgpu 26, but egui 0.33 requires wgpu 27
+vello = { git = "https://github.com/linebender/vello", rev = "1771112ebc0ae04d996ebf493d3a00d73303f014" }

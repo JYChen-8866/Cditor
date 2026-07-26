@@ -8,11 +8,16 @@ mod ai_port;
 mod clipboard_port;
 mod cold_start;
 mod diagnostics_snapshot;
+mod document_persistence;
 mod document_snapshot;
 mod emergency_log;
 mod history_port;
+mod import_port;
 mod input_port;
+mod io_executor;
 mod layout_port;
+mod materialized_rebuild;
+mod persistence_failure;
 mod persistence_pipeline;
 mod persistence_port;
 mod persistence_session;
@@ -34,15 +39,19 @@ pub use cold_start::{
     prepare_editor_session_with_persistence,
 };
 pub use diagnostics_snapshot::{SessionDiagnosticsSnapshot, project_diagnostics_snapshot};
+pub use document_persistence::DocumentPersistence;
 pub use document_snapshot::{
     SessionDocumentSnapshot, TextBlockContextSnapshot, project_block_attrs,
-    project_document_snapshot, project_focused_text_block_context, project_selected_text,
-    project_text_block_context, project_visible_block_subset, project_whiteboard_scene,
+    project_document_snapshot, project_focused_block_kind, project_focused_text_block_context,
+    project_selected_text, project_text_block_context, project_visible_block_subset,
+    project_whiteboard_scene,
 };
 pub use emergency_log::{
+    EMERGENCY_EXPORT_FORMAT, EMERGENCY_EXPORT_VERSION, EmergencyExportArtifact,
     EmergencyRecoveryDecision, EmergencyRecoveryPlan, EmergencyRecoveryReport,
     MAX_EMERGENCY_AFFECTED_BLOCKS, MAX_EMERGENCY_LOG_BYTES, MAX_EMERGENCY_LOG_ENTRIES,
-    plan_emergency_recovery, project_emergency_payload_request, project_emergency_payload_result,
+    decode_emergency_export, plan_emergency_recovery, project_emergency_export,
+    project_emergency_payload_request, project_emergency_payload_result,
     project_emergency_recovery,
 };
 pub use history_port::{
@@ -51,20 +60,24 @@ pub use history_port::{
     project_begin_undo_blob_spill, project_finish_undo_blob_cleanup, project_history_action,
     project_hydrated_history_action,
 };
+pub use import_port::{ImportDispatchReport, project_ai_preview_import, project_clipboard_import};
 pub use input_port::{
     FocusedPlatformTextSnapshot, InputCompositionSnapshot, InputContextSnapshot,
     project_input_context,
 };
+pub use io_executor::SessionIoExecutor;
 pub use layout_port::{
     LayoutScrollSnapshot, LayoutViewportSnapshot, project_begin_scrollbar_drag,
-    project_drag_scrollbar, project_finish_scrollbar_drag, project_layout_viewport,
-    project_measured_block_height, project_scroll_by_delta, project_scroll_focused_block_into_view,
-    project_scroll_input_frame, project_scroll_to_block,
+    project_drag_scrollbar, project_drag_scrollbar_to_ratio, project_finish_scrollbar_drag,
+    project_layout_viewport, project_measured_block_height, project_scroll_by_delta,
+    project_scroll_focused_block_into_view, project_scroll_input_frame, project_scroll_to_block,
 };
+pub use materialized_rebuild::prepare_editor_session_from_rebuild_plan;
+pub use persistence_failure::{PersistenceFailure, PersistenceFailureKind};
 pub use persistence_pipeline::{
     DEFAULT_STORAGE_SAVE_DEBOUNCE, PersistenceBarrierKind, PersistenceBarrierReport,
     PersistencePipeline, PersistencePipelineError, ReadyPersistenceBarrier, StorageSaveRequest,
-    save_storage_batch,
+    run_storage_save_with_timeout, save_storage_batch,
 };
 pub use persistence_port::{
     PersistenceCaptureRequest, PersistenceRuntimeSnapshot, PersistenceSaveCapture,
@@ -74,11 +87,11 @@ pub use persistence_port::{
 };
 pub use persistence_session::{
     PersistenceSaveApply, PersistenceSessionSnapshot, StorageFlushRequest, execute_storage_flush,
+    run_storage_flush_with_timeout,
 };
 pub use render_port::{
     RenderFrameRequest, RenderFrameSnapshot, RenderFrameWarnings, activate_resident_payload_window,
-    apply_payload_window_error, apply_payload_window_result, apply_table_horizontal_scroll_offset,
-    plan_payload_window_load, project_render_frame, retry_failed_payload_window,
+    apply_table_horizontal_scroll_offset, project_render_frame, retry_failed_payload_window,
     trim_payload_cache,
 };
 pub use selection_materialization_port::{
@@ -92,7 +105,8 @@ pub use session::{
 pub use storage_io::{
     PayloadStorageRequest, UndoBlobDeleteRequest, UndoBlobReadRequest, UndoBlobWriteRequest,
     execute_payload_load, execute_undo_blob_delete, execute_undo_blob_read,
-    execute_undo_blob_write, run_undo_blob_delete, run_undo_blob_write,
+    execute_undo_blob_write, run_payload_load, run_undo_blob_delete, run_undo_blob_read,
+    run_undo_blob_write,
 };
 pub use surface_port::{
     SurfaceVersionSnapshot, TextSurfaceStateSnapshot, project_surface_version,

@@ -16,7 +16,7 @@ pub(crate) fn current_layout(
         return None;
     };
     let cache = view.cache.text_surface_layouts.get(&current.surface_id)?;
-    super::text::layout_cache_is_current(cache, current).then_some(cache)
+    super::text::layout_cache_is_current(cache, current, None, None).then_some(cache)
 }
 
 #[cfg(test)]

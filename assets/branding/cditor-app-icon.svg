@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <linearGradient id="shell" x1="170" y1="116" x2="846" y2="904" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2A2C28"/>
+      <stop offset="1" stop-color="#151614"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="342" y1="276" x2="678" y2="758" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF6"/>
+      <stop offset="1" stop-color="#E7E5DD"/>
+    </linearGradient>
+    <filter id="shadow" x="72" y="84" width="880" height="888" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="34" stdDeviation="30" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+    <filter id="paperShadow" x="246" y="211" width="570" height="639" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <clipPath id="shellClip">
+      <rect x="112" y="112" width="800" height="800" rx="184"/>
+    </clipPath>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <rect x="112" y="112" width="800" height="800" rx="184" fill="url(#shell)"/>
+  </g>
+
+  <g clip-path="url(#shellClip)">
+    <path d="M123 723C329 580 502 833 896 526V924H123V723Z" fill="#0D0E0C" opacity="0.36"/>
+    <circle cx="759" cy="264" r="176" fill="#C8FF3D" opacity="0.055"/>
+  </g>
+
+  <g filter="url(#paperShadow)">
+    <path d="M327 292C327 265.49 348.49 244 375 244H661L729 312V732C729 758.51 707.51 780 681 780H375C348.49 780 327 758.51 327 732V292Z" fill="url(#paper)"/>
+    <path d="M661 244L729 312H685C671.745 312 661 301.255 661 288V244Z" fill="#C8FF3D"/>
+    <path d="M661 244V288C661 301.255 671.745 312 685 312H729" stroke="#A8D72E" stroke-width="10" stroke-linejoin="round"/>
+  </g>
+
+  <path d="M611 409C578.2 374.8 538.4 358 492 358C401.426 358 344 425.603 344 512C344 598.397 401.426 666 492 666C538.4 666 578.2 649.2 611 615" stroke="#191A18" stroke-width="76" stroke-linecap="round"/>
+  <rect x="623" y="387" width="38" height="250" rx="19" fill="#C8FF3D"/>
+  <circle cx="642" cy="677" r="19" fill="#C8FF3D"/>
+
+  <rect x="112" y="112" width="800" height="800" rx="184" stroke="#FFFFFF" stroke-opacity="0.1" stroke-width="8"/>
+</svg>

@@ -2,10 +2,11 @@ use std::time::Duration;
 
 use cditor_editor_protocol::ProtocolError;
 use cditor_storage::StorageBackendKind;
-use cditor_storage::{StorageSaveOutcome, StorageSession};
+use cditor_storage::StorageSaveOutcome;
 
 use crate::{
-    EditorSessionHandle, PersistenceBarrierKind, PersistencePipelineError, ReadyPersistenceBarrier,
+    DocumentPersistence, EditorSessionHandle, PersistenceBarrierKind, PersistenceFailure,
+    PersistenceFailureKind, PersistencePipelineError, ReadyPersistenceBarrier, SessionIoExecutor,
     StorageSaveRequest, project_persistence_save_failure, project_persistence_save_success,
 };
 
@@ -26,21 +27,39 @@ pub struct PersistenceSaveApply {
 
 #[derive(Debug, Clone)]
 pub struct StorageFlushRequest {
-    session: StorageSession,
+    session: DocumentPersistence,
 }
 
-pub async fn execute_storage_flush(request: StorageFlushRequest) -> Result<(), String> {
+pub async fn execute_storage_flush(request: StorageFlushRequest) -> Result<(), PersistenceFailure> {
     request
         .session
         .flush()
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(PersistenceFailure::from)?;
     request
         .session
         .prune_undo_blobs(100)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(PersistenceFailure::from)?;
     Ok(())
+}
+
+pub fn run_storage_flush_with_timeout(
+    request: StorageFlushRequest,
+    timeout: Duration,
+) -> Result<(), PersistenceFailure> {
+    SessionIoExecutor::shared()
+        .run(async move {
+            tokio::time::timeout(timeout, execute_storage_flush(request))
+                .await
+                .map_err(|_| cditor_storage::StorageError::Timeout {
+                    operation: "storage flush",
+                    timeout,
+                })
+                .map_err(PersistenceFailure::from)?
+        })
+        .map_err(|message| PersistenceFailure::new(PersistenceFailureKind::Io, message))
+        .and_then(|result| result)
 }
 
 impl EditorSessionHandle {
@@ -53,7 +72,7 @@ impl EditorSessionHandle {
             backend: session
                 .persistence
                 .session()
-                .map(StorageSession::backend_kind),
+                .map(DocumentPersistence::backend_kind),
             enabled: session.persistence.is_enabled(),
             saving: session.persistence.is_saving(),
             pending_operations: session.persistence.pending_operation_count(),
@@ -68,7 +87,7 @@ impl EditorSessionHandle {
             backend: session
                 .persistence
                 .session()
-                .map(StorageSession::backend_kind),
+                .map(DocumentPersistence::backend_kind),
             enabled: session.persistence.is_enabled(),
             saving: session.persistence.is_saving(),
             pending_operations: session.persistence.pending_operation_count(),
@@ -131,7 +150,7 @@ impl EditorSessionHandle {
     pub fn apply_storage_save_failure(
         &self,
         request: &StorageSaveRequest,
-        message: &str,
+        failure: &PersistenceFailure,
     ) -> Result<bool, ProtocolError> {
         let mut session = self.try_session_mut()?;
         let crate::EditorSession {
@@ -141,7 +160,7 @@ impl EditorSessionHandle {
         } = &mut *session;
         project_persistence_save_failure(runtime, request.transactions().to_vec());
         let should_reschedule = persistence.finish_failed(request);
-        persistence.fail_barriers(message);
+        persistence.fail_barriers(failure);
         Ok(should_reschedule)
     }
 
@@ -256,7 +275,7 @@ mod tests {
                 CommandSource::Sdk,
             ))
             .unwrap();
-        let storage = StorageSession::new(Arc::new(NoopStorage), 1);
+        let storage = DocumentPersistence::new(Arc::new(NoopStorage), 1);
         let pipeline = PersistencePipeline::for_session(storage, None);
         let handle = EditorSession::with_persistence(runtime, false, pipeline).into_handle();
         handle.mark_loaded_structure_version(1).unwrap();
@@ -265,7 +284,10 @@ mod tests {
         let first = handle.capture_storage_save().unwrap().unwrap();
         assert_eq!(first.transactions().len(), 1);
         handle
-            .apply_storage_save_failure(&first, "forced failure")
+            .apply_storage_save_failure(
+                &first,
+                &PersistenceFailure::new(crate::PersistenceFailureKind::Other, "forced failure"),
+            )
             .unwrap();
         let retry = handle.capture_storage_save().unwrap().unwrap();
 

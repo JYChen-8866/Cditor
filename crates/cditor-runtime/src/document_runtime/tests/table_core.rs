@@ -125,6 +125,38 @@ fn insert_char_updates_focused_table_cell_payload() {
 }
 
 #[test]
+fn table_runtime_projection_is_shallow_until_cell_edit_uses_copy_on_write() {
+    let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
+
+    let first = runtime.projection_for_window();
+    let second = runtime.projection_for_window();
+    let first_table = &first.blocks[0]
+        .table_view
+        .as_ref()
+        .expect("table projection")
+        .table;
+    let second_table = &second.blocks[0]
+        .table_view
+        .as_ref()
+        .expect("repeated table projection")
+        .table;
+    assert!(first_table.shares_storage_with(second_table));
+
+    runtime.focus_table_cell(10, 0, 1).unwrap();
+    runtime.insert_char('!').unwrap();
+
+    let edited = runtime.projection_for_window();
+    let edited_table = &edited.blocks[0]
+        .table_view
+        .as_ref()
+        .expect("edited table projection")
+        .table;
+    assert!(!first_table.shares_storage_with(edited_table));
+    assert_eq!(first_table.cell_plain_text(0, 1).as_deref(), Some("B"));
+    assert_eq!(edited_table.cell_plain_text(0, 1).as_deref(), Some("B!"));
+}
+
+#[test]
 fn delete_backward_and_forward_update_focused_table_cell_payload() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
 
@@ -353,7 +385,7 @@ fn projection_outputs_visible_cells_for_merged_table_geometry() {
     assert_eq!(merged.col_span, 2);
     assert_eq!(merged.x_px, 0.0);
     assert_eq!(merged.y_px, 0.0);
-    assert_eq!(merged.width_px, 240.0);
+    assert_eq!(merged.width_px, 720.0);
     assert_eq!(merged.height_px, 72.0);
 }
 

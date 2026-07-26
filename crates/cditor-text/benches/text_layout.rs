@@ -8,11 +8,11 @@ use std::{
 
 use cditor_core::rich_text::{InlineSpan, RichBlockKind, TextAlign};
 use cditor_text::{
-    ParleyAlignment, ParleyLayoutOptions, ParleyLineHeight, ParleyTextStyleConfig,
-    TextLayoutCachePolicy, TextLayoutCachePriority, TextLayoutCacheRequest, TextLayoutInput,
-    TextLayoutMemoryPressure, TextLayoutSurfaceId, TextRelayoutStrategy, TextTheme,
-    apply_text_layout_memory_pressure, build_parley_layout, cached_parley_layout,
-    cached_parley_layout_with_request, register_font_data, set_text_layout_cache_policy,
+    TextAlignment, TextLayoutCachePolicy, TextLayoutCachePriority, TextLayoutCacheRequest,
+    TextLayoutInput, TextLayoutMemoryPressure, TextLayoutOptions, TextLayoutSurfaceId,
+    TextLineHeight, TextRelayoutStrategy, TextStyleConfig, TextTheme,
+    apply_text_layout_memory_pressure, build_text_layout, cached_text_layout,
+    cached_text_layout_with_request, register_font_data, set_text_layout_cache_policy,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -181,8 +181,7 @@ fn benchmark_focused_relayout(mode: BenchmarkMode) -> BenchmarkSummary {
          when its width or layout generation changes.",
     );
     let mut options = paragraph_options(420.0);
-    let initial =
-        cached_parley_layout_with_request(&input, theme(), &options, editing_without_pin());
+    let initial = cached_text_layout_with_request(&input, theme(), &options, editing_without_pin());
     assert!(matches!(
         initial.strategy,
         TextRelayoutStrategy::FullBuild(_)
@@ -194,7 +193,7 @@ fn benchmark_focused_relayout(mode: BenchmarkMode) -> BenchmarkSummary {
         options.width = Some(360.0 + (iteration % 31) as f32);
         let started = Instant::now();
         let result =
-            cached_parley_layout_with_request(&input, theme(), &options, editing_without_pin());
+            cached_text_layout_with_request(&input, theme(), &options, editing_without_pin());
         let elapsed = started.elapsed();
         assert_eq!(result.strategy, TextRelayoutStrategy::Reflow);
         black_box(result.layout.height());
@@ -211,7 +210,7 @@ fn benchmark_visible_surfaces_cold(mode: BenchmarkMode) -> BenchmarkSummary {
         clear_unpinned_cache();
         let started = Instant::now();
         for input in &inputs {
-            let result = cached_parley_layout(input, theme(), &options);
+            let result = cached_text_layout(input, theme(), &options);
             assert!(matches!(
                 result.strategy,
                 TextRelayoutStrategy::FullBuild(_)
@@ -237,14 +236,14 @@ fn benchmark_visible_surfaces_cached(mode: BenchmarkMode) -> BenchmarkSummary {
     let inputs = visible_surface_inputs();
     let options = paragraph_options(680.0);
     for input in &inputs {
-        cached_parley_layout(input, theme(), &options);
+        cached_text_layout(input, theme(), &options);
     }
 
     let mut samples = Vec::with_capacity(mode.cached_visible_iterations());
     for _ in 0..mode.cached_visible_iterations() {
         let started = Instant::now();
         for input in &inputs {
-            let result = cached_parley_layout(input, theme(), &options);
+            let result = cached_text_layout(input, theme(), &options);
             assert_eq!(result.strategy, TextRelayoutStrategy::CacheHit);
             black_box(result.layout.height());
         }
@@ -269,7 +268,7 @@ fn benchmark_large_code_full_build(mode: BenchmarkMode) -> BenchmarkSummary {
     let mut samples = Vec::with_capacity(mode.large_code_build_iterations());
     for _ in 0..mode.large_code_build_iterations() {
         let started = Instant::now();
-        let layout = build_parley_layout(&input, theme(), &options);
+        let layout = build_text_layout(&input, theme(), &options);
         samples.push(started.elapsed());
         black_box((layout.line_count(), layout.estimated_bytes()));
     }
@@ -279,12 +278,12 @@ fn benchmark_large_code_full_build(mode: BenchmarkMode) -> BenchmarkSummary {
 fn benchmark_large_code_reflow(mode: BenchmarkMode) -> BenchmarkSummary {
     let text = large_code_fixture(mode.large_code_bytes());
     let input = code_input(20_001, &text);
-    let initial = build_parley_layout(&input, theme(), &code_options(840.0));
+    let initial = build_text_layout(&input, theme(), &code_options(840.0));
     let mut samples = Vec::with_capacity(mode.large_code_reflow_iterations());
     for iteration in 0..mode.large_code_reflow_iterations() {
         let width = if iteration % 2 == 0 { 760.0 } else { 920.0 };
         let started = Instant::now();
-        let layout = initial.reflow(Some(width), ParleyAlignment::Start);
+        let layout = initial.reflow(Some(width), TextAlignment::Start);
         samples.push(started.elapsed());
         black_box((layout.line_count(), layout.estimated_bytes()));
     }
@@ -394,29 +393,29 @@ fn text_input(block_id: u64, kind: RichBlockKind, text: &str, width_px: f64) -> 
     }
 }
 
-fn paragraph_options(width: f32) -> ParleyLayoutOptions {
+fn paragraph_options(width: f32) -> TextLayoutOptions {
     layout_options(width, 16.0, 24.0)
 }
 
-fn code_options(width: f32) -> ParleyLayoutOptions {
+fn code_options(width: f32) -> TextLayoutOptions {
     layout_options(width, 14.0, 24.0)
 }
 
-fn layout_options(width: f32, font_size: f32, line_height: f32) -> ParleyLayoutOptions {
-    ParleyLayoutOptions {
+fn layout_options(width: f32, font_size: f32, line_height: f32) -> TextLayoutOptions {
+    TextLayoutOptions {
         width: Some(width),
         quantize: true,
         base_text_color: 0x37352f,
         mono_font_family: FIXTURE_FONT_FAMILY.to_owned(),
-        base_style: ParleyTextStyleConfig {
+        base_style: TextStyleConfig {
             font_family: FIXTURE_FONT_FAMILY.to_owned(),
             font_size,
             font_weight: 100.0,
             font_variations: "'wght' 450".to_owned(),
-            line_height: ParleyLineHeight::Absolute(line_height),
-            ..ParleyTextStyleConfig::default()
+            line_height: TextLineHeight::Absolute(line_height),
+            ..TextStyleConfig::default()
         },
-        ..ParleyLayoutOptions::default()
+        ..TextLayoutOptions::default()
     }
 }
 

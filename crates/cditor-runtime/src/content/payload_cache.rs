@@ -4,12 +4,53 @@ use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineMark, InlineSpan, RichBlockKind, TablePayload,
 };
 
-/// Default resident payload budget for a PostgreSQL-backed document.
+/// Default resident payload entry ceiling for a storage-backed document.
 ///
-/// The structure index, height index and stable layout boxes stay resident;
-/// this budget applies only to heavyweight block payload entities.
-pub const DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES: usize = 2_048;
+/// The byte budget is the primary eviction signal. Keeping this ceiling well
+/// above a normal working set avoids throwing away nearby text blocks while
+/// only a small fraction of the 64 MiB payload budget is in use.
+pub const DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES: usize = 65_536;
+/// Default byte budget for heavyweight block payload entities. Structure,
+/// height indexes and stable layout boxes remain resident outside this budget.
 pub const DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+
+/// Work admitted by one idle payload-cache maintenance callback.
+///
+/// Every field limits attempted work rather than only successful work. This
+/// keeps a cache containing thousands of stale LRU entries or protected
+/// payloads from turning one idle callback into an unbounded main-thread scan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PayloadCacheMaintenanceBudget {
+    pub max_byte_estimate_refreshes: usize,
+    pub max_lru_candidates: usize,
+    pub max_evictions: usize,
+}
+
+impl PayloadCacheMaintenanceBudget {
+    pub const fn idle_slice() -> Self {
+        Self {
+            max_byte_estimate_refreshes: 64,
+            max_lru_candidates: 512,
+            max_evictions: 64,
+        }
+    }
+
+    /// Reserved for explicit synchronous maintenance outside interactive UI
+    /// paths. GPUI must use [`Self::idle_slice`] and yield between slices.
+    pub const fn unbounded() -> Self {
+        Self {
+            max_byte_estimate_refreshes: usize::MAX,
+            max_lru_candidates: usize::MAX,
+            max_evictions: usize::MAX,
+        }
+    }
+}
+
+impl Default for PayloadCacheMaintenanceBudget {
+    fn default() -> Self {
+        Self::idle_slice()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PayloadCachePolicy {
@@ -40,7 +81,18 @@ pub struct PayloadCacheTrimReport {
     pub after_estimated_bytes: usize,
     pub evicted_entries: usize,
     pub evicted_block_ids: Vec<cditor_core::ids::BlockId>,
-    /// True when dirty or pinned entities alone keep the cache above policy.
+    pub byte_estimates_refreshed: usize,
+    pub lru_candidates_examined: usize,
+    /// Another bounded slice can make progress without waiting for an edit,
+    /// save acknowledgement, pin change, or newly resident payload.
+    ///
+    /// This is deliberately false when the cache is still over capacity but
+    /// every resident candidate is dirty or pinned. UI schedulers must not
+    /// spin on `over_capacity`; only this field requests an immediate follow-up.
+    pub maintenance_pending: bool,
+    /// True when the cache remains above policy after this slice. When
+    /// `maintenance_pending` is false, the remaining entries require an
+    /// external eligibility change (typically save completion or pin release).
     pub over_capacity: bool,
 }
 

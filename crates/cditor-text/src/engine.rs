@@ -2,13 +2,11 @@ use std::{cell::RefCell, sync::Arc};
 
 use fontique::Blob;
 use parley::{
-    Alignment, AlignmentOptions, FontContext, IndentOptions, InlineBox, InlineBoxKind,
-    LayoutContext,
+    Alignment, AlignmentOptions, FontContext, IndentOptions, InlineBox,
+    InlineBoxKind as ParleyInlineBoxKind, LayoutContext,
 };
 
-use super::{
-    ParleyBrush, ParleyLayoutSnapshot, ParleyStyleRun, ParleyTextStyleConfig, parley_style_runs,
-};
+use super::{TextBrush, TextLayoutSnapshot, TextStyleConfig, TextStyleRun, text_style_runs};
 use crate::{TextLayoutInput, TextSnapshot, TextTheme};
 
 thread_local! {
@@ -17,7 +15,7 @@ thread_local! {
 
 struct ParleyContexts {
     font: FontContext,
-    layout: LayoutContext<ParleyBrush>,
+    layout: LayoutContext<TextBrush>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,7 +83,7 @@ pub fn register_font_data(
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub enum ParleyAlignment {
+pub enum TextAlignment {
     #[default]
     Start,
     End,
@@ -95,7 +93,7 @@ pub enum ParleyAlignment {
     Justify,
 }
 
-impl ParleyAlignment {
+impl TextAlignment {
     pub fn from_core(align: cditor_core::rich_text::TextAlign) -> Self {
         match align {
             cditor_core::rich_text::TextAlign::Start => Self::Start,
@@ -117,83 +115,83 @@ impl ParleyAlignment {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct ParleyTextIndent {
+pub struct TextIndent {
     pub amount: f32,
     pub each_line: bool,
     pub hanging: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ParleyInlineBoxKind {
+pub enum InlineBoxKind {
     #[default]
     InFlow,
     OutOfFlow,
     CustomOutOfFlow,
 }
 
-impl ParleyInlineBoxKind {
-    fn as_parley(self) -> InlineBoxKind {
+impl InlineBoxKind {
+    fn as_parley(self) -> ParleyInlineBoxKind {
         match self {
-            Self::InFlow => InlineBoxKind::InFlow,
-            Self::OutOfFlow => InlineBoxKind::OutOfFlow,
-            Self::CustomOutOfFlow => InlineBoxKind::CustomOutOfFlow,
+            Self::InFlow => ParleyInlineBoxKind::InFlow,
+            Self::OutOfFlow => ParleyInlineBoxKind::OutOfFlow,
+            Self::CustomOutOfFlow => ParleyInlineBoxKind::CustomOutOfFlow,
         }
     }
 
-    pub(crate) fn from_parley(kind: InlineBoxKind) -> Self {
+    pub(crate) fn from_parley(kind: ParleyInlineBoxKind) -> Self {
         match kind {
-            InlineBoxKind::InFlow => Self::InFlow,
-            InlineBoxKind::OutOfFlow => Self::OutOfFlow,
-            InlineBoxKind::CustomOutOfFlow => Self::CustomOutOfFlow,
+            ParleyInlineBoxKind::InFlow => Self::InFlow,
+            ParleyInlineBoxKind::OutOfFlow => Self::OutOfFlow,
+            ParleyInlineBoxKind::CustomOutOfFlow => Self::CustomOutOfFlow,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ParleyInlineBoxSpec {
+pub struct InlineBoxSpec {
     pub id: u64,
-    pub kind: ParleyInlineBoxKind,
+    pub kind: InlineBoxKind,
     pub index: usize,
     pub width: f32,
     pub height: f32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ParleyLayoutOptions {
+pub struct TextLayoutOptions {
     pub width: Option<f32>,
     pub display_scale: f32,
     pub quantize: bool,
-    pub alignment: ParleyAlignment,
-    pub base_style: ParleyTextStyleConfig,
+    pub alignment: TextAlignment,
+    pub base_style: TextStyleConfig,
     pub base_text_color: u32,
     pub mono_font_family: String,
-    pub text_indent: ParleyTextIndent,
-    pub inline_boxes: Vec<ParleyInlineBoxSpec>,
+    pub text_indent: TextIndent,
+    pub inline_boxes: Vec<InlineBoxSpec>,
 }
 
-impl Default for ParleyLayoutOptions {
+impl Default for TextLayoutOptions {
     fn default() -> Self {
         Self {
             width: None,
             display_scale: 1.0,
             quantize: true,
-            alignment: ParleyAlignment::Start,
-            base_style: ParleyTextStyleConfig::default(),
+            alignment: TextAlignment::Start,
+            base_style: TextStyleConfig::default(),
             base_text_color: 0,
             mono_font_family: "monospace".to_owned(),
-            text_indent: ParleyTextIndent::default(),
+            text_indent: TextIndent::default(),
             inline_boxes: Vec::new(),
         }
     }
 }
 
-pub fn build_parley_layout(
+pub fn build_text_layout(
     input: &TextLayoutInput,
     theme: TextTheme,
-    options: &ParleyLayoutOptions,
-) -> ParleyLayoutSnapshot {
+    options: &TextLayoutOptions,
+) -> TextLayoutSnapshot {
     let text = input.plain_text();
-    let mut style_runs = parley_style_runs(
+    let mut style_runs = text_style_runs(
         &input.spans,
         &input.kind,
         theme,
@@ -234,7 +232,7 @@ pub fn build_parley_layout(
         }
         layout.break_all_lines(options.width.map(|width| width.max(0.0) * scale));
         layout.align(options.alignment.as_parley(), AlignmentOptions::default());
-        ParleyLayoutSnapshot::new(
+        TextLayoutSnapshot::new(
             TextSnapshot::new(text),
             layout,
             scale,
@@ -247,12 +245,12 @@ pub fn build_parley_layout(
 
 fn ensure_complete_style_coverage(
     text: &str,
-    style_runs: &mut Vec<ParleyStyleRun>,
-    base_style: &ParleyTextStyleConfig,
+    style_runs: &mut Vec<TextStyleRun>,
+    base_style: &TextStyleConfig,
 ) {
     if text.is_empty() {
         if style_runs.is_empty() {
-            style_runs.push(ParleyStyleRun {
+            style_runs.push(TextStyleRun {
                 range: 0..0,
                 style: base_style.clone(),
             });
@@ -260,7 +258,7 @@ fn ensure_complete_style_coverage(
         return;
     }
     if style_runs.is_empty() {
-        style_runs.push(ParleyStyleRun {
+        style_runs.push(TextStyleRun {
             range: 0..text.len(),
             style: base_style.clone(),
         });

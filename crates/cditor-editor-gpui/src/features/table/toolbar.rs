@@ -1,16 +1,8 @@
-#[cfg(test)]
-use crate::block::chrome::BlockHorizontalGeometry;
-use crate::block::chrome::{
-    BLOCK_CONTENT_BORDER_WIDTH_PX, BLOCK_SHELL_BORDER_WIDTH_PX, BLOCK_SHELL_OUTER_PADDING_Y_PX,
-    BlockChromeStyle,
-};
 use crate::editor_view::CditorV2View;
 use crate::input::SingleLineTextInputElement;
 use crate::menu_metrics::{MenuViewportBounds, SECONDARY_MENU_WIDTH_PX, secondary_menu_geometry};
 use crate::theme::GuiTheme;
-#[cfg(test)]
-use cditor_core::rich_text::TableCellAlign;
-use cditor_runtime::{TableViewState, ViewBlockSnapshot};
+use cditor_runtime::TableViewState;
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement, MouseButton,
@@ -21,52 +13,28 @@ use super::menu::{
     TABLE_MENU_PADDING_PX, TABLE_MENU_ROW_HEIGHT_PX, TABLE_MENU_SEARCH_FONT_SIZE_PX,
     TABLE_MENU_SEARCH_GAP_PX, TABLE_MENU_SEARCH_HEIGHT_PX, TABLE_MENU_VIEWPORT_MARGIN_PX,
     TABLE_MENU_WIDTH_PX, TableBackgroundColor, TableMenuAction, TableMenuUiState,
-    filter_table_menu_items, table_axis_header_enabled, table_axis_menu_items,
-    table_menu_action_enabled, table_menu_panel_height, table_menu_position,
+    TableRowInsertDirection, filter_table_menu_items, table_axis_header_enabled,
+    table_axis_menu_items, table_menu_action_enabled, table_menu_panel_height, table_menu_position,
 };
 use super::selection::{TableAxis, TableAxisSelection};
 use super::style::{
     TABLE_AXIS_COLUMN_HANDLE_TOP_PX, TABLE_AXIS_HANDLE_SIZE_PX, TABLE_AXIS_ROW_HANDLE_LEFT_PX,
     TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
 };
+#[path = "toolbar/origin.rs"]
+mod origin;
+pub(crate) use origin::{
+    TableToolbarEditorOrigin, table_content_editor_origin, table_projected_viewport_width_px,
+    table_toolbar_editor_origin,
+};
 const TABLE_COLOR_SUBMENU_GAP_PX: f32 = 6.0;
 const TABLE_COLOR_SUBMENU_PADDING_PX: f32 = 6.0;
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct TableToolbarEditorOrigin {
-    pub x_px: f32,
-    pub y_px: f32,
-}
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct TableMenuAnchor {
     left: f32,
     top: f32,
     height: f32,
 }
-pub(crate) fn table_toolbar_editor_origin(
-    block: &ViewBlockSnapshot,
-    block_top_px: f32,
-    theme: GuiTheme,
-) -> TableToolbarEditorOrigin {
-    table_content_editor_origin(block, block_top_px, theme)
-}
-
-pub(crate) fn table_content_editor_origin(
-    block: &ViewBlockSnapshot,
-    block_top_px: f32,
-    theme: GuiTheme,
-) -> TableToolbarEditorOrigin {
-    let chrome = BlockChromeStyle::from_snapshot(block, theme);
-    let horizontal = chrome.horizontal_geometry();
-    TableToolbarEditorOrigin {
-        x_px: horizontal.text_left_px,
-        y_px: block_top_px
-            + BLOCK_SHELL_BORDER_WIDTH_PX
-            + BLOCK_SHELL_OUTER_PADDING_Y_PX
-            + BLOCK_CONTENT_BORDER_WIDTH_PX
-            + chrome.content_padding_y_px,
-    }
-}
-
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_table_axis_toolbar(
     selection: TableAxisSelection,
@@ -140,6 +108,7 @@ pub(crate) fn render_table_axis_toolbar(
                 item.label,
                 selection,
                 table_view,
+                menu_ui,
                 readonly,
                 theme,
                 view.clone(),
@@ -247,6 +216,7 @@ fn render_table_menu_row(
     label: &'static str,
     selection: TableAxisSelection,
     table_view: &TableViewState,
+    menu_ui: &TableMenuUiState,
     readonly: bool,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
@@ -254,7 +224,13 @@ fn render_table_menu_row(
     let enabled = !readonly && table_menu_action_enabled(action, selection, table_view);
     let active =
         action == TableMenuAction::ToggleHeader && table_axis_header_enabled(selection, table_view);
+    let row_insert = matches!(
+        action,
+        TableMenuAction::InsertRowAbove | TableMenuAction::InsertRowBelow
+    );
     let text_color = table_menu_action_color(action, theme);
+    let action_view = view.clone();
+    let insert_view = view.clone();
     div()
         .id(("table-menu-action", table_menu_action_index(action)))
         .h(px(TABLE_MENU_ROW_HEIGHT_PX))
@@ -268,9 +244,12 @@ fn render_table_menu_row(
         .text_size(px(13.0))
         .text_color(rgb(if enabled { text_color } else { theme.muted }))
         .when(!enabled, |this| this.opacity(0.45))
-        .when(enabled, |this| {
+        .when(enabled && !row_insert, |this| {
             this.cursor_pointer()
                 .hover(move |style| style.bg(rgb(theme.hover_surface)))
+        })
+        .when(enabled && row_insert, |this| {
+            this.hover(move |style| style.bg(rgb(theme.hover_surface)))
         })
         .on_mouse_move({
             let view = view.clone();
@@ -285,26 +264,46 @@ fn render_table_menu_row(
                 }
             }
         })
-        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-            if enabled {
-                view.update(cx, |view, cx| {
-                    view.apply_selected_table_menu_action_from_gui(action, cx);
-                });
-            }
-            cx.stop_propagation();
+        .when(!row_insert, |row| {
+            row.on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                if enabled {
+                    action_view.update(cx, |view, cx| {
+                        view.apply_selected_table_menu_action_from_gui(action, cx);
+                    });
+                }
+                cx.stop_propagation();
+            })
         })
         .child(
             div()
-                .w(px(20.0))
-                .flex_none()
+                .flex_1()
                 .flex()
                 .items_center()
-                .justify_center()
-                .text_size(px(14.0))
-                .font_weight(FontWeight::MEDIUM)
-                .child(action.icon()),
+                .gap(px(8.0))
+                .when(row_insert && enabled, |area| {
+                    area.cursor_pointer().on_mouse_down(
+                        MouseButton::Left,
+                        move |_event, _window, cx| {
+                            insert_view.update(cx, |view, cx| {
+                                view.apply_selected_table_menu_action_from_gui(action, cx);
+                            });
+                            cx.stop_propagation();
+                        },
+                    )
+                })
+                .child(
+                    div()
+                        .w(px(20.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(14.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(action.icon()),
+                )
+                .child(label),
         )
-        .child(div().flex_1().child(label))
         .when(action == TableMenuAction::ToggleHeader, |row| {
             row.child(render_header_toggle(active, enabled, theme))
         })
@@ -316,6 +315,22 @@ fn render_table_menu_row(
                     .child("›"),
             )
         })
+        .when(
+            matches!(
+                action,
+                TableMenuAction::InsertRowAbove | TableMenuAction::InsertRowBelow
+            ),
+            |row| {
+                row.child(render_row_insert_count_control(
+                    action,
+                    row_insert_direction(action),
+                    menu_ui.row_insert_count(row_insert_direction(action)),
+                    enabled,
+                    theme,
+                    view.clone(),
+                ))
+            },
+        )
         .when_some(action.shortcut(), |row, shortcut| {
             row.child(
                 div()
@@ -325,6 +340,116 @@ fn render_table_menu_row(
             )
         })
         .into_any_element()
+}
+
+fn render_row_insert_count_control(
+    action: TableMenuAction,
+    direction: TableRowInsertDirection,
+    count: usize,
+    enabled: bool,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+) -> AnyElement {
+    let minus_view = view.clone();
+    let plus_view = view;
+    div()
+        .w(px(72.0))
+        .h(px(23.0))
+        .flex_none()
+        .flex()
+        .items_center()
+        .rounded(px(5.0))
+        .border_1()
+        .border_color(rgb(theme.border))
+        .bg(rgb(theme.surface))
+        .when(!enabled, |control| control.opacity(0.55))
+        .child(
+            div()
+                .id((
+                    "table-row-insert-count-decrement",
+                    table_menu_action_index(action),
+                ))
+                .w(px(22.0))
+                .h_full()
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_l(px(4.0))
+                .text_size(px(13.0))
+                .text_color(rgb(theme.muted))
+                .when(enabled && count > 1, |button| {
+                    button
+                        .cursor_pointer()
+                        .hover(move |style| style.bg(rgb(theme.hover_surface)))
+                })
+                .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                    if enabled {
+                        minus_view.update(cx, |view, cx| {
+                            view.adjust_table_row_insert_count_from_gui(direction, -1, cx);
+                        });
+                    }
+                    cx.stop_propagation();
+                })
+                .child("−"),
+        )
+        .child(
+            div()
+                .h_full()
+                .flex_1()
+                .flex()
+                .items_center()
+                .justify_center()
+                .border_l_1()
+                .border_r_1()
+                .border_color(rgb(theme.border))
+                .text_size(px(12.0))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(theme.text))
+                .child(count.to_string()),
+        )
+        .child(
+            div()
+                .id((
+                    "table-row-insert-count-increment",
+                    table_menu_action_index(action),
+                ))
+                .w(px(22.0))
+                .h_full()
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_r(px(4.0))
+                .text_size(px(13.0))
+                .text_color(rgb(theme.muted))
+                .when(
+                    enabled && count < super::menu::TABLE_MENU_MAX_ROW_INSERT_COUNT,
+                    |button| {
+                        button
+                            .cursor_pointer()
+                            .hover(move |style| style.bg(rgb(theme.hover_surface)))
+                    },
+                )
+                .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                    if enabled {
+                        plus_view.update(cx, |view, cx| {
+                            view.adjust_table_row_insert_count_from_gui(direction, 1, cx);
+                        });
+                    }
+                    cx.stop_propagation();
+                })
+                .child("+"),
+        )
+        .into_any_element()
+}
+
+const fn row_insert_direction(action: TableMenuAction) -> TableRowInsertDirection {
+    match action {
+        TableMenuAction::InsertRowAbove => TableRowInsertDirection::Above,
+        TableMenuAction::InsertRowBelow => TableRowInsertDirection::Below,
+        _ => panic!("row insert direction requested for a non-row-insert action"),
+    }
 }
 
 fn render_header_toggle(active: bool, enabled: bool, theme: GuiTheme) -> AnyElement {
@@ -495,185 +620,5 @@ fn table_menu_anchor(
 }
 
 #[cfg(test)]
-mod tests {
-    use cditor_core::block::{BlockChromeSnapshot, BlockListInfo, BlockPrefixSnapshot};
-    use cditor_core::layout::BlockLayoutMeta;
-    use cditor_core::rich_text::{BlockAttrs, BlockPayloadView, RichBlockKind, TablePayload};
-
-    use super::*;
-
-    #[test]
-    fn destructive_table_actions_use_danger_text() {
-        let theme = GuiTheme::light();
-        assert_eq!(
-            table_menu_action_color(TableMenuAction::DeleteRow, theme),
-            theme.danger
-        );
-        assert_eq!(
-            table_menu_action_color(TableMenuAction::InsertRowAbove, theme),
-            theme.text
-        );
-    }
-
-    fn table_block_with_depth(depth: u8) -> ViewBlockSnapshot {
-        ViewBlockSnapshot {
-            block_id: 7,
-            visible_index: 0,
-            depth: depth as u16,
-            chrome: BlockChromeSnapshot {
-                list_info: BlockListInfo::with_depth(depth.into()),
-                prefix: BlockPrefixSnapshot::None,
-                has_children: false,
-                collapsed: false,
-            },
-            kind: RichBlockKind::Table,
-            attrs: BlockAttrs::default(),
-            payload: BlockPayloadView::Placeholder {
-                estimated_height: 96.0,
-            },
-            layout: BlockLayoutMeta::new(1, 96.0),
-            selected: false,
-            selection_range: None,
-            selection_overlay: false,
-            focused: false,
-            caret_offset: None,
-            caret_affinity: None,
-            marked_range: None,
-            table_view: None,
-            focused_table_cell: None,
-            focused_table_cell_offset: None,
-            pinned: false,
-            placeholder: false,
-        }
-    }
-
-    fn depth_two_table_editor_x_px() -> f32 {
-        BlockHorizontalGeometry::for_depth(2).text_left_px
-    }
-
-    #[test]
-    fn menu_anchor_left_matches_selected_gutter_left_edge() {
-        let table_view = table_view_with_two_by_two_cells();
-
-        assert_eq!(
-            table_menu_anchor(
-                TableAxisSelection::new(7, TableAxis::Column, 1),
-                &table_view
-            ),
-            TableMenuAnchor {
-                left: 169.0,
-                top: TABLE_AXIS_COLUMN_HANDLE_TOP_PX,
-                height: TABLE_AXIS_HANDLE_SIZE_PX,
-            }
-        );
-        assert_eq!(
-            table_menu_anchor(TableAxisSelection::new(7, TableAxis::Row, 1), &table_view),
-            TableMenuAnchor {
-                left: TABLE_AXIS_ROW_HANDLE_LEFT_PX,
-                top: 43.0,
-                height: TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX,
-            }
-        );
-
-        let mut scrolled = table_view;
-        scrolled.horizontal_scroll_offset_px = -80.0;
-        assert_eq!(
-            table_menu_anchor(TableAxisSelection::new(7, TableAxis::Column, 1), &scrolled).left,
-            89.0
-        );
-    }
-
-    #[test]
-    fn table_color_submenu_has_a_visible_gap_and_stays_inside_menu_container() {
-        let viewport = MenuViewportBounds {
-            left: 120.0,
-            top: 80.0,
-            right: 1_020.0,
-            bottom: 680.0,
-        };
-        let submenu = secondary_menu_geometry(
-            240.0,
-            140.0,
-            TABLE_MENU_WIDTH_PX,
-            180.0,
-            SECONDARY_MENU_WIDTH_PX,
-            table_background_submenu_height(),
-            viewport,
-            TABLE_COLOR_SUBMENU_GAP_PX,
-            TABLE_MENU_VIEWPORT_MARGIN_PX,
-        );
-
-        assert_eq!(
-            submenu.left - (240.0 + TABLE_MENU_WIDTH_PX),
-            TABLE_COLOR_SUBMENU_GAP_PX
-        );
-        assert!(submenu.left >= viewport.left + TABLE_MENU_VIEWPORT_MARGIN_PX);
-        assert!(
-            submenu.left + SECONDARY_MENU_WIDTH_PX
-                <= viewport.right - TABLE_MENU_VIEWPORT_MARGIN_PX
-        );
-        assert_eq!(
-            table_background_submenu_height(),
-            TABLE_COLOR_SUBMENU_PADDING_PX * 2.0
-                + TABLE_MENU_ROW_HEIGHT_PX * TableBackgroundColor::ALL.len() as f32
-        );
-    }
-
-    #[test]
-    fn table_toolbar_editor_origin_tracks_block_shell_projection() {
-        let origin =
-            table_toolbar_editor_origin(&table_block_with_depth(2), 120.0, GuiTheme::light());
-
-        assert_eq!(
-            origin,
-            TableToolbarEditorOrigin {
-                x_px: depth_two_table_editor_x_px(),
-                y_px: 130.0,
-            }
-        );
-    }
-
-    #[test]
-    fn table_content_editor_origin_matches_toolbar_origin() {
-        let origin =
-            table_content_editor_origin(&table_block_with_depth(2), 120.0, GuiTheme::light());
-
-        assert_eq!(
-            origin,
-            TableToolbarEditorOrigin {
-                x_px: depth_two_table_editor_x_px(),
-                y_px: 130.0,
-            }
-        );
-    }
-
-    fn table_view_with_two_by_two_cells() -> TableViewState {
-        TableViewState {
-            table: TablePayload::default(),
-            row_count: 2,
-            col_count: 2,
-            width_px: 240.0,
-            height_px: 72.0,
-            column_widths_px: vec![120.0, 120.0],
-            row_heights_px: vec![36.0, 36.0],
-            horizontal_scroll_offset_px: 0.0,
-            visible_cells: vec![cditor_runtime::TableVisibleCell {
-                position: cditor_runtime::TableCellPosition { row: 1, col: 1 },
-                row_span: 1,
-                col_span: 1,
-                x_px: 120.0,
-                y_px: 36.0,
-                width_px: 120.0,
-                height_px: 36.0,
-                header: false,
-                align: TableCellAlign::Left,
-                background_color: None,
-                spans: Vec::new(),
-            }],
-            focused_cell: None,
-            focused_cell_offset: None,
-            focused_cell_affinity: None,
-            focused_cell_selection_range: None,
-        }
-    }
-}
+#[path = "toolbar/tests.rs"]
+mod tests;

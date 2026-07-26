@@ -9,6 +9,7 @@ use cditor_core::block::{BlockDropTarget, DragPoint, GutterBlockDragState};
 use cditor_core::ids::BlockId;
 
 use super::geometry::drop_target_for_document_y_from_rects;
+use super::gutter_action::GutterToolbarTransition;
 
 use super::gutter_drag_metrics::{
     GUTTER_DRAG_AUTO_SCROLL_TICK_MS, gutter_drag_auto_scroll_delta, gutter_drag_guideline_geometry,
@@ -18,7 +19,7 @@ use super::gutter_drag_metrics::{
 fn gutter_drag_pointer_viewport_y_for_view(view: &CditorV2View, window_y: f32) -> f64 {
     f64::from(window_y)
         - view
-            .infer_document_viewport_origin()
+            .document_viewport_origin()
             .map(|origin| origin.y)
             .unwrap_or(0.0)
 }
@@ -26,13 +27,10 @@ fn gutter_drag_pointer_viewport_y_for_view(view: &CditorV2View, window_y: f32) -
 fn gutter_drag_pointer_document_y_for_view(view: &CditorV2View, window_y: f32) -> f64 {
     gutter_drag_pointer_document_y(
         window_y,
-        view.infer_document_viewport_origin()
+        view.document_viewport_origin()
             .map(|origin| origin.y)
             .unwrap_or(0.0),
-        view.ready_session()
-            .and_then(|session| session.layout_viewport().ok())
-            .map(|snapshot| snapshot.global_scroll_top)
-            .unwrap_or(0.0),
+        view.interaction.presented_scroll_top,
     )
 }
 
@@ -47,9 +45,7 @@ impl CditorV2View {
         window.focus(&self.focus.editor, cx);
         self.interaction.hovered_block_id = Some(block_id);
         self.interaction.action_block_id = Some(block_id);
-        self.overlay.gutter_toolbar_block_id = Some(block_id);
-        self.overlay.block_transform_menu_open = false;
-        self.overlay.color_menu_open = false;
+        self.transition_gutter_toolbar(GutterToolbarTransition::PointerDown);
         self.interaction.text_drag_selection = None;
         self.interaction.block_drag_selection = BlockDragSelectionController::default();
         self.interaction.gutter_block_drag = Some(GutterBlockDragState::new(
@@ -75,10 +71,8 @@ impl CditorV2View {
         };
         let point = DragPoint::new(f32::from(position.x), f32::from(position.y));
         let threshold_changed = drag.update_position(point);
-        if drag.exceeded_threshold {
-            self.overlay.gutter_toolbar_block_id = None;
-            self.overlay.block_transform_menu_open = false;
-            self.overlay.color_menu_open = false;
+        if threshold_changed && drag.exceeded_threshold {
+            self.transition_gutter_toolbar(GutterToolbarTransition::DragReleased);
         }
         let auto_scrolled = if drag.exceeded_threshold {
             self.apply_gutter_drag_auto_scroll(gutter_drag_pointer_viewport_y_for_view(
@@ -141,12 +135,16 @@ impl CditorV2View {
             return;
         }
         self.interaction.gutter_drag_auto_scroll_scheduled = true;
+        let document_epoch = self.focus.document_epoch().current();
         let tick = cx.background_spawn(async move {
             std::thread::sleep(Duration::from_millis(GUTTER_DRAG_AUTO_SCROLL_TICK_MS));
         });
         cx.spawn(async move |view, cx| {
             let _ = tick.await;
             let _ = view.update(cx, |view, cx| {
+                if !view.focus.document_epoch().matches(document_epoch) {
+                    return;
+                }
                 view.interaction.gutter_drag_auto_scroll_scheduled = false;
                 let changed = view.tick_gutter_drag_auto_scroll();
                 if changed {

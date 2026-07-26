@@ -112,3 +112,12 @@ fn only_gutter_toolbar_uses_click_outside_dismissal() {
     ));
     assert!(floating_toolbar_dismisses_on_mouse_down_out(gutter_toolbar));
 }
+
+#[test]
+fn ai_actions_use_a_real_scroll_range_for_all_commands() {
+    let content_height = AI_ACTION_COUNT as f32 * AI_ACTION_ROW_HEIGHT_PX;
+
+    assert_eq!(AI_ACTION_COUNT, 6);
+    assert!(content_height > AI_ACTIONS_VIEWPORT_HEIGHT_PX);
+    assert_eq!(content_height, 150.0);
+}

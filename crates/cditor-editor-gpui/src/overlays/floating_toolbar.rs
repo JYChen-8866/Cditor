@@ -1,3 +1,4 @@
+use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Context, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement,
@@ -19,6 +20,9 @@ const TOOLBAR_WIDTH_PX: f32 = 194.0;
 const TOOLBAR_HEIGHT_PX: f32 = 324.0;
 const VIEWPORT_MARGIN_PX: f32 = 10.0;
 const TOOLBAR_ANCHOR_GAP_PX: f32 = 8.0;
+const AI_ACTIONS_VIEWPORT_HEIGHT_PX: f32 = 110.0;
+const AI_ACTION_ROW_HEIGHT_PX: f32 = 25.0;
+const AI_ACTION_COUNT: usize = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InlineFormatAction {
@@ -142,6 +146,7 @@ pub fn render_floating_toolbar(
     prompt: Option<&AiPromptState>,
     prompt_focus: FocusHandle,
     color_scroll_handle: &ScrollHandle,
+    ai_actions_scroll_handle: &ScrollHandle,
 ) -> AnyElement {
     let panel = div()
         .absolute()
@@ -195,7 +200,12 @@ pub fn render_floating_toolbar(
                 .text_color(rgb(theme.muted))
                 .child("AI"),
         )
-        .child(render_ai_actions(theme, view.clone(), state.ai_enabled))
+        .child(render_ai_actions(
+            theme,
+            view.clone(),
+            state.ai_enabled,
+            ai_actions_scroll_handle,
+        ))
         .child(render_custom_ai_button(
             theme,
             view.clone(),
@@ -512,7 +522,12 @@ fn render_format_button(
         .into_any_element()
 }
 
-fn render_ai_actions(theme: GuiTheme, view: Entity<CditorV2View>, enabled: bool) -> AnyElement {
+fn render_ai_actions(
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    enabled: bool,
+    scroll_handle: &ScrollHandle,
+) -> AnyElement {
     const ACTIONS: &[(&str, &str)] = &[
         ("改进写作", "Improve writing"),
         ("校对", "Fix spelling and grammar"),
@@ -521,14 +536,22 @@ fn render_ai_actions(theme: GuiTheme, view: Entity<CditorV2View>, enabled: bool)
         ("解释", "Explain this text"),
         ("翻译", "Translate this text"),
     ];
-    div()
-        .relative()
-        .h(px(110.0))
-        .w_full()
-        .overflow_hidden()
-        .children(ACTIONS.iter().take(4).map(|(label, instruction)| {
+    debug_assert_eq!(ACTIONS.len(), AI_ACTION_COUNT);
+    let estimated_content_height = ACTIONS.len() as f32 * AI_ACTION_ROW_HEIGHT_PX;
+    let scroll_view = view.clone();
+    let content = div()
+        .id("floating-toolbar-ai-actions-scroll")
+        .size_full()
+        .pr(px(10.0))
+        .overflow_y_scroll()
+        .track_scroll(scroll_handle)
+        .on_scroll_wheel(move |_event, _window, cx| {
+            scroll_view.update(cx, |_view, cx| cx.notify());
+        })
+        .children(ACTIONS.iter().map(|(label, instruction)| {
             div()
-                .h(px(25.0))
+                .h(px(AI_ACTION_ROW_HEIGHT_PX))
+                .flex_none()
                 .w_full()
                 .px(px(7.0))
                 .flex()
@@ -551,16 +574,28 @@ fn render_ai_actions(theme: GuiTheme, view: Entity<CditorV2View>, enabled: bool)
                 })
                 .child(*label)
                 .into_any_element()
-        }))
+        }));
+
+    div()
+        .relative()
+        .h(px(AI_ACTIONS_VIEWPORT_HEIGHT_PX))
+        .w_full()
+        .overflow_hidden()
+        .child(content)
         .child(
             div()
                 .absolute()
-                .right(px(3.0))
-                .top(px(4.0))
-                .w(px(4.0))
-                .h(px(48.0))
-                .rounded(px(2.0))
-                .bg(rgb(theme.scrollbar)),
+                .right_0()
+                .top_0()
+                .w(px(10.0))
+                .h(px(AI_ACTIONS_VIEWPORT_HEIGHT_PX))
+                .child(InteractiveScrollbar::for_scroll_handle(
+                    ScrollbarAxis::Vertical,
+                    scroll_handle.clone(),
+                    AI_ACTIONS_VIEWPORT_HEIGHT_PX,
+                    estimated_content_height,
+                    InteractiveScrollbarStyle::notion(theme.scrollbar, theme.scrollbar_hover),
+                )),
         )
         .into_any_element()
 }

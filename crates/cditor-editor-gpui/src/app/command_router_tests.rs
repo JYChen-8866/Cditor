@@ -152,6 +152,7 @@ fn representative_commands() -> Vec<CditorCommand> {
             block_id: 3,
             axis: TableAxis::Row,
             index: 0,
+            count: 1,
         },
         CditorCommand::TableDeleteAxis {
             block_id: 3,
@@ -420,6 +421,7 @@ fn table_command_reports_transaction_and_advances_revision_once(cx: &mut TestApp
                     block_id: 3,
                     axis: TableAxis::Row,
                     index: 1,
+                    count: 1,
                 },
                 CommandSource::Toolbar,
                 cx,
@@ -532,6 +534,98 @@ fn keyboard_document_mutations_are_owned_by_runtime_dispatch() {
 }
 
 #[gpui::test]
+fn keyboard_enter_reveals_the_new_focused_block_in_the_document_viewport(cx: &mut TestAppContext) {
+    let payloads = (1..=10)
+        .map(|block_id| BlockPayloadRecord::rich_text(block_id, RichBlockKind::Paragraph, "line"))
+        .collect();
+    let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(1, payloads, 100.0);
+    crate::test_support::focus_block_at_offset(&mut runtime, 10, "line".len());
+    let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+    view.update(cx, |view, cx| {
+        let before = view
+            .ready_session()
+            .unwrap()
+            .layout_viewport()
+            .unwrap()
+            .global_scroll_top;
+
+        let outcome = view
+            .dispatch_command(CditorCommand::HandleEnter, CommandSource::Keyboard, cx)
+            .unwrap();
+        let after = view
+            .ready_session()
+            .unwrap()
+            .layout_viewport()
+            .unwrap()
+            .global_scroll_top;
+
+        assert!(outcome.changed());
+        assert!(after > before);
+    });
+}
+
+#[test]
+fn only_keyboard_editing_commands_request_document_caret_reveal() {
+    assert!(keyboard_command_reveals_focused_block(
+        &CditorCommand::HandleEnter,
+        CommandSource::Keyboard,
+    ));
+    assert!(keyboard_command_reveals_focused_block(
+        &CditorCommand::DeleteBackward,
+        CommandSource::Keyboard,
+    ));
+    assert!(!keyboard_command_reveals_focused_block(
+        &CditorCommand::ToggleBold,
+        CommandSource::Keyboard,
+    ));
+    assert!(!keyboard_command_reveals_focused_block(
+        &CditorCommand::HandleEnter,
+        CommandSource::Sdk,
+    ));
+}
+
+#[gpui::test]
+fn code_caret_reveal_is_requested_once_after_a_line_break_not_ordinary_input(
+    cx: &mut TestAppContext,
+) {
+    let block_id = 1;
+    let runtime = cditor_runtime::DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            block_id,
+            RichBlockKind::Code { language: None },
+            "let value = 1;",
+        )],
+        720.0,
+    );
+    let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+    view.update(cx, |view, cx| {
+        view.dispatch_command(
+            CditorCommand::FocusBlock { block_id },
+            CommandSource::Keyboard,
+            cx,
+        )
+        .unwrap();
+        let session = view.ready_session().unwrap().clone();
+        session_realtime_replace(&session, "x");
+        assert!(
+            view.interaction
+                .code_caret_reveal_after_line_break
+                .is_empty()
+        );
+
+        let outcome = view
+            .dispatch_command(CditorCommand::HandleEnter, CommandSource::Keyboard, cx)
+            .unwrap();
+        assert!(outcome.changed());
+        assert!(view.take_code_caret_reveal_after_line_break(block_id));
+        assert!(!view.take_code_caret_reveal_after_line_break(block_id));
+    });
+}
+
+#[gpui::test]
 fn down_placer_focus_without_document_change_does_not_mark_the_editor_dirty(
     cx: &mut TestAppContext,
 ) {
@@ -563,63 +657,10 @@ fn down_placer_focus_without_document_change_does_not_mark_the_editor_dirty(
         );
         assert_eq!(
             view.save_status(),
-            &crate::persistence::EditorSaveStatus::Clean
+            &crate::persistence::EditorSaveStatus::LocallySaved
         );
     });
 }
 
-#[test]
-fn readonly_policy_allows_query_and_clipboard_without_allowing_mutation() {
-    assert!(!command_mutates_document(&CditorCommand::SelectAll));
-    assert!(!command_mutates_document(&CditorCommand::CopySelection));
-    assert!(!command_mutates_document(&CditorCommand::MoveCaret {
-        direction: CaretDirection::NextVisual,
-        extend_selection: false,
-    }));
-    assert!(command_mutates_document(&CditorCommand::CutSelection));
-    assert!(command_mutates_document(&CditorCommand::ToggleBold));
-}
-
-#[test]
-fn inline_mark_query_reports_checked_mixed_and_unchecked() {
-    let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(
-        1,
-        vec![BlockPayloadRecord {
-            block_id: 1,
-            content_version: 1,
-            kind: RichBlockKind::Paragraph,
-            payload: BlockPayload::RichText {
-                spans: vec![
-                    InlineSpan {
-                        text: "bold".to_owned(),
-                        marks: vec![InlineMark::Bold],
-                    },
-                    InlineSpan::plain(" plain"),
-                ],
-            },
-        }],
-        720.0,
-    );
-    crate::test_support::focus_block_at_offset(&mut runtime, 1, 0);
-    crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 1, 4);
-    assert_eq!(
-        runtime
-            .query_editor_command(&CditorCommand::ToggleBold)
-            .check,
-        CommandCheckState::Checked
-    );
-
-    crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 1, 10);
-    assert_eq!(
-        runtime
-            .query_editor_command(&CditorCommand::ToggleBold)
-            .check,
-        CommandCheckState::Mixed
-    );
-    assert_eq!(
-        runtime
-            .query_editor_command(&CditorCommand::ToggleItalic)
-            .check,
-        CommandCheckState::Unchecked
-    );
-}
+#[path = "command_router_tests/policy.rs"]
+mod policy;

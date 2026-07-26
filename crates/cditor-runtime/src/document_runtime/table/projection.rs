@@ -2,15 +2,16 @@ use super::layout::table_layout_from_payload;
 use super::*;
 
 pub(in crate::document_runtime) fn table_view_state_from_payload(
-    table: &cditor_core::rich_text::TablePayload,
+    table: TablePayloadSnapshot,
     focused_cell: Option<TableCellPosition>,
     focused_cell_offset: Option<usize>,
     focused_cell_affinity: Option<TextAffinity>,
     focused_cell_selection_range: Option<Range<usize>>,
     horizontal_scroll_offset_px: f32,
 ) -> TableViewState {
-    let geometry = table_layout_from_payload(table);
-    let visible_cells = table
+    let table_payload = table.as_ref();
+    let geometry = table_layout_from_payload(table_payload);
+    let visible_cells = table_payload
         .visible_cells()
         .map(|(row, col, cell)| {
             let (row_span, col_span) = match cell.merge {
@@ -25,15 +26,15 @@ pub(in crate::document_runtime) fn table_view_state_from_payload(
                 y_px: geometry.y_offsets.get(row).copied().unwrap_or(0.0),
                 width_px: span_size(&geometry.column_widths, col, col_span),
                 height_px: span_size(&geometry.row_heights, row, row_span),
-                header: is_table_header_cell(table, row, col),
+                header: is_table_header_cell(table_payload, row, col),
                 align: cell.align,
                 background_color: cell.style.background_color.clone(),
-                spans: cell.spans.clone(),
+                spans: TableCellSpansSnapshot::from_table_cell(table.clone(), row, col),
             }
         })
         .collect::<Vec<_>>();
     TableViewState {
-        table: table.clone(),
+        table,
         row_count: geometry.row_count,
         col_count: geometry.col_count,
         width_px: geometry.width_px,

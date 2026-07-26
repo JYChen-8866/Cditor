@@ -7,8 +7,7 @@ use gpui::{
 use crate::editor_view::CditorV2View;
 use crate::menu_metrics::SECONDARY_MENU_WIDTH_PX;
 use crate::presentation::block_registry::{
-    TransformBlockPresentation, transform_block_presentations, transform_presentation_by_tag,
-    transform_presentation_for_kind,
+    TransformBlockPresentation, block_presentation_registry,
 };
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
@@ -53,14 +52,17 @@ impl BlockTransformAction {
     pub const CODE_BLOCK: Self = Self(9);
 
     pub fn all() -> Vec<Self> {
-        transform_block_presentations()
+        block_presentation_registry()
+            .transform_presentations()
             .into_iter()
             .map(|presentation| Self(presentation.kind_tag))
             .collect()
     }
 
     pub fn from_kind(kind: &RichBlockKind) -> Option<Self> {
-        transform_presentation_for_kind(kind).map(|presentation| Self(presentation.kind_tag))
+        block_presentation_registry()
+            .transform_for_kind(kind)
+            .map(|presentation| Self(presentation.kind_tag))
     }
 
     pub fn kind(self) -> RichBlockKind {
@@ -68,7 +70,8 @@ impl BlockTransformAction {
     }
 
     fn metadata(self) -> TransformBlockPresentation {
-        transform_presentation_by_tag(self.0)
+        block_presentation_registry()
+            .transform_by_tag(self.0)
             .expect("transform action must reference registered metadata")
     }
 

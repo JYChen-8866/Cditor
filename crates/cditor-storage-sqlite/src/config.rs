@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use cditor_storage::{StorageError, StorageResult};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqliteDurability {
     Full,
@@ -50,4 +52,32 @@ impl SqliteStorageOptions {
         self.max_connections = max_connections.clamp(1, 8);
         self
     }
+}
+
+pub(crate) fn prepare_path(options: &SqliteStorageOptions) -> StorageResult<()> {
+    if options.path.as_os_str().is_empty() {
+        return Err(StorageError::InvalidConfiguration(
+            "SQLite database path cannot be empty".to_owned(),
+        ));
+    }
+    if !options.create_if_missing && !options.path.exists() {
+        return Err(StorageError::InvalidConfiguration(format!(
+            "SQLite database does not exist: {}",
+            options.path.display()
+        )));
+    }
+    if !(1..=8).contains(&options.max_connections) {
+        return Err(StorageError::InvalidConfiguration(format!(
+            "SQLite max_connections must be between 1 and 8, got {}",
+            options.max_connections
+        )));
+    }
+    if let Some(parent) = options
+        .path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent).map_err(|error| StorageError::Io(error.to_string()))?;
+    }
+    Ok(())
 }

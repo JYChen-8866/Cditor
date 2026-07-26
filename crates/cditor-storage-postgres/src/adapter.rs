@@ -18,8 +18,10 @@ use crate::types::{
 };
 use crate::{
     EditTransactionVersions, PostgresDocumentStore, PostgresLayoutCacheStore, PostgresPayloadStore,
-    PostgresPoolConfig, PostgresTransactionStore, create_pg_pool, run_migrations,
+    PostgresTransactionStore,
 };
+#[cfg(test)]
+use crate::{PostgresPoolConfig, create_pg_pool, run_migrations};
 
 #[derive(Debug, Clone)]
 pub struct PostgresDocumentStorage {
@@ -39,6 +41,7 @@ impl PostgresDocumentStorage {
         }
     }
 
+    #[cfg(test)]
     pub async fn from_url(url: impl Into<String>) -> StorageResult<Self> {
         let pool = create_pg_pool(&PostgresPoolConfig::new(url))
             .await
@@ -47,14 +50,17 @@ impl PostgresDocumentStorage {
         Ok(Self::from_pool(pool))
     }
 
+    #[cfg(test)]
     pub fn pool(&self) -> &PgPool {
         &self.pool
     }
 
+    #[cfg(test)]
     pub fn document_store(&self) -> &PostgresDocumentStore {
         &self.document_store
     }
 
+    #[cfg(test)]
     pub fn payload_store(&self) -> &PostgresPayloadStore {
         &self.payload_store
     }
@@ -87,7 +93,7 @@ impl PostgresDocumentStorage {
             1,
             None,
             0,
-            kind_tag_for_rich_block_kind(&RichBlockKind::Paragraph),
+            kind_tag_for_rich_block_kind(&RichBlockKind::Heading { level: 1 }),
             0,
         )];
         self.document_store
@@ -99,7 +105,7 @@ impl PostgresDocumentStorage {
                 document_id,
                 &[BlockPayloadRecord::rich_text(
                     1,
-                    RichBlockKind::Paragraph,
+                    RichBlockKind::Heading { level: 1 },
                     "",
                 )],
             )

@@ -14,7 +14,7 @@
 Collection、Property、View、Operation、Actor、Device、Asset）统一为"UUIDv7 或
 ULID 128 位"，允许离线生成，但未裁决具体格式；Block sibling 顺序要求可比较的
 fractional order key，未裁决编码。当前代码的 `DocumentId`/`BlockId` 是进程内
-`u64`（`crates/core/src/ids.rs`），顺序依赖 `Vec` 位置，两者都不能进入网络协议
+`u64`（`crates/cditor-core/src/ids.rs`），顺序依赖 `Vec` 位置，两者都不能进入网络协议
 或多设备持久化。
 
 ## 2. 候选方案

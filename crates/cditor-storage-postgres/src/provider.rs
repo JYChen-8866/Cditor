@@ -7,10 +7,7 @@ use cditor_storage::{
     DocumentStorage, StorageBackendKind, StorageError, StorageProvider, StorageResult,
 };
 
-use crate::{
-    LargeDemoSeedOptions, PostgresDocumentStorage, PostgresPoolConfig, create_pg_pool,
-    ensure_large_mixed_demo_seeded, run_migrations,
-};
+use crate::{PostgresDocumentStorage, PostgresPoolConfig, create_pg_pool, run_migrations};
 
 #[derive(Clone)]
 enum PostgresConnection {
@@ -21,7 +18,6 @@ enum PostgresConnection {
 #[derive(Clone)]
 pub struct PostgresStorageProvider {
     connection: PostgresConnection,
-    seed: Option<LargeDemoSeedOptions>,
 }
 
 impl std::fmt::Debug for PostgresStorageProvider {
@@ -33,7 +29,6 @@ impl std::fmt::Debug for PostgresStorageProvider {
         formatter
             .debug_struct("PostgresStorageProvider")
             .field("connection", &connection)
-            .field("has_seed", &self.seed.is_some())
             .finish()
     }
 }
@@ -42,20 +37,13 @@ impl PostgresStorageProvider {
     pub fn from_url(url: impl Into<String>) -> Self {
         Self {
             connection: PostgresConnection::Url(url.into()),
-            seed: None,
         }
     }
 
     pub fn from_pool(pool: PgPool) -> Self {
         Self {
             connection: PostgresConnection::Pool(pool),
-            seed: None,
         }
-    }
-
-    pub fn with_large_demo_seed(mut self, options: LargeDemoSeedOptions) -> Self {
-        self.seed = Some(options);
-        self
     }
 
     async fn pool(&self) -> StorageResult<PgPool> {
@@ -66,16 +54,6 @@ impl PostgresStorageProvider {
             PostgresConnection::Pool(pool) => pool.clone(),
         };
         run_migrations(&pool).await.map_err(storage_error)?;
-        if let Some(seed) = &self.seed {
-            let storage = PostgresDocumentStorage::from_pool(pool.clone());
-            ensure_large_mixed_demo_seeded(
-                storage.document_store(),
-                storage.payload_store(),
-                *seed,
-            )
-            .await
-            .map_err(storage_error)?;
-        }
         Ok(pool)
     }
 }
@@ -87,11 +65,7 @@ impl StorageProvider for PostgresStorageProvider {
     }
 
     fn open_timeout(&self) -> std::time::Duration {
-        if self.seed.is_some() {
-            std::time::Duration::from_secs(30 * 60)
-        } else {
-            std::time::Duration::from_secs(90)
-        }
+        std::time::Duration::from_secs(90)
     }
 
     async fn open(&self) -> StorageResult<Arc<dyn DocumentStorage>> {
@@ -111,25 +85,13 @@ fn storage_error(error: impl std::fmt::Display) -> StorageError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pg_document_id_from_runtime;
 
     #[test]
-    fn postgres_provider_exposes_backend_owned_timeout_policy() {
+    fn postgres_provider_exposes_backend_owned_timeout_policy_without_credentials() {
         let regular = PostgresStorageProvider::from_url("postgres://localhost/cditor");
-        let seeded = regular
-            .clone()
-            .with_large_demo_seed(LargeDemoSeedOptions::new(
-                pg_document_id_from_runtime(42),
-                7,
-                100_000,
-            ));
 
         assert_eq!(regular.label(), "PostgreSQL");
         assert_eq!(regular.open_timeout(), std::time::Duration::from_secs(90));
-        assert_eq!(
-            seeded.open_timeout(),
-            std::time::Duration::from_secs(30 * 60)
-        );
         assert!(!format!("{regular:?}").contains("postgres://"));
     }
 }

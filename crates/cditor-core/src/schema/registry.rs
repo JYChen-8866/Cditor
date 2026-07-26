@@ -15,30 +15,6 @@ use super::{CURRENT_BLOCK_PAYLOAD, SchemaVersion};
 pub type PayloadMigrator =
     fn(serde_json::Value, SchemaVersion) -> Result<serde_json::Value, String>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SlashMenuMetadata {
-    pub order: u16,
-    pub icon: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
-    pub keywords: &'static [&'static str],
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TransformMenuMetadata {
-    pub order: u16,
-    pub icon: &'static str,
-    pub label: &'static str,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct BlockMenuMetadata {
-    pub slash: Option<SlashMenuMetadata>,
-    pub transform: Option<TransformMenuMetadata>,
-    /// Runtime may losslessly seed this kind from a source block's plain-text export.
-    pub create_from_text: bool,
-}
-
 /// Block 能力位（总设计 7.3 最小集）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlockCapabilities {
@@ -72,6 +48,8 @@ pub struct BlockCapabilities {
     pub export_html: bool,
     /// 文本参与协作合并。
     pub collaborative_text: bool,
+    /// Runtime 可将安全导出的纯文本构造成该 kind。
+    pub plain_text_conversion_target: bool,
     /// payload 以未知 envelope 无损保留（unknown/plugin block）。
     pub lossless_unknown: bool,
 }
@@ -120,6 +98,7 @@ impl BlockCapabilities {
             export_markdown: false,
             export_html: false,
             collaborative_text: false,
+            plain_text_conversion_target: false,
             lossless_unknown: false,
         }
     }
@@ -130,11 +109,10 @@ impl BlockCapabilities {
 pub struct BlockDescriptor {
     pub kind_tag: u16,
     pub name: &'static str,
-    /// Canonical value used when a menu creates this parameterized kind.
+    /// Canonical semantic value for a parameterized kind.
     pub default_kind: RichBlockKind,
     pub payload_version: SchemaVersion,
     pub capabilities: BlockCapabilities,
-    pub menu: BlockMenuMetadata,
     pub migrator: Option<PayloadMigrator>,
 }
 
@@ -212,38 +190,6 @@ impl BlockRegistry {
         self.by_tag.contains_key(&tag)
     }
 
-    pub fn slash_descriptors(&self) -> Vec<&BlockDescriptor> {
-        let mut descriptors: Vec<_> = self
-            .by_tag
-            .values()
-            .filter(|descriptor| descriptor.menu.slash.is_some())
-            .collect();
-        descriptors.sort_by_key(|descriptor| {
-            descriptor
-                .menu
-                .slash
-                .expect("filtered slash descriptor")
-                .order
-        });
-        descriptors
-    }
-
-    pub fn transform_descriptors(&self) -> Vec<&BlockDescriptor> {
-        let mut descriptors: Vec<_> = self
-            .by_tag
-            .values()
-            .filter(|descriptor| descriptor.menu.transform.is_some())
-            .collect();
-        descriptors.sort_by_key(|descriptor| {
-            descriptor
-                .menu
-                .transform
-                .expect("filtered transform descriptor")
-                .order
-        });
-        descriptors
-    }
-
     /// 把旧版本 payload body 迁移到当前版本。
     pub fn migrate_payload(
         &self,
@@ -282,173 +228,8 @@ fn unknown_descriptor() -> BlockDescriptor {
             lossless_unknown: true,
             ..BlockCapabilities::empty()
         },
-        menu: BlockMenuMetadata::default(),
         migrator: None,
     }
-}
-
-fn menu_metadata_for_kind(kind: &RichBlockKind) -> BlockMenuMetadata {
-    use RichBlockKind as Kind;
-
-    let slash = match kind {
-        Kind::Paragraph => slash(
-            0,
-            "T",
-            "Text",
-            "Just start writing with plain text.",
-            &["paragraph", "text"],
-        ),
-        Kind::Heading { level: 1 } => slash(
-            1,
-            "H1",
-            "Heading 1",
-            "Big section heading.",
-            &["h1", "heading"],
-        ),
-        Kind::Heading { level: 2 } => slash(
-            2,
-            "H2",
-            "Heading 2",
-            "Medium section heading.",
-            &["h2", "heading"],
-        ),
-        Kind::Heading { level: 3 } => slash(
-            3,
-            "H3",
-            "Heading 3",
-            "Small section heading.",
-            &["h3", "heading"],
-        ),
-        Kind::Todo { .. } => slash(
-            4,
-            "[]",
-            "Todo",
-            "Track a task with a checkbox.",
-            &["task", "checkbox"],
-        ),
-        Kind::BulletedList => slash(
-            5,
-            "*",
-            "Bulleted list",
-            "Create a simple bulleted list.",
-            &["bullet", "ul", "list"],
-        ),
-        Kind::NumberedList => slash(
-            6,
-            "1.",
-            "Numbered list",
-            "Create a list with numbering.",
-            &["number", "ol", "list"],
-        ),
-        Kind::Toggle => slash(
-            7,
-            ">",
-            "Toggle",
-            "Hide content inside a toggle.",
-            &["details"],
-        ),
-        Kind::Quote => slash(8, "\"", "Quote", "Capture a quote.", &["blockquote"]),
-        Kind::Callout { .. } => slash(9, "!", "Callout", "Make writing stand out.", &["note"]),
-        Kind::Code { .. } => slash(
-            10,
-            "</>",
-            "Code",
-            "Capture a code snippet.",
-            &["code block"],
-        ),
-        Kind::Math => slash(11, "fx", "Math", "Write a block equation.", &["equation"]),
-        Kind::Mermaid => slash(
-            12,
-            "M",
-            "Mermaid",
-            "Create a Mermaid diagram.",
-            &["diagram"],
-        ),
-        Kind::Html => slash(13, "<>", "HTML", "Embed an HTML snippet.", &["html"]),
-        Kind::Table => slash(14, "#", "Table", "Add a simple table.", &["grid"]),
-        Kind::Whiteboard => slash(
-            15,
-            "WB",
-            "Whiteboard",
-            "Sketch and arrange ideas on a canvas.",
-            &["board", "canvas", "draw", "diagram", "白板"],
-        ),
-        Kind::Divider => slash(
-            16,
-            "---",
-            "Divider",
-            "Visually divide blocks.",
-            &["hr", "line"],
-        ),
-        Kind::Separator => slash(
-            17,
-            "|",
-            "Separator",
-            "Add a section separator.",
-            &["separator"],
-        ),
-        Kind::FootnoteDefinition => slash(
-            18,
-            "fn",
-            "Footnote",
-            "Add a footnote definition.",
-            &["footnote"],
-        ),
-        Kind::Comment => slash(19, "//", "Comment", "Add a comment block.", &["comment"]),
-        Kind::RawMarkdown => slash(
-            20,
-            "MD",
-            "Raw Markdown",
-            "Keep text as raw Markdown.",
-            &["markdown", "md"],
-        ),
-        _ => None,
-    };
-    let transform = match kind {
-        Kind::Paragraph => transform(0, "T", "正文"),
-        Kind::Heading { level: 1 } => transform(1, "H1", "标题 1"),
-        Kind::Heading { level: 2 } => transform(2, "H2", "标题 2"),
-        Kind::Heading { level: 3 } => transform(3, "H3", "标题 3"),
-        Kind::BulletedList => transform(4, "•", "项目符号列表"),
-        Kind::NumberedList => transform(5, "1.", "有序列表"),
-        Kind::Todo { .. } => transform(6, "☑", "待办事项"),
-        Kind::Toggle => transform(7, "▸", "折叠列表"),
-        Kind::Quote => transform(8, "❝", "引用"),
-        Kind::Callout { .. } => transform(9, "!", "标注"),
-        Kind::Code { .. } => transform(10, "</>", "代码块"),
-        Kind::Math => transform(11, "Σ", "公式区块"),
-        Kind::Mermaid => transform(12, "◇", "Mermaid 图表"),
-        _ => None,
-    };
-    BlockMenuMetadata {
-        slash,
-        transform,
-        create_from_text: slash.is_some() || transform.is_some(),
-    }
-}
-
-const fn slash(
-    order: u16,
-    icon: &'static str,
-    label: &'static str,
-    description: &'static str,
-    keywords: &'static [&'static str],
-) -> Option<SlashMenuMetadata> {
-    Some(SlashMenuMetadata {
-        order,
-        icon,
-        label,
-        description,
-        keywords,
-    })
-}
-
-const fn transform(
-    order: u16,
-    icon: &'static str,
-    label: &'static str,
-) -> Option<TransformMenuMetadata> {
-    Some(TransformMenuMetadata { order, icon, label })
 }
 
 fn builtin_descriptors() -> Vec<BlockDescriptor> {
@@ -467,8 +248,31 @@ fn builtin_descriptors() -> Vec<BlockDescriptor> {
             name,
             default_kind: kind.clone(),
             payload_version: version,
-            capabilities,
-            menu: menu_metadata_for_kind(kind),
+            capabilities: BlockCapabilities {
+                plain_text_conversion_target: matches!(
+                    kind,
+                    Kind::Paragraph
+                        | Kind::Heading { level: 1..=3 }
+                        | Kind::BulletedList
+                        | Kind::NumberedList
+                        | Kind::Todo { .. }
+                        | Kind::Toggle
+                        | Kind::Quote
+                        | Kind::Callout { .. }
+                        | Kind::Code { .. }
+                        | Kind::Math
+                        | Kind::Mermaid
+                        | Kind::Html
+                        | Kind::Table
+                        | Kind::Whiteboard
+                        | Kind::Divider
+                        | Kind::Separator
+                        | Kind::FootnoteDefinition
+                        | Kind::Comment
+                        | Kind::RawMarkdown
+                ),
+                ..capabilities
+            },
             migrator: None,
         };
 

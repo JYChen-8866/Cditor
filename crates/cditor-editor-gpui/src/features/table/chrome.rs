@@ -9,7 +9,6 @@ use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::{TableCellPosition, TableViewState};
 
-use super::active_border::render_active_cell_border;
 #[cfg(test)]
 use super::axis_grip::{
     TABLE_COLUMN_HANDLE_DOT_COLUMNS, TABLE_COLUMN_HANDLE_DOT_ROWS, TABLE_ROW_HANDLE_DOT_COLUMNS,
@@ -17,10 +16,7 @@ use super::axis_grip::{
 };
 use super::axis_grip::{render_table_axis_handle_icon, table_axis_handle_dimensions};
 use super::cell_gutter::render_active_cell_gutters;
-use super::cell_handle::render_active_cell_menu_handle;
-use super::selection::{
-    TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
-};
+use super::selection::{TableAxis, TableAxisSelection, TableCellRangeSelection};
 use super::style::{
     TABLE_AXIS_COLUMN_HANDLE_TOP_PX, TABLE_AXIS_HANDLE_RADIUS_PX, TABLE_AXIS_HANDLE_SIZE_PX,
     TABLE_AXIS_OUTLINE_THICKNESS_PX, TABLE_AXIS_ROW_HANDLE_LEFT_PX, table_active_border_color,
@@ -29,12 +25,22 @@ use super::style::{
 
 use super::toolbar::TableToolbarEditorOrigin;
 
+#[path = "chrome/geometry.rs"]
+mod geometry;
+pub(super) use geometry::{TableOverlayRect, table_content_cell_rect};
+use geometry::{
+    table_axis_selection_outline_rect, table_axis_track_rect, table_cell_rect,
+    table_range_selection_outline_rect,
+};
+#[cfg(test)]
+use geometry::{table_axis_selection_rect, table_overlay_left_in_editor};
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TableChromeOrigins {
     pub(crate) viewport: TableToolbarEditorOrigin,
     pub(crate) top_edge: TableToolbarEditorOrigin,
+    pub(crate) scrolling_top_edge: TableToolbarEditorOrigin,
     pub(crate) left_edge: TableToolbarEditorOrigin,
-    pub(crate) right_edge: TableToolbarEditorOrigin,
 }
 
 #[derive(Default)]
@@ -42,7 +48,6 @@ pub(crate) struct TableChromeOverlays {
     pub(crate) viewport: Vec<AnyElement>,
     pub(crate) top_edge: Vec<AnyElement>,
     pub(crate) left_edge: Vec<AnyElement>,
-    pub(crate) right_edge: Vec<AnyElement>,
 }
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
@@ -52,7 +57,6 @@ pub(crate) fn render_table_axis_overlays(
     selection: Option<TableAxisSelection>,
     range_selection: Option<TableCellRangeSelection>,
     focused_cell: Option<TableCellPosition>,
-    cell_selection: Option<TableCellSelection>,
     row_track_sizes: &[f32],
     column_track_sizes: &[f32],
     origins: TableChromeOrigins,
@@ -60,10 +64,13 @@ pub(crate) fn render_table_axis_overlays(
     view: Entity<CditorV2View>,
 ) -> TableChromeOverlays {
     let mut overlays = TableChromeOverlays::default();
+    let cell_owned_handles =
+        active_cell_axis_handle_ownership(block_id, focused_cell, selection, range_selection);
     let (row_handles, column_handles) = render_table_axis_handles(
         block_id,
         table_view,
         selection,
+        cell_owned_handles,
         row_track_sizes,
         column_track_sizes,
         origins.left_edge,
@@ -73,6 +80,24 @@ pub(crate) fn render_table_axis_overlays(
     );
     overlays.left_edge.extend(row_handles);
     overlays.top_edge.extend(column_handles);
+    if let Some(focused_cell) = cell_owned_handles
+        && let Some(cell_rect) = table_cell_rect(table_view, focused_cell.row, focused_cell.col)
+    {
+        let gutters = render_active_cell_gutters(
+            focused_cell,
+            cell_rect,
+            table_view.horizontal_scroll_offset_px,
+            row_track_sizes,
+            column_track_sizes,
+            origins.scrolling_top_edge,
+            origins.left_edge,
+            theme,
+            view.clone(),
+            block_id,
+        );
+        overlays.top_edge.extend(gutters.top_edge);
+        overlays.left_edge.extend(gutters.left_edge);
+    }
     if let Some(selection) = selection.filter(|selection| selection.block_id == block_id)
         && let Some(rect) = table_axis_selection_outline_rect(table_view, selection)
     {
@@ -87,56 +112,7 @@ pub(crate) fn render_table_axis_overlays(
             .viewport
             .push(render_table_axis_outline(rect, origins.viewport, theme));
     }
-    if focused_cell_chrome_is_visible(block_id, selection, range_selection)
-        && let Some(focused_cell) = focused_cell
-        && let Some(cell_rect) = table_cell_rect(table_view, focused_cell.row, focused_cell.col)
-    {
-        overlays.viewport.push(render_active_cell_border(
-            cell_rect,
-            origins.viewport,
-            focused_cell.row == 0,
-            focused_cell.col == 0,
-            theme,
-        ));
-        let gutters = render_active_cell_gutters(
-            focused_cell,
-            cell_rect,
-            table_view.horizontal_scroll_offset_px,
-            row_track_sizes,
-            column_track_sizes,
-            origins.top_edge,
-            origins.left_edge,
-            theme,
-            view.clone(),
-            block_id,
-        );
-        overlays.top_edge.extend(gutters.top_edge);
-        overlays.left_edge.extend(gutters.left_edge);
-        overlays.right_edge.push(render_active_cell_menu_handle(
-            focused_cell,
-            cell_rect,
-            cell_selection.is_some_and(|selection| {
-                selection.block_id == block_id
-                    && selection.row == focused_cell.row
-                    && selection.col == focused_cell.col
-            }),
-            origins.right_edge,
-            theme,
-            view.clone(),
-            block_id,
-        ));
-    }
     overlays
-}
-
-fn focused_cell_chrome_is_visible(
-    block_id: BlockId,
-    axis_selection: Option<TableAxisSelection>,
-    range_selection: Option<TableCellRangeSelection>,
-) -> bool {
-    axis_selection.is_none_or(|selection| selection.block_id != block_id)
-        && !range_selection
-            .is_some_and(|selection| selection.block_id == block_id && selection.is_multi_cell())
 }
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
@@ -144,6 +120,7 @@ fn render_table_axis_handles(
     block_id: BlockId,
     table_view: &TableViewState,
     selection: Option<TableAxisSelection>,
+    cell_owned_handles: Option<TableCellPosition>,
     row_track_sizes: &[f32],
     column_track_sizes: &[f32],
     row_origin: TableToolbarEditorOrigin,
@@ -154,6 +131,9 @@ fn render_table_axis_handles(
     let mut row_handles = Vec::new();
     let mut column_handles = Vec::new();
     for row in 0..table_view.row_count {
+        if active_cell_owns_axis_handle(cell_owned_handles, TableAxis::Row, row) {
+            continue;
+        }
         if let Some(rect) = table_axis_track_rect(table_view, TableAxis::Row, row) {
             row_handles.push(render_table_axis_handle(
                 block_id,
@@ -169,6 +149,9 @@ fn render_table_axis_handles(
         }
     }
     for col in 0..table_view.col_count {
+        if active_cell_owns_axis_handle(cell_owned_handles, TableAxis::Column, col) {
+            continue;
+        }
         if let Some(rect) = table_axis_track_rect(table_view, TableAxis::Column, col) {
             column_handles.push(render_table_axis_handle(
                 block_id,
@@ -186,32 +169,50 @@ fn render_table_axis_handles(
     (row_handles, column_handles)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct TableOverlayRect {
-    pub(super) x: f32,
-    pub(super) y: f32,
-    pub(super) width: f32,
-    pub(super) height: f32,
+fn active_cell_owns_axis_handle(
+    ownership: Option<TableCellPosition>,
+    axis: TableAxis,
+    index: usize,
+) -> bool {
+    ownership.is_some_and(|cell| match axis {
+        TableAxis::Row => cell.row == index,
+        TableAxis::Column => cell.row == 0 && cell.col == index,
+    })
 }
 
-pub(crate) fn table_chrome_viewport_origins() -> TableChromeOrigins {
+fn active_cell_axis_handle_ownership(
+    block_id: BlockId,
+    focused_cell: Option<TableCellPosition>,
+    axis_selection: Option<TableAxisSelection>,
+    range_selection: Option<TableCellRangeSelection>,
+) -> Option<TableCellPosition> {
+    let axis_selection_owns_table =
+        axis_selection.is_some_and(|selection| selection.block_id == block_id);
+    let multi_cell_selection_owns_table = range_selection
+        .is_some_and(|selection| selection.block_id == block_id && selection.is_multi_cell());
+    (!axis_selection_owns_table && !multi_cell_selection_owns_table)
+        .then_some(focused_cell)
+        .flatten()
+}
+
+pub(crate) fn table_chrome_viewport_origins(vertical_offset_y: f32) -> TableChromeOrigins {
     let gutter_extent = TABLE_AXIS_HANDLE_SIZE_PX / 2.0;
     TableChromeOrigins {
         viewport: TableToolbarEditorOrigin {
             x_px: 0.0,
-            y_px: 0.0,
+            y_px: vertical_offset_y,
         },
         top_edge: TableToolbarEditorOrigin {
             x_px: 0.0,
             y_px: gutter_extent,
         },
+        scrolling_top_edge: TableToolbarEditorOrigin {
+            x_px: 0.0,
+            y_px: gutter_extent + vertical_offset_y,
+        },
         left_edge: TableToolbarEditorOrigin {
             x_px: gutter_extent,
-            y_px: 0.0,
-        },
-        right_edge: TableToolbarEditorOrigin {
-            x_px: 0.0,
-            y_px: 0.0,
+            y_px: vertical_offset_y,
         },
     }
 }
@@ -219,24 +220,23 @@ pub(crate) fn table_chrome_viewport_origins() -> TableChromeOrigins {
 pub(crate) fn render_table_chrome_viewport(
     editor_origin: TableToolbarEditorOrigin,
     viewport_width_px: f32,
-    table_height_px: f32,
+    viewport_height_px: f32,
     overlays: TableChromeOverlays,
 ) -> AnyElement {
-    let origins = table_chrome_viewport_origins();
-    let gutter_extent = origins.top_edge.y_px;
+    let gutter_extent = TABLE_AXIS_HANDLE_SIZE_PX / 2.0;
     div()
         .absolute()
         .left(px(editor_origin.x_px))
         .top(px(editor_origin.y_px))
         .w(px(viewport_width_px))
-        .h(px(table_height_px))
+        .h(px(viewport_height_px))
         .child(
             div()
                 .absolute()
                 .left_0()
                 .top_0()
                 .w(px(viewport_width_px))
-                .h(px(table_height_px))
+                .h(px(viewport_height_px))
                 .overflow_hidden()
                 .children(overlays.viewport),
         )
@@ -246,7 +246,7 @@ pub(crate) fn render_table_chrome_viewport(
                 .left_0()
                 .top(px(-gutter_extent))
                 .w(px(viewport_width_px))
-                .h(px(gutter_extent + table_height_px))
+                .h(px(gutter_extent + viewport_height_px))
                 .overflow_hidden()
                 .children(overlays.top_edge),
         )
@@ -256,127 +256,11 @@ pub(crate) fn render_table_chrome_viewport(
                 .left(px(-gutter_extent))
                 .top_0()
                 .w(px(gutter_extent + viewport_width_px))
-                .h(px(table_height_px))
+                .h(px(viewport_height_px))
                 .overflow_hidden()
                 .children(overlays.left_edge),
         )
-        .child(
-            div()
-                .absolute()
-                .left_0()
-                .top_0()
-                .w(px(viewport_width_px + gutter_extent))
-                .h(px(table_height_px))
-                .overflow_hidden()
-                .children(overlays.right_edge),
-        )
         .into_any_element()
-}
-
-fn table_cell_rect(
-    table_view: &TableViewState,
-    row: usize,
-    col: usize,
-) -> Option<TableOverlayRect> {
-    table_view
-        .visible_cells
-        .iter()
-        .find(|cell| cell.position.row == row && cell.position.col == col)
-        .map(|cell| TableOverlayRect {
-            x: table_viewport_x(table_view, cell.x_px),
-            y: cell.y_px,
-            width: cell.width_px,
-            height: cell.height_px,
-        })
-}
-
-fn table_axis_track_rect(
-    table_view: &TableViewState,
-    axis: TableAxis,
-    index: usize,
-) -> Option<TableOverlayRect> {
-    match axis {
-        TableAxis::Row => table_view
-            .visible_cells
-            .iter()
-            .find(|cell| cell.position.row == index)
-            .map(|cell| TableOverlayRect {
-                x: table_view.horizontal_scroll_offset_px,
-                y: cell.y_px,
-                width: table_view.width_px,
-                height: cell.height_px,
-            }),
-        TableAxis::Column => table_view
-            .visible_cells
-            .iter()
-            .find(|cell| cell.position.col == index)
-            .map(|cell| TableOverlayRect {
-                x: table_viewport_x(table_view, cell.x_px),
-                y: 0.0,
-                width: cell.width_px,
-                height: table_view.height_px,
-            }),
-    }
-}
-
-fn table_viewport_x(table_view: &TableViewState, table_local_x: f32) -> f32 {
-    table_local_x + table_view.horizontal_scroll_offset_px
-}
-
-fn table_axis_selection_rect(
-    table_view: &TableViewState,
-    selection: TableAxisSelection,
-) -> Option<TableOverlayRect> {
-    table_axis_track_rect(table_view, selection.axis, selection.index)
-}
-
-fn table_axis_selection_outline_rect(
-    table_view: &TableViewState,
-    selection: TableAxisSelection,
-) -> Option<TableOverlayRect> {
-    let rect = table_axis_selection_rect(table_view, selection)?;
-    // Use inner stroke: the outline border is drawn inside the cell bounds.
-    // This avoids the last-row clipping issue where expanding outward by `half`
-    // gets clamped to table_view.height_px, making the bottom border invisible.
-    let left = rect.x.max(0.0);
-    let right = (rect.x + rect.width).min(table_view.width_px);
-    Some(TableOverlayRect {
-        x: left,
-        y: rect.y.max(0.0),
-        width: (right - left).max(0.0),
-        height: rect.height.min(table_view.height_px - rect.y.max(0.0)),
-    })
-}
-
-fn table_range_selection_outline_rect(
-    table_view: &TableViewState,
-    selection: TableCellRangeSelection,
-) -> Option<TableOverlayRect> {
-    let top_left = table_cell_rect(
-        table_view,
-        selection.range.start_row,
-        selection.range.start_col,
-    )?;
-    let bottom_right =
-        table_cell_rect(table_view, selection.range.end_row, selection.range.end_col)?;
-    // Use inner stroke: the outline border is drawn inside the selection bounds.
-    // This avoids the last-row clipping issue where expanding outward would get
-    // clamped to table_view.height_px, making the bottom border invisible.
-    let x = top_left.x.max(0.0);
-    let y = top_left.y.max(0.0);
-    let right = (bottom_right.x + bottom_right.width).min(table_view.width_px);
-    let bottom = (bottom_right.y + bottom_right.height).min(table_view.height_px);
-    Some(TableOverlayRect {
-        x,
-        y,
-        width: (right - x).max(0.0),
-        height: (bottom - y).max(0.0),
-    })
-}
-
-#[cfg(test)]
-fn table_overlay_left_in_editor(rect: TableOverlayRect, origin: TableToolbarEditorOrigin) -> f32 {
-    origin.x_px + rect.x
 }
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
@@ -472,26 +356,65 @@ mod tests {
     }
 
     #[test]
-    fn table_selection_chrome_replaces_the_focused_cell_short_bars() {
+    fn active_cell_owns_only_the_axis_handles_it_renders() {
+        let first_row_cell = TableCellPosition { row: 0, col: 2 };
+        let later_row_cell = TableCellPosition { row: 3, col: 2 };
+
+        let first_row_ownership =
+            active_cell_axis_handle_ownership(7, Some(first_row_cell), None, None);
+        assert!(active_cell_owns_axis_handle(
+            first_row_ownership,
+            TableAxis::Row,
+            0
+        ));
+        assert!(active_cell_owns_axis_handle(
+            first_row_ownership,
+            TableAxis::Column,
+            2
+        ));
+        assert!(!active_cell_owns_axis_handle(
+            first_row_ownership,
+            TableAxis::Column,
+            1
+        ));
+
+        let later_row_ownership =
+            active_cell_axis_handle_ownership(7, Some(later_row_cell), None, None);
+        assert!(active_cell_owns_axis_handle(
+            later_row_ownership,
+            TableAxis::Row,
+            3
+        ));
+        assert!(!active_cell_owns_axis_handle(
+            later_row_ownership,
+            TableAxis::Column,
+            2
+        ));
+    }
+
+    #[test]
+    fn table_selection_reclaims_axis_handle_ownership_from_the_active_cell() {
+        let focused_cell = Some(TableCellPosition { row: 0, col: 1 });
         let axis_selection = TableAxisSelection::new(7, TableAxis::Column, 1);
         let range_selection = TableCellRangeSelection::new(7, 0, 0, 1, 1);
 
-        assert!(!focused_cell_chrome_is_visible(
-            7,
-            Some(axis_selection),
+        assert_eq!(
+            active_cell_axis_handle_ownership(7, focused_cell, Some(axis_selection), None),
             None
-        ));
-        assert!(!focused_cell_chrome_is_visible(
-            7,
-            None,
-            Some(range_selection)
-        ));
-        assert!(focused_cell_chrome_is_visible(
-            8,
-            Some(axis_selection),
-            Some(range_selection)
-        ));
-        assert!(focused_cell_chrome_is_visible(7, None, None));
+        );
+        assert_eq!(
+            active_cell_axis_handle_ownership(7, focused_cell, None, Some(range_selection)),
+            None
+        );
+        assert_eq!(
+            active_cell_axis_handle_ownership(
+                8,
+                focused_cell,
+                Some(axis_selection),
+                Some(range_selection),
+            ),
+            focused_cell
+        );
     }
 
     #[test]
@@ -529,15 +452,23 @@ mod tests {
 
     #[test]
     fn table_chrome_viewport_clips_scrolled_cells_but_keeps_edge_gutters() {
-        let origins = table_chrome_viewport_origins();
+        let origins = table_chrome_viewport_origins(0.0);
 
         assert_eq!(origins.viewport.x_px, 0.0);
         assert_eq!(origins.top_edge.y_px, 7.0);
         assert_eq!(origins.left_edge.x_px, 7.0);
-        assert_eq!(origins.right_edge.x_px, 0.0);
         assert_eq!(origins.left_edge.x_px + TABLE_AXIS_ROW_HANDLE_LEFT_PX, 0.0);
         assert_eq!(origins.top_edge.y_px + TABLE_AXIS_COLUMN_HANDLE_TOP_PX, 0.0);
         assert!(origins.viewport.x_px - 80.0 < 0.0);
+    }
+
+    #[test]
+    fn table_chrome_projects_vertical_scroll_without_moving_column_handles() {
+        let origins = table_chrome_viewport_origins(-72.0);
+
+        assert_eq!(origins.viewport.y_px, -72.0);
+        assert_eq!(origins.left_edge.y_px, -72.0);
+        assert_eq!(origins.top_edge.y_px, 7.0);
     }
 
     #[test]
@@ -609,6 +540,15 @@ mod tests {
             })
         );
         assert_eq!(
+            table_content_cell_rect(&table_view, 0, 1),
+            Some(TableOverlayRect {
+                x: 120.0,
+                y: 0.0,
+                width: 120.0,
+                height: 36.0,
+            })
+        );
+        assert_eq!(
             table_axis_track_rect(&table_view, TableAxis::Column, 1),
             Some(TableOverlayRect {
                 x: 40.0,
@@ -655,7 +595,7 @@ mod tests {
 
     fn table_view_with_two_by_two_cells() -> TableViewState {
         TableViewState {
-            table: TablePayload::default(),
+            table: TablePayload::default().into(),
             row_count: 2,
             col_count: 2,
             width_px: 240.0,
@@ -688,7 +628,7 @@ mod tests {
             header: false,
             align: TableCellAlign::Left,
             background_color: None,
-            spans: Vec::new(),
+            spans: Default::default(),
         }
     }
 }

@@ -10,17 +10,17 @@ use crate::theme::GuiTheme;
 pub type GutterMouseDownHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 pub type GutterAddHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 
-const GUTTER_BUTTON_SIZE_PX: f32 = 24.0;
-const GUTTER_CLUSTER_WIDTH_PX: f32 = GUTTER_BUTTON_SIZE_PX * 2.0;
-const GUTTER_CLUSTER_LEFT_PX: f32 = 0.0;
-const GUTTER_ADD_ICON_SIZE_PX: f32 = 12.0;
-const GUTTER_ADD_ICON_STROKE_PX: f32 = 1.5;
+const GUTTER_CONTROL_WIDTH_PX: f32 = 22.0;
+const GUTTER_CONTROL_HEIGHT_PX: f32 = 28.0;
+const GUTTER_CLUSTER_WIDTH_PX: f32 = GUTTER_CONTROL_WIDTH_PX;
+const GUTTER_CLUSTER_LEFT_PX: f32 = BLOCK_GUTTER_WIDTH_PX - GUTTER_CLUSTER_WIDTH_PX;
 
 pub fn render_block_gutter(
     theme: GuiTheme,
     visible: bool,
     action_active: bool,
-    on_add: Option<GutterAddHandler>,
+    control_top_px: f32,
+    _on_add: Option<GutterAddHandler>,
     on_mouse_down: Option<GutterMouseDownHandler>,
 ) -> AnyElement {
     let color = if action_active {
@@ -37,12 +37,11 @@ pub fn render_block_gutter(
             div()
                 .absolute()
                 .left(px(GUTTER_CLUSTER_LEFT_PX))
-                .top_0()
+                .top(px(control_top_px))
                 .w(px(GUTTER_CLUSTER_WIDTH_PX))
-                .h(px(GUTTER_BUTTON_SIZE_PX))
+                .h(px(GUTTER_CONTROL_HEIGHT_PX))
                 .flex()
                 .items_center()
-                .child(render_add_button(theme, on_add))
                 .child(render_drag_button(
                     theme,
                     color,
@@ -56,50 +55,6 @@ pub fn render_block_gutter(
         .into_any_element()
 }
 
-fn render_add_button(theme: GuiTheme, on_add: Option<GutterAddHandler>) -> AnyElement {
-    div()
-        .size(px(GUTTER_BUTTON_SIZE_PX))
-        .rounded(px(3.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor_pointer()
-        .hover(move |style| style.bg(rgb(theme.hover_surface)))
-        .when_some(on_add, |this, handler| {
-            this.on_mouse_down(MouseButton::Left, handler)
-        })
-        .child(render_add_icon(theme.gutter_foreground))
-        .into_any_element()
-}
-
-fn render_add_icon(color: u32) -> AnyElement {
-    let stroke_offset = (GUTTER_ADD_ICON_SIZE_PX - GUTTER_ADD_ICON_STROKE_PX) / 2.0;
-    div()
-        .relative()
-        .size(px(GUTTER_ADD_ICON_SIZE_PX))
-        .child(
-            div()
-                .absolute()
-                .left_0()
-                .top(px(stroke_offset))
-                .w(px(GUTTER_ADD_ICON_SIZE_PX))
-                .h(px(GUTTER_ADD_ICON_STROKE_PX))
-                .rounded(px(GUTTER_ADD_ICON_STROKE_PX))
-                .bg(rgb(color)),
-        )
-        .child(
-            div()
-                .absolute()
-                .left(px(stroke_offset))
-                .top_0()
-                .w(px(GUTTER_ADD_ICON_STROKE_PX))
-                .h(px(GUTTER_ADD_ICON_SIZE_PX))
-                .rounded(px(GUTTER_ADD_ICON_STROKE_PX))
-                .bg(rgb(color)),
-        )
-        .into_any_element()
-}
-
 fn render_drag_button(
     theme: GuiTheme,
     color: u32,
@@ -107,8 +62,9 @@ fn render_drag_button(
     on_mouse_down: Option<GutterMouseDownHandler>,
 ) -> AnyElement {
     div()
-        .size(px(GUTTER_BUTTON_SIZE_PX))
-        .rounded(px(3.0))
+        .w(px(GUTTER_CONTROL_WIDTH_PX))
+        .h(px(GUTTER_CONTROL_HEIGHT_PX))
+        .rounded(px(4.0))
         .flex()
         .items_center()
         .justify_center()
@@ -158,13 +114,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn gutter_dimensions_match_v1_contract() {
-        assert_eq!(BLOCK_GUTTER_WIDTH_PX, 48.0);
+    fn gutter_dimensions_match_block_prototype_without_changing_outer_geometry() {
+        assert_eq!(BLOCK_GUTTER_WIDTH_PX, 22.0);
         assert_eq!(BLOCK_GUTTER_HEIGHT_PX, 24.0);
-        assert_eq!(GUTTER_CLUSTER_WIDTH_PX, 48.0); // add + drag buttons
+        assert_eq!(GUTTER_CLUSTER_WIDTH_PX, 22.0);
         assert_eq!(GUTTER_CLUSTER_LEFT_PX, 0.0);
-        assert_eq!(GUTTER_CLUSTER_WIDTH_PX, BLOCK_GUTTER_WIDTH_PX);
-        assert_eq!(GUTTER_BUTTON_SIZE_PX, BLOCK_GUTTER_HEIGHT_PX);
-        assert_eq!((GUTTER_BUTTON_SIZE_PX - GUTTER_ADD_ICON_SIZE_PX) / 2.0, 6.0,);
+        assert_eq!(GUTTER_CONTROL_WIDTH_PX, 22.0);
+        assert_eq!(GUTTER_CONTROL_HEIGHT_PX, 28.0);
+        assert_eq!(GUTTER_CLUSTER_LEFT_PX + GUTTER_CLUSTER_WIDTH_PX, 22.0);
     }
 }

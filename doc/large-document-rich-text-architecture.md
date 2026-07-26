@@ -2833,8 +2833,36 @@ Composition/Caret > KeyInput > VisibleSelection > WheelScroll > CurrentWindowMea
 ```text
 1. Typing / Composing 时，后台任务不能消耗 input_reserved_ms。
 2. WheelScrolling 时，window swap、entity create、height correction 都有单帧上限。
-3. Async result 即使已经返回，也必须进入预算队列，不能直接 apply。
+3. 会执行 layout、shaping、normalize、memory accounting、entity diff 或批量派生状态更新的
+   Async result，即使已经返回，也必须进入预算队列，不能直接 apply。
 4. 预算不足时，远端 refinement、FTS、prefetch 优先 defer 或 drop stale generation。
+```
+
+#### Visible Payload Fast Commit 例外
+
+可见 payload 查询完成后的“驻留发布”属于 viewport liveness control-plane commit，
+不能和 layout、measure、FTS、prefetch 等工作一起等待后台预算队列。否则一次已经完成的
+SQLite/PostgreSQL 查询仍可能被延迟数十到数百毫秒，造成整窗 skeleton，且鼠标点击等下一次
+交互只是在偶然唤醒队列。
+
+它可以直接在 GPUI update 回调中提交，但必须同时满足以下全部条件：
+
+```text
+1. visible core 有硬上限；当前协议最多 320 records，不能把任意 store result 当 fast commit。
+2. record 已在后台完成 schema/kind normalize、table invariant 修复和内存大小估算。
+3. 主线程只校验 session/token/generation/Block ownership。
+4. 主线程只转移 Arc ownership、插入 resident HashMap、清理 loading marker 并 notify。
+5. 不在该回调 hydrate PieceTable/TableRuntime，不 shape、不 measure、不做 syntax highlight。
+6. 不在该回调扫描 resident cache、执行 LRU eviction 或清理 UI cache；这些进入 idle 分片。
+7. stale response 只能在仍持有该 Block loading ownership 时作为 cache data 接收，不能覆盖本地编辑。
+8. commit 必须独立记录 query/prepare/commit 耗时；超过 fast-commit 门槛视为实现回退，而不是提高预算。
+```
+
+因此边界是：
+
+```text
+直接提交的是“可见数据已经驻留”这一小段原子状态变更；
+数据准备、派生计算、文字布局、窗口实体变化和缓存维护仍然全部受预算与分片协议约束。
 ```
 
 ### LayoutScheduler
@@ -3659,7 +3687,7 @@ crates/
   cditor-storage/
   cditor-runtime/
   cditor-editor-gpui/
-  cditor-app/
+  cditor-desktop/
 ```
 
 依赖：
@@ -3669,7 +3697,7 @@ cditor-core：无 UI / 无 DB。
 cditor-storage -> cditor-core。
 cditor-runtime -> cditor-core + cditor-storage。
 cditor-editor-gpui -> cditor-session + cditor-text + cditor-viewport + GPUI。
-cditor-app -> cditor-editor-gpui。
+cditor-desktop -> cditor-editor-gpui。
 ```
 
 拆 crate 的时机：

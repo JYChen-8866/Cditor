@@ -166,31 +166,44 @@ impl DocumentRuntime {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn insert_table_row(
         &mut self,
         block_id: BlockId,
         index: usize,
     ) -> Result<bool, String> {
+        self.insert_table_rows(block_id, index, 1)
+    }
+
+    pub(crate) fn insert_table_rows(
+        &mut self,
+        block_id: BlockId,
+        index: usize,
+        count: usize,
+    ) -> Result<bool, String> {
         let mut preview = self
             .table_runtime(block_id)
             .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
             .clone();
-        if !preview.insert_row(index)? {
+        if !preview.insert_rows(index, count)? {
             return Ok(false);
         }
-        let row = preview.table().rows[index].clone();
+        let end = index
+            .checked_add(count)
+            .ok_or_else(|| "table row insert range overflow".to_owned())?;
+        let rows = preview.table().rows[index..end].to_vec();
         self.apply_local_table_operation(
             block_id,
             EditTransactionKind::ExplicitCommand,
             TableEditOperation::InsertRows {
                 block_id,
                 index,
-                rows: vec![row.clone()],
+                rows: rows.clone(),
             },
             TableEditOperation::DeleteRows {
                 block_id,
                 index,
-                rows: vec![row],
+                rows,
             },
         )?;
         Ok(true)
@@ -262,19 +275,29 @@ impl DocumentRuntime {
         Ok(true)
     }
 
+    #[cfg(test)]
     pub(crate) fn insert_table_column(
         &mut self,
         block_id: BlockId,
         index: usize,
     ) -> Result<bool, String> {
+        self.insert_table_columns(block_id, index, 1)
+    }
+
+    pub(crate) fn insert_table_columns(
+        &mut self,
+        block_id: BlockId,
+        index: usize,
+        count: usize,
+    ) -> Result<bool, String> {
         let mut preview = self
             .table_runtime(block_id)
             .ok_or_else(|| format!("missing table runtime for block {block_id}"))?
             .clone();
-        if !preview.insert_column(index)? {
+        if !preview.insert_columns(index, count)? {
             return Ok(false);
         }
-        let (columns, cells_by_row) = table_column_snapshot(preview.table(), index)?;
+        let (columns, cells_by_row) = table_column_range_snapshot(preview.table(), index, count)?;
         self.apply_local_table_operation(
             block_id,
             EditTransactionKind::ExplicitCommand,
@@ -526,23 +549,36 @@ fn table_column_snapshot(
     ),
     String,
 > {
+    table_column_range_snapshot(table, index, 1)
+}
+
+fn table_column_range_snapshot(
+    table: &cditor_core::rich_text::TablePayload,
+    index: usize,
+    count: usize,
+) -> Result<
+    (
+        Vec<cditor_core::rich_text::TableColumnPayload>,
+        Vec<Vec<cditor_core::rich_text::TableCellPayload>>,
+    ),
+    String,
+> {
     let mut table = table.clone();
     table.normalize();
-    let column = table
-        .columns
-        .get(index)
-        .cloned()
-        .ok_or_else(|| format!("column {index} out of bounds"))?;
+    let end = index
+        .checked_add(count)
+        .filter(|end| *end <= table.column_count())
+        .ok_or_else(|| format!("column range {index}+{count} out of bounds"))?;
+    let columns = table.columns[index..end].to_vec();
     let cells_by_row = table
         .rows
         .iter()
         .map(|row| {
             row.cells
-                .get(index)
-                .cloned()
-                .map(|cell| vec![cell])
-                .ok_or_else(|| format!("column {index} missing from a table row"))
+                .get(index..end)
+                .map(<[_]>::to_vec)
+                .ok_or_else(|| format!("column range {index}+{count} missing from a table row"))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok((vec![column], cells_by_row))
+    Ok((columns, cells_by_row))
 }

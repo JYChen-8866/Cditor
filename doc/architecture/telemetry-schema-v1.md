@@ -1,6 +1,6 @@
 # Telemetry Schema v1（P0-009）
 
-> 真相来源：`crates/core/src/telemetry/`（类型定义 + 单元测试）。本文只做导览，
+> 真相来源：`crates/cditor-core/src/telemetry/`（类型定义 + 单元测试）。本文只做导览，
 > 字段以代码为准。
 
 ## 1. 无内容原则
@@ -48,7 +48,7 @@
 
 ## 5. 与现有实现的关系
 
-- App 侧 `TextGeometryTelemetry`（`crates/app/src/gui/text/diagnostics.rs`）
+- GPUI Editor 侧文本几何诊断（`crates/cditor-editor-gpui/src/diagnostics/`）
   的累计计数是 `input.geometry_query` 的现行来源；后续接入时按查询产生
   事件或周期性汇总，二者口径一致（snapshot / sync_fallback_build /
   unavailable）。

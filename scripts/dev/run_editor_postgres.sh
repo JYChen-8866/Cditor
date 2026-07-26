@@ -32,9 +32,32 @@ export CDITOR_TRACE_TABLE="${CDITOR_TRACE_TABLE:-0}"
 printf 'Starting Cditor with PostgreSQL (document %s).\n' "$DOCUMENT_ID"
 printf 'Database URL is configured via CDITOR_DATABASE_URL (value hidden).\n'
 
+has_explicit_profile=0
+scan_cargo_args=1
+for arg in "$@"; do
+  if [ "$scan_cargo_args" = 0 ]; then
+    continue
+  fi
+  case "$arg" in
+    --)
+      scan_cargo_args=0
+      ;;
+    --release|-r|--profile|--profile=*)
+      has_explicit_profile=1
+      ;;
+  esac
+done
+
+if [ "$has_explicit_profile" = 0 ]; then
+  set -- --profile editor-dev "$@"
+fi
+set -- -p cditor-desktop "$@"
+
 if [ "$DRY_RUN" = 1 ]; then
-  printf 'Dry run: %s run -p cditor-app\n' "$CARGO_BIN"
+  printf 'Dry run:'
+  printf ' %s' "$CARGO_BIN" run "$@"
+  printf '\n'
   exit 0
 fi
 
-exec "$CARGO_BIN" run -p cditor-app "$@"
+exec "$CARGO_BIN" run "$@"

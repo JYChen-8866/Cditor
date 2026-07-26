@@ -3,7 +3,8 @@ use cditor_core::edit::{
     EditOperation, EditTransaction, EditTransactionKind, UndoGroupingPolicy, UndoPayload, UndoStack,
 };
 use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
-use cditor_storage::{StorageError, StorageSession};
+use cditor_session::DocumentPersistence;
+use cditor_storage::StorageError;
 use cditor_storage_sqlite::{SqliteDocumentStorage, SqliteStorageOptions};
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -157,10 +158,10 @@ async fn pruning_and_explicit_delete_bound_blob_lifetime_per_document() {
 }
 
 #[tokio::test]
-async fn storage_session_dispatches_external_undo_blob_roundtrip() {
+async fn document_persistence_dispatches_external_undo_blob_roundtrip() {
     let dir = TempDir::new().unwrap();
     let store = Arc::new(open_store(&dir).await);
-    let session = StorageSession::new(store, 19);
+    let session = DocumentPersistence::new(store, 19);
     let transaction = large_transaction(301, 6);
 
     let reference = session.write_undo_blob(4, 6, &transaction).await.unwrap();

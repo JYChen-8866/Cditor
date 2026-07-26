@@ -9,10 +9,28 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use gpui::{
-    App, Bounds, Corners, DevicePixels, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, ObjectFit, Pixels, RenderImage, Size, Style, Window, point, px,
-    relative, size,
+    App, Bounds, Corners, DevicePixels, Element, ElementId, Entity, Global, GlobalElementId,
+    InspectorElementId, IntoElement, LayoutId, ObjectFit, Pixels, RenderImage, Size, Style, Window,
+    point, px, relative, size,
 };
+
+use cditor_core::ids::BlockId;
+use cditor_runtime::{MainThreadWorkKind, WorkCost, WorkerTaskKind};
+
+use crate::app::main_thread_scheduler::MainThreadApplyRequest;
+use crate::editor_view::CditorV2View;
+
+pub trait RemoteImageDataSource: Send + Sync + 'static {
+    fn load(&self, url: &str) -> Result<Vec<u8>, String>;
+}
+
+struct RemoteImageDataSourceGlobal(Arc<dyn RemoteImageDataSource>);
+
+impl Global for RemoteImageDataSourceGlobal {}
+
+pub fn configure_remote_image_data_source(cx: &mut App, source: Arc<dyn RemoteImageDataSource>) {
+    cx.set_global(RemoteImageDataSourceGlobal(source));
+}
 
 #[derive(Clone)]
 enum ImageState {
@@ -91,6 +109,16 @@ impl ImageCache {
         self.trim();
     }
 
+    fn abort_start(&mut self, src: &str) {
+        if self
+            .entries
+            .get(src)
+            .is_some_and(|entry| matches!(entry.state, ImageState::Loading))
+        {
+            self.entries.remove(src);
+        }
+    }
+
     fn trim(&mut self) {
         while self.entries.len() > self.max_entries || self.decoded_bytes > self.max_decoded_bytes {
             let candidate = self
@@ -123,7 +151,13 @@ fn image_cache() -> &'static Mutex<ImageCache> {
 ///
 /// Returns `Some` once the image is decoded and cached. While loading (or after a
 /// failure) it returns `None`, letting the caller render a stable placeholder.
-pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
+pub fn load_render_image(
+    src: &str,
+    block_id: BlockId,
+    content_version: u64,
+    view: Entity<CditorV2View>,
+    cx: &mut App,
+) -> Option<Arc<RenderImage>> {
     if src.trim().is_empty() {
         return None;
     }
@@ -139,7 +173,22 @@ pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
         };
     }
 
+    let Some(permit) = view
+        .read(cx)
+        .scheduling
+        .workers
+        .try_acquire(WorkerTaskKind::ImageDecode)
+    else {
+        if let Ok(mut cache) = image_cache().lock() {
+            cache.abort_start(src);
+        }
+        return None;
+    };
+
     let src = src.to_owned();
+    let remote_source = cx
+        .try_global::<RemoteImageDataSourceGlobal>()
+        .map(|source| source.0.clone());
     let async_cx = cx.to_async();
     let executor = cx.background_executor().clone();
     cx.foreground_executor()
@@ -147,27 +196,50 @@ pub fn load_render_image(src: &str, cx: &mut App) -> Option<Arc<RenderImage>> {
             let fetch_src = src.clone();
             let state = executor
                 .spawn(async move {
-                    fetch_image_bytes(&fetch_src)
+                    let _permit = permit;
+                    fetch_image_bytes(&fetch_src, remote_source.as_deref())
                         .as_deref()
                         .and_then(decode_render_image)
                 })
                 .await
                 .map_or(ImageState::Failed, ImageState::Ready);
-            if let Ok(mut cache) = image_cache().lock() {
-                cache.finish(src, state);
-            }
-            async_cx.update(App::refresh_windows);
+            let cancel_src = src.clone();
+            async_cx.update(|cx| {
+                view.update(cx, |view, cx| {
+                    view.enqueue_main_thread_apply_with_cancel(
+                        MainThreadApplyRequest {
+                            kind: MainThreadWorkKind::ImageDecodeApply,
+                            generation: content_version,
+                            block_id: Some(block_id),
+                            cost: WorkCost::image_decode_apply(),
+                        },
+                        move |_view, cx| {
+                            if let Ok(mut cache) = image_cache().lock() {
+                                cache.finish(src, state);
+                            }
+                            cx.refresh_windows();
+                        },
+                        move || {
+                            if let Ok(mut cache) = image_cache().lock() {
+                                cache.finish(cancel_src, ImageState::Failed);
+                            }
+                        },
+                        cx,
+                    );
+                });
+            });
         })
         .detach();
 
     None
 }
 
-fn fetch_image_bytes(src: &str) -> Option<Vec<u8>> {
+fn fetch_image_bytes(
+    src: &str,
+    remote_source: Option<&dyn RemoteImageDataSource>,
+) -> Option<Vec<u8>> {
     if src.starts_with("http://") || src.starts_with("https://") {
-        let response = reqwest::blocking::get(src).ok()?;
-        let bytes = response.bytes().ok()?;
-        Some(bytes.to_vec())
+        remote_source?.load(src).ok()
     } else {
         std::fs::read(parse_local_path(src)).ok()
     }
@@ -317,6 +389,14 @@ impl Element for RasterImageElement {
 mod tests {
     use super::*;
 
+    struct TestRemoteSource;
+
+    impl RemoteImageDataSource for TestRemoteSource {
+        fn load(&self, url: &str) -> Result<Vec<u8>, String> {
+            Ok(url.as_bytes().to_vec())
+        }
+    }
+
     #[test]
     fn local_path_parser_strips_file_scheme() {
         assert_eq!(
@@ -324,6 +404,15 @@ mod tests {
             PathBuf::from("/tmp/a.png")
         );
         assert_eq!(parse_local_path("/tmp/a.png"), PathBuf::from("/tmp/a.png"));
+    }
+
+    #[test]
+    fn remote_image_bytes_require_and_use_the_host_data_source() {
+        assert!(fetch_image_bytes("https://example.test/image.png", None).is_none());
+        assert_eq!(
+            fetch_image_bytes("https://example.test/image.png", Some(&TestRemoteSource)),
+            Some(b"https://example.test/image.png".to_vec())
+        );
     }
 
     #[test]
@@ -389,5 +478,21 @@ mod tests {
 
         assert!(cache.entries.contains_key("loading"));
         assert!(cache.entries.contains_key("second"));
+    }
+
+    #[test]
+    fn denied_worker_admission_returns_loading_slot_to_retryable_state() {
+        let mut cache = ImageCache::new(2, 64);
+        assert!(matches!(
+            cache.lookup_or_start("deferred"),
+            ImageCacheLookup::StartLoad
+        ));
+
+        cache.abort_start("deferred");
+
+        assert!(matches!(
+            cache.lookup_or_start("deferred"),
+            ImageCacheLookup::StartLoad
+        ));
     }
 }

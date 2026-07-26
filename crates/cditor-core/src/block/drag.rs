@@ -29,6 +29,12 @@ pub struct GutterBlockDragState {
     pub target: Option<BlockDropTarget>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GutterBlockReleaseKind {
+    Click,
+    Drag,
+}
+
 impl GutterBlockDragState {
     pub const fn new(block_id: BlockId, start_position: DragPoint) -> Self {
         Self {
@@ -42,10 +48,19 @@ impl GutterBlockDragState {
 
     pub fn update_position(&mut self, position: DragPoint) -> bool {
         self.current_position = position;
-        let exceeded = gutter_drag_exceeded_threshold(self.start_position, position);
+        let exceeded = self.exceeded_threshold
+            || gutter_drag_exceeded_threshold(self.start_position, position);
         let changed = self.exceeded_threshold != exceeded;
         self.exceeded_threshold = exceeded;
         changed
+    }
+
+    pub const fn release_kind(&self) -> GutterBlockReleaseKind {
+        if self.exceeded_threshold {
+            GutterBlockReleaseKind::Drag
+        } else {
+            GutterBlockReleaseKind::Click
+        }
     }
 }
 
@@ -73,5 +88,18 @@ mod tests {
             DragPoint::new(0.0, 0.0),
             DragPoint::new(3.0, 3.0),
         ));
+    }
+
+    #[test]
+    fn gutter_release_distinguishes_click_from_drag_after_the_shared_threshold() {
+        let mut gesture = GutterBlockDragState::new(7, DragPoint::new(20.0, 30.0));
+
+        assert_eq!(gesture.release_kind(), GutterBlockReleaseKind::Click);
+        gesture.update_position(DragPoint::new(23.0, 30.0));
+        assert_eq!(gesture.release_kind(), GutterBlockReleaseKind::Click);
+        gesture.update_position(DragPoint::new(24.0, 30.0));
+        assert_eq!(gesture.release_kind(), GutterBlockReleaseKind::Drag);
+        gesture.update_position(DragPoint::new(20.0, 30.0));
+        assert_eq!(gesture.release_kind(), GutterBlockReleaseKind::Drag);
     }
 }

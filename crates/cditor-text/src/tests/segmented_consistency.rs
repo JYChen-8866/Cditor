@@ -5,21 +5,21 @@ use crate::segmented::{SegmentedLayoutConfig, SegmentedTextLayout};
 
 const EPSILON: f32 = 0.01;
 
-fn code_options(width: Option<f32>) -> ParleyLayoutOptions {
-    ParleyLayoutOptions {
+fn code_options(width: Option<f32>) -> TextLayoutOptions {
+    TextLayoutOptions {
         width,
         display_scale: 1.0,
         quantize: false,
-        base_style: ParleyTextStyleConfig {
+        base_style: TextStyleConfig {
             font_size: 14.0,
-            line_height: ParleyLineHeight::Absolute(22.0),
-            ..ParleyTextStyleConfig::default()
+            line_height: TextLineHeight::Absolute(22.0),
+            ..TextStyleConfig::default()
         },
-        ..ParleyLayoutOptions::default()
+        ..TextLayoutOptions::default()
     }
 }
 
-fn build_slice(text: &str, width: Option<f32>) -> ParleyLayoutSnapshot {
+fn build_slice(text: &str, width: Option<f32>) -> TextLayoutSnapshot {
     let input = TextLayoutInput {
         surface_id: TextLayoutSurfaceId::Block(9_100),
         content_version: 1,
@@ -33,7 +33,7 @@ fn build_slice(text: &str, width: Option<f32>) -> ParleyLayoutSnapshot {
         theme_version: 1,
         font_version: 1,
     };
-    build_parley_layout(&input, theme(), &code_options(width))
+    build_text_layout(&input, theme(), &code_options(width))
 }
 
 /// 混合短行与必然软换行的长行的代码样本。
@@ -135,6 +135,61 @@ fn windowed_measure_then_full_measure_converges() {
     measure_all(&mut segmented, width);
     let full = build_slice(&text, width);
     assert!((segmented.total_height() - full.height()).abs() < EPSILON);
+}
+
+#[test]
+fn forced_fragment_measurement_does_not_inflate_regular_line_estimates() {
+    let text = format!("{}\nshort\n", "x".repeat(256));
+    let width = Some(40.0);
+    let mut segmented = SegmentedTextLayout::new(
+        text,
+        SegmentedLayoutConfig {
+            max_hard_lines_per_segment: 1,
+            max_bytes_per_segment: 64,
+            estimated_line_height_px: 22.0,
+        },
+    );
+    segmented.set_width(width);
+    let regular_index = segmented.segment_count() - 1;
+
+    segmented.measure_segments(0..1, |slice, _| build_slice(slice, width));
+
+    let regular_estimated_height = segmented.total_height() - segmented.segment_top(regular_index);
+    assert_eq!(regular_estimated_height, 22.0);
+    assert!(segmented.segment_top(1) > 22.0);
+}
+
+#[test]
+fn snapshot_eviction_keeps_exact_height_and_rebuilds_only_reentered_segment() {
+    let text = code_sample(200);
+    let width = Some(500.0);
+    let mut segmented = SegmentedTextLayout::new(
+        text,
+        SegmentedLayoutConfig {
+            max_hard_lines_per_segment: 16,
+            max_bytes_per_segment: usize::MAX,
+            estimated_line_height_px: 22.0,
+        },
+    );
+    segmented.set_width(width);
+    measure_all(&mut segmented, width);
+    let exact_height = segmented.total_height();
+    let exact_count = segmented.measured_count();
+
+    segmented.retain_segment_snapshots(&[2, 3]);
+
+    assert_eq!(segmented.cached_snapshot_count(), 2);
+    assert_eq!(segmented.measured_count(), exact_count);
+    assert!((segmented.total_height() - exact_height).abs() < EPSILON);
+
+    let mut builds = 0;
+    segmented.measure_segments(0..1, |slice, _| {
+        builds += 1;
+        build_slice(slice, width)
+    });
+    assert_eq!(builds, 1);
+    assert_eq!(segmented.cached_snapshot_count(), 3);
+    assert!((segmented.total_height() - exact_height).abs() < EPSILON);
 }
 
 #[test]

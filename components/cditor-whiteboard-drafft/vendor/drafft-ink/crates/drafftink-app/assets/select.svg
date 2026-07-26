@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Selection cursor / pointer arrow -->
+  <path d="M120 48 L120 400 L200 320 L280 440 L340 400 L260 280 L360 280 Z" 
+        fill="white" stroke="white" stroke-width="8" stroke-linejoin="round"/>
+</svg>

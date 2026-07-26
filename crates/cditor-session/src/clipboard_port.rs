@@ -1,6 +1,6 @@
+use cditor_core::clipboard::ClipboardSelection;
 use cditor_core::{ids::BlockId, rich_text::TableRange};
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
-use cditor_import_export::clipboard::ClipboardSelection;
 
 use crate::EditorSessionHandle;
 

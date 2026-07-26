@@ -2,11 +2,12 @@ use std::ops::Range;
 
 use cditor_core::{ids::SurfaceId, rich_text::BlockPayloadRecord};
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode, projection::ProjectionRequest};
+#[cfg(test)]
+use cditor_runtime::content::payload_window::{
+    PayloadWindowApplyDecision, PayloadWindowLoadRequest, PayloadWindowLoadResult,
+};
 use cditor_runtime::{
-    EditorViewProjection, PayloadCachePolicy, PayloadCacheTrimReport,
-    content::payload_window::{
-        PayloadWindowApplyDecision, PayloadWindowLoadRequest, PayloadWindowLoadResult,
-    },
+    EditorViewProjection, PayloadCacheMaintenanceBudget, PayloadCachePolicy, PayloadCacheTrimReport,
 };
 use cditor_viewport::scroll::{
     scrollbar::{ScrollbarPolicy, ScrollbarVisualState},
@@ -104,44 +105,12 @@ impl EditorSessionHandle {
         ))
     }
 
-    pub fn plan_payload_window_load(
-        &self,
-        block_range: Range<usize>,
-    ) -> Result<Option<PayloadWindowLoadRequest>, ProtocolError> {
-        Ok(plan_payload_window_load(
-            &mut self.try_session_mut()?.runtime,
-            block_range,
-        ))
-    }
-
     pub fn loaded_payload_record(
         &self,
         block_id: cditor_core::ids::BlockId,
     ) -> Result<Option<BlockPayloadRecord>, ProtocolError> {
         let session = self.inner.try_borrow().map_err(|_| session_busy())?;
         Ok(session.runtime.block_payload_record(block_id))
-    }
-
-    pub fn apply_payload_window_result(
-        &self,
-        result: PayloadWindowLoadResult,
-    ) -> Result<PayloadWindowApplyDecision, ProtocolError> {
-        Ok(apply_payload_window_result(
-            &mut self.try_session_mut()?.runtime,
-            result,
-        ))
-    }
-
-    pub fn apply_payload_window_error(
-        &self,
-        request: PayloadWindowLoadRequest,
-        message: String,
-    ) -> Result<PayloadWindowApplyDecision, ProtocolError> {
-        Ok(apply_payload_window_error(
-            &mut self.try_session_mut()?.runtime,
-            request,
-            message,
-        ))
     }
 
     pub fn retry_failed_payload_window(
@@ -165,6 +134,20 @@ impl EditorSessionHandle {
             pins,
         ))
     }
+
+    pub fn maintain_payload_cache(
+        &self,
+        policy: PayloadCachePolicy,
+        pins: Vec<cditor_core::ids::BlockId>,
+        budget: PayloadCacheMaintenanceBudget,
+    ) -> Result<PayloadCacheTrimReport, ProtocolError> {
+        Ok(maintain_payload_cache(
+            &mut self.try_session_mut()?.runtime,
+            policy,
+            pins,
+            budget,
+        ))
+    }
 }
 
 pub fn apply_table_horizontal_scroll_offset(
@@ -184,21 +167,16 @@ pub fn activate_resident_payload_window(
     runtime.activate_payload_window_if_resident(block_range)
 }
 
-pub fn plan_payload_window_load(
-    runtime: &mut cditor_runtime::DocumentRuntime,
-    block_range: Range<usize>,
-) -> Option<PayloadWindowLoadRequest> {
-    runtime.plan_payload_window_load_if_needed(block_range)
-}
-
-pub fn apply_payload_window_result(
+#[cfg(test)]
+fn apply_payload_window_result(
     runtime: &mut cditor_runtime::DocumentRuntime,
     result: PayloadWindowLoadResult,
 ) -> PayloadWindowApplyDecision {
     runtime.apply_payload_window_result(result)
 }
 
-pub fn apply_payload_window_error(
+#[cfg(test)]
+fn apply_payload_window_error(
     runtime: &mut cditor_runtime::DocumentRuntime,
     request: PayloadWindowLoadRequest,
     message: String,
@@ -219,6 +197,15 @@ pub fn trim_payload_cache(
     pins: Vec<cditor_core::ids::BlockId>,
 ) -> PayloadCacheTrimReport {
     runtime.trim_payload_cache(policy, pins)
+}
+
+pub fn maintain_payload_cache(
+    runtime: &mut cditor_runtime::DocumentRuntime,
+    policy: PayloadCachePolicy,
+    pins: Vec<cditor_core::ids::BlockId>,
+    budget: PayloadCacheMaintenanceBudget,
+) -> PayloadCacheTrimReport {
+    runtime.maintain_payload_cache(policy, pins, budget)
 }
 
 fn render_error(message: String) -> ProtocolError {
@@ -287,6 +274,22 @@ mod tests {
     #[test]
     fn payload_result_error_retry_and_trim_stay_behind_session_port() {
         let mut runtime = DocumentRuntime::large_mixed_demo();
+        let slice = maintain_payload_cache(
+            &mut runtime,
+            PayloadCachePolicy {
+                max_entries: 1,
+                max_estimated_bytes: usize::MAX,
+            },
+            Vec::new(),
+            PayloadCacheMaintenanceBudget {
+                max_byte_estimate_refreshes: 1,
+                max_lru_candidates: 2,
+                max_evictions: 1,
+            },
+        );
+        assert!(slice.evicted_entries <= 1);
+        assert!(slice.lru_candidates_examined <= 2);
+
         let report = trim_payload_cache(
             &mut runtime,
             PayloadCachePolicy {
@@ -300,11 +303,7 @@ mod tests {
         let request = runtime.plan_payload_window_load(1_000..1_004);
         let current = apply_payload_window_result(
             &mut runtime,
-            PayloadWindowLoadResult {
-                request: request.clone(),
-                records: Vec::new(),
-                missing_block_ids: Vec::new(),
-            },
+            PayloadWindowLoadResult::prepare(request.clone(), Vec::new(), Vec::new()),
         );
         assert_eq!(current, PayloadWindowApplyDecision::Applied);
 

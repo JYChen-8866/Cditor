@@ -56,8 +56,7 @@ fn randomized_measured_height_stale_result_and_anchor_property() {
             runtime
                 .document
                 .payload_window
-                .payloads
-                .get_mut(&block_id)
+                .get_mut(block_id)
                 .unwrap()
                 .content_version = current_version.saturating_add(1);
         } else if queued {

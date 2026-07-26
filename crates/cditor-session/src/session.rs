@@ -9,8 +9,8 @@ use cditor_core::ids::{BlockId, DocumentId};
 use cditor_editor_protocol::{
     ProtocolError, ProtocolErrorCode,
     command::{
-        CommandCatalog, CommandEnvelope, CommandMutability, CommandOutcome, CommandQueryState,
-        CommandSource, CommandUnavailableReason, EditorCommand,
+        AiApplyCommandMode, CommandCatalog, CommandEnvelope, CommandMutability, CommandOutcome,
+        CommandQueryState, CommandSource, CommandUnavailableReason, EditorCommand,
     },
     projection::ProjectionRequest,
     query::{CommandQuery, DocumentSummary, QueryResult},
@@ -169,7 +169,31 @@ pub fn project_command_dispatch(
     envelope: CommandEnvelope,
 ) -> Result<CommandDispatchSnapshot, ProtocolError> {
     let before_revision = runtime.revision();
-    let outcome = runtime.dispatch(envelope)?;
+    let outcome = if let EditorCommand::ApplyClipboardData {
+        ref text,
+        ref metadata_json,
+    } = envelope.command
+    {
+        if envelope
+            .expected_revision
+            .is_some_and(|revision| revision != before_revision)
+        {
+            return Err(ProtocolError::new(
+                ProtocolErrorCode::StalePrecondition,
+                "clipboard command revision is stale",
+            )
+            .with_document(runtime.document_id()));
+        }
+        crate::project_clipboard_import(runtime, text, metadata_json.as_deref())?.outcome
+    } else if let EditorCommand::ApplyAiPreview { mode } = envelope.command {
+        let mode = match mode {
+            AiApplyCommandMode::Replace => cditor_runtime::AiApplyMode::Replace,
+            AiApplyCommandMode::InsertAfter => cditor_runtime::AiApplyMode::InsertAfter,
+        };
+        crate::project_ai_preview_import(runtime, mode)?
+    } else {
+        runtime.dispatch(envelope)?
+    };
     Ok(CommandDispatchSnapshot {
         before_revision,
         revision: runtime.revision(),

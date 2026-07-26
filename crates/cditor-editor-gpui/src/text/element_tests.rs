@@ -34,7 +34,8 @@ fn rich_text_element_paints_spans() {
                 text: "bold".to_owned(),
                 marks: vec![InlineMark::Bold],
             },
-        ],
+        ]
+        .into(),
         width_px: 320.0,
         theme_version: 1,
         font_version: 1,
@@ -47,6 +48,30 @@ fn rich_text_element_paints_spans() {
 }
 
 #[test]
+fn auxiliary_text_shapes_on_first_frame_unless_viewport_prewarm_is_explicit() {
+    let input = RichTextLayoutInput {
+        block_id: 2,
+        surface_id: TextLayoutSurfaceId::TableCell {
+            block_id: 2,
+            row: 0,
+            column: 0,
+        },
+        content_version: 1,
+        layout_version: 1,
+        kind: RichBlockKind::Paragraph,
+        text_align: cditor_core::rich_text::TextAlign::Start,
+        spans: vec![InlineSpan::plain("first frame")].into(),
+        width_px: 200.0,
+        theme_version: 1,
+        font_version: 1,
+    };
+
+    let element = RichTextElement::new(input, GuiTheme::light());
+    assert!(!element.require_prewarmed_layout);
+    assert!(element.with_prewarmed_layout().require_prewarmed_layout);
+}
+
+#[test]
 fn rich_text_element_candidate_rect_tracks_caret_geometry() {
     let input = RichTextLayoutInput {
         block_id: 1,
@@ -55,7 +80,7 @@ fn rich_text_element_candidate_rect_tracks_caret_geometry() {
         layout_version: 1,
         kind: RichBlockKind::Paragraph,
         text_align: cditor_core::rich_text::TextAlign::Start,
-        spans: vec![InlineSpan::plain("abcd")],
+        spans: vec![InlineSpan::plain("abcd")].into(),
         width_px: 320.0,
         theme_version: 1,
         font_version: 1,
@@ -67,6 +92,29 @@ fn rich_text_element_candidate_rect_tracks_caret_geometry() {
     assert!(rect.x > 0.0);
     assert_eq!(rect.y, 0.0);
     assert_eq!(rect.height, 24.0);
+}
+
+#[test]
+fn empty_rich_text_element_keeps_visible_nonzero_caret_geometry() {
+    let input = RichTextLayoutInput {
+        block_id: 1,
+        surface_id: TextLayoutSurfaceId::Block(1),
+        content_version: 1,
+        layout_version: 1,
+        kind: RichBlockKind::Paragraph,
+        text_align: cditor_core::rich_text::TextAlign::Start,
+        spans: vec![InlineSpan::plain("")].into(),
+        width_px: 320.0,
+        theme_version: 1,
+        font_version: 1,
+    };
+    let element = RichTextElement::new(input, GuiTheme::light()).with_caret(Some(0));
+
+    let rect = element.candidate_rect_for_caret().unwrap();
+
+    assert_eq!(rect.x, 0.0);
+    assert_eq!(rect.y, 0.0);
+    assert!(rect.height > 0.0);
 }
 
 #[test]
@@ -83,7 +131,7 @@ fn rich_text_element_candidate_rect_tracks_multiline_table_cell_caret() {
         layout_version: 1,
         kind: RichBlockKind::Paragraph,
         text_align: cditor_core::rich_text::TextAlign::Start,
-        spans: vec![InlineSpan::plain(text)],
+        spans: vec![InlineSpan::plain(text)].into(),
         width_px: 320.0,
         theme_version: 1,
         font_version: 1,
@@ -108,7 +156,7 @@ fn rich_text_element_hides_custom_caret_while_ime_marked_range_is_active() {
         layout_version: 1,
         kind: RichBlockKind::Paragraph,
         text_align: cditor_core::rich_text::TextAlign::Start,
-        spans: vec![InlineSpan::plain("ab中cd")],
+        spans: vec![InlineSpan::plain("ab中cd")].into(),
         width_px: 320.0,
         theme_version: 1,
         font_version: 1,
@@ -129,7 +177,7 @@ fn rich_text_element_hit_test() {
         layout_version: 1,
         kind: RichBlockKind::Paragraph,
         text_align: cditor_core::rich_text::TextAlign::Start,
-        spans: vec![InlineSpan::plain("abcd")],
+        spans: vec![InlineSpan::plain("abcd")].into(),
         width_px: 320.0,
         theme_version: 1,
         font_version: 1,
@@ -141,7 +189,7 @@ fn rich_text_element_hit_test() {
 }
 
 #[test]
-fn inline_box_configuration_reaches_the_shared_parley_layout() {
+fn inline_box_configuration_reaches_the_shared_text_layout_layout() {
     let input = RichTextLayoutInput {
         block_id: 1,
         surface_id: TextLayoutSurfaceId::Block(1),
@@ -149,15 +197,15 @@ fn inline_box_configuration_reaches_the_shared_parley_layout() {
         layout_version: 1,
         kind: RichBlockKind::Paragraph,
         text_align: cditor_core::rich_text::TextAlign::Start,
-        spans: vec![InlineSpan::plain("ab")],
+        spans: vec![InlineSpan::plain("ab")].into(),
         width_px: 320.0,
         theme_version: 1,
         font_version: 1,
     };
     let element = RichTextElement::new(input, GuiTheme::light()).with_inline_boxes(
-        vec![ParleyInlineBoxSpec {
+        vec![InlineBoxSpec {
             id: 42,
-            kind: ParleyInlineBoxKind::InFlow,
+            kind: InlineBoxKind::InFlow,
             index: 1,
             width: 48.0,
             height: 18.0,
@@ -169,7 +217,7 @@ fn inline_box_configuration_reaches_the_shared_parley_layout() {
 
     assert_eq!(boxes.len(), 1);
     assert_eq!(boxes[0].id, 42);
-    assert_eq!(boxes[0].kind, ParleyInlineBoxKind::InFlow);
+    assert_eq!(boxes[0].kind, InlineBoxKind::InFlow);
     assert_eq!(boxes[0].width, 48.0);
     assert_eq!(boxes[0].height, 18.0);
 }

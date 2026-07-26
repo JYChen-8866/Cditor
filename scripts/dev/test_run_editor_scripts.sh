@@ -2,22 +2,11 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd "$(dirname "$0")/../.." && pwd)
-COMPAT_SCRIPT="$ROOT_DIR/scripts/dev/run_editor.sh"
 POSTGRES_SCRIPT="$ROOT_DIR/scripts/dev/run_editor_postgres.sh"
 SQLITE_SCRIPT="$ROOT_DIR/scripts/dev/run_editor_sqlite.sh"
 
-sh -n "$COMPAT_SCRIPT"
 sh -n "$POSTGRES_SCRIPT"
 sh -n "$SQLITE_SCRIPT"
-
-compat_output=$(CDITOR_DRY_RUN=1 "$COMPAT_SCRIPT")
-case "$compat_output" in
-  *'PostgreSQL (document 1)'*) ;;
-  *)
-    printf 'The compatibility launch script no longer defaults to PostgreSQL.\n' >&2
-    exit 1
-    ;;
-esac
 
 postgres_output=$(
   CDITOR_DRY_RUN=1 \
@@ -39,6 +28,13 @@ case "$postgres_output" in
     exit 1
     ;;
 esac
+case "$postgres_output" in
+  *'Dry run: cargo run -p cditor-desktop --profile editor-dev'*) ;;
+  *)
+    printf 'PostgreSQL launch did not default to the editor-dev profile.\n' >&2
+    exit 1
+    ;;
+esac
 
 sqlite_output=$(
   CDITOR_DRY_RUN=1 \
@@ -51,6 +47,67 @@ case "$sqlite_output" in
   *'SQLite (document 43)'*'/tmp/cditor-script-test.db'*) ;;
   *)
     printf 'SQLite launch dry-run did not select the expected backend and path.\n' >&2
+    exit 1
+    ;;
+esac
+case "$sqlite_output" in
+  *'Dry run: cargo run -p cditor-desktop --profile editor-dev'*) ;;
+  *)
+    printf 'SQLite launch did not default to the editor-dev profile.\n' >&2
+    exit 1
+    ;;
+esac
+
+sqlite_release_output=$(CDITOR_DRY_RUN=1 "$SQLITE_SCRIPT" --release)
+case "$sqlite_release_output" in
+  *'Dry run: cargo run -p cditor-desktop --release'*) ;;
+  *)
+    printf 'SQLite launch did not preserve an explicit release profile.\n' >&2
+    exit 1
+    ;;
+esac
+case "$sqlite_release_output" in
+  *'--profile editor-dev'*)
+    printf 'SQLite launch duplicated an explicit release profile.\n' >&2
+    exit 1
+    ;;
+esac
+
+postgres_profile_output=$(CDITOR_DRY_RUN=1 "$POSTGRES_SCRIPT" --profile custom-dev)
+case "$postgres_profile_output" in
+  *'Dry run: cargo run -p cditor-desktop --profile custom-dev'*) ;;
+  *)
+    printf 'PostgreSQL launch did not preserve an explicit named profile.\n' >&2
+    exit 1
+    ;;
+esac
+case "$postgres_profile_output" in
+  *'--profile editor-dev'*)
+    printf 'PostgreSQL launch duplicated an explicit named profile.\n' >&2
+    exit 1
+    ;;
+esac
+
+postgres_equals_profile_output=$(CDITOR_DRY_RUN=1 "$POSTGRES_SCRIPT" --profile=custom-dev)
+case "$postgres_equals_profile_output" in
+  *'Dry run: cargo run -p cditor-desktop --profile=custom-dev'*) ;;
+  *)
+    printf 'PostgreSQL launch did not preserve an equals-style named profile.\n' >&2
+    exit 1
+    ;;
+esac
+case "$postgres_equals_profile_output" in
+  *'--profile editor-dev'*)
+    printf 'PostgreSQL launch duplicated an equals-style named profile.\n' >&2
+    exit 1
+    ;;
+esac
+
+sqlite_binary_args_output=$(CDITOR_DRY_RUN=1 "$SQLITE_SCRIPT" -- --profile document-preview)
+case "$sqlite_binary_args_output" in
+  *'Dry run: cargo run -p cditor-desktop --profile editor-dev -- --profile document-preview'*) ;;
+  *)
+    printf 'SQLite launch treated a binary argument as a Cargo profile.\n' >&2
     exit 1
     ;;
 esac

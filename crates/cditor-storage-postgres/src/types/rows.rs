@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DocumentRow {
+pub(crate) struct DocumentRow {
     pub id: PgDocumentId,
     pub workspace_id: Uuid,
     pub title: String,
@@ -12,7 +12,7 @@ pub struct DocumentRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlockRow {
+pub(crate) struct BlockRow {
     pub id: PgBlockId,
     pub document_id: PgDocumentId,
     pub parent_id: Option<PgBlockId>,
@@ -28,7 +28,7 @@ pub struct BlockRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlockPayloadRow {
+pub(crate) struct BlockPayloadRow {
     pub block_id: PgBlockId,
     pub document_id: PgDocumentId,
     pub payload_format: String,

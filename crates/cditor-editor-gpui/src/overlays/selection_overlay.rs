@@ -1,6 +1,7 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgba};
 
 use crate::block::chrome::BlockHorizontalGeometry;
+use crate::document::{DocumentBlockGeometry, DocumentLayoutMetrics};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::EditorViewProjection;
@@ -13,10 +14,12 @@ pub struct SelectionOverlayFragment {
     pub full_block: bool,
     /// Left edge of block content after shell padding, indent, gutter, and row gap.
     pub content_left_px: f32,
+    pub content_right_px: f32,
 }
 
 pub fn selection_overlay_fragments(
     projection: &EditorViewProjection,
+    document_layout: DocumentLayoutMetrics,
 ) -> Vec<SelectionOverlayFragment> {
     let mut fragments = Vec::new();
     // Overlay geometry is RenderWindow-local. The surface applies the single
@@ -24,7 +27,9 @@ pub fn selection_overlay_fragments(
     let mut block_y = 0.0;
     for block in &projection.blocks {
         let height = block.layout.effective_height();
-        let content_left = selection_content_left_px(block.chrome.list_info.depth);
+        let block_geometry = DocumentBlockGeometry::for_block(block, document_layout);
+        let content_left =
+            block_geometry.shell_left_px + selection_content_left_px(block.chrome.list_info.depth);
         if block.selected || block.selection_overlay {
             fragments.push(SelectionOverlayFragment {
                 block_id: block.block_id,
@@ -32,6 +37,7 @@ pub fn selection_overlay_fragments(
                 height,
                 full_block: block.selected,
                 content_left_px: content_left,
+                content_right_px: block_geometry.track_right_px(),
             });
         }
         block_y += height;
@@ -58,7 +64,7 @@ pub fn render_selection_overlay(
             div()
                 .absolute()
                 .left(px(fragment.content_left_px))
-                .right_0()
+                .w(px(fragment.content_right_px - fragment.content_left_px))
                 .top(px(fragment.y as f32))
                 .h(px(fragment.height as f32))
                 .bg(rgba(background))
@@ -86,7 +92,7 @@ mod tests {
         let mut projection = runtime.projection_for_window();
         projection.before_window_height = 20_000_000.25;
 
-        let fragments = selection_overlay_fragments(&projection);
+        let fragments = selection_overlay_fragments(&projection, DocumentLayoutMetrics::default());
 
         assert_eq!(fragments.len(), projection.blocks.len());
         assert!(fragments.iter().all(|fragment| fragment.full_block));
@@ -121,11 +127,16 @@ mod tests {
         crate::test_support::set_document_text_selection(&mut runtime, 1, 0, 3, "last".len());
         let projection = runtime.projection_for_window();
 
-        let fragments = selection_overlay_fragments(&projection);
+        let fragments = selection_overlay_fragments(&projection, DocumentLayoutMetrics::default());
 
         assert_eq!(fragments.len(), 3);
         assert!(fragments.iter().all(|fragment| !fragment.full_block));
-        let root_content_left = BlockHorizontalGeometry::for_depth(0).marker_lane_left_px;
+        let root_content_left = DocumentBlockGeometry::for_kind(
+            &cditor_core::rich_text::RichBlockKind::Paragraph,
+            DocumentLayoutMetrics::default(),
+        )
+        .shell_left_px
+            + BlockHorizontalGeometry::for_depth(0).marker_lane_left_px;
         assert_eq!(fragments[0].content_left_px, root_content_left);
         assert_eq!(
             fragments[1].content_left_px,
@@ -159,7 +170,13 @@ mod tests {
         );
         crate::test_support::set_document_text_selection(&mut runtime, 1, 2, 2, 2);
 
-        assert!(selection_overlay_fragments(&runtime.projection_for_window()).is_empty());
+        assert!(
+            selection_overlay_fragments(
+                &runtime.projection_for_window(),
+                DocumentLayoutMetrics::default(),
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -175,6 +192,12 @@ mod tests {
         );
         crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 1, 3);
 
-        assert!(selection_overlay_fragments(&runtime.projection_for_window()).is_empty());
+        assert!(
+            selection_overlay_fragments(
+                &runtime.projection_for_window(),
+                DocumentLayoutMetrics::default(),
+            )
+            .is_empty()
+        );
     }
 }

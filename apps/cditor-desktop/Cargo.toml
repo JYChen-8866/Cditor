@@ -1,0 +1,27 @@
+[package]
+name = "cditor-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cditor-sdk = { path = "../../crates/cditor-sdk" }
+cditor-ai-openai = { path = "../../crates/cditor-ai-openai" }
+cditor-editor-gpui = { path = "../../crates/cditor-editor-gpui" }
+cditor-core = { path = "../../crates/cditor-core" }
+cditor-runtime = { path = "../../crates/cditor-runtime" }
+cditor-session = { path = "../../crates/cditor-session" }
+cditor-storage = { path = "../../crates/cditor-storage" }
+cditor-storage-postgres = { path = "../../crates/cditor-storage-postgres" }
+cditor-storage-sqlite = { path = "../../crates/cditor-storage-sqlite" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
+tokio = { version = "1", features = ["sync", "time"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+
+[dev-dependencies]
+cditor-storage-sqlite = { path = "../../crates/cditor-storage-sqlite", features = ["test-support"] }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit", "test-support"] }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

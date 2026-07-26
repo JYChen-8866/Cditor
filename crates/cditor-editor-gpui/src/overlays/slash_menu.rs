@@ -1,3 +1,4 @@
+use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::RichBlockKind;
 use gpui::{
@@ -7,7 +8,7 @@ use gpui::{
 
 use crate::editor_view::CditorV2View;
 use crate::menu_metrics::EditorViewport;
-use crate::presentation::block_registry::slash_block_presentations;
+use crate::presentation::block_registry::block_presentation_registry;
 use crate::theme::GuiTheme;
 
 pub const SLASH_MENU_VISIBLE_ITEMS: usize = 8;
@@ -89,6 +90,12 @@ impl SlashMenuState {
         }
         let max_start = len.saturating_sub(SLASH_MENU_VISIBLE_ITEMS);
         let next = (self.scroll_start as isize + delta_rows).clamp(0, max_start as isize) as usize;
+        self.set_scroll_start(next)
+    }
+
+    pub fn set_scroll_start(&mut self, scroll_start: usize) -> bool {
+        let len = self.visible_items().len();
+        let next = scroll_start.min(len.saturating_sub(SLASH_MENU_VISIBLE_ITEMS));
         if next == self.scroll_start {
             return false;
         }
@@ -122,7 +129,8 @@ pub fn slash_menu_items() -> Vec<SlashMenuItem> {
         command: Some(SlashMenuCommand::AskAi),
     }];
     items.extend(
-        slash_block_presentations()
+        block_presentation_registry()
+            .slash_presentations()
             .into_iter()
             .map(|presentation| SlashMenuItem {
                 icon: presentation.icon,
@@ -253,6 +261,7 @@ pub(crate) fn render_slash_menu(
                 theme,
                 total_items,
                 state.scroll_start,
+                view.clone(),
             ));
         }
     }
@@ -292,33 +301,38 @@ fn slash_menu_panel_position(
     (x, y)
 }
 
-fn render_slash_scrollbar(theme: GuiTheme, total_items: usize, scroll_start: usize) -> AnyElement {
+fn render_slash_scrollbar(
+    theme: GuiTheme,
+    total_items: usize,
+    scroll_start: usize,
+    view: Entity<CditorV2View>,
+) -> AnyElement {
     let visible = SLASH_MENU_VISIBLE_ITEMS.min(total_items);
     let track_height = visible as f32 * SLASH_MENU_ROW_HEIGHT_PX - 8.0;
-    let thumb_height = (track_height * visible as f32 / total_items as f32).max(24.0);
-    let max_start = total_items.saturating_sub(visible).max(1);
-    let max_top = (track_height - thumb_height).max(0.0);
-    let thumb_top = max_top * scroll_start.min(max_start) as f32 / max_start as f32;
+    let max_start = total_items.saturating_sub(visible);
+    let row_height = SLASH_MENU_ROW_HEIGHT_PX;
 
     div()
         .absolute()
-        .right(px(3.0))
+        .right_0()
         .top(px(SLASH_MENU_PANEL_PADDING_PX
             + SLASH_MENU_GROUP_HEIGHT_PX
             + 4.0))
-        .w(px(3.0))
+        .w(px(10.0))
         .h(px(track_height))
-        .rounded(px(2.0))
-        .bg(rgb(theme.border))
-        .child(
-            div()
-                .absolute()
-                .top(px(thumb_top))
-                .w(px(3.0))
-                .h(px(thumb_height))
-                .rounded(px(2.0))
-                .bg(rgb(theme.scrollbar)),
-        )
+        .child(InteractiveScrollbar::for_callback(
+            ScrollbarAxis::Vertical,
+            scroll_start.min(max_start) as f32 * row_height,
+            max_start as f32 * row_height,
+            visible as f32 / total_items as f32,
+            InteractiveScrollbarStyle::notion(theme.scrollbar, theme.scrollbar_hover),
+            move |offset_px, _window, cx| {
+                let target_start = (offset_px / row_height).round() as usize;
+                view.update(cx, |view, cx| {
+                    view.set_slash_menu_scroll_start_from_gui(target_start, cx);
+                });
+            },
+        ))
         .into_any_element()
 }
 
@@ -501,6 +515,21 @@ mod tests {
         assert_eq!(slash_scroll_delta_rows(1.0), -1);
         assert_eq!(slash_scroll_delta_rows(49.0), -2);
         assert_eq!(slash_scroll_delta_rows(-49.0), 2);
+    }
+
+    #[test]
+    fn slash_menu_clamps_direct_scrollbar_positions_and_keeps_selection_visible() {
+        let mut state = SlashMenuState::new(1, 0, String::new(), 0.0, 0.0);
+        let max_start = state
+            .visible_items()
+            .len()
+            .saturating_sub(SLASH_MENU_VISIBLE_ITEMS);
+
+        assert!(state.set_scroll_start(usize::MAX));
+        assert_eq!(state.scroll_start, max_start);
+        assert!(state.selected_index >= state.scroll_start);
+        assert!(state.selected_index < state.scroll_start + SLASH_MENU_VISIBLE_ITEMS);
+        assert!(!state.set_scroll_start(max_start));
     }
 
     #[test]

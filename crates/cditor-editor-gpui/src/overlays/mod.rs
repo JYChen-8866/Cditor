@@ -28,14 +28,16 @@ pub(crate) use slash_menu::{
 pub(crate) use toast::{GuiToast, render_toast, show_toast};
 pub(crate) use whiteboard_editor::{WhiteboardEditorSession, render_whiteboard_editor};
 
+use crate::document::DocumentLayoutMetrics;
 use crate::theme::GuiTheme;
 use cditor_runtime::EditorViewProjection;
 
 pub(crate) fn render_editor_overlays(
     projection: &EditorViewProjection,
     theme: GuiTheme,
+    document_layout: DocumentLayoutMetrics,
 ) -> AnyElement {
-    let selection = selection_overlay_fragments(projection);
+    let selection = selection_overlay_fragments(projection, document_layout);
     div()
         .absolute()
         .top_0()

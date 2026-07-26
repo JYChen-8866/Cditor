@@ -4,23 +4,25 @@ use std::sync::{Mutex, OnceLock};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton, ObjectFit,
-    ParentElement, RenderImage, Styled, div, px, rgb,
+    ParentElement, RenderImage, ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
 use crate::image_loader::{RasterImageElement, load_render_image};
 use crate::image_preview::open_image_preview;
+use crate::surfaces::TextSurfaceInteractionGeometry;
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
 use crate::theme::GuiTheme;
 use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_core::layout::COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX;
 use cditor_core::rich_text::{ImagePayload, TextAlign};
+use cditor_runtime::{MainThreadWorkKind, WorkCost};
 
 const NOTE_IMAGE_MAX_WIDTH_PX: f32 = 704.0;
 const DEFAULT_IMAGE_MAX_WIDTH_PX: f32 = 560.0;
 const MIN_IMAGE_WIDTH_RATIO_MILLI: u16 = 200;
 const MAX_IMAGE_WIDTH_RATIO_MILLI: u16 = 1000;
-const V1_IMAGE_RADIUS_PX: f32 = 3.0;
+const V1_IMAGE_RADIUS_PX: f32 = 4.0;
 const IMAGE_CAPTION_HEIGHT_PX: f32 = 26.0;
 const IMAGE_PLACEHOLDER_HEIGHT_PX: f32 = 220.0;
 const IMAGE_RESIZE_HANDLE_SIZE_PX: f32 = 24.0;
@@ -42,7 +44,7 @@ pub fn render_image_block(
 ) -> AnyElement {
     let caption_surface_id = crate::surfaces::caption::surface_id(block_id);
     let caption_state = view.read(cx).text_surface_render_state(caption_surface_id);
-    let loaded = load_render_image(&image.source, cx);
+    let loaded = load_render_image(&image.source, block_id, content_version, view.clone(), cx);
     let display_size = loaded.as_deref().map(|render_image| {
         display_image_size_px(render_image, image, image_resize_preview_width_px)
     });
@@ -111,6 +113,7 @@ pub fn render_image_block(
         .child(card)
         .when_some(caption_state, |this, state| {
             this.child(render_image_caption(
+                block_id,
                 caption_surface_id,
                 state,
                 layout_version,
@@ -124,6 +127,7 @@ pub fn render_image_block(
 }
 
 fn render_image_caption(
+    block_id: BlockId,
     surface_id: SurfaceId,
     state: crate::surfaces::TextSurfaceRenderState,
     layout_version: u64,
@@ -141,10 +145,19 @@ fn render_image_caption(
         1,
     );
     let focus_view = view.clone();
+    let typography = RichTextTypography {
+        font_size_px: Some(14.0),
+        line_height_px: Some(20.0),
+        font_weight: None,
+    };
+    let bounds_handle = ScrollHandle::default();
+    let interaction_bounds = bounds_handle.clone();
     div()
+        .id(("image-caption", block_id))
         .mt(px(6.0))
         .w(px(width_px))
         .min_h(px(IMAGE_CAPTION_HEIGHT_PX))
+        .track_scroll(&bounds_handle)
         .cursor_text()
         .on_mouse_down(MouseButton::Left, move |event, window, cx| {
             focus_view.update(cx, |view, cx| {
@@ -152,6 +165,12 @@ fn render_image_caption(
                     surface_id,
                     event.position,
                     event.click_count,
+                    TextSurfaceInteractionGeometry::from_bounds(
+                        interaction_bounds.bounds(),
+                        f64::from(width_px),
+                        TextAlign::Center,
+                        typography,
+                    ),
                     window,
                     cx,
                 );
@@ -165,11 +184,7 @@ fn render_image_caption(
                 .with_selection_range(state.selection_range)
                 .with_marked_range(state.marked_range)
                 .with_base_text_color(Some(theme.muted))
-                .with_typography(RichTextTypography {
-                    font_size_px: Some(14.0),
-                    line_height_px: Some(20.0),
-                    font_weight: None,
-                })
+                .with_typography(typography)
                 .with_placeholder(Some("添加说明"))
                 .with_input_handler(view, focus, state.focused)
                 .render(),
@@ -212,15 +227,30 @@ pub(crate) fn schedule_rendered_media_height_report(
         .spawn(async move {
             async_cx.update(|cx| {
                 view.update(cx, |view, cx| {
-                    if crate::cache::queue_rendered_media_height(
-                        view,
-                        block_id,
+                    view.enqueue_main_thread_apply(
+                        MainThreadWorkKind::AsyncMeasureApply,
                         content_version,
-                        measured_height,
-                    ) {
-                        view.mark_dirty(cx);
-                        cx.notify();
-                    }
+                        Some(block_id),
+                        WorkCost {
+                            sync_ms: 0.08,
+                            measure_applies: 1,
+                            height_corrections: 1,
+                            async_results: 1,
+                            ..WorkCost::ZERO
+                        },
+                        move |view, cx| {
+                            if crate::cache::queue_rendered_media_height(
+                                view,
+                                block_id,
+                                content_version,
+                                measured_height,
+                            ) {
+                                view.mark_dirty(cx);
+                                cx.notify();
+                            }
+                        },
+                        cx,
+                    );
                 });
             });
         })
@@ -403,6 +433,11 @@ fn render_image_placeholder(image: &ImagePayload, theme: GuiTheme) -> AnyElement
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_frame_uses_the_prototype_radius() {
+        assert_eq!(V1_IMAGE_RADIUS_PX, 4.0);
+    }
 
     #[test]
     fn image_block_measured_height_includes_optional_caption() {

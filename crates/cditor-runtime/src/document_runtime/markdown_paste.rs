@@ -11,7 +11,7 @@ pub(super) fn markdown_trace_enabled() -> bool {
 
 pub(super) fn trace_markdown(event: &str, details: impl std::fmt::Display) {
     if markdown_trace_enabled() {
-        eprintln!("[cditor][markdown][{event}] {details}");
+        crate::diagnostics::write_stderr(format_args!("[cditor][markdown][{event}] {details}"));
     }
 }
 
@@ -24,31 +24,6 @@ pub(super) fn markdown_trace_preview(text: &str) -> String {
 }
 
 impl DocumentRuntime {
-    pub(crate) fn insert_markdown_paste(&mut self, markdown: &str) -> Result<bool, String> {
-        let detected = looks_like_markdown_paste(markdown);
-        trace_markdown(
-            "paste.detect",
-            format_args!(
-                "detected={detected} bytes={} focus={:?} preview=\"{}\"",
-                markdown.len(),
-                self.focused_block_id(),
-                markdown_trace_preview(markdown)
-            ),
-        );
-        if !detected {
-            return Ok(false);
-        }
-        self.insert_markdown_content(markdown)
-    }
-
-    pub(super) fn insert_markdown_content(&mut self, markdown: &str) -> Result<bool, String> {
-        self.insert_markdown_content_transaction(
-            markdown,
-            EditTransactionKind::Paste,
-            cditor_core::edit::ChangeOrigin::Import,
-        )
-    }
-
     pub(super) fn try_apply_space_block_markdown_shortcut(
         &mut self,
         block_id: BlockId,
@@ -244,7 +219,7 @@ impl DocumentRuntime {
         }
 
         // Update payload with new spans
-        if let Some(payload) = self.document.payload_window.payloads.get_mut(&block_id) {
+        if let Some(payload) = self.document.payload_window.get_mut(block_id) {
             payload.content_version = self
                 .editing
                 .session

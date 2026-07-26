@@ -4,7 +4,7 @@
 >
 > Fixture：`text-layout-v1`
 >
-> Harness：`crates/text/benches/text_layout.rs`
+> Harness：`crates/cditor-text/benches/text_layout.rs`
 
 本文记录 P2-018 的可重复基线。它区分“benchmark 已建立”和“所有性能 Gate 已通过”：
 focused relayout 与 100 visible surfaces 已满足当前预算；10MiB code 整块布局没有满足输入帧预算，

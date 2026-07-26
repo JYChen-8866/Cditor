@@ -158,6 +158,7 @@ impl CditorV2View {
     pub(crate) fn begin_platform_input_registration_frame(&mut self) {
         self.input.session_identity = None;
         self.input.layout_identity = None;
+        self.input.element_bounds = None;
         self.input.target = self
             .overlay
             .ai_prompt
@@ -187,6 +188,7 @@ impl CditorV2View {
         &mut self,
         target: GuiPlatformInputTarget,
         layout_identity: TextPlatformLayoutIdentity,
+        element_bounds: gpui::Bounds<gpui::Pixels>,
     ) -> bool {
         let Some(session) = self.ready_session() else {
             return false;
@@ -208,6 +210,7 @@ impl CditorV2View {
         self.input.target = Some(target);
         self.input.session_identity = input_session_identity;
         self.input.layout_identity = Some(layout_identity);
+        self.input.element_bounds = Some(element_bounds);
         true
     }
 

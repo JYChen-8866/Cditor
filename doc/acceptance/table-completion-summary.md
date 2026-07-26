@@ -7,7 +7,7 @@
 
 ### 1. 持久化验证（P-007 ~ P-010）✅
 
-已在 `crates/store-postgres/src/postgres_integration.rs` 中新增 4 个集成测试：
+已在 `crates/cditor-storage-postgres/src/postgres_integration.rs` 中新增 4 个集成测试：
 
 - **P-007**: `postgres_integration_table_structure_survives_save_and_reopen`
   - 验证 3x3 表格结构和单元格内容在保存/重新加载后完全一致
@@ -27,7 +27,7 @@
 
 ### 2. Light Theme 视觉优化（H-014）✅
 
-更新 `crates/app/src/gui/theme.rs` 中的 light theme 颜色以接近 Notion 风格：
+更新 `crates/cditor-theme/src/theme.rs` 中的 light theme 颜色以接近 Notion 风格：
 
 - **border**: `0xe2e8f0` → `0xe9e9e7` （更柔和的灰色边框）
 - **table_header_background**: `0xf1f5f9` → `0xf7f6f4` （Notion 风格的暖灰色表头）
@@ -96,7 +96,7 @@ cargo test -p cditor-runtime --lib table
 
 ### App 测试
 ```bash
-cargo test -p cditor-app --lib table
+cargo test -p cditor-desktop --lib table
 ```
 **结果：** ✅ 已通过
 
@@ -173,7 +173,7 @@ cargo check --workspace
 ✅ **`cargo test -p cditor-runtime --lib` 通过**
 - 73 tests passed
 
-✅ **`cargo test -p cditor-app --lib` 通过**
+✅ **`cargo test -p cditor-desktop --lib` 通过**
 - 36 tests passed
 
 📋 **与表格相关的 acceptance 测试通过**

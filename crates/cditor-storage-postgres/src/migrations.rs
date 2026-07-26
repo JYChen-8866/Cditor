@@ -15,6 +15,7 @@ pub async fn run_migrations(pool: &PgPool) -> PostgresStorageResult<()> {
         .map_err(|error| PostgresStorageError::Migration(error.to_string()))
 }
 
+#[cfg(test)]
 pub fn initial_schema_sql() -> &'static str {
     include_str!("../migrations/0001_initial.sql")
 }
