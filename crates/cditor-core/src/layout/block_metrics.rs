@@ -5,16 +5,50 @@ pub const DEFAULT_LAYOUT_WIDTH_PX: f64 = super::BODY_BLOCK_CONTENT_WIDTH_PX;
 pub const COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX: f64 = 16.0;
 pub const TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX: f64 = 14.0;
 pub const STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX: f64 = 320.0;
-pub const NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX: f64 = 36.0;
-pub const NOTION_TABLE_CELL_PADDING_Y_PX: f64 = 7.0;
-pub const NOTION_TABLE_CELL_LINE_HEIGHT_PX: f64 = 14.0 * 1.45;
+pub const NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
+    .document
+    .table
+    .default_row_height_px as f64;
+pub const NOTION_TABLE_CELL_PADDING_Y_PX: f64 =
+    cditor_config::APP_CONFIG.document.table.cell_padding_y_px as f64;
+pub const NOTION_TABLE_CELL_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .table_cell
+    .line_height_px as f64;
 
 pub const BLOCK_SHELL_PADDING_Y_PX: f64 = 4.0;
-pub const NOTION_BODY_LINE_HEIGHT_PX: f64 = 24.0;
-pub const NOTION_HEADING_1_LINE_HEIGHT_PX: f64 = 39.0;
-pub const NOTION_HEADING_2_LINE_HEIGHT_PX: f64 = 32.0;
-pub const NOTION_HEADING_3_LINE_HEIGHT_PX: f64 = 26.0;
-pub const V1_CODE_TEXT_LINE_HEIGHT_PX: f64 = 24.0;
+pub const NOTION_BODY_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .body
+    .line_height_px as f64;
+pub const NOTION_HEADING_1_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .heading_1
+    .line_height_px as f64;
+pub const NOTION_HEADING_2_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .heading_2
+    .line_height_px as f64;
+pub const NOTION_HEADING_3_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .heading_3
+    .line_height_px as f64;
+pub const V1_CODE_TEXT_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .code
+    .line_height_px as f64;
 pub const V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX: f64 = 36.0;
 pub const V1_CODE_SURFACE_GAP_PX: f64 = 1.0;
 pub const V1_CODE_FRAME_BORDER_WIDTH_PX: f64 = 1.0;

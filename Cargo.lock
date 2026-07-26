@@ -1113,9 +1113,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cditor-config"
+version = "0.2.6"
+dependencies = [
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "cditor-core"
 version = "0.2.6"
 dependencies = [
+ "cditor-config",
  "getrandom 0.3.4",
  "serde",
  "serde_json",
@@ -1151,6 +1160,7 @@ dependencies = [
  "async-channel 2.5.0",
  "cditor-ai",
  "cditor-component",
+ "cditor-config",
  "cditor-core",
  "cditor-editor-protocol",
  "cditor-import-export",
@@ -1302,6 +1312,7 @@ name = "cditor-text"
 version = "0.2.6"
 dependencies = [
  "accesskit",
+ "cditor-config",
  "cditor-core",
  "fontique",
  "parley",
@@ -1317,6 +1328,7 @@ dependencies = [
 name = "cditor-theme"
 version = "0.2.6"
 dependencies = [
+ "cditor-config",
  "serde",
 ]
 

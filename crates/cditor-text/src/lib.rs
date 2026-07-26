@@ -4,6 +4,7 @@
 //! native input remain adapters in `cditor-editor-gpui`.
 
 mod accessibility;
+mod bundled_fonts;
 mod cache;
 mod engine;
 mod font_identity;
@@ -23,6 +24,7 @@ mod tests;
 pub use accessibility::{
     TextAccessibilityProjection, accessibility_node_ids, build_text_accessibility_projection,
 };
+pub use bundled_fonts::DOCUMENT_BODY_FONT_FAMILY;
 pub use cache::{
     CachedTextLayout, TextLayoutCachePolicy, TextLayoutCachePriority, TextLayoutCacheRequest,
     TextLayoutCacheStats, TextLayoutCacheTrimReport, TextLayoutKey, TextLayoutMemoryPressure,

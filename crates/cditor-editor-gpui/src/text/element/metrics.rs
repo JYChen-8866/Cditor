@@ -126,13 +126,14 @@ pub(in crate::text) fn text_rect_to_bounds(
 }
 
 pub(in crate::text) fn text_size_for_kind(kind: &RichBlockKind) -> Pixels {
+    let styles = cditor_config::APP_CONFIG.document.typography.styles;
     match kind {
-        RichBlockKind::Heading { level: 1 } => px(30.0),
-        RichBlockKind::Heading { level: 2 } => px(24.0),
-        RichBlockKind::Heading { .. } => px(20.0),
-        RichBlockKind::Code { .. } => px(14.0),
-        RichBlockKind::FootnoteDefinition => px(14.0),
-        _ => px(16.0),
+        RichBlockKind::Heading { level: 1 } => px(styles.heading_1.size_px),
+        RichBlockKind::Heading { level: 2 } => px(styles.heading_2.size_px),
+        RichBlockKind::Heading { .. } => px(styles.heading_3.size_px),
+        RichBlockKind::Code { .. } => px(styles.code.size_px),
+        RichBlockKind::FootnoteDefinition => px(styles.footnote.size_px),
+        _ => px(styles.body.size_px),
     }
 }
 
@@ -140,20 +141,31 @@ pub(in crate::text) fn base_font_weight_for_kind(
     kind: &RichBlockKind,
     inherited: FontWeight,
 ) -> FontWeight {
-    if matches!(kind, RichBlockKind::Heading { .. }) && inherited < FontWeight::SEMIBOLD {
-        FontWeight::SEMIBOLD
-    } else {
+    let styles = cditor_config::APP_CONFIG.document.typography.styles;
+    let configured = match kind {
+        RichBlockKind::Heading { level: 1 } => styles.heading_1.weight,
+        RichBlockKind::Heading { level: 2 } => styles.heading_2.weight,
+        RichBlockKind::Heading { .. } => styles.heading_3.weight,
+        RichBlockKind::Code { .. } => styles.code.weight,
+        RichBlockKind::FootnoteDefinition => styles.footnote.weight,
+        _ => styles.body.weight,
+    };
+    let configured = FontWeight(configured as f32);
+    if inherited > configured {
         inherited
+    } else {
+        configured
     }
 }
 
 pub(in crate::text) fn line_height_for_kind(kind: &RichBlockKind, _text_size: Pixels) -> Pixels {
+    let styles = cditor_config::APP_CONFIG.document.typography.styles;
     match kind {
-        RichBlockKind::Code { .. } => px(24.0),
+        RichBlockKind::Code { .. } => px(styles.code.line_height_px),
         RichBlockKind::Heading { level: 1 } => px(NOTION_HEADING_1_LINE_HEIGHT_PX as f32),
         RichBlockKind::Heading { level: 2 } => px(NOTION_HEADING_2_LINE_HEIGHT_PX as f32),
         RichBlockKind::Heading { .. } => px(NOTION_HEADING_3_LINE_HEIGHT_PX as f32),
-        RichBlockKind::FootnoteDefinition => px(20.0),
+        RichBlockKind::FootnoteDefinition => px(styles.footnote.line_height_px),
         _ => px(NOTION_BODY_LINE_HEIGHT_PX as f32),
     }
 }

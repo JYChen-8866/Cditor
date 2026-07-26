@@ -14,7 +14,7 @@ mod segmented_element;
 mod segmented_platform;
 mod segmented_viewport;
 
-pub(crate) use caret_blink::CaretBlink;
+pub use caret_blink::CaretBlink;
 pub(crate) use diagnostics::{
     TextGeometryOperation, record_snapshot_geometry, record_synchronous_geometry_fallback,
     record_unavailable_geometry, text_geometry_telemetry,

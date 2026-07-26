@@ -1,9 +1,10 @@
 [package]
-name = "cditor-theme"
+name = "cditor-config"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+build = "build.rs"
 
-[dependencies]
-cditor-config = { path = "../cditor-config" }
+[build-dependencies]
 serde = { version = "1", features = ["derive"] }
+toml = "0.8"

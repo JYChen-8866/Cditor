@@ -4,7 +4,7 @@ use gpui::Context;
 
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 
-pub(crate) struct CaretBlink {
+pub struct CaretBlink {
     generation: usize,
     enabled: bool,
     paused_until: Option<Instant>,

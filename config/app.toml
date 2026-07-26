@@ -1,0 +1,66 @@
+[document.typography.fonts.body]
+family = "Alibaba PuHuiTi 3.0"
+regular_asset = "assets/fonts/AlibabaPuHuiTi-Regular.ttf"
+medium_asset = "assets/fonts/AlibabaPuHuiTi-Medium.ttf"
+semibold_asset = "assets/fonts/AlibabaPuHuiTi-SemiBold.ttf"
+bold_asset = "assets/fonts/AlibabaPuHuiTi-Bold.ttf"
+
+[document.typography.fonts.code]
+macos = "Menlo"
+windows = "Consolas"
+linux = "DejaVu Sans Mono"
+
+[document.typography.fonts.ui]
+macos = ".SystemUIFont"
+windows = "Segoe UI"
+linux = "DejaVu Sans"
+
+[document.typography.styles.body]
+size_px = 16.0
+line_height_px = 24.0
+weight = 400
+
+[document.typography.styles.heading_1]
+size_px = 30.0
+line_height_px = 39.0
+weight = 600
+
+[document.typography.styles.heading_2]
+size_px = 24.0
+line_height_px = 32.0
+weight = 600
+
+[document.typography.styles.heading_3]
+size_px = 20.0
+line_height_px = 26.0
+weight = 600
+
+[document.typography.styles.footnote]
+size_px = 14.0
+line_height_px = 20.0
+weight = 400
+
+[document.typography.styles.table_cell]
+size_px = 14.0
+line_height_px = 20.3
+weight = 400
+
+[document.typography.styles.table_header]
+size_px = 14.0
+line_height_px = 20.3
+weight = 500
+
+[document.typography.styles.code]
+size_px = 14.0
+line_height_px = 24.0
+weight = 400
+
+[document.typography.styles.ui]
+size_px = 14.0
+line_height_px = 20.0
+weight = 400
+
+[document.table]
+default_row_height_px = 36.0
+cell_padding_x_px = 10.0
+cell_padding_y_px = 7.0

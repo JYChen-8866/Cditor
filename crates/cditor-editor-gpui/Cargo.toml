@@ -16,6 +16,7 @@ cditor-test-support = { path = "../cditor-test-support" }
 [dependencies]
 async-channel = "2"
 cditor-ai = { path = "../cditor-ai" }
+cditor-config = { path = "../cditor-config" }
 cditor-sdk = { path = "../cditor-sdk" }
 cditor-core = { path = "../cditor-core" }
 cditor-editor-protocol = { path = "../cditor-editor-protocol" }

@@ -4,7 +4,7 @@ use std::{
 };
 
 use cditor_session::EditorSessionHandle;
-use gpui::{AppContext, Context, Entity, FocusHandle, Subscription};
+use gpui::{AppContext, Context, Entity, FocusHandle};
 
 use cditor_core::block::GutterBlockDragState;
 use cditor_core::ids::BlockId;
@@ -114,7 +114,6 @@ pub(crate) struct FocusUiState {
     pub(crate) code_language: FocusHandle,
     pub(crate) ai_prompt: FocusHandle,
     pub(crate) caret_blink: Entity<CaretBlink>,
-    _caret_blink_subscription: Subscription,
     pub(crate) sdk_observers_registered: bool,
     pub(crate) last_emitted_selection: Option<cditor_sdk::document::DocumentSelection>,
     document_epoch: DocumentInteractionEpoch,
@@ -164,13 +163,11 @@ impl DocumentInteractionEpoch {
 impl FocusUiState {
     pub(crate) fn new(cx: &mut Context<CditorV2View>) -> Self {
         let caret_blink = cx.new(|_| CaretBlink::new());
-        let caret_blink_subscription = cx.observe(&caret_blink, |_, _, cx| cx.notify());
         Self {
             editor: cx.focus_handle(),
             code_language: cx.focus_handle(),
             ai_prompt: cx.focus_handle(),
             caret_blink,
-            _caret_blink_subscription: caret_blink_subscription,
             sdk_observers_registered: false,
             last_emitted_selection: None,
             document_epoch: DocumentInteractionEpoch::default(),

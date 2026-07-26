@@ -17,7 +17,12 @@ fn render_prefixed(prefix: String, content: AnyElement) -> AnyElement {
         .flex()
         .gap_2()
         .items_baseline()
-        .text_size(px(16.0))
+        .text_size(px(cditor_config::APP_CONFIG
+            .document
+            .typography
+            .styles
+            .body
+            .size_px))
         .child(prefix)
         .child(content)
         .into_any_element()

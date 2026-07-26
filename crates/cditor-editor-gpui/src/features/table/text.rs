@@ -13,8 +13,6 @@ use cditor_core::rich_text::InlineSpan;
 use cditor_core::rich_text::{RichBlockKind, TableCellAlign, TextAlign};
 use cditor_runtime::{TableCellPosition, TableCellSpansSnapshot};
 
-use super::style::{table_cell_line_height, table_cell_text_size};
-
 pub(super) struct TableCellTextElement {
     block_id: BlockId,
     content_version: u64,
@@ -130,19 +128,42 @@ pub(crate) fn core_text_align(align: TableCellAlign) -> TextAlign {
 }
 
 pub(crate) fn table_cell_typography(header: bool) -> RichTextTypography {
+    let style = if header {
+        cditor_config::APP_CONFIG
+            .document
+            .typography
+            .styles
+            .table_header
+    } else {
+        cditor_config::APP_CONFIG
+            .document
+            .typography
+            .styles
+            .table_cell
+    };
     RichTextTypography {
-        font_size_px: Some(f32::from(table_cell_text_size())),
-        line_height_px: Some(f32::from(table_cell_line_height())),
-        font_weight: Some(table_cell_font_weight(header)),
+        font_size_px: Some(style.size_px),
+        line_height_px: Some(style.line_height_px),
+        font_weight: Some(FontWeight(style.weight as f32)),
     }
 }
 
+#[cfg(test)]
 fn table_cell_font_weight(header: bool) -> FontWeight {
-    if header {
-        FontWeight::MEDIUM
+    let style = if header {
+        cditor_config::APP_CONFIG
+            .document
+            .typography
+            .styles
+            .table_header
     } else {
-        FontWeight::NORMAL
-    }
+        cditor_config::APP_CONFIG
+            .document
+            .typography
+            .styles
+            .table_cell
+    };
+    FontWeight(style.weight as f32)
 }
 
 #[cfg(test)]

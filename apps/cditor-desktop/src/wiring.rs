@@ -11,11 +11,12 @@ use cditor_sdk::{Cditor, CditorError, CditorOptions};
 use cditor_session::SessionIoExecutor;
 use cditor_storage::StorageError;
 use gpui::{
-    App, AppContext, Bounds, Context, IntoElement, Render, TitlebarOptions, Window, WindowBounds,
-    WindowOptions, px, size,
+    App, AppContext, Bounds, Context, Entity, IntoElement, Render, StyleRefinement, Styled,
+    Subscription, TitlebarOptions, Window, WindowBounds, WindowOptions, px, size,
 };
 
 struct CditorHostView {
+    _blink_subscription: Subscription,
     view: gpui::Entity<CditorV2View>,
 }
 
@@ -67,14 +68,17 @@ fn read_remote_image_body(
 }
 
 impl CditorHostView {
-    fn new(view: gpui::Entity<CditorV2View>) -> Self {
-        Self { view }
+    fn new(view: gpui::Entity<CditorV2View>, sub: Subscription) -> Self {
+        Self {
+            view,
+            _blink_subscription: sub,
+        }
     }
 }
 
 impl Render for CditorHostView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        self.view.clone()
+        gpui::AnyView::from(self.view.clone()).cached(StyleRefinement::default().flex().size_full())
     }
 }
 
@@ -116,9 +120,17 @@ pub fn run_desktop(cditor: Cditor) {
         cx.activate(true);
         let component = build_component(cditor.clone(), cx).expect("build Cditor component");
         let window_options = default_window_options(cx);
-        cx.open_window(window_options, move |_window, cx| {
+        cx.open_window(window_options, move |window, cx| {
             let view = component.view.clone();
-            cx.new(|_cx| CditorHostView::new(view))
+            let blink_entity = view.read(cx).caret_blink_entity().clone();
+            let blink_sub = window.observe(
+                &blink_entity,
+                cx,
+                |_: Entity<cditor_editor_gpui::CaretBlink>, window: &mut Window, _: &mut App| {
+                    window.refresh()
+                },
+            );
+            cx.new(move |_cx| CditorHostView::new(view, blink_sub))
         })
         .expect("open Cditor window");
     });

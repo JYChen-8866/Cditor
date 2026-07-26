@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/cditor-config",
     "crates/cditor-ai",
     "crates/cditor-ai-openai",
     "crates/cditor-core",

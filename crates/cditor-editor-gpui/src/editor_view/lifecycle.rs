@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use gpui::{App, Context};
+use gpui::{App, Context, Entity};
 
 use cditor_core::ids::BlockId;
 
@@ -14,6 +14,7 @@ use crate::overlays::table::TableViewportMeasurement;
 use crate::persistence::{
     DEFAULT_STORAGE_SAVE_DEBOUNCE, EditorSaveStatus, PersistencePipeline, schedule_storage_autosave,
 };
+use crate::text::CaretBlink;
 use cditor_runtime::DocumentRuntime;
 use cditor_session::{EditorSession, EditorSessionHandle};
 
@@ -34,6 +35,9 @@ impl CditorV2View {
         self.focus.caret_blink.read(cx).visible()
     }
 
+    pub fn caret_blink_entity(&self) -> &Entity<CaretBlink> {
+        &self.focus.caret_blink
+    }
     pub(crate) fn ready_session(&self) -> Option<&EditorSessionHandle> {
         match &self.state {
             CditorViewState::Ready(session) => Some(session),

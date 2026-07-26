@@ -75,12 +75,14 @@ pub struct TextStyleConfig {
 
 impl Default for TextStyleConfig {
     fn default() -> Self {
+        let typography = cditor_config::APP_CONFIG.document.typography;
+        let body = typography.styles.body;
         Self {
-            font_family: "system-ui".to_owned(),
-            font_size: 16.0,
+            font_family: typography.fonts.body.family.to_owned(),
+            font_size: body.size_px,
             font_width: 1.0,
             font_slant: TextFontSlant::Normal,
-            font_weight: 400.0,
+            font_weight: body.weight as f32,
             font_variations: String::new(),
             font_features: String::new(),
             locale: None,
@@ -93,7 +95,7 @@ impl Default for TextStyleConfig {
             strikethrough_offset: None,
             strikethrough_size: None,
             strikethrough_brush: None,
-            line_height: TextLineHeight::default(),
+            line_height: TextLineHeight::Absolute(body.line_height_px),
             word_spacing: 0.0,
             letter_spacing: 0.0,
             word_break: WordBreak::Normal,

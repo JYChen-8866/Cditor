@@ -1,8 +1,23 @@
 use gpui::{AnyElement, FontWeight, IntoElement, ParentElement, Styled, div, px};
 
-pub const NOTION_HEADING_1_TEXT_SIZE_PX: f32 = 30.0;
-pub const NOTION_HEADING_2_TEXT_SIZE_PX: f32 = 24.0;
-pub const NOTION_HEADING_3_TEXT_SIZE_PX: f32 = 20.0;
+pub const NOTION_HEADING_1_TEXT_SIZE_PX: f32 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .heading_1
+    .size_px;
+pub const NOTION_HEADING_2_TEXT_SIZE_PX: f32 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .heading_2
+    .size_px;
+pub const NOTION_HEADING_3_TEXT_SIZE_PX: f32 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .heading_3
+    .size_px;
 pub const HEADING_4_TEXT_SIZE_PX: f32 = 18.0;
 pub const HEADING_5_TEXT_SIZE_PX: f32 = 16.0;
 pub const HEADING_6_TEXT_SIZE_PX: f32 = 14.0;
@@ -28,7 +43,30 @@ fn heading_text_size_px(level: u8) -> f32 {
 
 fn heading_font_weight(level: u8) -> FontWeight {
     match level {
-        1..=3 => FontWeight::SEMIBOLD,
+        1 => FontWeight(
+            cditor_config::APP_CONFIG
+                .document
+                .typography
+                .styles
+                .heading_1
+                .weight as f32,
+        ),
+        2 => FontWeight(
+            cditor_config::APP_CONFIG
+                .document
+                .typography
+                .styles
+                .heading_2
+                .weight as f32,
+        ),
+        3 => FontWeight(
+            cditor_config::APP_CONFIG
+                .document
+                .typography
+                .styles
+                .heading_3
+                .weight as f32,
+        ),
         _ => FontWeight::MEDIUM,
     }
 }

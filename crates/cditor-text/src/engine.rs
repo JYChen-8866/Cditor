@@ -7,6 +7,7 @@ use parley::{
 };
 
 use super::{TextBrush, TextLayoutSnapshot, TextStyleConfig, TextStyleRun, text_style_runs};
+use crate::bundled_fonts::register_document_fonts;
 use crate::{TextLayoutInput, TextSnapshot, TextTheme};
 
 thread_local! {
@@ -43,8 +44,10 @@ impl std::error::Error for FontRegistrationError {}
 
 impl ParleyContexts {
     fn new() -> Self {
+        let mut font = FontContext::new();
+        register_document_fonts(&mut font);
         Self {
-            font: FontContext::new(),
+            font,
             layout: LayoutContext::new(),
         }
     }

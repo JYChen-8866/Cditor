@@ -52,7 +52,7 @@ impl ThemeResolver {
             id,
             version: self.version,
             colors: default_palette(id),
-            typography: Typography::notion_like(),
+            typography: Typography::from_app_config(),
             metrics: EditorMetrics::notion_like(),
         }
     }

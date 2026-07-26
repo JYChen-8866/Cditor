@@ -2,20 +2,26 @@ use std::borrow::Cow;
 
 /// GPUI's native macOS system UI family. The platform resolves this to the
 /// appropriate SF Pro optical variant and falls back to the system CJK face.
-pub(crate) const EDITOR_UI_FONT_FAMILY: &str = ".SystemUIFont";
+pub(crate) const EDITOR_UI_FONT_FAMILY: &str = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .fonts
+    .ui
+    .current();
 
 /// A concrete monospace family that ships with the host operating system.
 ///
 /// GPUI expects a real font family name here; CSS-style generic families are
 /// not resolved consistently by every native text backend.
-#[cfg(target_os = "windows")]
-pub(crate) const EDITOR_MONO_FONT_FAMILY: &str = "Consolas";
+pub(crate) const EDITOR_MONO_FONT_FAMILY: &str = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .fonts
+    .code
+    .current();
 
-#[cfg(target_os = "macos")]
-pub(crate) const EDITOR_MONO_FONT_FAMILY: &str = "Menlo";
-
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-pub(crate) const EDITOR_MONO_FONT_FAMILY: &str = "DejaVu Sans Mono";
+/// Proportional body-text font for document content.
+pub(crate) const BODY_FONT_FAMILY: &str = cditor_text::DOCUMENT_BODY_FONT_FAMILY;
 
 /// Convert external/native text to the editor's internal LF convention.
 ///

@@ -9,6 +9,7 @@ use crate::{
     document::{DocumentLayoutMetrics, DocumentTextGeometry},
     editor_view::CditorV2View,
     features::code::highlight::code_theme_item,
+    platform::BODY_FONT_FAMILY,
     text::{
         RichTextLayoutInput, RichTextTypography, TextLayoutCacheRequest, TextLayoutOptions,
         cached_text_layout_with_request, element::metrics::text_layout_options,
@@ -159,7 +160,7 @@ impl CditorV2View {
                 &input,
                 text_theme,
                 block.attrs.color.as_deref().and_then(parse_block_hex_color),
-                "system-ui",
+                BODY_FONT_FAMILY,
                 FontWeight::NORMAL,
                 FontStyle::Normal,
                 scale,

@@ -5,6 +5,7 @@ mod geometry_properties;
 mod geometry_snapshot_consistency;
 mod segmented_consistency;
 mod visual_regression;
+use crate::bundled_fonts::{DOCUMENT_BODY_FONT_FAMILY, DOCUMENT_BODY_FONT_REGULAR};
 use cditor_core::{
     edit::TextAffinity,
     rich_text::{InlineMark, InlineSpan, RichBlockKind},
@@ -120,6 +121,27 @@ fn parley_layout_shapes_cjk_combining_and_emoji_clusters() {
         position = next;
     }
     assert_eq!(position.offset, text.len());
+}
+
+#[test]
+fn bundled_document_font_shapes_latin_and_chinese_without_system_fallback() {
+    let text = "Alibaba PuHuiTi 正文混排";
+    let input = input(vec![InlineSpan::plain(text)], 500.0);
+    let mut options = options(500.0);
+    options.base_style.font_family = DOCUMENT_BODY_FONT_FAMILY.to_owned();
+
+    let layout = build_text_layout(&input, theme(), &options);
+    let runs = &layout.paint_plan().runs;
+
+    assert!(!runs.is_empty());
+    assert!(
+        runs.iter()
+            .all(|run| run.font.family == DOCUMENT_BODY_FONT_FAMILY)
+    );
+    assert!(
+        runs.iter()
+            .all(|run| run.font.data() == DOCUMENT_BODY_FONT_REGULAR)
+    );
 }
 
 #[test]
