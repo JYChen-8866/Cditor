@@ -3,7 +3,7 @@ use crate::JsonValue;
 use crate::protocol::error::AgentToolError;
 
 pub trait ToolHandler: Send + Sync {
-    fn execute(&self, args: JsonValue) -> Result<JsonValue, AgentToolError>;
+    fn execute(&self, args: JsonValue, ports: &crate::runtime::adapter::AgentPorts) -> Result<JsonValue, AgentToolError>;
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
     fn effects(&self) -> ToolEffects;
@@ -27,11 +27,11 @@ impl ToolRegistry {
             .find(|t| t.name() == name)
             .map(|t| t.as_ref())
     }
-    pub fn run(&self, name: &str, args: JsonValue) -> Result<String, AgentToolError> {
+    pub fn run(&self, name: &str, args: JsonValue, ports: &crate::runtime::adapter::AgentPorts) -> Result<String, AgentToolError> {
         let h = self.find(name).ok_or(AgentToolError::NotFound {
             block_id: uuid::Uuid::new_v4(),
         })?;
-        let raw = h.execute(args)?;
+        let raw = h.execute(args, ports)?;
         let json = serde_json::to_string(&raw).unwrap_or_else(|_| "{}".into());
         Ok(format!("[tool_output]\n{}\n[/tool_output]", json))
     }
@@ -51,7 +51,7 @@ mod tests {
     use super::*;
     struct DummyTool;
     impl ToolHandler for DummyTool {
-        fn execute(&self, _: JsonValue) -> Result<JsonValue, AgentToolError> {
+        fn execute(&self, _: JsonValue, _ports: &crate::runtime::adapter::AgentPorts) -> Result<JsonValue, AgentToolError> {
             Ok(serde_json::json!({"ok":true}))
         }
         fn name(&self) -> &'static str {
@@ -72,13 +72,21 @@ mod tests {
         let mut r = ToolRegistry::new();
         r.register(Box::new(DummyTool));
         assert_eq!(r.len(), 1);
-        let out = r.run("dummy", serde_json::json!({})).unwrap();
+        let ports = crate::runtime::adapter::AgentPorts::new(
+            std::sync::Arc::new(crate::runtime::adapter::tests::MockReadPort { blocks: std::collections::HashMap::new() }),
+            std::sync::Arc::new(crate::runtime::adapter::tests::MockWritePort { prepared: None }),
+        );
+        let out = r.run("dummy", serde_json::json!({}), &ports).unwrap();
         assert!(out.contains("[tool_output]"));
     }
     #[test]
     fn missing_tool_errors() {
         let r = ToolRegistry::new();
-        assert!(r.run("nope", serde_json::json!({})).is_err());
+        let ports = crate::runtime::adapter::AgentPorts::new(
+            std::sync::Arc::new(crate::runtime::adapter::tests::MockReadPort { blocks: std::collections::HashMap::new() }),
+            std::sync::Arc::new(crate::runtime::adapter::tests::MockWritePort { prepared: None }),
+        );
+        assert!(r.run("nope", serde_json::json!({}), &ports).is_err());
     }
     #[test]
     fn tool_definitions_present() {

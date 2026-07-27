@@ -30,7 +30,7 @@ mod integration {
     }
 
     fn make_service() -> AgentService {
-        AgentService::new(AgentSessionId::new_v4(), make_registry(), AgentBudget::new(100000, 300))
+        AgentService::new(AgentSessionId::new_v4(), make_registry(), AgentBudget::new(100000, 300), crate::runtime::adapter::tests::mock_agent_ports())
     }
 
     struct MockProvider { responses: Vec<String> }

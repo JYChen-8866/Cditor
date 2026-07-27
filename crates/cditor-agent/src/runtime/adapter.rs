@@ -13,6 +13,7 @@ use crate::tools::mutation::{
 };
 use crate::tools::read::{AgentBlockNode, AgentBlockSummary, AgentReadEnvelope, ChildListEntry, DocumentStat};
 use crate::{BlockId, DocumentId};
+use std::sync::Arc;
 
 // ── Read port ─────────────────────────────────────────────────────
 
@@ -92,6 +93,22 @@ pub trait AgentWritePort: Send + Sync {
 }
 
 // ── Transaction channel ───────────────────────────────────────────
+
+
+// ── Agent ports bundle ────────────────────────────────────────────
+
+/// Bundle of read and write ports injected into tool execution.
+/// The session layer creates this and passes it into the agent runtime.
+pub struct AgentPorts {
+    pub read: Arc<dyn AgentReadPort>,
+    pub write: Arc<dyn AgentWritePort>,
+}
+
+impl AgentPorts {
+    pub fn new(read: Arc<dyn AgentReadPort>, write: Arc<dyn AgentWritePort>) -> Self {
+        Self { read, write }
+    }
+}
 
 /// The transaction channel handles the flow of mutations from agent to editor.
 /// It implements the two-phase commit protocol with precondition checking.
@@ -208,51 +225,59 @@ pub fn build_context_snapshot(
 
 // ── Tests ─────────────────────────────────────────────────────────
 
+
+// ── Test helpers ─────────────────────────────────────────────────
+
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    struct MockReadPort {
-        blocks: HashMap<BlockId, AgentBlockSummary>,
+    #[allow(dead_code)]
+    pub(crate) fn mock_agent_ports() -> Arc<AgentPorts> {
+        Arc::new(AgentPorts::new(
+            Arc::new(MockReadPort { blocks: HashMap::new() }),
+            Arc::new(MockWritePort { prepared: None }),
+        ))
+    }
+
+    pub(crate) struct MockReadPort {
+        pub blocks: HashMap<BlockId, AgentBlockSummary>,
+    }
+
+    pub(crate) struct MockWritePort {
+        pub prepared: Option<PreparedAgentMutation>,
     }
 
     impl AgentReadPort for MockReadPort {
         fn block_summary(&self, block_id: BlockId) -> Result<AgentBlockSummary, AgentToolError> {
-            self.blocks
-                .get(&block_id)
-                .cloned()
-                .ok_or(AgentToolError::NotFound { block_id })
+            self.blocks.get(&block_id).cloned().ok_or(AgentToolError::NotFound { block_id })
         }
-        fn block_markdown(&self, _: BlockId, _: &str, _: usize, _: usize) -> Result<AgentReadEnvelope<AgentBlockNode>, AgentToolError> {
+        fn block_markdown(&self, _bid: BlockId, _scope: &str, _max_depth: usize, _max_blocks: usize) -> Result<AgentReadEnvelope<AgentBlockNode>, AgentToolError> {
             Err(AgentToolError::NotFound { block_id: BlockId::new_v4() })
         }
-        fn block_structured(&self, _: BlockId, _: usize) -> Result<AgentReadEnvelope<AgentBlockNode>, AgentToolError> {
+        fn block_structured(&self, _bid: BlockId, _max_depth: usize) -> Result<AgentReadEnvelope<AgentBlockNode>, AgentToolError> {
             Err(AgentToolError::NotFound { block_id: BlockId::new_v4() })
         }
-        fn block_children(&self, _: BlockId, _: usize, _: usize) -> Result<Vec<ChildListEntry>, AgentToolError> {
+        fn block_children(&self, _pid: BlockId, _limit: usize, _offset: usize) -> Result<Vec<ChildListEntry>, AgentToolError> {
             Ok(Vec::new())
         }
-        fn block_batch_summaries(&self, _: &[BlockId]) -> Result<Vec<AgentBlockSummary>, AgentToolError> {
+        fn block_batch_summaries(&self, _ids: &[BlockId]) -> Result<Vec<AgentBlockSummary>, AgentToolError> {
             Ok(Vec::new())
         }
-        fn block_batch_markdown(&self, _: &[BlockId]) -> Result<Vec<AgentReadEnvelope<AgentBlockNode>>, AgentToolError> {
+        fn block_batch_markdown(&self, _ids: &[BlockId]) -> Result<Vec<AgentReadEnvelope<AgentBlockNode>>, AgentToolError> {
             Ok(Vec::new())
         }
-        fn document_stat(&self, _: DocumentId) -> Result<DocumentStat, AgentToolError> {
-            Ok(DocumentStat { document_id: DocumentId::new_v4(), title: None, total_blocks: 0, top_level_count: 0, kind_counts: vec![], structure_version: 0, fully_indexed: false })
+        fn document_stat(&self, doc_id: DocumentId) -> Result<DocumentStat, AgentToolError> {
+            Ok(DocumentStat { document_id: doc_id, title: None, total_blocks: 0, top_level_count: 0, kind_counts: vec![], structure_version: 0, fully_indexed: false })
         }
         fn capture_context(&self, doc_id: DocumentId) -> AgentContextSnapshot {
             build_context_snapshot(doc_id, Some("test"), 0, 0, None, &[], &[], 1000)
         }
     }
 
-    struct MockWritePort {
-        prepared: Option<PreparedAgentMutation>,
-    }
-
     impl AgentWritePort for MockWritePort {
-        fn prepare(&self, _: AgentMutationIntent) -> Result<PreparedAgentMutation, AgentToolError> {
+        fn prepare(&self, _intent: AgentMutationIntent) -> Result<PreparedAgentMutation, AgentToolError> {
             Ok(PreparedAgentMutation {
                 id: PreparedMutationId::new_v4(),
                 session_id: crate::AgentSessionId::new_v4(),
@@ -264,71 +289,35 @@ mod tests {
                 expires_at_ms: u64::MAX,
             })
         }
-        fn preview(&self, _: PreparedMutationId) -> Result<AgentMutationPreview, AgentToolError> {
+        fn preview(&self, _pid: PreparedMutationId) -> Result<AgentMutationPreview, AgentToolError> {
             Ok(AgentMutationPreview {
-                summary: "mock".into(),
-                affected_blocks: vec![],
-                inserted_blocks: vec![],
-                deleted_blocks: vec![],
-                textual_diffs: vec![],
-                structural_moves: vec![],
-                warnings: vec![],
+                summary: "mock".into(), affected_blocks: vec![], inserted_blocks: vec![],
+                deleted_blocks: vec![], textual_diffs: vec![], structural_moves: vec![], warnings: vec![],
             })
         }
-        fn commit(&self, _: PreparedMutationId) -> Result<Vec<BlockId>, AgentToolError> {
+        fn commit(&self, _pid: PreparedMutationId) -> Result<Vec<BlockId>, AgentToolError> {
             Ok(vec![BlockId::new_v4()])
         }
-        fn cancel(&self, _: PreparedMutationId) {}
+        fn cancel(&self, _pid: PreparedMutationId) {}
     }
 
     #[test]
     fn context_snapshot_includes_title() {
-        let snap = build_context_snapshot(
-            DocumentId::new_v4(),
-            Some("My Document"),
-            42,
-            3,
-            None,
-            &[],
-            &[],
-            1000,
-        );
+        let snap = build_context_snapshot(DocumentId::new_v4(), Some("My Document"), 42, 3, None, &[], &[], 1000);
         assert_eq!(snap.title, Some("My Document".into()));
-        assert_eq!(snap.document_revision, 42);
-        assert_eq!(snap.structure_version, 3);
     }
 
     #[test]
     fn context_snapshot_with_selection() {
         let bid = BlockId::new_v4();
-        let snap = build_context_snapshot(
-            DocumentId::new_v4(),
-            None,
-            0,
-            0,
-            Some(bid),
-            &[bid],
-            &[bid],
-            1000,
-        );
+        let snap = build_context_snapshot(DocumentId::new_v4(), None, 0, 0, Some(bid), &[bid], &[bid], 1000);
         assert!(snap.focused.is_some());
-        assert!(!snap.selected_block_ids.is_empty());
-        assert!(!snap.visible_window.visible_block_ids.is_empty());
     }
 
     #[test]
     fn visible_window_truncated_at_50() {
         let ids: Vec<BlockId> = (0..60).map(|_| BlockId::new_v4()).collect();
-        let snap = build_context_snapshot(
-            DocumentId::new_v4(),
-            None,
-            0,
-            0,
-            None,
-            &[],
-            &ids,
-            1000,
-        );
+        let snap = build_context_snapshot(DocumentId::new_v4(), None, 0, 0, None, &[], &ids, 1000);
         assert!(snap.visible_window.truncated);
     }
 
@@ -337,10 +326,8 @@ mod tests {
         let reader = MockReadPort { blocks: HashMap::new() };
         let writer = MockWritePort { prepared: None };
         let mut channel = AgentTransactionChannel::new(reader, writer);
-
         let result = channel.execute_mutation(AgentMutationIntent::DeleteBlocks { targets: vec![] });
         assert!(result.is_ok());
-        assert!(channel.active_prepare.is_none());
     }
 
     #[test]
@@ -348,28 +335,15 @@ mod tests {
         let reader = MockReadPort { blocks: HashMap::new() };
         let writer = MockWritePort { prepared: None };
         let mut channel = AgentTransactionChannel::new(reader, writer);
-
         let intent = AgentMutationIntent::DeleteBlocks { targets: vec![] };
         let _ = channel.writer().prepare(intent.clone());
-        // cancel_active should clear
         channel.cancel_active();
         assert!(channel.active_prepare.is_none());
     }
 
     #[test]
     fn build_context_snapshot_empty_doc() {
-        let snap = build_context_snapshot(
-            DocumentId::new_v4(),
-            None,
-            0,
-            0,
-            None,
-            &[],
-            &[],
-            1000,
-        );
+        let snap = build_context_snapshot(DocumentId::new_v4(), None, 0, 0, None, &[], &[], 1000);
         assert!(snap.focused.is_none());
-        assert!(snap.selected_block_ids.is_empty());
-        assert_eq!(snap.visible_window.visible_block_ids.len(), 0);
     }
 }

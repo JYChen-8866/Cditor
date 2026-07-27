@@ -119,6 +119,7 @@ impl AgentChannels {
 pub struct AgentService {
     pub session_id: AgentSessionId,
     pub tool_registry: Arc<ToolRegistry>,
+    pub ports: Arc<crate::runtime::adapter::AgentPorts>,
     pub budget: crate::runtime::budget::AgentBudget,
     pub compactor: crate::runtime::compaction::Compactor,
     pub doom_detector: crate::runtime::doom_loop::DoomLoopDetector,
@@ -138,6 +139,7 @@ impl AgentService {
         sid: AgentSessionId,
         reg: Arc<ToolRegistry>,
         budget: crate::runtime::budget::AgentBudget,
+        ports: Arc<crate::runtime::adapter::AgentPorts>,
     ) -> Self {
         let mut st = std::collections::HashSet::new();
         for n in &[
@@ -161,6 +163,7 @@ impl AgentService {
         Self {
             session_id: sid,
             tool_registry: reg,
+            ports,
             budget,
             compactor: crate::runtime::compaction::Compactor::new(),
             doom_detector: crate::runtime::doom_loop::DoomLoopDetector::new(),
@@ -292,7 +295,7 @@ impl AgentService {
             });
         }
         let args: JsonValue = serde_json::from_str(&call.arguments).unwrap_or(JsonValue::Null);
-        let result = self.tool_registry.run(&call.name, args);
+        let result = self.tool_registry.run(&call.name, args, &self.ports);
         let (content, is_err) = match result {
             Ok(o) => (o, false),
             Err(e) => (format!("Error: {e}"), true),
