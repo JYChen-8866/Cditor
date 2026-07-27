@@ -677,3 +677,64 @@ impl DocumentRuntime {
         Ok(true)
     }
 }
+
+// ── Agent bridge methods ──────────────────────────────────────────
+
+impl DocumentRuntime {
+    /// Get block summary for agent: kind, text, version, has_children.
+    pub fn agent_block_summary(
+        &self,
+        block_id: BlockId,
+    ) -> Option<(RichBlockKind, String, u64, bool)> {
+        let payload = self.document.payload_window.get(block_id)?;
+        let text = self
+            .document
+            .text_models
+            .get(&block_id)
+            .map(|tm| tm.text().to_string())
+            .unwrap_or_default();
+        let has_children = self.index_records().iter().any(|r| r.parent_id == Some(block_id));
+        Some((
+            payload.kind.clone(),
+            text,
+            payload.content_version,
+            has_children,
+        ))
+    }
+
+    /// List block children for agent.
+    pub fn agent_children(
+        &self,
+        parent_id: BlockId,
+        limit: usize,
+        offset: usize,
+    ) -> Vec<(BlockId, RichBlockKind, String)> {
+        self.index_records()
+            .iter()
+            .filter(|r| r.parent_id == Some(parent_id))
+            .skip(offset)
+            .take(limit)
+            .filter_map(|record| {
+                let cid = record.id;
+                let payload = self.document.payload_window.get(cid)?;
+                let text = self
+                    .document
+                    .text_models
+                    .get(&cid)
+                    .map(|tm| tm.text().to_string())
+                    .unwrap_or_default();
+                Some((cid, payload.kind.clone(), text))
+            })
+            .collect()
+    }
+
+    /// Document statistics for agent.
+    pub fn agent_document_stat(&self) -> (u64, Option<String>, usize) {
+        let records = self.index_records();
+        (
+            self.document_id(),
+            self.document_title().map(|s| s.to_string()),
+            records.len(),
+        )
+    }
+}
