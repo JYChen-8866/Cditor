@@ -126,6 +126,7 @@ pub(crate) struct DocumentInteractionEpoch(u64);
 pub(crate) struct EditorSchedulingState {
     pub(crate) main_thread: EditorMainThreadScheduler,
     pub(crate) workers: EditorWorkerAdmission,
+    pub(crate) layout_correction_frame_scheduled: bool,
     payload_cache_trim_scheduled: bool,
     payload_cache_trim_requested_while_scheduled: bool,
 }
@@ -143,6 +144,18 @@ impl EditorSchedulingState {
     pub(crate) fn finish_payload_cache_trim_wait(&mut self) -> bool {
         self.payload_cache_trim_scheduled = false;
         std::mem::take(&mut self.payload_cache_trim_requested_while_scheduled)
+    }
+
+    pub(crate) fn schedule_layout_correction_frame(&mut self) -> bool {
+        if self.layout_correction_frame_scheduled {
+            return false;
+        }
+        self.layout_correction_frame_scheduled = true;
+        true
+    }
+
+    pub(crate) fn finish_layout_correction_frame(&mut self) {
+        self.layout_correction_frame_scheduled = false;
     }
 }
 
@@ -203,6 +216,7 @@ pub(crate) struct InteractionUiState {
     pub(crate) last_input_at: Option<std::time::Instant>,
     pub(crate) last_wheel_delta_y: f64,
     pub(crate) scroll_accumulator: ScrollAccumulator,
+    wheel_frame_scheduled: bool,
     pub(crate) editor_viewport_handle: gpui::ScrollHandle,
     pub(crate) code_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
     pub(crate) code_caret_reveal_after_line_break: HashSet<BlockId>,
@@ -236,6 +250,7 @@ impl Default for InteractionUiState {
             last_input_at: None,
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
+            wheel_frame_scheduled: false,
             editor_viewport_handle: Default::default(),
             code_scroll_handles: Default::default(),
             code_caret_reveal_after_line_break: Default::default(),
@@ -263,6 +278,18 @@ impl Default for InteractionUiState {
 impl InteractionUiState {
     pub(crate) fn note_input(&mut self) {
         self.last_input_at = Some(std::time::Instant::now());
+    }
+
+    pub(crate) fn schedule_wheel_frame(&mut self) -> bool {
+        if self.wheel_frame_scheduled {
+            return false;
+        }
+        self.wheel_frame_scheduled = true;
+        true
+    }
+
+    pub(crate) fn finish_wheel_frame(&mut self) {
+        self.wheel_frame_scheduled = false;
     }
 
     pub(crate) fn reset(&mut self) {
@@ -343,6 +370,16 @@ mod tests {
     }
 
     #[test]
+    fn layout_correction_frame_requests_are_coalesced() {
+        let mut scheduling = EditorSchedulingState::default();
+
+        assert!(scheduling.schedule_layout_correction_frame());
+        assert!(!scheduling.schedule_layout_correction_frame());
+        scheduling.finish_layout_correction_frame();
+        assert!(scheduling.schedule_layout_correction_frame());
+    }
+
+    #[test]
     fn status_reset_preserves_host_request_and_clears_transient_save_state() {
         let mut status = EditorStatusUiState::new(true, false);
         status.readonly_reason = Some(EditorReadonlyReason::NewerDocumentSchema {
@@ -408,10 +445,15 @@ mod tests {
             },
             ..Default::default()
         };
+        assert!(interaction.schedule_wheel_frame());
 
         interaction.reset();
 
         assert_eq!(interaction.last_wheel_delta_y, 0.0);
+        assert!(interaction.schedule_wheel_frame());
+        assert!(!interaction.schedule_wheel_frame());
+        interaction.finish_wheel_frame();
+        assert!(interaction.schedule_wheel_frame());
         assert!(!interaction.text_drag_auto_scroll_scheduled);
         assert!(!interaction.gutter_drag_auto_scroll_scheduled);
         assert!(interaction.hovered_block_id.is_none());

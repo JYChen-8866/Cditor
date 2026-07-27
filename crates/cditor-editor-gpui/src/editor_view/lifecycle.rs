@@ -75,6 +75,7 @@ impl CditorV2View {
         self.cache.reset_session();
         self.scheduling.main_thread.clear();
         self.scheduling.workers = Default::default();
+        self.scheduling.layout_correction_frame_scheduled = false;
     }
 
     pub fn new(cx: &mut Context<Self>) -> Self {

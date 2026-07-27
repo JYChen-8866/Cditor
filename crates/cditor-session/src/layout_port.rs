@@ -45,7 +45,22 @@ pub fn project_scroll_input_frame(
     accumulator: &mut ScrollAccumulator,
     input: ScrollInput,
 ) -> Result<LayoutScrollSnapshot, ProtocolError> {
+    project_queue_scroll_input(runtime, accumulator, input);
+    project_flush_scroll_input_frame(runtime, accumulator)
+}
+
+pub fn project_queue_scroll_input(
+    runtime: &DocumentRuntime,
+    accumulator: &mut ScrollAccumulator,
+    input: ScrollInput,
+) {
     accumulator.push_input(input, runtime.viewport_height());
+}
+
+pub fn project_flush_scroll_input_frame(
+    runtime: &mut DocumentRuntime,
+    accumulator: &mut ScrollAccumulator,
+) -> Result<LayoutScrollSnapshot, ProtocolError> {
     let changed = runtime
         .apply_scroll_accumulator_frame(accumulator)
         .map_err(|message| layout_error(runtime, message))?;
@@ -172,6 +187,22 @@ impl EditorSessionHandle {
         project_scroll_input_frame(&mut self.try_session_mut()?.runtime, accumulator, input)
     }
 
+    pub fn queue_scroll_input(
+        &self,
+        accumulator: &mut ScrollAccumulator,
+        input: ScrollInput,
+    ) -> Result<(), ProtocolError> {
+        project_queue_scroll_input(&self.try_session_mut()?.runtime, accumulator, input);
+        Ok(())
+    }
+
+    pub fn flush_scroll_input_frame(
+        &self,
+        accumulator: &mut ScrollAccumulator,
+    ) -> Result<LayoutScrollSnapshot, ProtocolError> {
+        project_flush_scroll_input_frame(&mut self.try_session_mut()?.runtime, accumulator)
+    }
+
     pub fn request_scroll_delta(
         &self,
         delta_y: f64,
@@ -247,6 +278,40 @@ mod tests {
         assert!(outcome.changed);
         assert!(outcome.global_scroll_top > 0.0);
         assert_eq!(accumulator.received_inputs, 1);
+        assert_eq!(accumulator.committed_frames, 1);
+    }
+
+    #[test]
+    fn queued_wheel_inputs_are_coalesced_into_one_frame_commit() {
+        let handle = EditorSession::new(DocumentRuntime::large_mixed_demo(), false).into_handle();
+        let mut accumulator = ScrollAccumulator::new(WheelPipelineConfig::default());
+        let before = handle.layout_viewport().unwrap().global_scroll_top;
+        let started_at = Instant::now();
+
+        for event in 0..4 {
+            handle
+                .queue_scroll_input(
+                    &mut accumulator,
+                    ScrollInput {
+                        delta_y: 30.0,
+                        mode: ScrollDeltaMode::Pixel,
+                        phase: ScrollPhase::Changed,
+                        device: ScrollDevice::Trackpad,
+                        timestamp: started_at + std::time::Duration::from_millis(event),
+                    },
+                )
+                .unwrap();
+        }
+
+        assert_eq!(handle.layout_viewport().unwrap().global_scroll_top, before);
+        assert_eq!(accumulator.received_inputs, 4);
+        assert_eq!(accumulator.committed_frames, 0);
+        assert_eq!(accumulator.pending_delta_y, 120.0);
+
+        let outcome = handle.flush_scroll_input_frame(&mut accumulator).unwrap();
+        assert!(outcome.changed);
+        assert!(outcome.global_scroll_top > before);
+        assert_eq!(accumulator.pending_delta_y, 0.0);
         assert_eq!(accumulator.committed_frames, 1);
     }
 

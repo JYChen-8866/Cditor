@@ -5,6 +5,7 @@ use crate::diagnostics::frame_telemetry::{
     FrameWindowSnapshot, record_app_frame,
 };
 use crate::editor_view::CditorV2View;
+use cditor_viewport::scroll::ScrollInteractionState;
 use gpui::WindowId;
 
 impl CditorV2View {
@@ -14,26 +15,17 @@ impl CditorV2View {
         let diagnostics = self
             .ready_session()
             .and_then(|session| session.diagnostics_snapshot().ok());
-        let interaction = if self.interaction.scrollbar_drag.is_some() {
-            "scrollbar_drag".to_owned()
-        } else if self.interaction.gutter_block_drag.is_some()
-            || self.interaction.table_interaction_mode.is_dragging()
-            || self.interaction.image_resize_drag.is_some()
-            || self.interaction.table_resize_drag.is_some()
-        {
-            "drag".to_owned()
-        } else if diagnostics
-            .as_ref()
-            .is_some_and(|snapshot| snapshot.editing_active)
-        {
-            "editing".to_owned()
-        } else {
-            format!(
-                "{:?}",
-                self.interaction.scroll_accumulator.interaction_state
-            )
-            .to_lowercase()
-        };
+        let interaction = frame_interaction_label(
+            self.interaction.scrollbar_drag.is_some(),
+            self.interaction.gutter_block_drag.is_some()
+                || self.interaction.table_interaction_mode.is_dragging()
+                || self.interaction.image_resize_drag.is_some()
+                || self.interaction.table_resize_drag.is_some(),
+            diagnostics
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.editing_active),
+            self.interaction.scroll_accumulator.interaction_state,
+        );
         let (queues, window, entities, payload_and_undo_bytes, payload_over_budget) = diagnostics
             .map(|snapshot| {
                 (
@@ -101,5 +93,57 @@ impl CditorV2View {
         };
         crate::diagnostics::fps_trace::trace_gpui_frames(window_id, &input);
         record_app_frame(input);
+    }
+}
+
+fn frame_interaction_label(
+    scrollbar_dragging: bool,
+    dragging: bool,
+    editing: bool,
+    scroll: ScrollInteractionState,
+) -> String {
+    if scrollbar_dragging {
+        "scrollbar_drag".to_owned()
+    } else if dragging {
+        "drag".to_owned()
+    } else if scroll != ScrollInteractionState::Idle {
+        format!("{scroll:?}").to_lowercase()
+    } else if editing {
+        "editing".to_owned()
+    } else {
+        "idle".to_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scrolling_is_not_hidden_by_an_active_editing_session() {
+        assert_eq!(
+            frame_interaction_label(false, false, true, ScrollInteractionState::WheelActive),
+            "wheelactive"
+        );
+        assert_eq!(
+            frame_interaction_label(false, false, true, ScrollInteractionState::Momentum),
+            "momentum"
+        );
+    }
+
+    #[test]
+    fn direct_drags_keep_priority_over_scroll_and_editing() {
+        assert_eq!(
+            frame_interaction_label(true, true, true, ScrollInteractionState::WheelActive),
+            "scrollbar_drag"
+        );
+        assert_eq!(
+            frame_interaction_label(false, true, true, ScrollInteractionState::WheelActive),
+            "drag"
+        );
+        assert_eq!(
+            frame_interaction_label(false, false, true, ScrollInteractionState::Idle),
+            "editing"
+        );
     }
 }

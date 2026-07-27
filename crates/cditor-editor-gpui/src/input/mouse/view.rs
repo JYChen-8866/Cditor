@@ -7,13 +7,13 @@ impl CditorV2View {
     pub(crate) fn on_scroll_wheel(
         &mut self,
         event: &ScrollWheelEvent,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.pause_caret_blink(cx);
         self.interaction.last_wheel_delta_y = scroll_delta_y(event);
         if let CditorViewState::Ready(session) = &self.state {
-            let _ = session.apply_scroll_input_frame(
+            let queued = session.queue_scroll_input(
                 &mut self.interaction.scroll_accumulator,
                 ScrollInput {
                     delta_y: self.interaction.last_wheel_delta_y,
@@ -23,9 +23,27 @@ impl CditorV2View {
                     timestamp: std::time::Instant::now(),
                 },
             );
+            if queued.is_ok() && self.interaction.schedule_wheel_frame() {
+                cx.on_next_frame(window, |view, _window, cx| {
+                    view.flush_scheduled_wheel_frame(cx);
+                });
+                cx.notify();
+            }
         }
         cx.stop_propagation();
-        cx.notify();
+    }
+
+    fn flush_scheduled_wheel_frame(&mut self, cx: &mut Context<Self>) {
+        self.interaction.finish_wheel_frame();
+        let CditorViewState::Ready(session) = &self.state else {
+            return;
+        };
+        if session
+            .flush_scroll_input_frame(&mut self.interaction.scroll_accumulator)
+            .is_ok_and(|snapshot| snapshot.changed)
+        {
+            cx.notify();
+        }
     }
 
     pub(crate) fn on_scrollbar_mouse_move(

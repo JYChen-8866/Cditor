@@ -447,7 +447,6 @@ const fn lane_for_kind(kind: MainThreadWorkKind) -> SchedulerLane {
         | MainThreadWorkKind::CurrentWindowMeasure => SchedulerLane::Interactive,
         MainThreadWorkKind::WindowSwap
         | MainThreadWorkKind::AsyncMeasureApply
-        | MainThreadWorkKind::PlatformGeometryApply
         | MainThreadWorkKind::ImageDecodeApply => SchedulerLane::Visible,
         MainThreadWorkKind::Prefetch => SchedulerLane::Prefetch,
         MainThreadWorkKind::PersistenceCallback

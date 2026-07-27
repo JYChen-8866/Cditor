@@ -12,7 +12,7 @@ use crate::theme::GuiTheme;
 use cditor_core::edit::TextAffinity;
 use cditor_core::layout::normalize_text_inner_measured_height;
 use cditor_core::rich_text::InlineSpan;
-use cditor_runtime::{MainThreadWorkKind, TableCellPosition, WorkCost};
+use cditor_runtime::TableCellPosition;
 
 use super::background::text_selection_background;
 use super::caret_reveal::reveal_caret_in_scroll_handle;
@@ -521,23 +521,8 @@ impl Element for RichTextGpuiElement {
                     .focused
                     .then(|| view.registered_platform_input_session_identity())
                     .flatten();
-                if input_handler.focused {
-                    if crate::cache::accept_text_layout(view, cache) {
-                        cx.notify();
-                    }
-                } else if let Some(key) = crate::cache::queue_text_layout_apply(view, &cache) {
-                    view.enqueue_main_thread_apply(
-                        MainThreadWorkKind::PlatformGeometryApply,
-                        cache.content_version,
-                        Some(cache.block_id),
-                        WorkCost::async_measure(),
-                        move |view, cx| {
-                            if crate::cache::accept_queued_text_layout(view, key, cache) {
-                                cx.notify();
-                            }
-                        },
-                        cx,
-                    );
+                if crate::cache::publish_text_layout(view, cache) {
+                    crate::cache::schedule_layout_correction_frame(view, window, cx);
                 }
             });
         }

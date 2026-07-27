@@ -7,6 +7,7 @@ use cditor_core::{
     ids::SurfaceId,
     rich_text::{InlineSpan, plain_text_from_spans},
 };
+use cditor_runtime::MainThreadWorkKind;
 use cditor_text::{SegmentedLayoutConfig, SegmentedTextLayout};
 
 #[test]

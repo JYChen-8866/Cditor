@@ -9,8 +9,8 @@ use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::surfaces::table_cell::TableCellLayoutKey;
 
 use super::{
-    PlatformGeometryRegistry, TextLayoutApplyKey, auxiliary_geometry_registry,
-    block_geometry_registry, table_geometry_registry,
+    PlatformGeometryRegistry, auxiliary_geometry_registry, block_geometry_registry,
+    table_geometry_registry,
 };
 
 pub(crate) struct RenderCacheState {
@@ -21,7 +21,6 @@ pub(crate) struct RenderCacheState {
     pub(crate) mermaid_renders: MermaidRenderCache,
     pub(crate) mermaid_source_blocks: HashSet<BlockId>,
     pub(crate) whiteboard_thumbnails: WhiteboardThumbnailCache,
-    pub(crate) pending_text_layout_applies: HashSet<TextLayoutApplyKey>,
     pub(crate) pending_text_layout_prewarms: HashSet<TextLayoutPrewarmKey>,
 }
 
@@ -35,7 +34,6 @@ impl Default for RenderCacheState {
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
-            pending_text_layout_applies: Default::default(),
             pending_text_layout_prewarms: Default::default(),
         }
     }
@@ -50,7 +48,6 @@ impl RenderCacheState {
         self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
-        self.pending_text_layout_applies.clear();
         self.pending_text_layout_prewarms.clear();
     }
 }

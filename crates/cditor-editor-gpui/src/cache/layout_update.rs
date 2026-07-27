@@ -1,13 +1,14 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use cditor_core::ids::{BlockId, SurfaceId};
+use gpui::{Context, Window};
 
 use crate::editor_view::CditorV2View;
 use crate::surfaces::table_cell::TableCellLayoutKey;
 use crate::text::RichTextPlatformLayout;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct TextLayoutApplyKey {
+struct TextLayoutApplyKey {
     surface_id: SurfaceId,
     content_version: u64,
     layout_version: u64,
@@ -53,11 +54,10 @@ impl TextLayoutApplyKey {
     }
 }
 
-pub(crate) fn queue_text_layout_apply(
-    view: &mut CditorV2View,
+fn current_layout<'a>(
+    view: &'a CditorV2View,
     layout: &RichTextPlatformLayout,
-) -> Option<TextLayoutApplyKey> {
-    let key = TextLayoutApplyKey::from_layout(layout);
+) -> Option<&'a RichTextPlatformLayout> {
     let current = if let Some(position) = layout.table_cell_position {
         view.cache.table_cell_layouts.get(&TableCellLayoutKey {
             block_id: layout.block_id,
@@ -69,22 +69,11 @@ pub(crate) fn queue_text_layout_apply(
     } else {
         view.cache.text_surface_layouts.get(&layout.surface_id)
     };
-    if current.is_some_and(|current| TextLayoutApplyKey::from_layout(current) == key)
-        || !view.cache.pending_text_layout_applies.insert(key)
-    {
-        None
-    } else {
-        Some(key)
-    }
+    current
 }
 
-pub(crate) fn accept_queued_text_layout(
-    view: &mut CditorV2View,
-    key: TextLayoutApplyKey,
-    layout: RichTextPlatformLayout,
-) -> bool {
-    view.cache.pending_text_layout_applies.remove(&key);
-    let current = view.ready_session().is_some_and(|session| {
+pub(crate) fn publish_text_layout(view: &mut CditorV2View, layout: RichTextPlatformLayout) -> bool {
+    let layout_is_current = view.ready_session().is_some_and(|session| {
         session
             .surface_version(layout.surface_id)
             .ok()
@@ -94,7 +83,30 @@ pub(crate) fn accept_queued_text_layout(
                     && version.layout_version == layout.layout_version
             })
     });
-    current && accept_text_layout(view, layout)
+    if !layout_is_current {
+        return false;
+    }
+
+    let key = TextLayoutApplyKey::from_layout(&layout);
+    let current = current_layout(view, &layout);
+    if current.is_some_and(|current| TextLayoutApplyKey::from_layout(current) == key) {
+        return false;
+    }
+    accept_text_layout(view, layout)
+}
+
+pub(crate) fn schedule_layout_correction_frame(
+    view: &mut CditorV2View,
+    window: &mut Window,
+    cx: &mut Context<CditorV2View>,
+) {
+    if !view.scheduling.schedule_layout_correction_frame() {
+        return;
+    }
+    cx.on_next_frame(window, |view, _window, cx| {
+        view.scheduling.finish_layout_correction_frame();
+        cx.notify();
+    });
 }
 
 fn table_trace_enabled() -> bool {
@@ -127,7 +139,7 @@ pub(crate) fn queue_rendered_media_height(
         .unwrap_or(false)
 }
 
-pub(crate) fn accept_text_layout(view: &mut CditorV2View, layout: RichTextPlatformLayout) -> bool {
+fn accept_text_layout(view: &mut CditorV2View, layout: RichTextPlatformLayout) -> bool {
     let pinned_surface = view
         .input
         .layout_identity
@@ -185,4 +197,121 @@ pub(crate) fn accept_text_layout(view: &mut CditorV2View, layout: RichTextPlatfo
         return false;
     }
     queue_rendered_media_height(view, block_id, content_version, measured_height)
+}
+
+#[cfg(test)]
+mod tests {
+    use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
+    use cditor_runtime::DocumentRuntime;
+    use gpui::{AppContext, Bounds, TestAppContext, point, px, size};
+
+    use super::*;
+
+    #[gpui::test]
+    fn painted_geometry_is_published_without_entering_the_budget_queue(cx: &mut TestAppContext) {
+        let runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                "painted geometry",
+            )],
+            720.0,
+        );
+        let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+        view.update(cx, |view, _cx| {
+            let current = view
+                .ready_session()
+                .unwrap()
+                .surface_version(SurfaceId::Block(1))
+                .unwrap()
+                .unwrap();
+            let initial_bounds = Bounds::new(point(px(20.0), px(40.0)), size(px(320.0), px(24.0)));
+            let mut layout = crate::text::test_platform_layout(
+                1,
+                current.content_version,
+                "painted geometry",
+                initial_bounds,
+                None,
+            );
+            layout.layout_version = current.layout_version;
+
+            assert!(view.cache.text_layouts.is_empty());
+            publish_text_layout(view, layout);
+            assert_eq!(view.cache.text_layouts[&1].bounds, initial_bounds);
+            assert_eq!(view.scheduling.main_thread.pending_len(), 0);
+
+            let mut identical = crate::text::test_platform_layout(
+                1,
+                current.content_version,
+                "painted geometry",
+                initial_bounds,
+                None,
+            );
+            identical.layout_version = current.layout_version;
+            assert!(!publish_text_layout(view, identical));
+            assert_eq!(view.scheduling.main_thread.pending_len(), 0);
+
+            let moved_bounds = Bounds::new(point(px(20.0), px(80.0)), size(px(320.0), px(24.0)));
+            let mut moved = crate::text::test_platform_layout(
+                1,
+                current.content_version,
+                "painted geometry",
+                moved_bounds,
+                None,
+            );
+            moved.layout_version = current.layout_version;
+            publish_text_layout(view, moved);
+            assert_eq!(view.cache.text_layouts[&1].bounds, moved_bounds);
+            assert_eq!(view.scheduling.main_thread.pending_len(), 0);
+        });
+    }
+
+    #[gpui::test]
+    fn painted_geometry_rejects_stale_surface_versions(cx: &mut TestAppContext) {
+        let runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                "current geometry",
+            )],
+            720.0,
+        );
+        let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+        view.update(cx, |view, _cx| {
+            let current = view
+                .ready_session()
+                .unwrap()
+                .surface_version(SurfaceId::Block(1))
+                .unwrap()
+                .unwrap();
+            let bounds = Bounds::new(point(px(20.0), px(40.0)), size(px(320.0), px(24.0)));
+
+            let mut stale_content = crate::text::test_platform_layout(
+                1,
+                current.content_version.saturating_add(1),
+                "stale content",
+                bounds,
+                None,
+            );
+            stale_content.layout_version = current.layout_version;
+            assert!(!publish_text_layout(view, stale_content));
+            assert!(view.cache.text_layouts.is_empty());
+
+            let mut stale_layout = crate::text::test_platform_layout(
+                1,
+                current.content_version,
+                "current geometry",
+                bounds,
+                None,
+            );
+            stale_layout.layout_version = current.layout_version.saturating_add(1);
+            assert!(!publish_text_layout(view, stale_layout));
+            assert!(view.cache.text_layouts.is_empty());
+            assert_eq!(view.scheduling.main_thread.pending_len(), 0);
+        });
+    }
 }

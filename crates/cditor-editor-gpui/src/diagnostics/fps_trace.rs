@@ -78,6 +78,7 @@ struct DrawSample {
     interval: Duration,
     draw: Duration,
     dirty_to_draw: Option<Duration>,
+    clean_gap: Option<Duration>,
     invalidations: u64,
 }
 
@@ -87,6 +88,7 @@ struct ActiveWindow {
     intervals_ms: Vec<f64>,
     draws_ms: Vec<f64>,
     dirty_to_draw_ms: Vec<f64>,
+    clean_gaps_ms: Vec<f64>,
     invalidations: Vec<u64>,
     interval_over_budget: usize,
     interval_over_two_budgets: usize,
@@ -106,6 +108,9 @@ impl ActiveWindow {
         if let Some(dirty_to_draw) = sample.dirty_to_draw {
             self.dirty_to_draw_ms.push(duration_ms(dirty_to_draw));
         }
+        if let Some(clean_gap) = sample.clean_gap {
+            self.clean_gaps_ms.push(duration_ms(clean_gap));
+        }
         self.invalidations.push(sample.invalidations);
         self.interval_over_budget += usize::from(sample.interval > FRAME_BUDGET_60_HZ);
         self.interval_over_two_budgets += usize::from(sample.interval > TWO_FRAME_BUDGETS_60_HZ);
@@ -119,12 +124,13 @@ impl ActiveWindow {
 
         let sample_count = self.intervals_ms.len();
         let statistics = WindowStatistics {
-            fps: sample_count as f64 / self.span.as_secs_f64(),
+            dirty_draw_hz: sample_count as f64 / self.span.as_secs_f64(),
             sample_count,
             span_ms: duration_ms(self.span),
             interval: Distribution::from_f64(&self.intervals_ms),
             draw: Distribution::from_f64(&self.draws_ms),
             dirty_to_draw: Distribution::from_f64(&self.dirty_to_draw_ms),
+            clean_gap: Distribution::from_f64(&self.clean_gaps_ms),
             invalidations: Distribution::from_u64(&self.invalidations),
             interval_over_budget_pct: percentage(self.interval_over_budget, sample_count),
             interval_over_two_budgets_pct: percentage(self.interval_over_two_budgets, sample_count),
@@ -139,6 +145,7 @@ impl ActiveWindow {
         self.intervals_ms.clear();
         self.draws_ms.clear();
         self.dirty_to_draw_ms.clear();
+        self.clean_gaps_ms.clear();
         self.invalidations.clear();
         self.interval_over_budget = 0;
         self.interval_over_two_budgets = 0;
@@ -188,12 +195,13 @@ impl Default for Distribution {
 
 #[derive(Debug, Clone, PartialEq)]
 struct WindowStatistics {
-    fps: f64,
+    dirty_draw_hz: f64,
     sample_count: usize,
     span_ms: f64,
     interval: Distribution,
     draw: Distribution,
     dirty_to_draw: Distribution,
+    clean_gap: Distribution,
     invalidations: Distribution,
     interval_over_budget_pct: f64,
     interval_over_two_budgets_pct: f64,
@@ -264,6 +272,9 @@ impl TraceState {
                     interval: timing.draw_start.duration_since(previous.draw_start),
                     draw: timing.draw_duration(),
                     dirty_to_draw: timing.dirty_to_draw_duration(),
+                    clean_gap: timing
+                        .dirty_at
+                        .and_then(|dirty_at| dirty_at.checked_duration_since(previous.draw_end)),
                     invalidations: timing.invalidations,
                 };
                 window.active.record(sample);
@@ -306,15 +317,16 @@ impl fmt::Display for FpsTraceLine {
         let context = &self.context;
         write!(
             formatter,
-            "[cditor][fps] window={} draw_fps={:.1} frames={} span_ms={:.1} \
-interval_ms[p50={:.2} p95={:.2} max={:.2} gt16.7={:.1}% gt33.3={:.1}%] \
+            "[cditor][fps] window={} dirty_draw_hz={:.1} draws={} span_ms={:.1} \
+draw_gap_ms[p50={:.2} p95={:.2} max={:.2} gt16.7={:.1}% gt33.3={:.1}%] \
 gpui_draw_ms[p50={:.2} p95={:.2} max={:.2} gt16.7={:.1}%] \
-dirty_to_draw_ms[p50={:.2} p95={:.2} max={:.2}] editor_render_ms[p50={:.2} p95={:.2} max={:.2}] \
+dirty_to_draw_ms[p50={:.2} p95={:.2} max={:.2}] clean_gap_ms[p50={:.2} p95={:.2} max={:.2}] \
+editor_render_ms[p50={:.2} p95={:.2} max={:.2}] \
 invalidations[p50={:.0} p95={:.0} max={:.0}] interaction={} queues[layout={} payload={} save={} lanes={}/{}/{}/{}/{}] \
 document[blocks={} rendered={} loaded={} payload={}..{} pages={}..{}] layouts[block={} table_cell={} auxiliary={}] \
 cache_mib[payload={:.1} platform={:.1} pressure={}/{}] geometry_fallback={:.3}",
             self.window_id,
-            stats.fps,
+            stats.dirty_draw_hz,
             stats.sample_count,
             stats.span_ms,
             stats.interval.p50,
@@ -329,6 +341,9 @@ cache_mib[payload={:.1} platform={:.1} pressure={}/{}] geometry_fallback={:.3}",
             stats.dirty_to_draw.p50,
             stats.dirty_to_draw.p95,
             stats.dirty_to_draw.max,
+            stats.clean_gap.p50,
+            stats.clean_gap.p95,
+            stats.clean_gap.max,
             editor_render.p50,
             editor_render.p95,
             editor_render.max,
@@ -443,6 +458,9 @@ mod tests {
             interval: Duration::from_millis(interval_ms),
             draw: Duration::from_millis(draw_ms),
             dirty_to_draw: Some(Duration::from_millis(draw_ms + 1)),
+            clean_gap: Some(Duration::from_millis(
+                interval_ms.saturating_sub(draw_ms + 1),
+            )),
             invalidations: 2,
         }
     }
@@ -480,13 +498,14 @@ mod tests {
             .expect("fifty samples should complete the one-second report window");
 
         assert_eq!(report.sample_count, 50);
-        assert_eq!(report.fps, 50.0);
+        assert_eq!(report.dirty_draw_hz, 50.0);
         assert_eq!(report.interval.p50, 20.0);
         assert_eq!(report.interval.p95, 20.0);
         assert_eq!(report.interval.max, 20.0);
         assert_eq!(report.draw.p95, 4.0);
         assert_eq!(report.draw.max, 18.0);
         assert_eq!(report.dirty_to_draw.max, 19.0);
+        assert_eq!(report.clean_gap.p50, 15.0);
         assert_eq!(report.invalidations.p95, 2.0);
         assert_eq!(report.interval_over_budget_pct, 100.0);
         assert_eq!(report.interval_over_two_budgets_pct, 0.0);

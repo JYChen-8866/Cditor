@@ -3,7 +3,6 @@ mod cache;
 use std::{cell::RefCell, ops::Range, rc::Rc, sync::Arc};
 
 use cditor_core::{edit::TextAffinity, layout::normalize_text_inner_measured_height};
-use cditor_runtime::{MainThreadWorkKind, WorkCost};
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
     LayoutId, Pixels, Size, Style, Window, fill, point, px, rgb, rgba,
@@ -16,7 +15,7 @@ use super::{
     cached_text_layout_with_request,
 };
 use crate::{
-    cache::{accept_queued_text_layout, accept_text_layout, queue_text_layout_apply},
+    cache::{publish_text_layout, schedule_layout_correction_frame},
     editor_view::GuiPlatformInputTarget,
     input::platform_adapter::handle_registered_platform_input,
     text::{
@@ -421,23 +420,8 @@ impl Element for SegmentedRichTextElement {
                     .focused
                     .then(|| view.registered_platform_input_session_identity())
                     .flatten();
-                if self.input_handler.focused {
-                    if accept_text_layout(view, cache) {
-                        cx.notify();
-                    }
-                } else if let Some(key) = queue_text_layout_apply(view, &cache) {
-                    view.enqueue_main_thread_apply(
-                        MainThreadWorkKind::PlatformGeometryApply,
-                        cache.content_version,
-                        Some(cache.block_id),
-                        WorkCost::async_measure(),
-                        move |view, cx| {
-                            if accept_queued_text_layout(view, key, cache) {
-                                cx.notify();
-                            }
-                        },
-                        cx,
-                    );
+                if publish_text_layout(view, cache) {
+                    schedule_layout_correction_frame(view, window, cx);
                 }
             });
         }
