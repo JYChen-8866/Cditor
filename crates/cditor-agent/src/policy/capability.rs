@@ -1,62 +1,89 @@
-use std::collections::BTreeSet;
-
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AgentCapability {
-    ReadBlocks,
-    ReadDocumentStructure,
-    ReadDocumentStats,
-    ReadFullContent,
-    InsertBlocks,
-    UpdateBlocks,
-    DeleteBlocks,
-    MoveBlocks,
-    FormatBlocks,
-    Search,
+    ReadDocumentMetadata,
+    ReadBlockContent,
+    SearchLocalContent,
+    WriteBlockContent,
+    ChangeDocumentStructure,
+    DeleteContent,
+    SendDataExternally,
+    IncurExternalCost,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl AgentCapability {
+    pub const fn is_high_risk(self) -> bool {
+        matches!(
+            self,
+            Self::DeleteContent | Self::ChangeDocumentStructure | Self::SendDataExternally
+        )
+    }
+    pub const fn is_read_only(self) -> bool {
+        matches!(
+            self,
+            Self::ReadDocumentMetadata | Self::ReadBlockContent | Self::SearchLocalContent
+        )
+    }
+    pub const fn is_write(self) -> bool {
+        matches!(
+            self,
+            Self::WriteBlockContent | Self::ChangeDocumentStructure | Self::DeleteContent
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCapabilityPolicy {
-    pub always_allow: BTreeSet<AgentCapability>,
-    pub confirm_each: BTreeSet<AgentCapability>,
-    pub deny: BTreeSet<AgentCapability>,
+    pub require_confirmation: Vec<AgentCapability>,
+    pub allow_session_scope: Vec<AgentCapability>,
 }
 
 impl Default for AgentCapabilityPolicy {
     fn default() -> Self {
-        let mut always_allow = BTreeSet::new();
-        always_allow.insert(AgentCapability::ReadBlocks);
-        always_allow.insert(AgentCapability::ReadDocumentStructure);
-        always_allow.insert(AgentCapability::ReadDocumentStats);
-
-        let mut confirm_each = BTreeSet::new();
-        confirm_each.insert(AgentCapability::InsertBlocks);
-        confirm_each.insert(AgentCapability::UpdateBlocks);
-        confirm_each.insert(AgentCapability::DeleteBlocks);
-        confirm_each.insert(AgentCapability::MoveBlocks);
-        confirm_each.insert(AgentCapability::FormatBlocks);
-        confirm_each.insert(AgentCapability::ReadFullContent);
-        confirm_each.insert(AgentCapability::Search);
-
         Self {
-            always_allow,
-            confirm_each,
-            deny: BTreeSet::new(),
+            require_confirmation: vec![
+                AgentCapability::WriteBlockContent,
+                AgentCapability::ChangeDocumentStructure,
+                AgentCapability::DeleteContent,
+                AgentCapability::SendDataExternally,
+                AgentCapability::IncurExternalCost,
+            ],
+            allow_session_scope: vec![AgentCapability::WriteBlockContent],
         }
     }
 }
-
 impl AgentCapabilityPolicy {
-    pub fn allows(&self, capability: AgentCapability) -> bool {
-        !self.deny.contains(&capability)
+    pub fn needs_confirmation(&self, cap: AgentCapability) -> bool {
+        self.require_confirmation.contains(&cap)
     }
-
-    pub fn requires_confirmation(&self, capability: AgentCapability) -> bool {
-        self.confirm_each.contains(&capability)
+    pub fn can_always_allow(&self, cap: AgentCapability) -> bool {
+        !cap.is_high_risk() && self.allow_session_scope.contains(&cap)
     }
+}
 
-    pub fn is_auto_allowed(&self, capability: AgentCapability) -> bool {
-        self.always_allow.contains(&capability)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn read_ops_bypass_confirmation() {
+        let p = AgentCapabilityPolicy::default();
+        assert!(!p.needs_confirmation(AgentCapability::ReadDocumentMetadata));
+    }
+    #[test]
+    fn write_ops_need_confirmation() {
+        let p = AgentCapabilityPolicy::default();
+        assert!(p.needs_confirmation(AgentCapability::WriteBlockContent));
+    }
+    #[test]
+    fn high_risk_not_always_allow() {
+        let p = AgentCapabilityPolicy::default();
+        assert!(!p.can_always_allow(AgentCapability::DeleteContent));
+    }
+    #[test]
+    fn read_only_check() {
+        assert!(AgentCapability::ReadBlockContent.is_read_only());
+        assert!(!AgentCapability::DeleteContent.is_read_only());
     }
 }

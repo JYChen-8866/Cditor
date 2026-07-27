@@ -1,113 +1,89 @@
-use std::collections::VecDeque;
-
-use cditor_core::ids::DocumentId;
+use super::turn::AgentTurn;
+use crate::protocol::checkpoint::AgentCheckpoint;
+use crate::tools::mutation::PreparedMutationId;
+use crate::{AgentErrorCode, AgentSessionId, TurnId};
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::checkpoint::AgentCheckpoint;
-use crate::protocol::event::AgentEvent;
-use crate::runtime::budget::AgentBudget;
-use crate::runtime::compaction::Compactor;
-use crate::runtime::doom_loop::DoomLoopDetector;
-use crate::tools::registry::ToolRegistry;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentSessionConfig {
-    pub max_turns: usize,
-    pub max_tool_calls_per_turn: usize,
-    pub max_total_tokens: usize,
-    pub compact_at_token_count: usize,
-    pub tool_timeout_ms: u64,
-    pub confirmation_required_for_writes: bool,
-    pub doom_loop_signature_threshold: usize,
-    pub doom_loop_hard_stop_threshold: usize,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSessionState {
+    Idle,
+    Active(TurnId),
+    AwaitingConfirmation(PreparedMutationId),
+    Cancelling(TurnId),
+    Cancelled,
+    Failed(AgentErrorCode),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSessionConfig {
+    pub model_context_limit_tokens: u64,
+    pub turn_deadline_secs: i64,
+    pub max_turns: usize,
+}
 impl Default for AgentSessionConfig {
     fn default() -> Self {
         Self {
+            model_context_limit_tokens: 131072,
+            turn_deadline_secs: 300,
             max_turns: 20,
-            max_tool_calls_per_turn: 50,
-            max_total_tokens: 200_000,
-            compact_at_token_count: 80_000,
-            tool_timeout_ms: 30_000,
-            confirmation_required_for_writes: true,
-            doom_loop_signature_threshold: 3,
-            doom_loop_hard_stop_threshold: 5,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AgentSessionState {
-    Idle,
-    Thinking,
-    CallingTool,
-    AwaitingConfirmation,
-    Completed,
-    Failed,
-    Cancelled,
-}
-
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSession {
+    pub id: AgentSessionId,
     pub config: AgentSessionConfig,
     pub state: AgentSessionState,
-    pub document_id: Option<DocumentId>,
-    pub turn_count: usize,
-    pub tool_call_count: usize,
-    pub mutation_count: usize,
-    pub cursor_token_count: usize,
-    pub events: VecDeque<AgentEvent>,
-    pub registry: ToolRegistry,
-    pub budget: AgentBudget,
-    pub compactor: Compactor,
-    pub doom_loop: DoomLoopDetector,
+    pub turns: Vec<AgentTurn>,
+    pub checkpoints: Vec<AgentCheckpoint>,
+    pub created_at_ms: u64,
 }
-
 impl AgentSession {
-    pub fn new(config: AgentSessionConfig, registry: ToolRegistry) -> Self {
+    pub fn new(id: AgentSessionId, config: AgentSessionConfig, now: u64) -> Self {
         Self {
-            budget: AgentBudget::new(config.max_total_tokens),
-            config: config.clone(),
+            id,
+            config,
             state: AgentSessionState::Idle,
-            document_id: None,
-            turn_count: 0,
-            tool_call_count: 0,
-            mutation_count: 0,
-            cursor_token_count: 0,
-            events: VecDeque::new(),
-            registry,
-            compactor: Compactor::new(config.compact_at_token_count),
-            doom_loop: DoomLoopDetector::new(config.doom_loop_signature_threshold),
+            turns: Vec::new(),
+            checkpoints: Vec::new(),
+            created_at_ms: now,
         }
     }
-
-    pub fn next_turn_id(&mut self) -> u64 {
-        let id = self.turn_count as u64 + 1;
-        self.turn_count += 1;
-        id
+    pub fn next_sequence(&self) -> u64 {
+        self.turns.len() as u64
     }
-
-    pub fn next_tool_call_id(&mut self) -> u64 {
-        let id = self.tool_call_count as u64;
-        self.tool_call_count += 1;
-        id
+    pub fn is_active(&self) -> bool {
+        matches!(
+            self.state,
+            AgentSessionState::Active(_) | AgentSessionState::AwaitingConfirmation(_)
+        )
     }
-
-    pub fn push_event(&mut self, event: AgentEvent) {
-        self.events.push_back(event);
+    pub fn transition_to_active(&mut self, tid: TurnId) {
+        self.state = AgentSessionState::Active(tid);
     }
-
-    pub fn drain_events(&mut self) -> Vec<AgentEvent> {
-        self.events.drain(..).collect()
+    pub fn transition_to_awaiting(&mut self, pid: PreparedMutationId) {
+        self.state = AgentSessionState::AwaitingConfirmation(pid);
     }
-
-    pub fn checkpoint(&self) -> AgentCheckpoint {
-        AgentCheckpoint {
-            turn_count: self.turn_count as u64,
-            cursor_token_count: self.cursor_token_count as u64,
-            tool_call_count: self.tool_call_count as u64,
-            mutation_count: self.mutation_count as u64,
-            committed: matches!(self.state, AgentSessionState::Completed),
-        }
+    pub fn transition_to_idle(&mut self) {
+        self.state = AgentSessionState::Idle;
+    }
+    pub fn record_turn(&mut self, t: AgentTurn) {
+        self.turns.push(t);
+    }
+    pub fn record_checkpoint(&mut self, c: AgentCheckpoint) {
+        self.checkpoints.push(c);
+    }
+}
+#[cfg(test)]
+mod t {
+    use super::*;
+    #[test]
+    fn session_lifecycle() {
+        let mut s = AgentSession::new(uuid::Uuid::new_v4(), AgentSessionConfig::default(), 1000);
+        assert_eq!(s.state, AgentSessionState::Idle);
+        s.transition_to_active(uuid::Uuid::new_v4());
+        assert!(s.is_active());
     }
 }

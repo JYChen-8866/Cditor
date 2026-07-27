@@ -1,22 +1,32 @@
+use crate::JsonValue;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RedactionPolicy {
-    pub redact_api_keys: bool,
-    pub redact_file_paths: bool,
-    pub redact_email_addresses: bool,
-    pub max_log_content_bytes: usize,
-    pub log_ids_only: bool,
-}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedactionPolicy;
 
-impl Default for RedactionPolicy {
-    fn default() -> Self {
-        Self {
-            redact_api_keys: true,
-            redact_file_paths: false,
-            redact_email_addresses: true,
-            max_log_content_bytes: 256,
-            log_ids_only: true,
+impl RedactionPolicy {
+    pub fn redact_tool_args(&self, args: &JsonValue) -> JsonValue {
+        match args {
+            JsonValue::Object(m) => {
+                let mut out = serde_json::Map::new();
+                for (k, v) in m {
+                    if [
+                        "content", "text", "markdown", "source", "prompt", "input", "query",
+                        "message", "delta", "body",
+                    ]
+                    .contains(&k.as_str())
+                    {
+                        out.insert(
+                            k.clone(),
+                            JsonValue::String(format!("[redacted: {} chars]", v.to_string().len())),
+                        );
+                    } else {
+                        out.insert(k.clone(), v.clone());
+                    }
+                }
+                JsonValue::Object(out)
+            }
+            o => o.clone(),
         }
     }
 }

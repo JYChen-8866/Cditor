@@ -1,43 +1,84 @@
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AgentErrorCode {
-    #[error("block not found: {0}")]
-    BlockNotFound(u64),
-    #[error("document not found: {0}")]
-    DocumentNotFound(u64),
-    #[error("document not loaded")]
-    DocumentNotLoaded,
-    #[error("invalid markdown: {0}")]
-    InvalidMarkdown(String),
-    #[error("structure constraint violation: {0}")]
-    StructureConstraint(String),
-    #[error("content version mismatch: block {block_id}, expected {expected}, actual {actual}")]
-    ContentVersionMismatch {
-        block_id: u64,
-        expected: u64,
-        actual: u64,
-    },
-    #[error("structure version mismatch: expected {expected}, actual {actual}")]
-    StructureVersionMismatch { expected: u64, actual: u64 },
-    #[error("mutation conflict: {reason}")]
-    MutationConflict { reason: String },
-    #[error("tool timeout")]
-    Timeout,
-    #[error("tool not found: {0}")]
-    ToolNotFound(String),
-    #[error("budget exceeded: {0}")]
-    BudgetExceeded(String),
-    #[error("cancelled")]
+    NotFound,
+    StaleRead,
+    InvalidStructure,
+    ParseError,
+    LossyConversion,
+    PermissionDenied,
+    ConfirmationRejected,
+    PreparedMutationExpired,
+    ActiveComposition,
+    ConfirmationRequired,
+    PersistenceFailed,
+    BudgetExceeded,
     Cancelled,
-    #[error("internal: {0}")]
-    Internal(String),
+    Internal,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Error)]
-#[error("tool '{tool}' failed: {error}")]
-pub struct AgentToolError {
-    pub tool: String,
-    pub error: AgentErrorCode,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BudgetDimension {
+    Blocks,
+    Bytes,
+    Tokens,
+    Deadline,
+    ToolCalls,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AgentToolError {
+    #[error("not found: {block_id}")]
+    NotFound { block_id: uuid::Uuid },
+    #[error("stale read")]
+    StaleRead,
+    #[error("invalid structure")]
+    InvalidStructure { reason: String },
+    #[error("parse error")]
+    ParseError {
+        line: u32,
+        column: u32,
+        message: String,
+    },
+    #[error("lossy")]
+    LossyConversionRequiresApproval { warnings: Vec<String> },
+    #[error("permission denied")]
+    PermissionDenied { capability: String },
+    #[error("confirmation rejected")]
+    ConfirmationRejected,
+    #[error("expired")]
+    PreparedMutationExpired,
+    #[error("composition active")]
+    ActiveComposition { block_id: uuid::Uuid },
+    #[error("persistence failed")]
+    PersistenceFailed {
+        transaction_id: uuid::Uuid,
+        recoverable: bool,
+    },
+    #[error("budget: {dimension:?}")]
+    BudgetExceeded { dimension: BudgetDimension },
+    #[error("cancelled")]
+    Cancelled,
+}
+#[cfg(test)]
+mod t {
+    use super::*;
+    #[test]
+    fn serde_roundtrip() {
+        let e = AgentToolError::NotFound {
+            block_id: uuid::Uuid::new_v4(),
+        };
+        let j = serde_json::to_string(&e).unwrap();
+        assert!(j.contains("not_found"));
+    }
+    #[test]
+    fn budget_dimension_values() {
+        let d = BudgetDimension::Tokens;
+        let j = serde_json::to_string(&d).unwrap();
+        assert!(j.contains("tokens"));
+    }
 }

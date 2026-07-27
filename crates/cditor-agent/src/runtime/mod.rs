@@ -1,5 +1,12 @@
 pub mod budget;
 pub mod compaction;
 pub mod doom_loop;
+pub mod engine;
+pub mod r#loop;
+pub mod msg_builder;
 pub mod session;
 pub mod turn;
+pub mod confirm;
+pub mod persistence;
+pub mod adapter;
+pub mod api;

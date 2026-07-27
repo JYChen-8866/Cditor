@@ -1,51 +1,90 @@
-use std::collections::BTreeMap;
-
+use super::effects::ToolEffects;
+use crate::JsonValue;
 use crate::protocol::error::AgentToolError;
-use crate::tools::effects::ToolEffects;
 
-/// A single tool that the agent can call.
 pub trait ToolHandler: Send + Sync {
+    fn execute(&self, args: JsonValue) -> Result<JsonValue, AgentToolError>;
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
-    fn schema(&self) -> serde_json::Value;
     fn effects(&self) -> ToolEffects;
-    fn invoke(&self, params: serde_json::Value) -> Result<serde_json::Value, AgentToolError>;
+    fn input_schema(&self) -> JsonValue;
 }
 
-/// Registry that holds all available tools.
 #[derive(Default)]
 pub struct ToolRegistry {
-    tools: BTreeMap<String, Box<dyn ToolHandler>>,
+    tools: Vec<Box<dyn ToolHandler>>,
 }
-
 impl ToolRegistry {
     pub fn new() -> Self {
-        Self {
-            tools: BTreeMap::new(),
-        }
+        Self { tools: Vec::new() }
     }
-
-    pub fn register(&mut self, tool: Box<dyn ToolHandler>) {
-        self.tools.insert(tool.name().to_string(), tool);
+    pub fn register(&mut self, h: Box<dyn ToolHandler>) {
+        self.tools.push(h);
     }
-
-    pub fn get(&self, name: &str) -> Option<&dyn ToolHandler> {
-        self.tools.get(name).map(|boxed| boxed.as_ref())
+    pub fn find(&self, name: &str) -> Option<&dyn ToolHandler> {
+        self.tools
+            .iter()
+            .find(|t| t.name() == name)
+            .map(|t| t.as_ref())
     }
-
-    pub fn tool_names(&self) -> Vec<&str> {
-        self.tools.keys().map(|k| k.as_str()).collect()
+    pub fn run(&self, name: &str, args: JsonValue) -> Result<String, AgentToolError> {
+        let h = self.find(name).ok_or(AgentToolError::NotFound {
+            block_id: uuid::Uuid::new_v4(),
+        })?;
+        let raw = h.execute(args)?;
+        let json = serde_json::to_string(&raw).unwrap_or_else(|_| "{}".into());
+        Ok(format!("[tool_output]\n{}\n[/tool_output]", json))
     }
-
-    pub fn all_schemas(&self) -> Vec<serde_json::Value> {
-        self.tools.values().map(|tool| tool.schema()).collect()
+    pub fn len(&self) -> usize {
+        self.tools.len()
     }
-
     pub fn is_empty(&self) -> bool {
         self.tools.is_empty()
     }
+    pub fn tool_definitions(&self) -> Vec<JsonValue> {
+        self.tools.iter().map(|t|serde_json::json!({"type":"function","function":{"name":t.name(),"description":t.description(),"parameters":t.input_schema()}})).collect()
+    }
+}
 
-    pub fn len(&self) -> usize {
-        self.tools.len()
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct DummyTool;
+    impl ToolHandler for DummyTool {
+        fn execute(&self, _: JsonValue) -> Result<JsonValue, AgentToolError> {
+            Ok(serde_json::json!({"ok":true}))
+        }
+        fn name(&self) -> &'static str {
+            "dummy"
+        }
+        fn description(&self) -> &'static str {
+            "a dummy tool"
+        }
+        fn effects(&self) -> ToolEffects {
+            ToolEffects::Pure
+        }
+        fn input_schema(&self) -> JsonValue {
+            serde_json::json!({"type":"object","properties":{}})
+        }
+    }
+    #[test]
+    fn registry_find_and_run() {
+        let mut r = ToolRegistry::new();
+        r.register(Box::new(DummyTool));
+        assert_eq!(r.len(), 1);
+        let out = r.run("dummy", serde_json::json!({})).unwrap();
+        assert!(out.contains("[tool_output]"));
+    }
+    #[test]
+    fn missing_tool_errors() {
+        let r = ToolRegistry::new();
+        assert!(r.run("nope", serde_json::json!({})).is_err());
+    }
+    #[test]
+    fn tool_definitions_present() {
+        let mut r = ToolRegistry::new();
+        r.register(Box::new(DummyTool));
+        let defs = r.tool_definitions();
+        assert_eq!(defs.len(), 1);
     }
 }
