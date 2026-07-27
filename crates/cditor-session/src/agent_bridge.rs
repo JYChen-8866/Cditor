@@ -139,8 +139,8 @@ impl AgentReadPort for RuntimeReadPort {
             Ok(DocumentStat {
                 document_id: to_agent_doc_id(rt.document_id()),
                 title: rt.document_title().map(|s| s.to_string()),
-                total_blocks: records.len(),
-                top_level_count: records.iter().filter(|r| r.parent_id.is_none()).count(),
+                total_blocks: total,
+                top_level_count: 0,
                 kind_counts: vec![], // simplified
                 structure_version: rt.structure_version(),
                 fully_indexed: true,
@@ -165,7 +165,7 @@ impl AgentReadPort for RuntimeReadPort {
                     last_block_id: None,
                 },
                 captured_at_ms: 0,
-                selection: None,
+                selection: cditor_agent::protocol::context::AgentSelectionDescriptor::None,
                 })
         }).unwrap_or_else(|_| cditor_agent::protocol::context::AgentContextSnapshot {
             snapshot_id: cditor_agent::AgentSnapshotId::new_v4(),
@@ -182,7 +182,7 @@ impl AgentReadPort for RuntimeReadPort {
                 last_block_id: None,
             },
             captured_at_ms: 0,
-            selection: None,
+            selection: cditor_agent::protocol::context::AgentSelectionDescriptor::None,
             })
     }
 }
@@ -246,20 +246,19 @@ impl AgentWritePort for RuntimeWritePort {
 fn block_kind_from_core(kind: &cditor_core::rich_text::block_kind::RichBlockKind) -> BlockKind {
     use cditor_core::rich_text::block_kind::RichBlockKind;
     match kind {
-        RichBlockKind::Doc => BlockKind::Document,
         RichBlockKind::Heading { .. } => BlockKind::Heading,
         RichBlockKind::Paragraph => BlockKind::Paragraph,
         RichBlockKind::BulletedList | RichBlockKind::NumberedList => BlockKind::List,
-        RichBlockKind::ListItem => BlockKind::ListItem,
-        RichBlockKind::CodeBlock { .. } => BlockKind::CodeBlock,
+        
+        RichBlockKind::Code { .. } => BlockKind::CodeBlock,
         RichBlockKind::Table => BlockKind::Table,
-        RichBlockKind::TableRow => BlockKind::TableRow,
-        RichBlockKind::TableCell => BlockKind::TableCell,
+        
+        
         RichBlockKind::Image { .. } => BlockKind::Image,
         RichBlockKind::Callout { .. } => BlockKind::Callout,
         RichBlockKind::Quote => BlockKind::Blockquote,
         RichBlockKind::Divider => BlockKind::Divider,
-        RichBlockKind::Bookmark { .. } => BlockKind::Bookmark,
+        
         RichBlockKind::Todo { .. } => BlockKind::Paragraph,
         RichBlockKind::Toggle => BlockKind::Paragraph,
         _ => BlockKind::Unknown,
