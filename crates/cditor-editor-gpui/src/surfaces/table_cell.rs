@@ -19,7 +19,9 @@ use crate::text::{
 };
 use crate::theme::GuiTheme;
 
-use super::text::{ResolvedProjectedTextGeometry, projected_text_hit_point};
+use super::text::{
+    ResolvedProjectedTextGeometry, projected_bounds_for_local_rects, projected_text_hit_point,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct TableCellLayoutKey {
@@ -232,6 +234,30 @@ impl CditorV2View {
         let element = cold_table_cell_text_element(session, current, projected)?;
         Some(element.selection_at_point(projected_text_hit_point(placement, position), kind))
     }
+
+    pub(crate) fn synchronous_text_range_bounds_for_table_cell(
+        &self,
+        session: &EditorSessionHandle,
+        current: SurfaceVersionSnapshot,
+        block_id: BlockId,
+        row: usize,
+        col: usize,
+        range: std::ops::Range<usize>,
+    ) -> Option<gpui::Bounds<Pixels>> {
+        record_synchronous_geometry_fallback();
+        let projected = self.projected_table_cell(block_id, row, col)?;
+        if !projected_cell_is_current(projected, current) {
+            return None;
+        }
+        let placement = self.projected_table_cell_placement(block_id, row, col)?;
+        let element = cold_table_cell_text_element(session, current, projected)?;
+        let local_rects = if range.is_empty() {
+            vec![element.local_caret_rect_for_offset(range.start)]
+        } else {
+            element.local_rects_for_range(range)
+        };
+        projected_bounds_for_local_rects(placement, local_rects)
+    }
 }
 
 fn projected_cell_is_current(
@@ -284,7 +310,7 @@ mod tests {
         TableCellPayload, TableColumnPayload, TablePayload, TableRowPayload, TableTrackSize,
         TextAlign,
     };
-    use cditor_runtime::DocumentRuntime;
+    use cditor_runtime::{DocumentRuntime, RealtimeInput, RealtimeInputRequest};
     use gpui::{AppContext, Bounds, Size, TestAppContext, point, px};
 
     use crate::document::DocumentLayoutMetrics;
@@ -573,6 +599,53 @@ mod tests {
             let selected = selection.anchor.offset.min(selection.focus.offset)
                 ..selection.anchor.offset.max(selection.focus.offset);
             assert_eq!(selected, word_start..word_start + "target".len());
+        });
+    }
+
+    #[gpui::test]
+    fn synchronous_table_cell_bounds_layout_the_current_composition_preview(
+        cx: &mut TestAppContext,
+    ) {
+        let mut runtime = table_runtime("", TableCellAlign::Left, false);
+        crate::test_support::focus_table_cell_at_offset(&mut runtime, 1, 0, 0, 0);
+        let expected = runtime.input_session_identity().unwrap();
+        runtime
+            .apply_realtime_input(RealtimeInputRequest {
+                expected,
+                input: RealtimeInput::UpdateComposition {
+                    range: 0..0,
+                    text: "ni",
+                    selected_range: Some(2..2),
+                },
+            })
+            .unwrap();
+        let projection = runtime.projection_for_window();
+        let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+        view.update(cx, |view, _cx| {
+            view.interaction.document_viewport_origin =
+                Some(DocumentViewportOrigin { x: 100.0, y: 40.0 });
+            view.interaction.projected_block_rects = projected_block_rects_from_projection(
+                &projection,
+                DocumentLayoutMetrics::default(),
+            );
+            view.interaction.projected_table_cells =
+                projected_table_cells_from_projection(&projection, None);
+            let session = view.ready_session().unwrap();
+            let surface = surface_id(1, TableCellPosition { row: 0, col: 0 });
+            let current = session.surface_version(surface).unwrap().unwrap();
+            let first = view
+                .synchronous_text_range_bounds_for_table_cell(session, current, 1, 0, 0, 1..1)
+                .unwrap();
+            let second = view
+                .synchronous_text_range_bounds_for_table_cell(session, current, 1, 0, 0, 2..2)
+                .unwrap();
+            let placement = view.projected_table_cell_placement(1, 0, 0).unwrap();
+
+            assert!(f32::from(second.left()) > f32::from(first.left()));
+            assert!(f32::from(second.left()) > placement.window_origin_x_px as f32);
+            assert!(f32::from(second.size.height) > 0.0);
+            assert_ne!(second, Bounds::default());
         });
     }
 }

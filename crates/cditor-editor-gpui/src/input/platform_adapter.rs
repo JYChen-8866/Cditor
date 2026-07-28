@@ -1,6 +1,7 @@
 use gpui::{App, Bounds, ElementInputHandler, Entity, FocusHandle, Pixels, Window};
 
 use crate::editor_view::{CditorV2View, GuiPlatformInputTarget};
+use crate::input::trace::trace_input;
 use crate::text::TextPlatformLayoutIdentity;
 
 pub(crate) fn handle_registered_platform_input(
@@ -12,13 +13,23 @@ pub(crate) fn handle_registered_platform_input(
     window: &mut Window,
     cx: &mut App,
 ) -> bool {
-    let registered = view.update(cx, |view, _cx| {
+    let registration = view.update(cx, |view, _cx| {
         view.register_platform_input_target(target, layout_identity, bounds)
     });
-    if registered {
+    if registration.registered {
+        trace_input(
+            "platform_input.registered",
+            format_args!(
+                "target={target:?} layout={layout_identity:?} bounds={bounds:?} coordinates_changed={}",
+                registration.character_coordinates_changed
+            ),
+        );
         window.handle_input(focus, ElementInputHandler::new(bounds, view.clone()), cx);
+        if registration.character_coordinates_changed {
+            window.invalidate_character_coordinates();
+        }
     }
-    registered
+    registration.registered
 }
 
 #[cfg(test)]

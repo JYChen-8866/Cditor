@@ -103,6 +103,14 @@ impl DocumentRuntime {
         let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
+
+        // 如果有选区，删除选区内容
+        let selected_range = focused.selected_range();
+        if !selected_range.is_empty() {
+            return self.replace_text_in_focused_range(Some(selected_range), "");
+        }
+
+        // 否则删除光标前的一个字符
         let Some(text) = self.table_cell_plain_text(focused.block_id, focused.row, focused.col)
         else {
             return Ok(false);
@@ -121,6 +129,14 @@ impl DocumentRuntime {
         let Some(focused) = self.selection.focused_table_cell else {
             return Ok(false);
         };
+
+        // 如果有选区，删除选区内容
+        let selected_range = focused.selected_range();
+        if !selected_range.is_empty() {
+            return self.replace_text_in_focused_range(Some(selected_range), "");
+        }
+
+        // 否则删除光标后的一个字符
         let Some(text) = self.table_cell_plain_text(focused.block_id, focused.row, focused.col)
         else {
             return Ok(false);

@@ -22,7 +22,9 @@ use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::interaction::table_reorder::GuiTableReorderDrag;
 use crate::interaction::table_resize::GuiTableResizeDrag;
 use crate::interaction::table_scroll::GuiTableScrollState;
-use crate::overlays::{GuiToast, SlashMenuState, WhiteboardEditorSession};
+#[cfg(feature = "whiteboard")]
+use crate::overlays::WhiteboardEditorSession;
+use crate::overlays::{GuiToast, SlashMenuState};
 use crate::persistence::EditorSaveStatus;
 use crate::scroll::ScrollAccumulator;
 use crate::surfaces::table_cell::TableCellLayoutKey;
@@ -47,6 +49,7 @@ pub(crate) struct FeatureUiState {
     pub(crate) ai_provider: Arc<dyn cditor_ai::AiProvider>,
     pub(crate) ai_enabled: bool,
     pub(crate) code_highlight_theme: &'static str,
+    #[cfg(feature = "whiteboard")]
     pub(crate) whiteboard_editor: Option<WhiteboardEditorSession>,
 }
 
@@ -56,6 +59,7 @@ impl Default for FeatureUiState {
             ai_provider: default_ai_provider(),
             ai_enabled: true,
             code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
+            #[cfg(feature = "whiteboard")]
             whiteboard_editor: None,
         }
     }
@@ -63,7 +67,10 @@ impl Default for FeatureUiState {
 
 impl FeatureUiState {
     pub(crate) fn reset_session(&mut self) {
-        self.whiteboard_editor = None;
+        #[cfg(feature = "whiteboard")]
+        {
+            self.whiteboard_editor = None;
+        }
     }
 }
 
@@ -203,17 +210,41 @@ pub(crate) struct PlatformInputState {
     pub(crate) session_identity: Option<cditor_runtime::InputSessionIdentity>,
     pub(crate) layout_identity: Option<TextPlatformLayoutIdentity>,
     pub(crate) element_bounds: Option<gpui::Bounds<gpui::Pixels>>,
+    pub(crate) candidate_bounds: Option<PlatformImeCandidateBounds>,
+    pub(crate) character_coordinates_identity: Option<PlatformCharacterCoordinatesIdentity>,
     pub(crate) preferred_navigation_x: Option<(cditor_core::ids::SurfaceId, f32)>,
 }
 
 impl PlatformInputState {
+    pub(crate) fn begin_registration_frame(&mut self, target: Option<GuiPlatformInputTarget>) {
+        self.session_identity = None;
+        self.layout_identity = None;
+        self.element_bounds = None;
+        self.target = target;
+    }
+
     pub(crate) fn reset(&mut self) {
         *self = Self::default();
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PlatformImeCandidateBounds {
+    pub(crate) target: GuiPlatformInputTarget,
+    pub(crate) bounds: gpui::Bounds<gpui::Pixels>,
+    pub(crate) element_bounds: gpui::Bounds<gpui::Pixels>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PlatformCharacterCoordinatesIdentity {
+    pub(crate) target: GuiPlatformInputTarget,
+    pub(crate) session_identity: Option<cditor_runtime::InputSessionIdentity>,
+    pub(crate) layout_identity: TextPlatformLayoutIdentity,
+    pub(crate) element_bounds: gpui::Bounds<gpui::Pixels>,
+}
+
 pub(crate) struct InteractionUiState {
-    pub(crate) last_input_at: Option<std::time::Instant>,
+    pub(crate) last_input_at: Option<web_time::Instant>,
     pub(crate) last_wheel_delta_y: f64,
     pub(crate) scroll_accumulator: ScrollAccumulator,
     wheel_frame_scheduled: bool,
@@ -277,7 +308,7 @@ impl Default for InteractionUiState {
 
 impl InteractionUiState {
     pub(crate) fn note_input(&mut self) {
-        self.last_input_at = Some(std::time::Instant::now());
+        self.last_input_at = Some(web_time::Instant::now());
     }
 
     pub(crate) fn schedule_wheel_frame(&mut self) -> bool {
@@ -415,7 +446,41 @@ mod tests {
 
     #[test]
     fn platform_input_reset_discards_session_bound_navigation_state() {
+        let element_bounds = gpui::Bounds::new(
+            gpui::point(gpui::px(12.0), gpui::px(24.0)),
+            gpui::size(gpui::px(320.0), gpui::px(24.0)),
+        );
+        let target = GuiPlatformInputTarget::BlockText { block_id: 7 };
+        let session_identity = cditor_runtime::InputSessionIdentity {
+            session_id: 1,
+            target_generation: 1,
+            selection_generation: 2,
+            composition_generation: 3,
+            target: cditor_runtime::InputTarget::BlockText { block_id: 7 },
+            content_version: 4,
+        };
+        let layout_identity = TextPlatformLayoutIdentity {
+            surface_id: cditor_core::ids::SurfaceId::Block(7),
+            content_version: 4,
+            layout_version: 5,
+            wrap_width_bits: 320.0_f32.to_bits(),
+            text_align: cditor_core::rich_text::TextAlign::Start,
+        };
         let mut input = PlatformInputState {
+            candidate_bounds: Some(PlatformImeCandidateBounds {
+                target,
+                bounds: gpui::Bounds::new(
+                    gpui::point(gpui::px(40.0), gpui::px(28.0)),
+                    gpui::size(gpui::px(1.0), gpui::px(20.0)),
+                ),
+                element_bounds,
+            }),
+            character_coordinates_identity: Some(PlatformCharacterCoordinatesIdentity {
+                target,
+                session_identity: Some(session_identity),
+                layout_identity,
+                element_bounds,
+            }),
             preferred_navigation_x: Some((cditor_core::ids::SurfaceId::Block(7), 42.0)),
             ..Default::default()
         };
@@ -426,7 +491,62 @@ mod tests {
         assert!(input.session_identity.is_none());
         assert!(input.layout_identity.is_none());
         assert!(input.element_bounds.is_none());
+        assert!(input.candidate_bounds.is_none());
+        assert!(input.character_coordinates_identity.is_none());
         assert!(input.preferred_navigation_x.is_none());
+    }
+
+    #[test]
+    fn platform_input_registration_frame_preserves_candidate_geometry_cache() {
+        let target = GuiPlatformInputTarget::BlockText { block_id: 7 };
+        let bounds = gpui::Bounds::new(
+            gpui::point(gpui::px(40.0), gpui::px(28.0)),
+            gpui::size(gpui::px(1.0), gpui::px(20.0)),
+        );
+        let element_bounds = gpui::Bounds::new(
+            gpui::point(gpui::px(12.0), gpui::px(24.0)),
+            gpui::size(gpui::px(320.0), gpui::px(24.0)),
+        );
+        let mut input = PlatformInputState {
+            candidate_bounds: Some(PlatformImeCandidateBounds {
+                target,
+                bounds,
+                element_bounds,
+            }),
+            session_identity: Some(cditor_runtime::InputSessionIdentity {
+                session_id: 1,
+                target_generation: 1,
+                selection_generation: 1,
+                composition_generation: 1,
+                target: cditor_runtime::InputTarget::BlockText { block_id: 7 },
+                content_version: 1,
+            }),
+            layout_identity: Some(TextPlatformLayoutIdentity {
+                surface_id: cditor_core::ids::SurfaceId::Block(7),
+                content_version: 1,
+                layout_version: 1,
+                wrap_width_bits: 320.0_f32.to_bits(),
+                text_align: cditor_core::rich_text::TextAlign::Start,
+            }),
+            element_bounds: Some(element_bounds),
+            target: Some(target),
+            ..Default::default()
+        };
+
+        input.begin_registration_frame(None);
+
+        assert!(input.session_identity.is_none());
+        assert!(input.layout_identity.is_none());
+        assert!(input.element_bounds.is_none());
+        assert!(input.target.is_none());
+        assert_eq!(
+            input.candidate_bounds,
+            Some(PlatformImeCandidateBounds {
+                target,
+                bounds,
+                element_bounds,
+            })
+        );
     }
 
     #[test]
@@ -554,6 +674,7 @@ mod tests {
 
         assert!(!features.ai_enabled);
         assert_eq!(features.code_highlight_theme, "host-theme");
+        #[cfg(feature = "whiteboard")]
         assert!(features.whiteboard_editor.is_none());
     }
 

@@ -257,6 +257,7 @@ pub(crate) fn schedule_rendered_media_height_report(
         .detach();
 }
 
+#[cfg(feature = "mermaid")]
 pub(crate) fn invalidate_rendered_media_height_report(block_id: BlockId) {
     if let Ok(mut cache) = media_height_report_cache().lock() {
         cache.remove(&block_id);

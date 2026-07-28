@@ -15,7 +15,9 @@ use crate::features::table::{
     TableResizePreview,
 };
 use crate::features::text::collection::render_collection_block;
-use crate::features::whiteboard::{WhiteboardThumbnailCache, render_whiteboard_thumbnail};
+use crate::features::whiteboard::WhiteboardThumbnailCache;
+#[cfg(feature = "whiteboard")]
+use crate::features::whiteboard::render_whiteboard_thumbnail;
 use crate::text::{
     RichTextElement, RichTextLayoutInput, SegmentedRichTextElement, SegmentedTextViewport,
 };
@@ -49,6 +51,8 @@ pub(crate) fn render_block_content(
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
 ) -> AnyElement {
+    #[cfg(not(feature = "whiteboard"))]
+    let _ = whiteboard_thumbnails;
     match &block.payload {
         BlockPayloadView::Loaded(payload) => {
             if let Some(table_view) = &block.table_view {
@@ -96,6 +100,7 @@ pub(crate) fn render_block_content(
                     cx,
                 );
             }
+            #[cfg(feature = "whiteboard")]
             if matches!(payload.payload, BlockPayload::Whiteboard(_)) {
                 return render_whiteboard_thumbnail(
                     block.block_id,

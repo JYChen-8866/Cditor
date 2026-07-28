@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::ops::Range;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use cditor_core::edit::{DocumentSelection, TextAffinity};
 use cditor_core::ids::{BlockId, SurfaceId};

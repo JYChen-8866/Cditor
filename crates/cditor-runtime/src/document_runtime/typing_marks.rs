@@ -45,6 +45,25 @@ impl DocumentRuntime {
     }
 }
 
+pub(super) fn replace_rich_text_spans_with_typing_marks(
+    spans: &[InlineSpan],
+    replaced_range: Range<usize>,
+    inserted_text: &str,
+    typing_marks: Option<Vec<InlineMark>>,
+) -> Vec<InlineSpan> {
+    let Some(marks) = typing_marks.filter(|_| !inserted_text.is_empty()) else {
+        return replace_rich_text_spans_preserving_marks(spans, replaced_range, inserted_text);
+    };
+    replace_rich_text_spans_with_spans(
+        spans,
+        replaced_range,
+        &[InlineSpan {
+            text: inserted_text.to_owned(),
+            marks,
+        }],
+    )
+}
+
 pub(super) fn sync_payload_after_replace_with_typing_marks(
     payload_window: &mut PayloadWindow,
     block_id: BlockId,
@@ -54,17 +73,6 @@ pub(super) fn sync_payload_after_replace_with_typing_marks(
     inserted_text: &str,
     typing_marks: Option<Vec<InlineMark>>,
 ) {
-    let Some(marks) = typing_marks.filter(|_| !inserted_text.is_empty()) else {
-        sync_payload_from_model_after_replace(
-            payload_window,
-            block_id,
-            content_version,
-            model,
-            replaced_range,
-            inserted_text,
-        );
-        return;
-    };
     let Some(record) = payload_window.get(block_id) else {
         return;
     };
@@ -85,13 +93,11 @@ pub(super) fn sync_payload_after_replace_with_typing_marks(
     let BlockPayload::RichText { spans } = &record.payload else {
         unreachable!("payload kind checked above");
     };
-    let next_spans = replace_rich_text_spans_with_spans(
+    let next_spans = replace_rich_text_spans_with_typing_marks(
         spans,
         replaced_range,
-        &[InlineSpan {
-            text: inserted_text.to_owned(),
-            marks,
-        }],
+        inserted_text,
+        typing_marks,
     );
     record.content_version = content_version;
     record.payload = BlockPayload::RichText { spans: next_spans };

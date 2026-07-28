@@ -9,8 +9,8 @@ use crate::block::{
     BlockActionState, BlockDragOverlaySnapshot, BlockView, render_block_drag_overlay,
 };
 use crate::document::{
-    DEFAULT_DOCUMENT_TOP_INSET_PX, DocumentBlockGeometry, DocumentLayoutMetrics, DocumentSurface,
-    DocumentTextGeometry, DocumentTextViewport,
+    DocumentBlockGeometry, DocumentLayoutMetrics, DocumentSurface, DocumentTextGeometry,
+    DocumentTextViewport,
 };
 use crate::editor_view::CditorV2View;
 use crate::editor_view::TableScrollSnapshot;
@@ -115,6 +115,7 @@ impl DocumentEditorView {
         table_menu_ui: &TableMenuUiState,
         editor_viewport_width_px: f32,
         editor_viewport_height_px: f32,
+        document_layout: DocumentLayoutMetrics,
         readonly: bool,
         image_resize_preview: Option<(BlockId, f32)>,
         table_resize_preview: Option<TableResizePreview>,
@@ -134,12 +135,12 @@ impl DocumentEditorView {
         cx: &mut App,
     ) -> AnyElement {
         let block_view = BlockView::new(self.theme);
-        let document_layout = DocumentLayoutMetrics::for_viewport(editor_viewport_width_px);
         let menu_viewport = document_overlay_menu_viewport(
             editor_viewport_width_px,
             editor_viewport_height_px,
             projection.scroll.global_scroll_top,
             projection.before_window_height,
+            document_layout,
         );
         let mut block_y = 0.0;
         let mut table_overlay_elements = Vec::new();
@@ -416,11 +417,11 @@ fn document_overlay_menu_viewport(
     editor_height_px: f32,
     scroll_top: f64,
     window_start_global_y: f64,
+    document_layout: DocumentLayoutMetrics,
 ) -> MenuViewportBounds {
-    let document_layout = DocumentLayoutMetrics::for_viewport(editor_width_px);
     let page_left = ((editor_width_px - document_layout.page_width_px) / 2.0).max(0.0);
     let left = -page_left;
-    let top = (scroll_top - window_start_global_y) as f32 - DEFAULT_DOCUMENT_TOP_INSET_PX;
+    let top = (scroll_top - window_start_global_y) as f32 - document_layout.top_inset_px;
     MenuViewportBounds {
         left,
         top,
@@ -505,29 +506,56 @@ mod tests {
 
     #[test]
     fn menu_viewport_is_expressed_in_centered_document_overlay_coordinates() {
-        let viewport = document_overlay_menu_viewport(1_200.0, 800.0, 0.0, 0.0);
+        let viewport = document_overlay_menu_viewport(
+            1_200.0,
+            800.0,
+            0.0,
+            0.0,
+            DocumentLayoutMetrics::for_viewport(1_200.0),
+        );
 
         assert_eq!(viewport.left, 0.0);
         assert_eq!(viewport.right, 1_200.0);
-        assert_eq!(viewport.top, -32.0);
-        assert_eq!(viewport.bottom, 768.0);
+        assert_eq!(viewport.top, 0.0);
+        assert_eq!(viewport.bottom, 800.0);
     }
 
     #[test]
     fn menu_viewport_tracks_document_scroll_and_narrow_hosts() {
-        let viewport = document_overlay_menu_viewport(700.0, 500.0, 240.0, 0.0);
+        let viewport = document_overlay_menu_viewport(
+            700.0,
+            500.0,
+            240.0,
+            0.0,
+            DocumentLayoutMetrics::for_viewport(700.0),
+        );
 
         assert_eq!(viewport.left, 0.0);
         assert_eq!(viewport.right, 700.0);
-        assert_eq!(viewport.top, 208.0);
-        assert_eq!(viewport.bottom, 708.0);
+        assert_eq!(viewport.top, 240.0);
+        assert_eq!(viewport.bottom, 740.0);
     }
 
     #[test]
     fn menu_viewport_rebases_far_global_scroll_before_f32_conversion() {
-        let viewport = document_overlay_menu_viewport(700.0, 500.0, 20_000_240.25, 20_000_000.25);
+        let viewport = document_overlay_menu_viewport(
+            700.0,
+            500.0,
+            20_000_240.25,
+            20_000_000.25,
+            DocumentLayoutMetrics::for_viewport(700.0),
+        );
 
-        assert_eq!(viewport.top, 208.0);
-        assert_eq!(viewport.bottom, 708.0);
+        assert_eq!(viewport.top, 240.0);
+        assert_eq!(viewport.bottom, 740.0);
+    }
+
+    #[test]
+    fn menu_viewport_accounts_for_a_visible_readonly_notice() {
+        let document_layout = DocumentLayoutMetrics::for_viewport(1_200.0).with_top_inset_px(32.0);
+        let viewport = document_overlay_menu_viewport(1_200.0, 800.0, 0.0, 0.0, document_layout);
+
+        assert_eq!(viewport.top, -32.0);
+        assert_eq!(viewport.bottom, 768.0);
     }
 }

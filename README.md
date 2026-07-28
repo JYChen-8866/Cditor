@@ -152,6 +152,21 @@ cargo --version
 ```
 
 ## Quick Start
+
+### Desktop Feature Assembly
+
+The desktop package enables its `full` feature by default. A normal build includes AI,
+SQLite, PostgreSQL, syntax highlighting, Mermaid rendering, and whiteboard editing:
+
+```bash
+cargo run -p cditor-desktop
+```
+
+The composition root exposes the individual `ai`, `sqlite`, `postgres`,
+`code-highlight`, `mermaid`, and `whiteboard` features so embedders and dependency
+audits can compile only the adapters they own. These switches are module boundaries;
+they do not change the standard Cditor product build, whose default remains `full`.
+
 ### 1. Run Without a Database
 If both `CDITOR_DATABASE_URL` and `CDITOR_SQLITE_PATH` are unset, the binary opens the built-in demo without requiring a database:
 ```bash

@@ -1,0 +1,16 @@
+{
+  "name": "cditor-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "wasm": "cd .. && cargo build --target wasm32-unknown-unknown --release && wasm-bindgen ../../target/wasm32-unknown-unknown/release/cditor_web.wasm --out-dir ./www/src/wasm --target web --no-typescript"
+  },
+  "devDependencies": {
+    "vite": "^6",
+    "vite-plugin-wasm": "^3"
+  }
+}

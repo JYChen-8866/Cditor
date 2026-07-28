@@ -7,3 +7,4 @@ license.workspace = true
 [dependencies]
 cditor-core = { path = "../cditor-core" }
 unicode-segmentation = "1.12"
+web-time = "1.1"

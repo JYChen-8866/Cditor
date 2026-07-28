@@ -205,6 +205,7 @@ impl CditorV2View {
             );
         }
         let kind = item.kind;
+        #[cfg(feature = "whiteboard")]
         let opens_whiteboard = matches!(kind, cditor_core::rich_text::RichBlockKind::Whiteboard);
         let caret = self
             .ready_session()
@@ -228,6 +229,7 @@ impl CditorV2View {
         match result {
             Ok(outcome) => {
                 self.overlay.slash_menu = None;
+                #[cfg(feature = "whiteboard")]
                 if outcome.status == CommandOutcomeStatus::Applied && opens_whiteboard {
                     self.open_whiteboard_editor_from_gui(menu.block_id, cx);
                 }

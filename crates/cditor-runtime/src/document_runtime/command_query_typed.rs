@@ -29,6 +29,7 @@ impl DocumentRuntime {
                 .table_dimensions(*block_id)
                 .is_some_and(|(rows, columns)| *row < rows && *col < columns),
             EditorCommand::BlurTableCell => self.focused_table_cell_offset().is_some(),
+            EditorCommand::NavigateTableCell { .. } => self.focused_table_cell_offset().is_some(),
             EditorCommand::SetTextSurfaceSelection { surface_id, .. } => {
                 self.text_surface_snapshot(*surface_id).is_some()
             }
@@ -299,5 +300,29 @@ mod tests {
             state.reason,
             Some(CommandUnavailableReason::InvalidSelection)
         );
+    }
+
+    #[test]
+    fn typed_table_navigation_query_requires_a_focused_cell() {
+        use cditor_editor_protocol::command::TableCellNavigationDirection;
+
+        let mut runtime = DocumentRuntime::large_mixed_demo();
+        let command = EditorCommand::NavigateTableCell {
+            direction: TableCellNavigationDirection::TabForward,
+            extend_selection: false,
+        };
+        assert!(!runtime.query_editor_command(&command).enabled);
+
+        let table_id = runtime
+            .visible_block_ids()
+            .iter()
+            .copied()
+            .find(|block_id| matches!(runtime.block_kind(*block_id), Some(RichBlockKind::Table)))
+            .unwrap();
+        runtime
+            .focus_table_cell_at_offset(table_id, 0, 0, 0)
+            .unwrap();
+
+        assert!(runtime.query_editor_command(&command).enabled);
     }
 }

@@ -188,6 +188,11 @@ impl DocumentRuntime {
     ) -> Result<bool, String> {
         use cditor_editor_protocol::command::TableCellNavigationDirection as Direction;
 
+        eprintln!(
+            "[runtime] navigate_table_cell_command: direction={:?}, extend_selection={}",
+            direction, extend_selection
+        );
+
         match (direction, extend_selection) {
             (Direction::Left, false) => self.move_focused_table_cell_left(),
             (Direction::Left, true) => self.extend_focused_table_cell_selection_left(),

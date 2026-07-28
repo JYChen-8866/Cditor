@@ -407,9 +407,7 @@ impl DrafftBoardView {
             return;
         }
         self.laser_fade_scheduled = true;
-        let tick = cx.background_spawn(async move {
-            std::thread::sleep(Duration::from_millis(16));
-        });
+        let tick = cx.background_executor().timer(Duration::from_millis(16));
         cx.spawn(async move |view, cx| {
             let _ = tick.await;
             let _ = view.update(cx, |view, cx| {
@@ -425,7 +423,11 @@ impl DrafftBoardView {
 }
 
 impl Render for DrafftBoardView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if (self.text_edit.is_some() || self.math_edit.is_some()) && !self.focus.is_focused(window)
+        {
+            window.focus(&self.focus, cx);
+        }
         if !self.read_only && !self.pointer_interaction_active {
             self.observe_document_change(cx);
         }
@@ -507,7 +509,12 @@ impl Render for DrafftBoardView {
             .text_color(gpui::rgb(0x3c3c3c))
             .bg(gpui::rgb(0xffffff))
             .child(board_surface)
-            .child(DrafftTextInputElement::new(cx.entity()))
+            .child(
+                div()
+                    .absolute()
+                    .size_full()
+                    .child(DrafftTextInputElement::new(cx.entity())),
+            )
             .on_action(cx.listener(|view, _: &Newline, _window, cx| view.handle_newline_action(cx)))
             .on_action(
                 cx.listener(|view, _: &Cancel, window, cx| view.handle_cancel_action(window, cx)),

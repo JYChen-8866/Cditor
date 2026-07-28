@@ -66,16 +66,23 @@ impl DocumentRuntime {
 
     pub(crate) fn move_focused_table_cell_tab(&mut self, backwards: bool) -> Result<bool, String> {
         let Some(focused) = self.selection.focused_table_cell else {
+            eprintln!("[table-tab] no focused table cell");
             return Ok(false);
         };
+        eprintln!(
+            "[table-tab] current: row={}, col={}, backwards={}",
+            focused.row, focused.col, backwards
+        );
         let Some((row, col)) = self.adjacent_table_cell_position(
             focused.block_id,
             focused.row,
             focused.col,
             if backwards { -1 } else { 1 },
         ) else {
+            eprintln!("[table-tab] no adjacent cell found");
             return Ok(false);
         };
+        eprintln!("[table-tab] moving to: row={}, col={}", row, col);
         let offset = if backwards {
             self.table_cell_plain_text(focused.block_id, row, col)
                 .map(|text| text.len())
@@ -84,6 +91,7 @@ impl DocumentRuntime {
             0
         };
         self.focus_table_cell_at_offset(focused.block_id, row, col, offset)?;
+        eprintln!("[table-tab] move succeeded");
         Ok(true)
     }
 

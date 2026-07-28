@@ -10,6 +10,7 @@ cditor-core = { path = "../cditor-core" }
 cditor-editor-protocol = { path = "../cditor-editor-protocol" }
 cditor-viewport = { path = "../cditor-viewport" }
 unicode-segmentation = "1.12"
+web-time = "1.1"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -297,7 +297,7 @@ impl CditorV2View {
         if width > 0.5 && height > 0.5 {
             let viewport =
                 crate::menu_metrics::EditorViewport::from_measurement(bounds, bounds.size);
-            let document = crate::document::DocumentLayoutMetrics::for_viewport(viewport.width);
+            let document = self.document_layout_metrics(viewport.width);
             return Some(DocumentViewportOrigin::from_layout(viewport, document));
         }
         self.interaction.document_viewport_origin
@@ -352,7 +352,16 @@ impl CditorV2View {
         if let Some(geometry) = self.projected_text_geometry_for_block(current, block_id) {
             return Some(geometry.bounds_for_range(range));
         }
+        self.synchronous_text_range_bounds_for_block(session, block_id, current, range)
+    }
 
+    pub(crate) fn synchronous_text_range_bounds_for_block(
+        &self,
+        session: &cditor_session::EditorSessionHandle,
+        block_id: BlockId,
+        current: SurfaceVersionSnapshot,
+        range: Range<usize>,
+    ) -> Option<Bounds<Pixels>> {
         record_synchronous_geometry_fallback();
         let placement = self.projected_text_placement_for_block(block_id)?;
         let element = cold_text_element_for_block(session, block_id, current, placement)?;
@@ -570,7 +579,7 @@ fn cold_text_element_for_auxiliary_surface(
     )
 }
 
-fn projected_bounds_for_local_rects(
+pub(super) fn projected_bounds_for_local_rects(
     placement: ProjectedTextPlacement,
     rects: Vec<crate::text::TextLayoutRect>,
 ) -> Option<Bounds<Pixels>> {

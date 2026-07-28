@@ -328,7 +328,7 @@ fn percentile(mut values: Vec<f64>, p: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Instant;
+    use web_time::Instant;
 
     use crate::scroll::{ScrollDeltaMode, ScrollDevice, ScrollInput, ScrollPhase};
     use cditor_core::layout::HeightChange;

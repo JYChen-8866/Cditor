@@ -1,20 +1,48 @@
 //! Code-block syntax highlighting and theme metadata.
 
-use std::collections::{HashMap, HashSet};
+#![cfg_attr(not(feature = "code-highlight"), allow(dead_code))]
+
+use std::collections::HashMap;
+#[cfg(feature = "code-highlight")]
+use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 
 use cditor_core::ids::BlockId;
-use cditor_core::rich_text::{
-    BlockPayload, BlockPayloadRecord, BlockPayloadView, InlineMark, InlineSpan, RichBlockKind,
-};
-use cditor_runtime::{EditorViewProjection, MainThreadWorkKind, WorkCost, WorkerTaskKind};
+#[cfg(feature = "code-highlight")]
+use cditor_core::rich_text::BlockPayloadView;
+use cditor_core::rich_text::{BlockPayload, BlockPayloadRecord, InlineSpan};
+#[cfg(any(feature = "code-highlight", test))]
+use cditor_core::rich_text::{InlineMark, RichBlockKind};
+use cditor_runtime::EditorViewProjection;
+#[cfg(feature = "code-highlight")]
+use cditor_runtime::{MainThreadWorkKind, WorkCost, WorkerTaskKind};
 use cditor_text::requires_segmentation;
-use gpui::{AppContext, Context, Task};
-use lumis::highlight::Highlighter;
-use lumis::languages::Language;
-use lumis::themes::{self, UnderlineStyle};
+#[cfg(feature = "code-highlight")]
+use gpui::AppContext;
+use gpui::{Context, Task};
+#[cfg(feature = "code-highlight")]
+mod lumis_imports {
+    pub(crate) use lumis::highlight::Highlighter;
+    pub(crate) use lumis::themes::{self, UnderlineStyle};
+}
+#[cfg(feature = "code-highlight")]
+use lumis_imports::*;
 
-use crate::app::worker_admission::{EditorWorkerAdmission, WorkerPermit};
+// Stub Language type for when code-highlight is disabled
+#[cfg(not(feature = "code-highlight"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum StubLanguage {
+    Unknown,
+}
+
+#[cfg(not(feature = "code-highlight"))]
+pub(crate) use StubLanguage as Language;
+#[cfg(feature = "code-highlight")]
+pub(crate) use lumis::languages::Language;
+
+use crate::app::worker_admission::EditorWorkerAdmission;
+#[cfg(feature = "code-highlight")]
+use crate::app::worker_admission::WorkerPermit;
 use crate::editor_view::CditorV2View;
 use crate::text::input::RichTextLayoutSpans;
 
@@ -123,6 +151,7 @@ struct CodeHighlightRequest {
 }
 
 impl CodeHighlightEntry {
+    #[cfg(feature = "code-highlight")]
     fn new(
         request: CodeHighlightRequest,
         permit: WorkerPermit,
@@ -208,6 +237,7 @@ pub(crate) struct CodeHighlightCache {
 }
 
 impl CodeHighlightCache {
+    #[cfg(feature = "code-highlight")]
     pub(crate) fn sync_visible_window(
         &mut self,
         projection: &EditorViewProjection,
@@ -289,6 +319,16 @@ impl CodeHighlightCache {
         }
     }
 
+    #[cfg(not(feature = "code-highlight"))]
+    pub(crate) fn sync_visible_window(
+        &mut self,
+        _projection: &EditorViewProjection,
+        _theme_name: &'static str,
+        _worker_admission: &EditorWorkerAdmission,
+        _cx: &mut Context<CditorV2View>,
+    ) {
+    }
+
     pub(crate) fn spans(
         &self,
         block_id: BlockId,
@@ -305,6 +345,7 @@ impl CodeHighlightCache {
     }
 }
 
+#[cfg(feature = "code-highlight")]
 fn code_language(language: Option<&str>) -> Option<Language> {
     let normalized = language?.trim().to_ascii_lowercase();
     match normalized.as_str() {
@@ -337,6 +378,7 @@ fn code_language(language: Option<&str>) -> Option<Language> {
     }
 }
 
+#[cfg(feature = "code-highlight")]
 fn highlight_source(
     source: &str,
     language: Language,

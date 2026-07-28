@@ -20,7 +20,7 @@ impl CditorV2View {
                     mode: ScrollDeltaMode::Pixel,
                     phase: scroll_phase_from_touch(event.touch_phase),
                     device: ScrollDevice::Trackpad,
-                    timestamp: std::time::Instant::now(),
+                    timestamp: web_time::Instant::now(),
                 },
             );
             if queued.is_ok() && self.interaction.schedule_wheel_frame() {

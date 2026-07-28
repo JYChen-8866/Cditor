@@ -277,18 +277,21 @@ impl DrafftBoardView {
             return;
         }
         self.file_menu_open = false;
-        let task = cx.background_spawn(async move {
-            rfd::FileDialog::new()
-                .set_title("Save Drafft Document")
-                .set_file_name("Untitled.json")
-                .add_filter("Drafft Document", &["json"])
-                .save_file()
-        });
-        cx.spawn(async move |view, cx| {
-            let Some(path) = task.await else { return };
-            let _ = view.update(cx, |view, cx| view.write_document(path, json, cx));
-        })
-        .detach();
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let task = cx.background_spawn(async move {
+                rfd::FileDialog::new()
+                    .set_title("Save Drafft Document")
+                    .set_file_name("Untitled.json")
+                    .add_filter("Drafft Document", &["json"])
+                    .save_file()
+            });
+            cx.spawn(async move |view, cx| {
+                let Some(path) = task.await else { return };
+                let _ = view.update(cx, |view, cx| view.write_document(path, json, cx));
+            })
+            .detach();
+        }
     }
 
     fn write_document(&mut self, path: PathBuf, json: String, cx: &mut Context<Self>) {
@@ -313,17 +316,20 @@ impl DrafftBoardView {
 
     pub(super) fn open_document(&mut self, cx: &mut Context<Self>) {
         self.file_menu_open = false;
-        let task = cx.background_spawn(async move {
-            rfd::FileDialog::new()
-                .set_title("Open Drafft Document")
-                .add_filter("Drafft / Excalidraw", &["json", "excalidraw"])
-                .pick_file()
-        });
-        cx.spawn(async move |view, cx| {
-            let Some(path) = task.await else { return };
-            let _ = view.update(cx, |view, cx| view.load_path(path, cx));
-        })
-        .detach();
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let task = cx.background_spawn(async move {
+                rfd::FileDialog::new()
+                    .set_title("Open Drafft Document")
+                    .add_filter("Drafft / Excalidraw", &["json", "excalidraw"])
+                    .pick_file()
+            });
+            cx.spawn(async move |view, cx| {
+                let Some(path) = task.await else { return };
+                let _ = view.update(cx, |view, cx| view.load_path(path, cx));
+            })
+            .detach();
+        }
     }
 
     fn load_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
@@ -361,36 +367,39 @@ impl DrafftBoardView {
 
     fn open_library(&mut self, cx: &mut Context<Self>) {
         self.file_menu_open = false;
-        let task = cx.background_spawn(async move {
-            rfd::FileDialog::new()
-                .set_title("Open Excalidraw Library")
-                .add_filter("Excalidraw Library", &["excalidrawlib"])
-                .pick_file()
-        });
-        cx.spawn(async move |view, cx| {
-            let Some(path) = task.await else { return };
-            let fallback = path
-                .file_stem()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "Library".into());
-            let result = std::fs::read_to_string(&path)
-                .map_err(|error| error.to_string())
-                .and_then(|content| {
-                    parse_library(&content, &fallback)
-                        .ok_or_else(|| "Not a valid Excalidraw library".to_string())
-                });
-            let _ = view.update(cx, |view, cx| {
-                match result {
-                    Ok((name, document)) => {
-                        view.add_tab(name.clone(), document);
-                        view.file_status = Some(format!("Opened library {name}"));
-                    }
-                    Err(error) => view.file_status = Some(format!("Open failed: {error}")),
-                }
-                cx.notify();
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let task = cx.background_spawn(async move {
+                rfd::FileDialog::new()
+                    .set_title("Open Excalidraw Library")
+                    .add_filter("Excalidraw Library", &["excalidrawlib"])
+                    .pick_file()
             });
-        })
-        .detach();
+            cx.spawn(async move |view, cx| {
+                let Some(path) = task.await else { return };
+                let fallback = path
+                    .file_stem()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "Library".into());
+                let result = std::fs::read_to_string(&path)
+                    .map_err(|error| error.to_string())
+                    .and_then(|content| {
+                        parse_library(&content, &fallback)
+                            .ok_or_else(|| "Not a valid Excalidraw library".to_string())
+                    });
+                let _ = view.update(cx, |view, cx| {
+                    match result {
+                        Ok((name, document)) => {
+                            view.add_tab(name.clone(), document);
+                            view.file_status = Some(format!("Opened library {name}"));
+                        }
+                        Err(error) => view.file_status = Some(format!("Open failed: {error}")),
+                    }
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
     }
 
     fn import_mermaid_clipboard(&mut self, cx: &mut Context<Self>) {
@@ -432,25 +441,28 @@ impl DrafftBoardView {
             cx.notify();
             return;
         }
-        let task = cx.background_spawn(async move {
-            rfd::FileDialog::new()
-                .set_title("Export PNG")
-                .set_file_name("drawing.png")
-                .add_filter("PNG Image", &["png"])
-                .save_file()
-        });
-        cx.spawn(async move |view, cx| {
-            let Some(path) = task.await else { return };
-            let result = std::fs::write(&path, bytes);
-            let _ = view.update(cx, |view, cx| {
-                view.file_status = Some(match result {
-                    Ok(()) => format!("Exported {}", path.display()),
-                    Err(error) => format!("Export failed: {error}"),
-                });
-                cx.notify();
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let task = cx.background_spawn(async move {
+                rfd::FileDialog::new()
+                    .set_title("Export PNG")
+                    .set_file_name("drawing.png")
+                    .add_filter("PNG Image", &["png"])
+                    .save_file()
             });
-        })
-        .detach();
+            cx.spawn(async move |view, cx| {
+                let Some(path) = task.await else { return };
+                let result = std::fs::write(&path, bytes);
+                let _ = view.update(cx, |view, cx| {
+                    view.file_status = Some(match result {
+                        Ok(()) => format!("Exported {}", path.display()),
+                        Err(error) => format!("Export failed: {error}"),
+                    });
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
     }
 }
 

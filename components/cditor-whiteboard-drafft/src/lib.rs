@@ -20,7 +20,7 @@ mod paint;
 mod view;
 
 #[cfg(feature = "drafft-core")]
-pub use font::{CANVAS_FONT_FAMILY, UI_FONT_FAMILY, bundled_fonts};
+pub use font::{CANVAS_FONT_FAMILY, UI_FONT_FAMILY, bundled_fonts, cjk_fallback_fonts};
 #[cfg(feature = "drafft-core")]
 pub use model_host::document::{parse_document, parse_document_json, parse_library};
 #[cfg(feature = "drafft-core")]

@@ -255,7 +255,7 @@ mod tests {
         let image = test_render_image(1404, 600);
         let geometry = mermaid_preview_geometry(&image);
 
-        assert_eq!(MERMAID_MAX_IMAGE_WIDTH_PX, 702.0);
+        assert_eq!(MERMAID_MAX_IMAGE_WIDTH_PX, 782.0);
         assert_eq!(geometry.image_width_px, 702.0);
         assert_eq!(geometry.image_height_px, 300.0);
         assert_eq!(geometry.body_height_px, 316.0);

@@ -693,7 +693,10 @@ impl DocumentRuntime {
             .get(&block_id)
             .map(|tm| tm.text().to_string())
             .unwrap_or_default();
-        let has_children = self.index_records().iter().any(|r| r.parent_id == Some(block_id));
+        let has_children = self
+            .index_records()
+            .iter()
+            .any(|r| r.parent_id == Some(block_id));
         Some((
             payload.kind.clone(),
             text,
@@ -736,5 +739,46 @@ impl DocumentRuntime {
             self.document_title().map(|s| s.to_string()),
             records.len(),
         )
+    }
+
+    /// Set block text for agent writes (replaces all spans with plain text).
+    pub fn agent_set_block_text(&mut self, block_id: BlockId, text: &str) -> Result<(), String> {
+        let kind = self
+            .block_kind(block_id)
+            .ok_or_else(|| format!("block {block_id} not found"))?
+            .clone();
+        self.apply_local_block_payload_transaction(
+            block_id,
+            EditTransactionKind::BlockStructureChange,
+            kind,
+            BlockPayload::RichText {
+                spans: vec![InlineSpan::plain(text)],
+            },
+        )?;
+        self.focus_block_at_offset(block_id, 0)?;
+        Ok(())
+    }
+
+    /// Insert a block with content after target (agent). Returns new block id.
+    pub fn agent_insert_block_after(
+        &mut self,
+        after_block_id: BlockId,
+        text: &str,
+    ) -> Result<BlockId, String> {
+        let new_id = self.insert_paragraph_after_block(after_block_id)?;
+        self.agent_set_block_text(new_id, text)?;
+        self.focus_block_at_offset(new_id, 0)?;
+        Ok(new_id)
+    }
+
+    /// Delete blocks by id (agent). Returns deleted block ids.
+    pub fn agent_delete_blocks(&mut self, block_ids: &[BlockId]) -> Result<Vec<BlockId>, String> {
+        let mut deleted = Vec::new();
+        for &bid in block_ids {
+            if self.delete_block_by_id(bid)? {
+                deleted.push(bid);
+            }
+        }
+        Ok(deleted)
     }
 }

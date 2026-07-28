@@ -1682,8 +1682,9 @@ Gate P0：
     较新 major 加载为 `DocumentSchemaAccess::ReadOnlyNewerMajor`、旧 major 明确返回 migration
     error。App wiring 将较新版本访问模式传给 Editor；Editor 保存独立的 host readonly 意图与
     compatibility lock，SDK 调用 `set_readonly(false)` 不能解除强制只读，所有 mutation/save
-    继续由统一 readonly policy 拒绝。顶部 32px 空白 inset 内显示包含 written/supported version
-    和升级指引的明确提示，不遮挡正文。SQLite 冷启动集成测试、GPUI component SDK 锁定测试、
+    继续由统一 readonly policy 拒绝。正常编辑态顶部 inset 为 0；仅在兼容性只读提示可见时
+    动态保留 32px，并显示包含 written/supported version 和升级指引的明确提示，不遮挡正文。
+    SQLite 冷启动集成测试、GPUI component SDK 锁定测试、
     notice 文案和 schema 三态测试覆盖上述链路。
 - [x] P1-012 property test：随机 tree/order 操作保持无环、ID、顺序不变量。
   - 证据：`crates/cditor-core/tests/identity_tree_property.rs`（5 个 seed × 600 步随机 insert/move/remove-subtree/reorder/rebalance，独立校验器逐步断言无环、ID 唯一、parent 存在、sibling OrderKey 严格全序、key 结构不变量；另覆盖 64 层深链 + 单间隙 128 次头插后 rebalance 收敛 ≤ 2 字节、移入自身子树拒绝且状态不变）。基于 Runtime `DocumentIndex` 的同类随机化属于 Phase 4 事务化后的扩展。

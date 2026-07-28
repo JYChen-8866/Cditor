@@ -51,25 +51,28 @@ pub fn project_table_interaction(
     runtime: &DocumentRuntime,
     requested_block_id: Option<BlockId>,
 ) -> TableInteractionSnapshot {
-    let focused_cell =
-        runtime
-            .focused_table_cell_text_position()
-            .map(|(block_id, row, col, offset, affinity)| {
-                let (_, _, _, selected_range, selection_reversed, marked_range) = runtime
-                    .focused_table_cell_selection_state()
-                    .expect("focused table position and selection state must share ownership");
-                FocusedTableCellSnapshot {
-                    block_id,
-                    row,
-                    col,
-                    offset,
-                    affinity,
-                    selected_range,
-                    selection_reversed,
-                    marked_range,
-                    block_content_version: runtime.block_content_version(block_id).unwrap_or(0),
-                }
-            });
+    let focused_cell_position = runtime.focused_table_cell_text_position();
+    eprintln!(
+        "[table_port] focused_table_cell_text_position: {:?}",
+        focused_cell_position
+    );
+
+    let focused_cell = focused_cell_position.map(|(block_id, row, col, offset, affinity)| {
+        let (_, _, _, selected_range, selection_reversed, marked_range) = runtime
+            .focused_table_cell_selection_state()
+            .expect("focused table position and selection state must share ownership");
+        FocusedTableCellSnapshot {
+            block_id,
+            row,
+            col,
+            offset,
+            affinity,
+            selected_range,
+            selection_reversed,
+            marked_range,
+            block_content_version: runtime.block_content_version(block_id).unwrap_or(0),
+        }
+    });
     let requested_table = requested_block_id.and_then(|block_id| {
         let payload = runtime.block_payload_record(block_id)?;
         let BlockPayload::Table(table) = &payload.payload else {

@@ -5,8 +5,12 @@ use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineColorTarget, InlineMark, InlineSpan, RichBlockKind,
     TableRange,
 };
-use cditor_editor_protocol::command::{CommandCheckState, CommandOutcomeStatus, TableAxis};
+use cditor_editor_protocol::command::{
+    CommandCheckState, CommandOutcomeStatus, TableAxis, TableCellNavigationDirection,
+};
 use gpui::{AppContext, TestAppContext};
+
+use crate::input::routing::BoundInputAction;
 
 fn realtime_replace(runtime: &mut cditor_runtime::DocumentRuntime, text: &str) {
     let expected = runtime.input_session_identity().unwrap();
@@ -128,6 +132,10 @@ fn representative_commands() -> Vec<CditorCommand> {
             anchor_offset: 0,
             focus_offset: 0,
             focus_affinity: cditor_core::edit::TextAffinity::Downstream,
+        },
+        CditorCommand::NavigateTableCell {
+            direction: TableCellNavigationDirection::TabForward,
+            extend_selection: false,
         },
         CditorCommand::SetTextSurfaceSelection {
             surface_id: cditor_core::ids::SurfaceId::ImageCaption { block_id: 1 },
@@ -531,6 +539,46 @@ fn keyboard_document_mutations_are_owned_by_runtime_dispatch() {
         CditorCommand::DeleteForward,
     ];
     assert!(commands.iter().all(runtime_dispatches));
+}
+
+#[gpui::test]
+fn table_tab_action_moves_after_realtime_text_input(cx: &mut TestAppContext) {
+    let view = cx.new(|cx| CditorV2View::from_runtime(rich_document_runtime(), false, cx));
+
+    view.update(cx, |view, cx| {
+        view.dispatch_command(
+            CditorCommand::FocusTableCell {
+                block_id: 3,
+                row: 0,
+                col: 0,
+                offset: Some(0),
+                affinity: cditor_core::edit::TextAffinity::Downstream,
+            },
+            CommandSource::Keyboard,
+            cx,
+        )
+        .unwrap();
+        let session = view.ready_session().unwrap().clone();
+        session_realtime_replace(&session, "aa");
+        let command = CditorCommand::NavigateTableCell {
+            direction: TableCellNavigationDirection::TabForward,
+            extend_selection: false,
+        };
+
+        assert!(view.query_command(&command).enabled);
+        view.handle_bound_input_action(BoundInputAction::Tab { backwards: false }, cx);
+        let focused = view
+            .ready_session()
+            .unwrap()
+            .table_interaction(None)
+            .unwrap()
+            .focused_cell
+            .unwrap();
+        assert_eq!(
+            (focused.block_id, focused.row, focused.col, focused.offset),
+            (3, 0, 1, 0)
+        );
+    });
 }
 
 #[gpui::test]

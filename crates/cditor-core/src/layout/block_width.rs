@@ -1,6 +1,6 @@
 use crate::rich_text::RichBlockKind;
 
-pub const BODY_BLOCK_CONTENT_WIDTH_PX: f64 = 720.0;
+pub const BODY_BLOCK_CONTENT_WIDTH_PX: f64 = 800.0;
 pub const WIDE_BLOCK_CONTENT_WIDTH_PX: f64 = 960.0;
 pub const FULL_BLOCK_CONTENT_WIDTH_PX: f64 = 1200.0;
 
@@ -38,7 +38,7 @@ mod tests {
 
     #[test]
     fn width_classes_have_stable_content_tracks() {
-        assert_eq!(BlockWidthClass::Body.content_width_px(), 720.0);
+        assert_eq!(BlockWidthClass::Body.content_width_px(), 800.0);
         assert_eq!(BlockWidthClass::Wide.content_width_px(), 960.0);
         assert_eq!(BlockWidthClass::Full.content_width_px(), 1200.0);
     }

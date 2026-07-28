@@ -29,7 +29,11 @@ tiny-skia = "0.11"
 drafftink-core = { path = "vendor/drafft-ink/crates/drafftink-core", optional = true }
 drafftink-render = { path = "vendor/drafft-ink/crates/drafftink-render", optional = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+memmap2 = "0.9"
+
 [dev-dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", features = ["test-support"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", features = ["font-kit"] }
 
 # Cargo only applies patches from the top-level package being built. Repeat the

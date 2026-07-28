@@ -1,7 +1,7 @@
 use cditor_core::ids::{BlockId, SurfaceId};
 use cditor_runtime::InputTarget;
 
-use crate::editor_view::CditorV2View;
+use crate::editor_view::{CditorV2View, PlatformCharacterCoordinatesIdentity};
 use crate::input::ime::support::InputContextSource;
 use crate::input::trace::trace_input;
 use crate::text::TextPlatformLayoutIdentity;
@@ -156,10 +156,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn begin_platform_input_registration_frame(&mut self) {
-        self.input.session_identity = None;
-        self.input.layout_identity = None;
-        self.input.element_bounds = None;
-        self.input.target = self
+        let target = self
             .overlay
             .ai_prompt
             .as_ref()
@@ -182,6 +179,7 @@ impl CditorV2View {
                     .axis_selection()
                     .map(|selection| GuiPlatformInputTarget::table_menu_query(selection.block_id))
             });
+        self.input.begin_registration_frame(target);
     }
 
     pub(crate) fn register_platform_input_target(
@@ -189,12 +187,12 @@ impl CditorV2View {
         target: GuiPlatformInputTarget,
         layout_identity: TextPlatformLayoutIdentity,
         element_bounds: gpui::Bounds<gpui::Pixels>,
-    ) -> bool {
+    ) -> PlatformInputRegistration {
         let Some(session) = self.ready_session() else {
-            return false;
+            return PlatformInputRegistration::default();
         };
         let Ok(input_context) = session.input_context() else {
-            return false;
+            return PlatformInputRegistration::default();
         };
         if !platform_input_registration_allows(self.input.target, target, &input_context) {
             trace_input(
@@ -204,14 +202,33 @@ impl CditorV2View {
                     self.input.target, target, input_context.target
                 ),
             );
-            return false;
+            return PlatformInputRegistration::default();
         }
         let input_session_identity = input_context.identity;
+        let coordinates_identity = PlatformCharacterCoordinatesIdentity {
+            target,
+            session_identity: input_session_identity,
+            layout_identity,
+            element_bounds,
+        };
+        let character_coordinates_changed =
+            self.input.character_coordinates_identity != Some(coordinates_identity);
+        if self
+            .input
+            .candidate_bounds
+            .is_some_and(|candidate| candidate.target != target)
+        {
+            self.input.candidate_bounds = None;
+        }
         self.input.target = Some(target);
         self.input.session_identity = input_session_identity;
         self.input.layout_identity = Some(layout_identity);
         self.input.element_bounds = Some(element_bounds);
-        true
+        self.input.character_coordinates_identity = Some(coordinates_identity);
+        PlatformInputRegistration {
+            registered: true,
+            character_coordinates_changed,
+        }
     }
 
     pub(crate) fn registered_platform_input_session_identity(
@@ -219,6 +236,12 @@ impl CditorV2View {
     ) -> Option<cditor_runtime::InputSessionIdentity> {
         self.input.session_identity
     }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PlatformInputRegistration {
+    pub(crate) registered: bool,
+    pub(crate) character_coordinates_changed: bool,
 }
 
 pub(crate) fn platform_input_registration_allows<S: InputContextSource + ?Sized>(

@@ -1,0 +1,1 @@
+export function cditorPanicStack() { return new Error().stack || ''; }

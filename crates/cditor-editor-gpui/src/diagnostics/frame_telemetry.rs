@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 

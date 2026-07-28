@@ -1,4 +1,5 @@
-use std::{ops::Range, time::Instant};
+use std::ops::Range;
+use web_time::Instant;
 
 use cditor_editor_protocol::ProtocolError;
 use cditor_runtime::content::payload_window::{

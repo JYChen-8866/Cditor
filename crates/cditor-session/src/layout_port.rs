@@ -249,7 +249,7 @@ impl EditorSessionHandle {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
+    use web_time::Instant;
 
     use cditor_viewport::scroll::{
         ScrollDeltaMode, ScrollDevice, ScrollPhase, WheelPipelineConfig,

@@ -11,3 +11,4 @@ serde_json = { version = "1", features = ["raw_value"] }
 unicode-segmentation = "1.12"
 uuid = { version = "1", features = ["v7", "serde"] }
 getrandom = "0.3"
+web-time = "1.1"

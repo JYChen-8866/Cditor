@@ -402,6 +402,6 @@ fn cold_start_options(options: &CditorOptions) -> StorageRuntimeLoadOptions {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite", feature = "postgres"))]
 #[path = "storage_host_tests.rs"]
 mod tests;

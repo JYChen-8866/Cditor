@@ -100,11 +100,17 @@ fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
     let table_view = projection.blocks[0].table_view.as_ref().unwrap();
     assert_eq!(table_view.row_count, 3);
     assert_eq!(table_view.col_count, 3);
-    assert_eq!(
-        table_view.width_px,
-        cditor_core::layout::BODY_BLOCK_CONTENT_WIDTH_PX as f32
+    assert!(
+        (table_view.width_px - cditor_core::layout::BODY_BLOCK_CONTENT_WIDTH_PX as f32).abs()
+            < 0.001
     );
-    assert_eq!(table_view.column_widths_px, vec![240.0, 240.0, 240.0]);
+    let expected_column_width = cditor_core::layout::BODY_BLOCK_CONTENT_WIDTH_PX as f32 / 3.0;
+    assert!(
+        table_view
+            .column_widths_px
+            .iter()
+            .all(|width| (*width - expected_column_width).abs() < 0.001)
+    );
     let document_index = runtime.document.index.index_of(1).unwrap();
     assert_eq!(
         runtime.document.index.layout_meta[document_index].measured_height,

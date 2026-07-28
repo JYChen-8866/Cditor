@@ -1110,6 +1110,7 @@ name = "cditor-component"
 version = "0.2.6"
 dependencies = [
  "gpui",
+ "web-time",
 ]
 
 [[package]]
@@ -1130,6 +1131,7 @@ dependencies = [
  "serde_json",
  "unicode-segmentation",
  "uuid",
+ "web-time",
 ]
 
 [[package]]
@@ -1182,6 +1184,7 @@ dependencies = [
  "serde_json",
  "swash",
  "unicode-segmentation",
+ "web-time",
 ]
 
 [[package]]
@@ -1215,6 +1218,7 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-segmentation",
+ "web-time",
 ]
 
 [[package]]
@@ -1233,6 +1237,7 @@ dependencies = [
 name = "cditor-session"
 version = "0.2.6"
 dependencies = [
+ "async-channel 2.5.0",
  "async-trait",
  "cditor-ai",
  "cditor-core",
@@ -1241,9 +1246,11 @@ dependencies = [
  "cditor-runtime",
  "cditor-storage",
  "cditor-viewport",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
+ "web-time",
 ]
 
 [[package]]
@@ -1338,6 +1345,23 @@ version = "0.2.6"
 dependencies = [
  "cditor-core",
  "unicode-segmentation",
+ "web-time",
+]
+
+[[package]]
+name = "cditor-web"
+version = "0.2.6"
+dependencies = [
+ "cditor-editor-gpui",
+ "cditor-runtime",
+ "cditor-sdk",
+ "cditor-whiteboard-drafft",
+ "console_error_panic_hook",
+ "console_log",
+ "gpui",
+ "gpui_platform",
+ "log",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1360,6 +1384,7 @@ dependencies = [
  "gpui",
  "image",
  "kurbo 0.12.0",
+ "memmap2",
  "parley",
  "peniko",
  "rex",
@@ -1615,6 +1640,16 @@ checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
 dependencies = [
  "cfg-if",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "console_log"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86919cef3e37b9356ccf54d4421208c17ecfda01beae61393e7ffd72916c0ef1"
+dependencies = [
+ "log",
+ "web-sys",
 ]
 
 [[package]]

@@ -114,7 +114,7 @@ pub fn send_ai_stream_event(
         return Err(AiProviderError::Cancelled);
     }
     sender
-        .send_blocking(event)
+        .try_send(event)
         .map_err(|_| AiProviderError::ChannelClosed)
 }
 

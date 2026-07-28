@@ -89,7 +89,7 @@ impl DocumentRuntime {
         selected_range: Option<Range<usize>>,
     ) -> Result<(), String> {
         if self.active_composition().is_none() {
-            self.break_typing_coalescing();
+            self.break_typing_coalescing_preserving_marks();
         }
         if self.focused_block_id() != Some(block_id) {
             self.focus_block(block_id);
@@ -312,9 +312,9 @@ impl DocumentRuntime {
         block_id: BlockId,
         mut payload: Arc<BlockPayloadRecord>,
     ) -> Arc<BlockPayloadRecord> {
-        if self
+        if let Some(composition) = self
             .active_composition()
-            .is_some_and(|composition| composition.block_id == block_id)
+            .filter(|composition| composition.block_id == block_id)
             && let Some(preview_text) = self.composition_preview_text()
         {
             if let Some(focused) = self
@@ -336,7 +336,24 @@ impl DocumentRuntime {
             {
                 return payload;
             } else {
-                let next_payload = text_payload_for_existing(&payload.payload, &preview_text);
+                let replaced_range =
+                    composition.range_start as usize..composition.range_end as usize;
+                let next_payload = match &payload.payload {
+                    BlockPayload::RichText { spans } => BlockPayload::RichText {
+                        spans: super::typing_marks::replace_rich_text_spans_with_typing_marks(
+                            spans,
+                            replaced_range.clone(),
+                            &composition.preview_text,
+                            self.typing_marks_for(SurfaceId::Block(block_id), replaced_range.start),
+                        ),
+                    },
+                    existing => text_payload_for_existing_after_replace(
+                        existing,
+                        &preview_text,
+                        replaced_range,
+                        &composition.preview_text,
+                    ),
+                };
                 Arc::make_mut(&mut payload).payload = next_payload;
             }
         }

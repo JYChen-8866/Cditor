@@ -242,26 +242,28 @@ impl EntityInputHandler for CditorV2View {
         marked
     }
 
-    fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn unmark_text(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.pause_caret_blink(cx);
         if let Some(selection) = self.interaction.table_interaction_mode.axis_selection() {
             if table_menu_input_target_allows(self.input.target, selection.block_id) {
                 self.overlay.table_menu_ui.unmark();
+                window.invalidate_character_coordinates();
                 cx.notify();
             }
             return;
         }
-        if self.focus.ai_prompt.is_focused(_window) {
+        if self.focus.ai_prompt.is_focused(window) {
             let registered_target = self.input.target;
             if let Some(prompt) = self.overlay.ai_prompt.as_mut()
                 && ai_prompt_input_target_allows(registered_target, prompt.block_id)
             {
                 prompt.unmark();
+                window.invalidate_character_coordinates();
                 cx.notify();
             }
             return;
         }
-        if self.focus.code_language.is_focused(_window) {
+        if self.focus.code_language.is_focused(window) {
             let registered_target = self.input.target;
             if let Some(edit) = self.overlay.code_language_edit.as_mut() {
                 if !code_language_input_target_allows(registered_target, edit.block_id) {
@@ -272,6 +274,7 @@ impl EntityInputHandler for CditorV2View {
                     return;
                 }
                 edit.unmark();
+                window.invalidate_character_coordinates();
                 cx.notify();
             }
             return;
@@ -289,11 +292,13 @@ impl EntityInputHandler for CditorV2View {
                     cx,
                 );
                 self.sync_slash_menu_from_runtime(cx);
+                window.invalidate_character_coordinates();
                 cx.notify();
             }
             Some(Ok(outcome)) => {
                 self.input.session_identity = outcome.input_identity;
                 if outcome.state_changed {
+                    window.invalidate_character_coordinates();
                     cx.notify();
                 }
             }
@@ -310,7 +315,7 @@ impl EntityInputHandler for CditorV2View {
         &mut self,
         range_utf16: Option<Range<usize>>,
         text: &str,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.pause_caret_blink(cx);
@@ -320,6 +325,7 @@ impl EntityInputHandler for CditorV2View {
             }
             if is_single_line_break_commit(text) {
                 let _ = self.confirm_table_menu_from_gui(cx);
+                window.invalidate_character_coordinates();
                 return;
             }
             let range = range_utf16
@@ -327,12 +333,14 @@ impl EntityInputHandler for CditorV2View {
                 .unwrap_or_else(|| self.overlay.table_menu_ui.input_replacement_range());
             let text = normalize_external_line_endings(text).replace('\n', " ");
             self.overlay.table_menu_ui.replace_range(range, &text);
+            window.invalidate_character_coordinates();
             cx.notify();
             return;
         }
-        if self.focus.ai_prompt.is_focused(_window) {
+        if self.focus.ai_prompt.is_focused(window) {
             if is_single_line_break_commit(text) {
                 let _ = self.submit_ai_prompt_from_gui(cx);
+                window.invalidate_character_coordinates();
                 return;
             }
             let registered_target = self.input.target;
@@ -345,13 +353,15 @@ impl EntityInputHandler for CditorV2View {
                     .unwrap_or_else(|| prompt.input_replacement_range());
                 let text = normalize_external_line_endings(text);
                 prompt.replace_range(range, text.as_ref());
+                window.invalidate_character_coordinates();
                 cx.notify();
             }
             return;
         }
-        if self.focus.code_language.is_focused(_window) {
+        if self.focus.code_language.is_focused(window) {
             if is_single_line_break_commit(text) {
                 self.commit_code_language_edit(cx);
+                window.invalidate_character_coordinates();
                 cx.notify();
                 return;
             }
@@ -369,6 +379,7 @@ impl EntityInputHandler for CditorV2View {
                     .unwrap_or_else(|| edit.input_replacement_range());
                 let text = normalize_external_line_endings(text);
                 edit.replace_range(range, text.as_ref());
+                window.invalidate_character_coordinates();
                 cx.notify();
             }
             return;
@@ -382,6 +393,7 @@ impl EntityInputHandler for CditorV2View {
             return;
         }
         self.apply_document_realtime_replacement(range_utf16, text, cx);
+        window.invalidate_character_coordinates();
     }
 
     fn replace_and_mark_text_in_range(
@@ -389,7 +401,7 @@ impl EntityInputHandler for CditorV2View {
         range_utf16: Option<Range<usize>>,
         new_text: &str,
         new_selected_range: Option<Range<usize>>,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.pause_caret_blink(cx);
@@ -406,10 +418,11 @@ impl EntityInputHandler for CditorV2View {
             self.overlay
                 .table_menu_ui
                 .replace_and_mark_range(range, &new_text, selected_range);
+            window.invalidate_character_coordinates();
             cx.notify();
             return;
         }
-        if self.focus.ai_prompt.is_focused(_window) {
+        if self.focus.ai_prompt.is_focused(window) {
             let registered_target = self.input.target;
             if let Some(prompt) = self.overlay.ai_prompt.as_mut() {
                 if !ai_prompt_input_target_allows(registered_target, prompt.block_id) {
@@ -421,11 +434,12 @@ impl EntityInputHandler for CditorV2View {
                 let selected_range =
                     new_selected_range.map(|range| utf16_range_to_utf8_range(new_text, &range));
                 prompt.replace_and_mark_range(range, new_text, selected_range);
+                window.invalidate_character_coordinates();
                 cx.notify();
             }
             return;
         }
-        if self.focus.code_language.is_focused(_window) {
+        if self.focus.code_language.is_focused(window) {
             let registered_target = self.input.target;
             if let Some(edit) = self.overlay.code_language_edit.as_mut() {
                 if !code_language_input_target_allows(registered_target, edit.block_id) {
@@ -441,11 +455,13 @@ impl EntityInputHandler for CditorV2View {
                 let selected_range =
                     new_selected_range.map(|range| utf16_range_to_utf8_range(new_text, &range));
                 edit.replace_and_mark_range(range, new_text, selected_range);
+                window.invalidate_character_coordinates();
                 cx.notify();
             }
             return;
         }
         self.apply_document_realtime_composition(range_utf16, new_text, new_selected_range, cx);
+        window.invalidate_character_coordinates();
     }
 
     fn bounds_for_range(

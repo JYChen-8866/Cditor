@@ -117,7 +117,7 @@ pub(super) fn apply_hand_drawn_effect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kurbo::Rect;
+    use kurbo::{Rect, Shape as _};
 
     #[test]
     fn rough_geometry_is_deterministic_for_a_stable_seed() {

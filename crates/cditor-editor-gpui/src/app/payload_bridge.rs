@@ -1,4 +1,5 @@
-use std::{ops::Range, time::Instant};
+use std::ops::Range;
+use web_time::Instant;
 
 use gpui::{AppContext, Context};
 

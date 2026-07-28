@@ -5,6 +5,7 @@ use cditor_core::rich_text::{
 use cditor_editor_protocol::command::{CommandSource, EditorCommand};
 use cditor_runtime::document_runtime::{DocumentRuntimeColdStartData, DocumentRuntimeIndexSource};
 use cditor_runtime::{InputTarget, TableCellPosition};
+use cditor_runtime::{RealtimeInput, RealtimeInputRequest};
 use gpui::{AppContext, Bounds, Size, TestAppContext, point, px};
 
 use super::*;
@@ -109,6 +110,64 @@ fn block_hit_entrypoints_ignore_stale_paint_bounds_after_a_large_window_jump(
                 .offset,
             5,
         );
+    });
+}
+
+#[gpui::test]
+fn synchronous_block_bounds_layout_the_current_composition_preview(cx: &mut TestAppContext) {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "",
+        )],
+        720.0,
+    );
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 0);
+    let expected = runtime.input_session_identity().unwrap();
+    runtime
+        .apply_realtime_input(RealtimeInputRequest {
+            expected,
+            input: RealtimeInput::UpdateComposition {
+                range: 0..0,
+                text: "ni",
+                selected_range: Some(2..2),
+            },
+        })
+        .unwrap();
+    let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+    view.update(cx, |view, _cx| {
+        view.interaction.document_viewport_origin =
+            Some(DocumentViewportOrigin { x: 100.0, y: 40.0 });
+        view.interaction.projected_block_rects = vec![ProjectedBlockRect {
+            block_id: 1,
+            document_top: 120.0,
+            document_bottom: 180.0,
+            text_origin_x_in_block_px: 32.0,
+            text_origin_y_in_block_px: 12.0,
+            text_width_px: 300.0,
+            text_align: Some(TextAlign::Start),
+            ..ProjectedBlockRect::default()
+        }];
+        let session = view.ready_session().unwrap();
+        let current = session
+            .surface_version(SurfaceId::Block(1))
+            .unwrap()
+            .unwrap();
+        let first = view
+            .synchronous_text_range_bounds_for_block(session, 1, current, 1..1)
+            .unwrap();
+        let second = view
+            .synchronous_text_range_bounds_for_block(session, 1, current, 2..2)
+            .unwrap();
+        let placement = view.projected_text_placement_for_block(1).unwrap();
+
+        assert!(f32::from(second.left()) > f32::from(first.left()));
+        assert!(f32::from(second.left()) > placement.window_origin_x_px as f32);
+        assert!(f32::from(second.size.height) > 0.0);
+        assert_ne!(second, Bounds::default());
     });
 }
 

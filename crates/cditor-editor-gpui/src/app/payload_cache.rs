@@ -135,6 +135,7 @@ impl CditorV2View {
                 .as_ref()
                 .map(|edit| edit.block_id),
         );
+        #[cfg(feature = "whiteboard")]
         pins.extend(
             self.features
                 .whiteboard_editor

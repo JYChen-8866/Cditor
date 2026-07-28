@@ -1,7 +1,10 @@
-use std::{env, ffi::OsString, fmt, path::PathBuf};
+#[cfg(feature = "sqlite")]
+use std::path::PathBuf;
+use std::{env, ffi::OsString, fmt};
 
 use cditor_sdk::Cditor;
 
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 use crate::CditorStorageExt;
 
 const DEFAULT_DOCUMENT_ID: u64 = 1;
@@ -11,7 +14,9 @@ const DEFAULT_PAYLOAD_WINDOW_SIZE: usize = 128;
 enum DesktopBackendConfig {
     Demo,
     LargeDemo,
+    #[cfg(feature = "sqlite")]
     Sqlite(PathBuf),
+    #[cfg(feature = "postgres")]
     Postgres(String),
 }
 
@@ -54,9 +59,29 @@ impl DesktopLaunchConfig {
         }
 
         let backend = if let Some(path) = sqlite_path {
-            DesktopBackendConfig::Sqlite(PathBuf::from(path))
+            #[cfg(feature = "sqlite")]
+            {
+                DesktopBackendConfig::Sqlite(PathBuf::from(path))
+            }
+            #[cfg(not(feature = "sqlite"))]
+            {
+                let _ = path;
+                return Err(DesktopEnvironmentError::new(
+                    "CDITOR_SQLITE_PATH requires the cditor-desktop `sqlite` feature",
+                ));
+            }
         } else if let Some(url) = database_url {
-            DesktopBackendConfig::Postgres(url)
+            #[cfg(feature = "postgres")]
+            {
+                DesktopBackendConfig::Postgres(url)
+            }
+            #[cfg(not(feature = "postgres"))]
+            {
+                let _ = url;
+                return Err(DesktopEnvironmentError::new(
+                    "CDITOR_DATABASE_URL requires the cditor-desktop `postgres` feature",
+                ));
+            }
         } else if large_demo {
             DesktopBackendConfig::LargeDemo
         } else {
@@ -82,9 +107,11 @@ impl DesktopLaunchConfig {
         let mut cditor = match self.backend {
             DesktopBackendConfig::Demo => Cditor::new().demo(),
             DesktopBackendConfig::LargeDemo => Cditor::new().large_demo(),
+            #[cfg(feature = "sqlite")]
             DesktopBackendConfig::Sqlite(path) => Cditor::new()
                 .with_document_id(self.document_id)
                 .with_sqlite_path(path),
+            #[cfg(feature = "postgres")]
             DesktopBackendConfig::Postgres(url) => Cditor::new()
                 .with_document_id(self.document_id)
                 .with_postgres_url(url),
@@ -187,6 +214,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "sqlite")]
     fn sqlite_environment_selects_persistent_backend_and_document() {
         let config = config(&[
             ("CDITOR_SQLITE_PATH", "/tmp/document.cditor.db"),
@@ -204,6 +232,20 @@ mod tests {
             &cditor.options().backend,
             CditorBackend::Persistent { provider } if provider.label() == "SQLite"
         ));
+    }
+
+    #[test]
+    #[cfg(not(feature = "sqlite"))]
+    fn sqlite_environment_reports_the_missing_feature() {
+        let error = config(&[("CDITOR_SQLITE_PATH", "/tmp/document.cditor.db")]).unwrap_err();
+        assert!(error.to_string().contains("`sqlite` feature"));
+    }
+
+    #[test]
+    #[cfg(not(feature = "postgres"))]
+    fn postgres_environment_reports_the_missing_feature() {
+        let error = config(&[("CDITOR_DATABASE_URL", "postgres://localhost/cditor")]).unwrap_err();
+        assert!(error.to_string().contains("`postgres` feature"));
     }
 
     #[test]

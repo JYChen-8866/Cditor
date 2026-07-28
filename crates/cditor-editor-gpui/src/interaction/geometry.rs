@@ -295,7 +295,7 @@ mod viewport_origin_tests {
     use super::*;
 
     #[test]
-    fn document_viewport_origin_includes_host_offset_centering_and_top_inset() {
+    fn document_viewport_origin_includes_host_offset_and_centering_without_a_top_gap() {
         let viewport = EditorViewport::from_measurement(
             Bounds::new(point(px(240.0), px(80.0)), size(px(1_440.0), px(900.0))),
             size(px(1_440.0), px(900.0)),
@@ -303,7 +303,7 @@ mod viewport_origin_tests {
 
         assert_eq!(
             DocumentViewportOrigin::from_layout(viewport, DocumentLayoutMetrics::default()),
-            DocumentViewportOrigin { x: 312.0, y: 112.0 }
+            DocumentViewportOrigin { x: 312.0, y: 80.0 }
         );
     }
 
@@ -319,7 +319,7 @@ mod viewport_origin_tests {
                 viewport,
                 DocumentLayoutMetrics::for_viewport(700.0)
             ),
-            DocumentViewportOrigin { x: 12.0, y: 52.0 }
+            DocumentViewportOrigin { x: 12.0, y: 20.0 }
         );
     }
 

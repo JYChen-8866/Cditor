@@ -1,4 +1,6 @@
-use std::ops::Range;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::OnceLock;
+use std::{fmt, ops::Range};
 
 use gpui::{
     App, Bounds, Context, Element, ElementId, ElementInputHandler, Entity, EntityInputHandler,
@@ -113,6 +115,36 @@ impl EntityInputHandler for DrafftBoardView {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
+        let result = self.platform_bounds_for_range(range_utf16.clone(), bounds);
+        trace_platform_input(
+            "bounds_for_range",
+            format_args!(
+                "range_utf16={range_utf16:?} surface={bounds:?} text_edit={} math_edit={} result={result:?}",
+                self.text_edit.is_some(),
+                self.math_edit.is_some(),
+            ),
+        );
+        result
+    }
+
+    fn character_index_for_point(
+        &mut self,
+        _point: Point<Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        let text = self.platform_input_content()?;
+        let caret = self.platform_input_selection()?.0.end;
+        Some(utf8_to_utf16(&text, caret))
+    }
+}
+
+impl DrafftBoardView {
+    fn platform_bounds_for_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        bounds: Bounds<Pixels>,
+    ) -> Option<Bounds<Pixels>> {
         if self.math_edit.is_some() {
             let input_bounds = self.math_input_bounds.get();
             return (input_bounds.size.width > px(0.0)).then_some(input_bounds);
@@ -168,19 +200,6 @@ impl EntityInputHandler for DrafftBoardView {
         Some(candidate)
     }
 
-    fn character_index_for_point(
-        &mut self,
-        _point: Point<Pixels>,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Option<usize> {
-        let text = self.platform_input_content()?;
-        let caret = self.platform_input_selection()?.0.end;
-        Some(utf8_to_utf16(&text, caret))
-    }
-}
-
-impl DrafftBoardView {
     fn platform_input_content(&self) -> Option<String> {
         if let Some(edit) = &self.math_edit {
             return Some(edit.latex.clone());
@@ -302,8 +321,18 @@ impl Element for DrafftTextInputElement {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let focus = self.input.read(cx).focus.clone();
+        let (focus, input_active) = {
+            let view = self.input.read(cx);
+            (
+                view.focus.clone(),
+                view.text_edit.is_some() || view.math_edit.is_some(),
+            )
+        };
         if focus.is_focused(window) {
+            trace_platform_input(
+                "owner.registered",
+                format_args!("surface={bounds:?} input_active={input_active}"),
+            );
             window.handle_input(
                 &focus,
                 ElementInputHandler::new(bounds, self.input.clone()),
@@ -312,6 +341,21 @@ impl Element for DrafftTextInputElement {
         }
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+fn trace_platform_input(event: &str, args: fmt::Arguments<'_>) {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    if *ENABLED.get_or_init(|| {
+        std::env::var("CDITOR_TRACE_INPUT")
+            .ok()
+            .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
+    }) {
+        eprintln!("[cditor][input][whiteboard][{event}] {args}");
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn trace_platform_input(_event: &str, _args: fmt::Arguments<'_>) {}
 
 fn utf16_to_utf8(text: &str, offset: usize) -> usize {
     text.chars()
@@ -336,4 +380,92 @@ fn utf16_range_to_utf8(text: &str, range: &Range<usize>) -> Range<usize> {
 
 fn utf8_range_to_utf16(text: &str, range: &Range<usize>) -> Range<usize> {
     utf8_to_utf16(text, range.start)..utf8_to_utf16(text, range.end)
+}
+
+#[cfg(test)]
+mod tests {
+    use drafftink_core::tools::ToolKind;
+    use gpui::TestAppContext;
+    use kurbo::Point as KurboPoint;
+
+    use super::*;
+    use crate::PointerOutcome;
+
+    #[gpui::test]
+    fn focused_text_edit_routes_platform_input_to_the_drafft_document(cx: &mut TestAppContext) {
+        let (board, cx) = cx.add_window_view(|_, cx| DrafftBoardView::new(cx));
+        let shape_id = board.update(cx, |view, cx| {
+            view.board.set_tool(ToolKind::Text);
+            view.board
+                .pointer_down(KurboPoint::new(40.0, 50.0), false, false);
+            let PointerOutcome::BeginTextEdit(shape_id) =
+                view.board.pointer_up(KurboPoint::new(40.0, 50.0), false)
+            else {
+                panic!("text creation should enter edit mode");
+            };
+            view.begin_text_edit(shape_id, true, cx);
+            shape_id
+        });
+        cx.update(|window, _cx| {
+            window.activate_window();
+        });
+
+        cx.simulate_input("hello中文");
+
+        board.update(cx, |view, _| {
+            assert_eq!(view.board.text_content(shape_id), Some("hello中文"));
+            let edit = view.text_edit.as_ref().expect("text edit remains active");
+            assert_eq!(edit.selection(), "hello中文".len().."hello中文".len());
+
+            let surface = Bounds::new(point(px(120.0), px(80.0)), size(px(800.0), px(600.0)));
+            let first = view.platform_bounds_for_range(1..1, surface).unwrap();
+            let last = view.platform_bounds_for_range(7..7, surface).unwrap();
+            assert!(last.left() > first.left());
+            assert!(last.left() >= surface.left() && last.left() < surface.right());
+            assert!(last.top() >= surface.top() && last.top() < surface.bottom());
+            assert!(last.size.width > px(0.0));
+            assert!(last.size.height > px(0.0));
+        });
+    }
+
+    #[gpui::test]
+    fn composition_preview_returns_window_bounds_from_the_owned_surface(cx: &mut TestAppContext) {
+        let (board, cx) = cx.add_window_view(|_, cx| DrafftBoardView::new(cx));
+        board.update(cx, |view, cx| {
+            view.board.set_tool(ToolKind::Text);
+            view.board
+                .pointer_down(KurboPoint::new(90.0, 120.0), false, false);
+            let PointerOutcome::BeginTextEdit(shape_id) =
+                view.board.pointer_up(KurboPoint::new(90.0, 120.0), false)
+            else {
+                panic!("text creation should enter edit mode");
+            };
+            view.begin_text_edit(shape_id, true, cx);
+        });
+        cx.update(|window, cx| {
+            window.activate_window();
+            board.update(cx, |view, cx| {
+                view.replace_and_mark_text_in_range(None, "ni", Some(2..2), window, cx);
+            });
+        });
+
+        board.update(cx, |view, _| {
+            assert_eq!(view.platform_marked_range(), Some(0..2));
+            let surface = Bounds::new(point(px(240.0), px(160.0)), size(px(900.0), px(700.0)));
+            let first = view.platform_bounds_for_range(1..1, surface).unwrap();
+            let second = view.platform_bounds_for_range(2..2, surface).unwrap();
+            assert!(second.left() > first.left());
+            assert!(second.left() >= surface.left() && second.left() < surface.right());
+            assert!(second.top() >= surface.top() && second.top() < surface.bottom());
+            assert_ne!(second, Bounds::default());
+        });
+    }
+
+    #[test]
+    fn utf16_ranges_preserve_cjk_and_surrogate_pair_boundaries() {
+        let text = "a中😀z";
+        assert_eq!(utf16_range_to_utf8(text, &(1..2)), 1..4);
+        assert_eq!(utf16_range_to_utf8(text, &(2..4)), 4..8);
+        assert_eq!(utf8_range_to_utf16(text, &(4..8)), 2..4);
+    }
 }

@@ -1,7 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use gpui::{FrameTiming, FrameTimingCollector, WindowId};
 

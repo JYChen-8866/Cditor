@@ -21,7 +21,11 @@ impl DocumentRuntime {
         if let Some((surface_id, offset)) = typing {
             self.prepare_typing_undo(surface_id, offset);
         } else {
-            self.break_typing_coalescing();
+            if composition_active {
+                self.break_typing_coalescing_preserving_marks();
+            } else {
+                self.break_typing_coalescing();
+            }
         }
         let (kind, origin) = if composition_active {
             (
@@ -94,7 +98,7 @@ impl DocumentRuntime {
         range: Range<usize>,
         text: &str,
     ) -> Result<bool, String> {
-        self.break_typing_coalescing();
+        self.break_typing_coalescing_preserving_marks();
         self.replace_text_with_preapplied_transaction(
             Some(range),
             text,
@@ -246,6 +250,7 @@ impl DocumentRuntime {
             self.cancel_composition();
             return Ok(false);
         }
+        let composition_active = self.active_composition().is_some();
         let range = edit.range;
         trace_input(
             "replace_text_in_focused_range.range",
@@ -273,7 +278,11 @@ impl DocumentRuntime {
         self.cancel_composition();
         self.selection.document_selection = None;
         self.selection.focused_text_selection = None;
-        self.push_undo_snapshot(block_id)?;
+        if composition_active {
+            self.push_undo_snapshot_preserving_marks(block_id)?;
+        } else {
+            self.push_undo_snapshot(block_id)?;
+        }
         let replaced_range = range.clone();
         let replacement_start = range.start;
         let surface_id = SurfaceId::Block(block_id);

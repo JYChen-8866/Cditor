@@ -1,5 +1,6 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::{error::Error, fmt};
+use web_time::Instant;
 
 use cditor_runtime::DocumentRuntime;
 use cditor_storage::{StorageError, StorageSaveBatch, StorageSaveOutcome};

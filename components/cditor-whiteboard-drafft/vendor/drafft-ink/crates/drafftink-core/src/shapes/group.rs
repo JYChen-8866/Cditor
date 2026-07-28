@@ -1,6 +1,8 @@
 //! Group shape for combining multiple shapes.
 
-use super::{SerializableColor, Shape, ShapeId, ShapeStyle, ShapeTrait};
+#[cfg(test)]
+use super::SerializableColor;
+use super::{Shape, ShapeId, ShapeStyle, ShapeTrait};
 use kurbo::{Affine, BezPath, Point, Rect};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

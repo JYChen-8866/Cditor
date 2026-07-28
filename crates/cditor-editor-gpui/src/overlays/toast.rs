@@ -1,6 +1,7 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
-use gpui::{AnyElement, AppContext, Context, IntoElement, ParentElement, Styled, div, px, rgb};
+use gpui::{AnyElement, Context, IntoElement, ParentElement, Styled, div, px, rgb};
 
 use crate::editor_view::CditorV2View;
 use crate::theme::GuiTheme;
@@ -33,9 +34,7 @@ pub(crate) fn show_toast(
     cx: &mut Context<CditorV2View>,
 ) {
     view.overlay.toast = Some(GuiToast::new(message, duration));
-    let dismiss_after = cx.background_spawn(async move {
-        std::thread::sleep(duration);
-    });
+    let dismiss_after = cx.background_executor().timer(duration);
     cx.spawn(async move |view, cx| {
         let _ = dismiss_after.await;
         let _ = view.update(cx, |view, cx| {

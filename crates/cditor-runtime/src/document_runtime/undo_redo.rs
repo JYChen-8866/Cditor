@@ -236,6 +236,14 @@ impl DocumentRuntime {
         self.push_undo_snapshot_uncoalesced(block_id)
     }
 
+    pub(super) fn push_undo_snapshot_preserving_marks(
+        &mut self,
+        block_id: BlockId,
+    ) -> Result<(), String> {
+        self.break_typing_coalescing_preserving_marks();
+        self.push_undo_snapshot_uncoalesced(block_id)
+    }
+
     fn push_undo_snapshot_uncoalesced(&mut self, block_id: BlockId) -> Result<(), String> {
         let snapshot = self.snapshot(block_id)?;
         let stack = self.history.undo_stacks.entry(block_id).or_default();
@@ -359,9 +367,13 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn break_typing_coalescing(&mut self) {
+        self.break_typing_coalescing_preserving_marks();
+        self.editing.typing_mark_override = None;
+    }
+
+    pub(super) fn break_typing_coalescing_preserving_marks(&mut self) {
         self.history.pending_typing_undo = None;
         self.history.typing_undo_group = None;
-        self.editing.typing_mark_override = None;
     }
 
     pub(super) fn restore_snapshot(

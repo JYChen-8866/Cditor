@@ -6,6 +6,7 @@ pub(crate) mod selection_overlay;
 pub(crate) mod slash_menu;
 pub(crate) mod table;
 pub(crate) mod toast;
+#[cfg(feature = "whiteboard")]
 pub(crate) mod whiteboard_editor;
 
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -26,6 +27,7 @@ pub(crate) use slash_menu::{
     SlashMenuCommand, SlashMenuItem, SlashMenuState, slash_query_before_caret,
 };
 pub(crate) use toast::{GuiToast, render_toast, show_toast};
+#[cfg(feature = "whiteboard")]
 pub(crate) use whiteboard_editor::{WhiteboardEditorSession, render_whiteboard_editor};
 
 use crate::document::DocumentLayoutMetrics;

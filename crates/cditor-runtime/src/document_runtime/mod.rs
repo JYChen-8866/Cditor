@@ -110,8 +110,9 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     ops::Range,
     sync::{Arc, OnceLock},
-    time::{Duration, Instant},
+    time::Duration,
 };
+use web_time::Instant;
 
 use super::{
     AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus, EditorViewProjection, TableCellPosition,
@@ -234,7 +235,7 @@ use text_payload::{
     prepend_plain_text_to_payload, previous_char_boundary, previous_grapheme_boundary,
     replace_rich_text_spans_preserving_marks, replace_rich_text_spans_with_spans, safe_char_range,
     slice_rich_text_spans, split_payload_for_enter, sync_payload_from_model_after_replace,
-    text_payload_for_existing, toggle_mark_for_range, uses_soft_tab,
+    text_payload_for_existing_after_replace, toggle_mark_for_range, uses_soft_tab,
 };
 use text_target::{FocusedTextEdit, normalized_grapheme_offset, normalized_grapheme_range};
 use whiteboard::default_whiteboard_payload;

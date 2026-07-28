@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use gpui::{AppContext, Context, Pixels, Point};
+use gpui::{Context, Pixels, Point};
 
 use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::text::TextLayoutPosition as LayoutPosition;
@@ -100,9 +100,9 @@ impl CditorV2View {
         }
         self.interaction.text_drag_auto_scroll_scheduled = true;
         let document_epoch = self.focus.document_epoch().current();
-        let tick = cx.background_spawn(async move {
-            std::thread::sleep(Duration::from_millis(TEXT_DRAG_AUTO_SCROLL_TICK_MS));
-        });
+        let tick = cx
+            .background_executor()
+            .timer(Duration::from_millis(TEXT_DRAG_AUTO_SCROLL_TICK_MS));
         cx.spawn(async move |view, cx| {
             let _ = tick.await;
             let _ = view.update(cx, |view, cx| {

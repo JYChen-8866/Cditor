@@ -1,6 +1,6 @@
 use gpui::{Bounds, point, px, size};
 
-use crate::document::{DEFAULT_DOCUMENT_TOP_INSET_PX, DocumentLayoutMetrics};
+use crate::document::DocumentLayoutMetrics;
 use crate::interaction::geometry::fallback_text_metrics_for_block;
 use crate::theme::GuiTheme;
 use cditor_runtime::EditorViewProjection;
@@ -24,6 +24,7 @@ pub(super) fn projected_ai_preview_block_anchor(
                 metrics.width_px,
                 viewport_width,
                 projection.scroll.global_scroll_top,
+                document_layout,
             )
         });
         document_top += block_height;
@@ -38,10 +39,10 @@ pub(super) fn ai_preview_block_anchor(
     text_width: f64,
     viewport_width: f32,
     scroll_top: f64,
+    document_layout: DocumentLayoutMetrics,
 ) -> Bounds<gpui::Pixels> {
-    let document_layout = DocumentLayoutMetrics::for_viewport(viewport_width);
     let page_left = ((viewport_width - document_layout.page_width_px) / 2.0).max(0.0);
-    let top = (document_top - scroll_top) as f32 + DEFAULT_DOCUMENT_TOP_INSET_PX;
+    let top = (document_top - scroll_top) as f32 + document_layout.top_inset_px;
     let height = block_height.max(24.0) as f32;
     Bounds::new(
         point(px(page_left + text_origin_x as f32), px(top)),
@@ -55,8 +56,26 @@ mod tests {
 
     #[test]
     fn ai_panel_anchor_tracks_projected_block_after_scroll() {
-        let anchor = ai_preview_block_anchor(920.0, 48.0, 42.0, 760.0, 1200.0, 600.0);
+        let anchor = ai_preview_block_anchor(
+            920.0,
+            48.0,
+            42.0,
+            760.0,
+            1200.0,
+            600.0,
+            DocumentLayoutMetrics::for_viewport(1200.0),
+        );
         assert_eq!(f32::from(anchor.left()), 42.0);
+        assert_eq!(f32::from(anchor.top()), 320.0);
+        assert_eq!(f32::from(anchor.bottom()), 368.0);
+    }
+
+    #[test]
+    fn ai_panel_anchor_accounts_for_a_visible_readonly_notice() {
+        let document_layout = DocumentLayoutMetrics::for_viewport(1200.0).with_top_inset_px(32.0);
+        let anchor =
+            ai_preview_block_anchor(920.0, 48.0, 42.0, 760.0, 1200.0, 600.0, document_layout);
+
         assert_eq!(f32::from(anchor.top()), 352.0);
         assert_eq!(f32::from(anchor.bottom()), 400.0);
     }

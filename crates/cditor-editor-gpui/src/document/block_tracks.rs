@@ -138,6 +138,7 @@ impl DocumentTextGeometry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cditor_core::layout::BODY_BLOCK_CONTENT_WIDTH_PX;
     use cditor_runtime::DocumentRuntime;
 
     #[test]
@@ -148,7 +149,7 @@ mod tests {
         let full = DocumentBlockGeometry::for_kind(&RichBlockKind::Table, document);
 
         assert_eq!(DOCUMENT_ROOT_CONTENT_SURFACE_LEFT_PX, 48.0);
-        assert_eq!(body.track_width_px, 720.0);
+        assert_eq!(body.track_width_px, BODY_BLOCK_CONTENT_WIDTH_PX as f32);
         assert_eq!(wide.track_width_px, 960.0);
         assert_eq!(full.track_width_px, 1200.0);
         assert_eq!(body.track_left_px + body.track_width_px / 2.0, 648.0);
@@ -193,16 +194,19 @@ mod tests {
                 kind: RichBlockKind::Table,
                 payload: cditor_core::rich_text::BlockPayload::Table(table_payload),
             }],
-            720.0,
+            BODY_BLOCK_CONTENT_WIDTH_PX,
         );
         let mut table = runtime.projection_for_window().blocks[0].clone();
         let document = DocumentLayoutMetrics::default();
 
         let body_sized = DocumentBlockGeometry::for_block(&table, document);
         assert_eq!(body_sized.width_class, BlockWidthClass::Full);
-        assert_eq!(body_sized.track_width_px, 720.0);
-        assert_eq!(body_sized.track_left_px, 288.0);
-        assert_eq!(body_sized.shell_left_px, 240.0);
+        assert_eq!(
+            body_sized.track_width_px,
+            BODY_BLOCK_CONTENT_WIDTH_PX as f32
+        );
+        assert_eq!(body_sized.track_left_px, 248.0);
+        assert_eq!(body_sized.shell_left_px, 200.0);
 
         table.table_view.as_mut().unwrap().width_px = 920.0;
         let expanded = DocumentBlockGeometry::for_block(&table, document);

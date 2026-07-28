@@ -72,13 +72,28 @@ impl CditorV2View {
             return;
         }
 
-        if self.ready_session().is_some_and(|session| {
-            session
-                .ai_context()
-                .is_ok_and(|context| context.session_active)
-        }) {
+        // AI preview 处理：但要检查是否在表格单元格内，如果是则让表格优先处理 Tab
+        let in_table_cell = self
+            .ready_session()
+            .and_then(|session| session.table_interaction(None).ok())
+            .and_then(|context| context.focused_cell)
+            .is_some();
+
+        eprintln!(
+            "[routing] in_table_cell={}, action={:?}",
+            in_table_cell, action
+        );
+
+        if !in_table_cell
+            && self.ready_session().is_some_and(|session| {
+                session
+                    .ai_context()
+                    .is_ok_and(|context| context.session_active)
+            })
+        {
             match action {
                 BoundInputAction::Tab { .. } => {
+                    eprintln!("[routing] AI preview intercepting Tab");
                     let _ = self.accept_ai_preview_from_gui(cx);
                     cx.stop_propagation();
                     return;
@@ -302,9 +317,20 @@ impl CditorV2View {
         action: BoundInputAction,
         cx: &mut Context<Self>,
     ) -> bool {
+        eprintln!("[routing] handle_bound_table_cell_action: {:?}", action);
         let table_context = self
             .ready_session()
             .and_then(|session| session.table_interaction(None).ok());
+        eprintln!(
+            "[routing] table_context present: {}",
+            table_context.is_some()
+        );
+        if let Some(ref ctx) = table_context {
+            eprintln!(
+                "[routing] focused_cell present: {}",
+                ctx.focused_cell.is_some()
+            );
+        }
         let (text_layout_target, next_preferred_x, vertical_selection_target) = {
             let current_layout = table_context
                 .as_ref()
@@ -369,19 +395,27 @@ impl CditorV2View {
             )
             .is_ok_and(|outcome| outcome.changed())
         };
+        eprintln!("[routing] match action: {:?}", action);
         match action {
             BoundInputAction::Cancel => {
                 let _ = dispatch(cditor_editor_protocol::command::CditorCommand::BlurTableCell);
                 false
             }
-            BoundInputAction::Tab { backwards } => dispatch(table_cell_navigation_command(
-                if backwards {
+            BoundInputAction::Tab { backwards } => {
+                eprintln!("[routing] Tab handler reached!");
+                let direction = if backwards {
                     cditor_editor_protocol::command::TableCellNavigationDirection::TabBackward
                 } else {
                     cditor_editor_protocol::command::TableCellNavigationDirection::TabForward
-                },
-                false,
-            )),
+                };
+                eprintln!(
+                    "[routing] dispatching Tab command: direction={:?}",
+                    direction
+                );
+                let result = dispatch(table_cell_navigation_command(direction, false));
+                eprintln!("[routing] Tab command result: {}", result);
+                result
+            }
             BoundInputAction::MoveLeft {
                 extend_selection: true,
             } => text_layout_target
@@ -497,27 +531,34 @@ impl CditorV2View {
                 .unwrap_or(false),
             _ => return false,
         };
+        eprintln!("[routing] after match, returning from handle_bound_table_cell_action");
         self.overlay.slash_menu = None;
         true
     }
 
     pub(crate) fn focused_mermaid_is_preview(&self) -> bool {
-        let Some(session) = self.ready_session() else {
-            return false;
-        };
-        let Some(block_id) = session
-            .document_snapshot()
-            .ok()
-            .and_then(|snapshot| snapshot.focused_block_id)
-        else {
-            return false;
-        };
-        !self.cache.mermaid_source_blocks.contains(&block_id)
-            && session.text_block_context(block_id).is_ok_and(|context| {
-                context.is_some_and(|context| {
-                    matches!(context.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
+        #[cfg(not(feature = "mermaid"))]
+        return false;
+
+        #[cfg(feature = "mermaid")]
+        {
+            let Some(session) = self.ready_session() else {
+                return false;
+            };
+            let Some(block_id) = session
+                .document_snapshot()
+                .ok()
+                .and_then(|snapshot| snapshot.focused_block_id)
+            else {
+                return false;
+            };
+            !self.cache.mermaid_source_blocks.contains(&block_id)
+                && session.text_block_context(block_id).is_ok_and(|context| {
+                    context.is_some_and(|context| {
+                        matches!(context.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
+                    })
                 })
-            })
+        }
     }
 }
 

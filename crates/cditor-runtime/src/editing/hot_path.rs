@@ -1,5 +1,6 @@
 use std::ops::Range;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use crate::{EditingPriority, EditingSession};
 use cditor_core::edit::{DocumentSelection, EditTransaction, TextPosition};

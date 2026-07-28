@@ -481,10 +481,12 @@ impl DocumentRuntime {
             .and_then(|target| target.surface_id())
             == Some(surface_id);
         if target_is_surface && let Some(composition) = self.active_composition() {
-            snapshot.spans = super::text_payload::replace_rich_text_spans_preserving_marks(
+            let replaced_range = composition.range_start as usize..composition.range_end as usize;
+            snapshot.spans = super::typing_marks::replace_rich_text_spans_with_typing_marks(
                 &snapshot.spans,
-                composition.range_start as usize..composition.range_end as usize,
+                replaced_range.clone(),
                 &composition.preview_text,
+                self.typing_marks_for(surface_id, replaced_range.start),
             );
         }
         Some(snapshot)

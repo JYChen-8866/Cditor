@@ -7,7 +7,7 @@ pub use cditor_session::{
     PersistencePipelineError,
 };
 pub use save_indicator::{
-    EditorLoadStateLabel, EditorSaveStatus, render_load_state, render_readonly_notice,
-    render_save_failure_notice,
+    EditorLoadStateLabel, EditorSaveStatus, READONLY_NOTICE_HEIGHT_PX, render_load_state,
+    render_readonly_notice, render_save_failure_notice,
 };
 pub use storage_saver::schedule_storage_autosave;

@@ -203,7 +203,9 @@ fn render_kind_content(
         table_cell_selection,
         suppress_document_text_input
             || code_language_edit.is_some()
-            || (matches!(block.kind, RichBlockKind::Mermaid) && !mermaid_show_source),
+            || (cfg!(feature = "mermaid")
+                && matches!(block.kind, RichBlockKind::Mermaid)
+                && !mermaid_show_source),
         table_axis_selection,
         table_scroll_handle,
         code_scroll_handle.clone(),

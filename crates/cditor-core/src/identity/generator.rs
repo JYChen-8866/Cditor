@@ -24,7 +24,7 @@ pub struct SystemClock;
 
 impl IdClock for SystemClock {
     fn unix_millis(&mut self) -> u64 {
-        use std::time::{SystemTime, UNIX_EPOCH};
+        use web_time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))

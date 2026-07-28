@@ -1,6 +1,8 @@
 //! Rectangle shape.
 
-use super::{SerializableColor, ShapeId, ShapeStyle, ShapeTrait};
+#[cfg(test)]
+use super::SerializableColor;
+use super::{ShapeId, ShapeStyle, ShapeTrait};
 use kurbo::{Affine, BezPath, Point, Rect, RoundedRect, Shape as KurboShape};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

@@ -4,8 +4,9 @@
 //! it through a cloneable, same-thread handle that exposes typed protocol
 //! operations without returning runtime borrows.
 
-mod ai_port;
 mod agent_bridge;
+mod agent_chat_provider;
+mod ai_port;
 mod clipboard_port;
 mod cold_start;
 mod diagnostics_snapshot;

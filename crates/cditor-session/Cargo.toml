@@ -9,13 +9,21 @@ cditor-ai = { path = "../cditor-ai" }
 cditor-core = { path = "../cditor-core" }
 cditor-editor-protocol = { path = "../cditor-editor-protocol" }
 cditor-import-export = { path = "../cditor-import-export" }
-cditor-agent = { path = "../cditor-agent" }
+async-channel = "2"
+serde = { version = "1", features = ["derive"] }
 cditor-runtime = { path = "../cditor-runtime" }
 cditor-storage = { path = "../cditor-storage" }
 cditor-viewport = { path = "../cditor-viewport" }
-serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
+web-time = "1.1"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["sync", "time"] }
 
 [dev-dependencies]
 async-trait = "0.1"

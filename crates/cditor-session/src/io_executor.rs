@@ -1,6 +1,9 @@
 use std::future::Future;
+
+#[cfg(not(target_family = "wasm"))]
 use std::sync::OnceLock;
 
+#[cfg(not(target_family = "wasm"))]
 use tokio::runtime::{Builder, Runtime};
 
 /// Async runtime bridge for synchronous Session and desktop host entrypoints.
@@ -12,14 +15,24 @@ impl SessionIoExecutor {
         Self
     }
 
+    #[cfg(not(target_family = "wasm"))]
     pub fn run<F, T>(&self, future: F) -> Result<T, String>
     where
         F: Future<Output = T>,
     {
         Ok(session_io_runtime()?.block_on(future))
     }
+
+    #[cfg(target_family = "wasm")]
+    pub fn run<F, T>(&self, _future: F) -> Result<T, String>
+    where
+        F: Future<Output = T>,
+    {
+        Err("SessionIoExecutor is not supported on WASM".to_owned())
+    }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn session_io_runtime() -> Result<&'static Runtime, String> {
     static RUNTIME: OnceLock<Result<Runtime, String>> = OnceLock::new();
     RUNTIME
@@ -41,11 +54,13 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(target_family = "wasm"))]
     fn shared_executor_runs_session_future() {
         assert_eq!(SessionIoExecutor::shared().run(async { 42 }).unwrap(), 42);
     }
 
     #[test]
+    #[cfg(not(target_family = "wasm"))]
     fn shared_executor_supports_timeout_policy() {
         let result = SessionIoExecutor::shared()
             .run(async {

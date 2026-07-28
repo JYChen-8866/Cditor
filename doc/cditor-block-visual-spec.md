@@ -15,9 +15,10 @@
 
 | Token | 值 | 用途 |
 |---|---:|---|
-| `content-width` | `720px` | 默认正文最大宽度 |
+| `content-width` | `800px` | 默认正文最大宽度 |
 | `content-width-wide` | `960px` | 保留的中间宽度模式 |
 | `content-width-full` | `1200px` | 表格全宽模式 |
+| `document-top-inset` | `0px` | 编辑器顶部不额外预留空白 |
 | `font-body` | system sans | `Inter`, `SF Pro Text`, `PingFang SC` 等系统回退 |
 | `font-mono` | system mono | `SFMono-Regular`, `Menlo`, `Consolas` |
 | `text-primary` | `#252525` | 主文本，浅色主题 |
@@ -32,7 +33,9 @@
 
 三档内容轨共享同一条页面中心线。桌面页面最大宽度为 `1296px`，即 `1200px` Full 轨加左右各 `48px` 安全区；视口不足时三档轨道统一缩小并保留安全边距，不使用负 margin 扩宽。
 
-未单独指定宽度的 Block 默认使用 Body `720px`。Table 具备 Full `1200px` 的宽度能力，但当前投影轨道跟随表格固有宽度：新建 Table 从 Body `720px` 开始，列宽调整或内容需要时连续扩展，最大到 Full；当前轨道、block gutter、选中框和 Table overlay 作为一个整体共享页面中心线。Whiteboard 与 Mermaid 使用普通 Body `720px`。
+正常编辑状态的文档顶部 inset 为 `0px`。仅当兼容性只读提示实际可见时，动态保留与提示条等高的 `32px`；该区域必须由提示内容填满，不能恢复成永久空白，也不能让提示覆盖首个 Block。
+
+未单独指定宽度的 Block 默认使用 Body `800px`。Table 具备 Full `1200px` 的宽度能力，但当前投影轨道跟随表格固有宽度：新建 Table 从 Body `800px` 开始，列宽调整或内容需要时连续扩展，最大到 Full；当前轨道、block gutter、选中框和 Table overlay 作为一个整体共享页面中心线。Whiteboard 与 Mermaid 使用普通 Body `800px`。
 
 深色主题不改尺寸，只替换语义颜色；边框必须比背景至少高一个可辨识层级，正文对比度不低于 WCAG AA。
 
@@ -80,7 +83,7 @@ macOS 正文与 UI 使用 `.SystemUIFont`，由系统为英文选择 SF Pro、�
 
 ### 标题折叠与 Gutter
 
-- 每个 Block 都有 `44px` gutter，不占用 `720 / 960 / 1200px` 内容轨宽度。
+- 每个 Block 都有 `44px` gutter，不占用 `800 / 960 / 1200px` 内容轨宽度。
 - gutter 分为两个 `22px` 控制位：左侧是 hover、focus 或 block selected 时显示的拖拽手柄；右侧由标题折叠箭头或普通 Block 的空轨占用。
 - gutter 不显示新增 `+` 按钮；新增 Block 继续使用既有编辑命令和输入行为。
 - 展开使用向下的开口 chevron，折叠使用 `>` 形向右 chevron；两者是同一 `1.5px` 线条图形的旋转状态，控制中心必须与标题首行 line box 垂直居中。
@@ -133,7 +136,7 @@ Code 工具栏中的语言选择、主题、换行开关和复制使用图标或
 | 边框 | `1px` subtle | 仅水平线 + 列分隔 |
 | 外圆角 | `4px` | `4px` |
 
-表格不放进装饰性 card。Table Block 的宽度上限是 Full `1200px`，当前轨道从 Body `720px` 起并跟随表格固有宽度增长；gutter 始终贴近当前表格左边，不固定在 Full 轨左边。Auto 列均分剩余宽度，显式列宽和用户拖拽结果保持不变，表格总宽超过可用画布后启用内部横向滚动。表格内容 viewport 最大高 `320px`，超过后复用同一个 `ScrollHandle` 纵向滚动；内容 viewport 与右侧 `12px` scrollbar 轨道使用左右结构，轨道使用 table surface 色并以 `1px` 边界和单元格区域分隔，scrollbar 不得覆盖单元格。内部纵向滚动消费滚轮事件，不得同时推动文档外层。横向 scrollbar 位于内容 viewport 下方独立的 chrome 区域，不改变表格 grid 的高度；冻结表头与首列使用同一语义 surface。cell focus 使用 `2px` 内描边，range selection 使用主色 `10%` 填充，不能改变单元格尺寸；存在 focused cell 或选区 chrome 时，普通 cell hover 不得穿透 gutter 显示。
+表格不放进装饰性 card。Table Block 的宽度上限是 Full `1200px`，当前轨道从 Body `800px` 起并跟随表格固有宽度增长；gutter 始终贴近当前表格左边，不固定在 Full 轨左边。Auto 列均分剩余宽度，显式列宽和用户拖拽结果保持不变，表格总宽超过可用画布后启用内部横向滚动。表格内容 viewport 最大高 `320px`，超过后复用同一个 `ScrollHandle` 纵向滚动；内容 viewport 与右侧 `12px` scrollbar 轨道使用左右结构，轨道使用 table surface 色并以 `1px` 边界和单元格区域分隔，scrollbar 不得覆盖单元格。内部纵向滚动消费滚轮事件，不得同时推动文档外层。横向 scrollbar 位于内容 viewport 下方独立的 chrome 区域，不改变表格 grid 的高度；冻结表头与首列使用同一语义 surface。cell focus 使用 `2px` 内描边，range selection 使用主色 `10%` 填充，不能改变单元格尺寸；存在 focused cell 或选区 chrome 时，普通 cell hover 不得穿透 gutter 显示。
 
 ## 8. 媒体与嵌入
 
@@ -168,8 +171,8 @@ Code 工具栏中的语言选择、主题、换行开关和复制使用图标或
 
 ## 11. 验收基线
 
-1. Body / Wide / Full 内容轨分别为 `720 / 960 / 1200px`，三者中心线完全重合。
-2. 720px 宽度下，中英文正文每行约 `32-42` 个汉字或 `70-85` 个英文字符。
+1. Body / Wide / Full 内容轨分别为 `800 / 960 / 1200px`，三者中心线完全重合。
+2. 800px 宽度下，中英文正文每行约 `36-47` 个汉字或 `78-94` 个英文字符。
 3. 320px 内容宽度下无水平溢出；仅 Code、Table、Database 允许内部横向滚动。
 4. 切换浅色/深色不改变任何 block 几何尺寸。
 5. hover、selection、focus、dragging 前后 block 测量高度差为 `0px`。

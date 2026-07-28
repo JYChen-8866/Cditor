@@ -3,7 +3,6 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div, rgb,
 };
 
-use crate::document::{DEFAULT_DOCUMENT_TOP_INSET_PX, DocumentLayoutMetrics};
 use crate::document::{DocumentBlockActionProjection, DocumentEditorView};
 use crate::editor_view::{
     CditorV2View, CditorViewState, floating_toolbar_passes_selection_delay,
@@ -23,9 +22,11 @@ use crate::input::routing::BoundInputAction;
 use crate::interaction::geometry::projected_block_rects_from_projection;
 use crate::interaction::scrollbar::render_scrollbar;
 use crate::menu_metrics::EditorViewport;
+#[cfg(feature = "whiteboard")]
+use crate::overlays::render_whiteboard_editor;
 use crate::overlays::{
     render_ai_preview_overlay, render_ai_prompt, render_floating_toolbar, render_slash_menu,
-    render_toast, render_whiteboard_editor,
+    render_toast,
 };
 use crate::persistence::{EditorLoadStateLabel, render_load_state};
 use crate::platform::EDITOR_UI_FONT_FAMILY;
@@ -48,7 +49,7 @@ mod status;
 
 impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let frame_started = std::time::Instant::now();
+        let frame_started = web_time::Instant::now();
         self.run_main_thread_applies(frame_started, cx);
         let theme = GuiTheme::light();
         let focus = self.focus.editor.clone();
@@ -60,11 +61,15 @@ impl Render for CditorV2View {
                 )
             })
         });
+        #[cfg(feature = "whiteboard")]
+        let whiteboard_editor_open = self.features.whiteboard_editor.is_some();
+        #[cfg(not(feature = "whiteboard"))]
+        let whiteboard_editor_open = false;
         if self.overlay.ai_prompt.is_some() {
             if !self.focus.ai_prompt.is_focused(window) {
                 window.focus(&self.focus.ai_prompt, cx);
             }
-        } else if self.features.whiteboard_editor.is_none()
+        } else if !whiteboard_editor_open
             && !complex_block_owns_focus
             && !focus.is_focused(window)
             && !self.focus.code_language.is_focused(window)
@@ -75,6 +80,21 @@ impl Render for CditorV2View {
         self.sdk_register_focus_observers(window, cx);
         self.sdk_emit_selection_if_changed(cx);
         self.begin_platform_input_registration_frame();
+
+        #[cfg(feature = "whiteboard")]
+        if let Some(session) = self.features.whiteboard_editor.as_ref() {
+            let whiteboard = render_whiteboard_editor(session, theme, cx.entity());
+            self.record_frame_telemetry(
+                window.window_handle().window_id(),
+                frame_started.elapsed(),
+            );
+            return div()
+                .id("cditor-v2-whiteboard-root")
+                .relative()
+                .size_full()
+                .child(whiteboard)
+                .into_any_element();
+        }
 
         let editor_viewport = EditorViewport::from_measurement(
             self.interaction.editor_viewport_handle.bounds(),
@@ -368,14 +388,15 @@ impl Render for CditorV2View {
             .and_then(|session| session.payload_storage_request().ok().flatten());
         let mut pending_payload_window_range = None;
         let mut pending_payload_prefetch_range = None;
+        let document_layout = self.document_layout_metrics(editor_viewport.width);
 
         match &mut self.state {
             CditorViewState::Ready(session) => {
                 let viewport_height =
-                    (editor_viewport.height - DEFAULT_DOCUMENT_TOP_INSET_PX).max(1.0) as f64;
+                    (editor_viewport.height - document_layout.top_inset_px).max(1.0) as f64;
                 self.interaction
                     .scroll_accumulator
-                    .maybe_mark_idle(std::time::Instant::now());
+                    .maybe_mark_idle(web_time::Instant::now());
                 let height_correction_priority = if self.interaction.scrollbar_drag.is_some() {
                     HeightCorrectionPriority::DeferUntilIdle
                 } else {
@@ -394,7 +415,6 @@ impl Render for CditorV2View {
                 crate::text::sync_automatic_text_layout_pins(&frame.automatic_text_layout_pins);
                 let projection = frame.projection;
                 self.interaction.presented_scroll_top = projection.scroll.global_scroll_top;
-                let document_layout = DocumentLayoutMetrics::for_viewport(editor_viewport.width);
                 self.sync_document_viewport_origin(editor_viewport, document_layout);
                 self.prewarm_primary_text_layouts(
                     &projection,
@@ -477,6 +497,7 @@ impl Render for CditorV2View {
                         &self.overlay.table_menu_ui,
                         editor_viewport.width,
                         editor_viewport.height,
+                        document_layout,
                         self.status.readonly,
                         self.image_resize_preview(),
                         table_resize_preview,
@@ -633,16 +654,12 @@ impl Render for CditorV2View {
             .overlay
             .toast
             .as_ref()
-            .filter(|toast| toast.is_alive(std::time::Instant::now()))
+            .filter(|toast| toast.is_alive(web_time::Instant::now()))
         {
             root = root.child(render_toast(toast, theme));
         }
-        if let Some(session) = self.features.whiteboard_editor.as_ref() {
-            root = root.child(render_whiteboard_editor(session, theme, cx.entity()));
-        }
-
         self.record_frame_telemetry(window.window_handle().window_id(), frame_started.elapsed());
 
-        root
+        root.into_any_element()
     }
 }

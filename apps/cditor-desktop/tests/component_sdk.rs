@@ -1,13 +1,19 @@
+#[cfg(feature = "sqlite")]
 use cditor_core::rich_text::RichBlockKind;
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
 use cditor_desktop::CditorStorageExt;
 use cditor_desktop::wiring::build_component;
-use cditor_sdk::command::{BlockTransform, CditorCommand};
+#[cfg(feature = "sqlite")]
+use cditor_sdk::command::BlockTransform;
+use cditor_sdk::command::CditorCommand;
 use cditor_sdk::document::{
     Affinity, DocumentPosition, DocumentSelection, SaveStatus, ScrollAlignment, TextOffset,
 };
 use cditor_sdk::{Cditor, CditorError};
+#[cfg(feature = "sqlite")]
 use cditor_storage::StorageBackendKind;
 use gpui::TestAppContext;
+#[cfg(feature = "sqlite")]
 use tempfile::TempDir;
 
 #[gpui::test]
@@ -86,6 +92,7 @@ fn handle_reports_loading_and_component_drop(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+#[cfg(feature = "postgres")]
 fn build_rejects_invalid_postgres_configuration(cx: &mut TestAppContext) {
     let result = cx.update(|cx| {
         build_component(
@@ -133,6 +140,7 @@ fn selection_command_and_virtual_scroll_share_runtime_truth(cx: &mut TestAppCont
 }
 
 #[gpui::test]
+#[cfg(feature = "sqlite")]
 fn sqlite_autosaves_and_reopens_through_same_contract(cx: &mut TestAppContext) {
     let temp = TempDir::new().unwrap();
     let path = temp.path().join("sdk.cditor.db");
@@ -189,6 +197,7 @@ fn sqlite_autosaves_and_reopens_through_same_contract(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+#[cfg(feature = "sqlite")]
 fn flush_waits_for_sqlite_commit_and_checkpoint(cx: &mut TestAppContext) {
     let temp = TempDir::new().unwrap();
     let path = temp.path().join("explicit-flush.cditor.db");

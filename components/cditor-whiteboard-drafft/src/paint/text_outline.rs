@@ -1,12 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash, Hasher},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 use drafftink_core::{
     Canvas,
-    shapes::{FontWeight, SerializableColor, Shape, ShapeTrait, Text},
+    shapes::{SerializableColor, Shape, ShapeTrait, Text},
 };
 use kurbo::{Affine, BezPath, Rect, Shape as KurboShape, Size, Vec2};
 use parley::{
@@ -14,9 +14,12 @@ use parley::{
     editing::{Cursor, Selection},
     layout::{Affinity, Layout, PositionedLayoutItem},
 };
-use peniko::{Blob, Brush};
+use peniko::Brush;
 
 use super::plan::{PaintCommand, PaintKind};
+use font_registration::register_outline_fonts;
+
+mod font_registration;
 
 #[derive(Clone)]
 struct CachedTextLayout {
@@ -64,16 +67,29 @@ pub(crate) struct TextOutlineEngine {
 
 impl TextOutlineEngine {
     pub(crate) fn new() -> Self {
-        let mut font_cx = FontContext::new();
-        font_cx
-            .collection
-            .register_fonts(Blob::new(Arc::new(crate::font::VIRGIL)), None);
+        Self::with_font_context(FontContext::new(), true)
+    }
+
+    fn with_font_context(mut font_cx: FontContext, allow_system_hanzipen: bool) -> Self {
+        register_outline_fonts(&mut font_cx, allow_system_hanzipen);
         Self {
             font_cx,
             layout_cx: LayoutContext::new(),
             cache: HashMap::new(),
             touched: HashSet::new(),
         }
+    }
+
+    #[cfg(test)]
+    fn without_system_fonts() -> Self {
+        let font_cx = FontContext {
+            collection: parley::fontique::Collection::new(parley::fontique::CollectionOptions {
+                shared: false,
+                system_fonts: false,
+            }),
+            source_cache: Default::default(),
+        };
+        Self::with_font_context(font_cx, false)
     }
 
     pub(crate) fn begin_frame(&mut self) {
@@ -164,14 +180,17 @@ impl TextOutlineEngine {
     }
 
     fn layout(&mut self, text: &Text) -> CachedTextLayout {
-        let weight = font_weight(text.font_weight);
         let default_color = serialized_color(text.style.stroke_color, text.style.opacity);
         let mut builder =
             self.layout_cx
                 .ranged_builder(&mut self.font_cx, &text.content, 1.0, false);
         builder.push_default(StyleProperty::FontSize(text.font_size as f32));
         builder.push_default(StyleProperty::Brush(Brush::Solid(default_color)));
-        builder.push_default(StyleProperty::FontWeight(weight));
+        // Every face in the stack is registered as the same optical role. This
+        // keeps Virgil and its CJK pair on real outlines with no faux weight.
+        builder.push_default(StyleProperty::FontWeight(parley::FontWeight::NORMAL));
+        // Existing Cditor scenes persist Drafft's font_family metadata, while
+        // the Cditor canvas contract fixes Latin text to the bundled Virgil.
         builder.push_default(StyleProperty::FontFamily(parley::FontFamily::Source(
             crate::font::CANVAS_FONT_STACK.into(),
         )));
@@ -196,6 +215,7 @@ impl TextOutlineEngine {
             parley::Alignment::Start,
             parley::AlignmentOptions::default(),
         );
+        trace_font_runs(text, &layout);
         // Interactive bounds must include trailing whitespace because Parley
         // places the end caret after its full advance.
         let width = layout.full_width() as f64;
@@ -260,12 +280,56 @@ fn bounding_box_rect(bounds: parley::BoundingBox) -> Rect {
     Rect::new(bounds.x0, bounds.y0, bounds.x1, bounds.y1)
 }
 
-fn font_weight(weight: FontWeight) -> parley::FontWeight {
-    match weight {
-        FontWeight::Light => parley::FontWeight::LIGHT,
-        FontWeight::Regular => parley::FontWeight::NORMAL,
-        FontWeight::Heavy => parley::FontWeight::BOLD,
+fn font_trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("CDITOR_TRACE_TEXT_FONT")
+            .ok()
+            .is_some_and(|value| value != "0")
+    })
+}
+
+fn trace_font_runs(text: &Text, layout: &Layout<Brush>) {
+    if !font_trace_enabled() {
+        return;
     }
+
+    for line in layout.lines() {
+        for run in line.runs() {
+            let range = run.text_range();
+            let font = run.font();
+            let (face_name, face_weight) = ttf_parser::Face::parse(font.data.data(), font.index)
+                .map(|face| (font_face_name(&face), face.weight()))
+                .unwrap_or_else(|_| ("<unparsed>".to_string(), ttf_parser::Weight::Normal));
+            eprintln!(
+                "[cditor][whiteboard][font] id={} model_weight={:?} range={:?} text={:?} face={:?} face_index={} face_weight={:?} synthesis={:?}",
+                text.id(),
+                text.font_weight,
+                range,
+                text.content.get(run.text_range()).unwrap_or_default(),
+                face_name,
+                font.index,
+                face_weight,
+                run.synthesis(),
+            );
+        }
+    }
+}
+
+fn font_face_name(face: &ttf_parser::Face<'_>) -> String {
+    font_name(face, ttf_parser::name_id::POST_SCRIPT_NAME)
+        .or_else(|| font_name(face, ttf_parser::name_id::FAMILY))
+        .unwrap_or_else(|| "<unnamed>".to_string())
+}
+
+fn font_name(face: &ttf_parser::Face<'_>, name_id: u16) -> Option<String> {
+    face.names()
+        .into_iter()
+        .filter(|name| name.name_id == name_id)
+        .find_map(|name| {
+            name.to_string()
+                .or_else(|| std::str::from_utf8(name.name).ok().map(str::to_owned))
+        })
 }
 
 fn serialized_color(color: SerializableColor, opacity: f64) -> peniko::Color {
@@ -295,8 +359,6 @@ fn component(value: f32) -> u8 {
 fn text_cache_key(text: &Text) -> u64 {
     let mut hasher = DefaultHasher::new();
     text.content.hash(&mut hasher);
-    (text.font_family as u8).hash(&mut hasher);
-    (text.font_weight as u8).hash(&mut hasher);
     text.font_size.to_bits().hash(&mut hasher);
     text.style.opacity.to_bits().hash(&mut hasher);
     text.style.stroke_color.r.hash(&mut hasher);
@@ -338,11 +400,35 @@ impl ttf_parser::OutlineBuilder for OutlinePath {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use drafftink_core::shapes::{FontFamily, FontWeight};
     use kurbo::Point;
+
+    fn test_engine() -> TextOutlineEngine {
+        TextOutlineEngine::without_system_fonts()
+    }
+
+    fn data_hash(data: &[u8]) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        data.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn first_glyph_font_hash(layout: &Layout<Brush>) -> u64 {
+        layout
+            .lines()
+            .flat_map(|line| line.items())
+            .find_map(|item| match item {
+                PositionedLayoutItem::GlyphRun(glyph_run) => {
+                    Some(data_hash(glyph_run.run().font().data.data()))
+                }
+                _ => None,
+            })
+            .expect("text layout should contain a glyph run")
+    }
 
     #[test]
     fn rotated_text_generates_transformed_glyph_outlines() {
-        let mut engine = TextOutlineEngine::new();
+        let mut engine = test_engine();
         let mut text = Text::new(Point::new(20.0, 30.0), "Rotate".to_string());
         let plain = engine.commands(&text, Affine::IDENTITY);
         text.rotation = std::f64::consts::FRAC_PI_4;
@@ -354,8 +440,8 @@ mod tests {
     }
 
     #[test]
-    fn system_fallback_generates_chinese_glyph_outlines() {
-        let mut engine = TextOutlineEngine::new();
+    fn bundled_fallback_generates_chinese_glyph_outlines() {
+        let mut engine = test_engine();
         let text = Text::new(Point::new(20.0, 30.0), "中文白板".to_string());
         let commands = engine.commands(&text, Affine::IDENTITY);
         assert_eq!(commands.len(), 4);
@@ -364,11 +450,152 @@ mod tests {
 
     #[test]
     fn prepared_chinese_bounds_survive_the_paint_snapshot_clone() {
-        let mut engine = TextOutlineEngine::new();
+        let mut engine = test_engine();
         let text = Text::new(Point::new(20.0, 30.0), "中文白板".to_string());
         engine.prepare(&text);
 
         let cloned = text.clone();
         assert_eq!(text.bounds(), cloned.bounds());
+    }
+
+    #[test]
+    fn stored_drafft_text_style_does_not_replace_cditor_canvas_font() {
+        let reference = Text::new(Point::new(20.0, 30.0), "Canvas text".to_string());
+        let reference_key = text_cache_key(&reference);
+        for family in FontFamily::all() {
+            for weight in FontWeight::all() {
+                let mut engine = test_engine();
+                let mut text = Text::new(Point::new(20.0, 30.0), "Canvas text".to_string());
+                text.font_family = *family;
+                text.font_weight = *weight;
+
+                assert_eq!(text_cache_key(&text), reference_key);
+                let cached = engine.layout(&text);
+                assert_eq!(
+                    first_glyph_font_hash(&cached.geometry.layout),
+                    data_hash(crate::font::VIRGIL),
+                    "stored {family:?}/{weight:?} metadata changed the Cditor Latin font contract"
+                );
+                let run = cached
+                    .geometry
+                    .layout
+                    .lines()
+                    .next()
+                    .unwrap()
+                    .runs()
+                    .next()
+                    .unwrap();
+                assert!(
+                    !run.synthesis().embolden(),
+                    "optical regular must not synthesize Virgil bold"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn font_family_round_trip_keeps_data_without_changing_rendering() {
+        let mut text = Text::new(Point::new(20.0, 30.0), "Persisted".to_string());
+        text.font_family = FontFamily::GelPen;
+        text.font_weight = FontWeight::Light;
+        let serialized = serde_json::to_string(&text).expect("serialize text");
+        let restored: Text = serde_json::from_str(&serialized).expect("deserialize text");
+        assert_eq!(restored.font_family, FontFamily::GelPen);
+        assert_eq!(restored.font_weight, FontWeight::Light);
+
+        let mut engine = test_engine();
+        let cached = engine.layout(&restored);
+        assert_eq!(
+            first_glyph_font_hash(&cached.geometry.layout),
+            data_hash(crate::font::VIRGIL)
+        );
+    }
+
+    #[test]
+    fn mixed_script_layout_keeps_latin_primary_and_cjk_fallback_runs() {
+        let reference = Text::new(Point::new(20.0, 30.0), "阿赛啊asda爱撒啊".to_string());
+        let reference_key = text_cache_key(&reference);
+        for weight in FontWeight::all() {
+            let mut engine = test_engine();
+            let mut text = Text::new(Point::new(20.0, 30.0), "阿赛啊asda爱撒啊".to_string());
+            text.font_weight = *weight;
+            assert_eq!(text_cache_key(&text), reference_key);
+            let cached = engine.layout(&text);
+            let runs = cached
+                .geometry
+                .layout
+                .lines()
+                .flat_map(|line| line.runs())
+                .collect::<Vec<_>>();
+
+            assert_eq!(runs.len(), 3, "unexpected {weight:?} script runs");
+            assert_ne!(
+                data_hash(runs[0].font().data.data()),
+                data_hash(crate::font::VIRGIL)
+            );
+            assert_eq!(
+                data_hash(runs[0].font().data.data()),
+                data_hash(crate::font::CJK_MEDIUM)
+            );
+            assert_eq!(
+                data_hash(runs[1].font().data.data()),
+                data_hash(crate::font::VIRGIL)
+            );
+            assert_ne!(
+                data_hash(runs[2].font().data.data()),
+                data_hash(crate::font::VIRGIL)
+            );
+            assert_eq!(
+                data_hash(runs[2].font().data.data()),
+                data_hash(crate::font::CJK_MEDIUM)
+            );
+            for run in runs {
+                assert!(
+                    !run.synthesis().embolden(),
+                    "{weight:?} unexpectedly used faux bold"
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_layout_uses_exact_hanzipen_w5_without_synthetic_weight() {
+        let mut engine = TextOutlineEngine::new();
+        let Some(family) = engine.font_cx.collection.family_by_name("HanziPen SC") else {
+            return;
+        };
+        let has_w5 = family.fonts().iter().any(|font| {
+            font.load(Some(&mut engine.font_cx.source_cache))
+                .is_some_and(|data| {
+                    ttf_parser::Face::parse(data.as_ref(), font.index())
+                        .is_ok_and(|face| font_face_name(&face) == "HanziPenSC-W5")
+                })
+        });
+        if !has_w5 {
+            return;
+        }
+
+        let text = Text::new(Point::new(20.0, 30.0), "阿赛啊asda爱撒啊".to_string());
+        let cached = engine.layout(&text);
+        let runs = cached
+            .geometry
+            .layout
+            .lines()
+            .flat_map(|line| line.runs())
+            .collect::<Vec<_>>();
+        assert_eq!(runs.len(), 3);
+        for run in runs.iter().step_by(2) {
+            let font = run.font();
+            let face = ttf_parser::Face::parse(font.data.data(), font.index).unwrap();
+            assert_eq!(font.index, 0);
+            assert_eq!(font_face_name(&face), "HanziPenSC-W5");
+            assert!(!run.synthesis().embolden());
+        }
+        let latin = &runs[1];
+        let font = latin.font();
+        let face = ttf_parser::Face::parse(font.data.data(), font.index).unwrap();
+        assert_eq!(font_face_name(&face), "Virgil3YOFF");
+        assert!(!latin.synthesis().embolden());
     }
 }

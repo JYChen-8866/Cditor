@@ -197,6 +197,124 @@ fn composition_preview_does_not_commit_until_commit() {
 }
 
 #[test]
+fn rich_text_composition_preview_preserves_marks_and_matches_commit() {
+    let source_spans = vec![
+        InlineSpan::plain("a"),
+        InlineSpan {
+            text: "bc".to_owned(),
+            marks: vec![InlineMark::Bold],
+        },
+        InlineSpan {
+            text: "de".to_owned(),
+            marks: vec![InlineMark::Italic, InlineMark::Color("#e03e3e".to_owned())],
+        },
+    ];
+    let expected_spans = vec![
+        InlineSpan::plain("a"),
+        InlineSpan {
+            text: "b中c".to_owned(),
+            marks: vec![InlineMark::Bold],
+        },
+        source_spans[2].clone(),
+    ];
+    let mut runtime = runtime_with_rich_spans(source_spans.clone());
+    runtime.focus_block_at_offset(1, 2).unwrap();
+
+    runtime.begin_or_update_composition(1, 2..2, "中").unwrap();
+
+    let projection = runtime.projection_for_window();
+    let BlockPayloadView::Loaded(payload) = &projection.blocks[0].payload else {
+        panic!("payload should be loaded");
+    };
+    let BlockPayload::RichText {
+        spans: preview_spans,
+    } = &payload.payload
+    else {
+        panic!("payload should be rich text");
+    };
+    let preview_spans = preview_spans.clone();
+    assert_eq!(preview_spans, expected_spans);
+    assert_eq!(
+        runtime
+            .text_surface_snapshot(SurfaceId::Block(1))
+            .unwrap()
+            .spans,
+        expected_spans
+    );
+    let BlockPayload::RichText {
+        spans: stored_spans,
+    } = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
+        panic!("stored payload should be rich text");
+    };
+    assert_eq!(stored_spans, &source_spans);
+
+    assert!(runtime.commit_composition().unwrap());
+    let BlockPayload::RichText {
+        spans: committed_spans,
+    } = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
+        panic!("committed payload should be rich text");
+    };
+    assert_eq!(committed_spans, &preview_spans);
+}
+
+#[test]
+fn composition_honors_plain_typing_override_after_inline_markdown() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "**abc**",
+        )],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, "**abc**".len()).unwrap();
+    assert!(runtime.apply_inline_markdown_shortcut(1).unwrap());
+
+    runtime
+        .begin_or_update_composition(1, "abc".len().."abc".len(), "中")
+        .unwrap();
+
+    let expected_spans = vec![
+        InlineSpan {
+            text: "abc".to_owned(),
+            marks: vec![InlineMark::Bold],
+        },
+        InlineSpan::plain("中"),
+    ];
+    let projection = runtime.projection_for_window();
+    let BlockPayloadView::Loaded(payload) = &projection.blocks[0].payload else {
+        panic!("payload should be loaded");
+    };
+    let BlockPayload::RichText {
+        spans: preview_spans,
+    } = &payload.payload
+    else {
+        panic!("payload should be rich text");
+    };
+    let preview_spans = preview_spans.clone();
+    assert_eq!(preview_spans, expected_spans);
+    assert_eq!(
+        runtime
+            .text_surface_snapshot(SurfaceId::Block(1))
+            .unwrap()
+            .spans,
+        expected_spans
+    );
+
+    assert!(runtime.commit_composition().unwrap());
+    let BlockPayload::RichText {
+        spans: committed_spans,
+    } = &runtime.document.payload_window.get(1).unwrap().payload
+    else {
+        panic!("committed payload should be rich text");
+    };
+    assert_eq!(committed_spans, &preview_spans);
+}
+
+#[test]
 fn composition_commit_undo_redo_restores_block_text() {
     let mut runtime = DocumentRuntime::from_payloads(
         1,
@@ -329,6 +447,32 @@ fn replace_text_in_focused_range_commits_text_and_clears_composition() {
     };
     assert_eq!(payload.plain_text(), "a字d");
     assert!(runtime.active_composition().is_none());
+}
+
+#[test]
+fn delete_commands_leave_selected_cjk_composition_owned_by_the_platform() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "/",
+        )],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, 1).unwrap();
+    runtime
+        .begin_or_update_composition_with_selection(1, 1..1, "我", Some(0.."我".len()))
+        .unwrap();
+
+    assert!(!runtime.delete_backward().unwrap());
+    assert!(!runtime.delete_forward().unwrap());
+    assert_eq!(
+        runtime.document.payload_window.get(1).unwrap().plain_text(),
+        "/"
+    );
+    assert_eq!(runtime.composition_preview_text().as_deref(), Some("/我"));
+    assert_eq!(runtime.active_composition_selected_range(), Some(1..4));
 }
 
 #[test]

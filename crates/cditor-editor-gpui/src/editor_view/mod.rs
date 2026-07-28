@@ -10,11 +10,13 @@ mod render;
 mod slash_menu;
 mod state;
 
-pub(crate) use self::state::OverlayUiState;
 pub use self::state::{CditorViewState, EditorReadonlyReason};
 use self::state::{
     EditorDiagnosticsState, EditorSchedulingState, EditorStatusUiState, FeatureUiState,
     FocusUiState, InteractionUiState, PlatformInputState,
+};
+pub(crate) use self::state::{
+    OverlayUiState, PlatformCharacterCoordinatesIdentity, PlatformImeCandidateBounds,
 };
 pub(crate) use crate::app::persistence_bridge::save_status_for_mode;
 pub(crate) use crate::interaction::table_scroll::TableScrollSnapshot;

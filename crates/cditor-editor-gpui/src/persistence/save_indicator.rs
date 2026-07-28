@@ -9,6 +9,8 @@ use crate::theme::GuiTheme;
 use cditor_component::ProgressCircle;
 use cditor_session::{PersistenceFailure, PersistenceFailureKind};
 
+pub const READONLY_NOTICE_HEIGHT_PX: f32 = 32.0;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorLoadStateLabel {
     Loading {
@@ -212,7 +214,7 @@ pub fn render_readonly_notice(reason: &EditorReadonlyReason, theme: GuiTheme) ->
         .top_0()
         .left_0()
         .right_0()
-        .h(px(32.0))
+        .h(px(READONLY_NOTICE_HEIGHT_PX))
         .px(px(12.0))
         .flex()
         .items_center()

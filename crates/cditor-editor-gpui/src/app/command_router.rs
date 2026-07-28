@@ -183,6 +183,7 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::FocusTableCell { .. }
             | CditorCommand::BlurTableCell
             | CditorCommand::SetTableCellSelection { .. }
+            | CditorCommand::NavigateTableCell { .. }
             | CditorCommand::SetTextSurfaceSelection { .. }
             | CditorCommand::DeleteSelection
             | CditorCommand::ApplyClipboardData { .. }
@@ -331,6 +332,7 @@ fn command_mutates_document(command: &CditorCommand) -> bool {
             | CditorCommand::FocusTableCell { .. }
             | CditorCommand::BlurTableCell
             | CditorCommand::SetTableCellSelection { .. }
+            | CditorCommand::NavigateTableCell { .. }
             | CditorCommand::SetTextSurfaceSelection { .. }
             | CditorCommand::CopySelection
             | CditorCommand::CopyBlockText { .. }

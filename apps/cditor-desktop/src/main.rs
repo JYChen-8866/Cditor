@@ -1,10 +1,13 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
-use cditor_ai_openai::OpenAiCompatibleProvider;
 use cditor_desktop::environment::cditor_from_env;
 use cditor_sdk::Cditor;
 use std::io::Write;
+#[cfg(feature = "ai")]
 use std::sync::Arc;
+
+#[cfg(feature = "ai")]
+use cditor_ai_openai::OpenAiCompatibleProvider;
 
 fn write_stderr(message: std::fmt::Arguments<'_>) {
     write_stderr_to(&mut std::io::stderr().lock(), message);
@@ -27,6 +30,11 @@ fn configured_cditor() -> Cditor {
         cditor.options().backend,
         cditor.options().document_id
     ));
+    configure_ai(cditor)
+}
+
+#[cfg(feature = "ai")]
+fn configure_ai(cditor: Cditor) -> Cditor {
     match OpenAiCompatibleProvider::from_env() {
         Ok(provider) => cditor.with_ai_provider(Arc::new(provider)),
         Err(error) => {
@@ -34,6 +42,11 @@ fn configured_cditor() -> Cditor {
             cditor
         }
     }
+}
+
+#[cfg(not(feature = "ai"))]
+fn configure_ai(cditor: Cditor) -> Cditor {
+    cditor.without_ai()
 }
 
 fn main() {

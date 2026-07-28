@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use gpui::{AppContext, Context};
+use gpui::Context;
 
 use super::DrafftBoardView;
 
@@ -23,9 +23,7 @@ impl DrafftBoardView {
         }
         self.persistence_scheduled = true;
         let epoch = self.persistence_epoch;
-        let tick = cx.background_spawn(async move {
-            std::thread::sleep(PERSISTENCE_QUIET_PERIOD);
-        });
+        let tick = cx.background_executor().timer(PERSISTENCE_QUIET_PERIOD);
         cx.spawn(async move |view, cx| {
             let _ = tick.await;
             let _ = view.update(cx, |view, cx| {

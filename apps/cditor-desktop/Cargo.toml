@@ -4,20 +4,37 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["full"]
+full = [
+    "ai",
+    "sqlite",
+    "postgres",
+    "code-highlight",
+    "mermaid",
+    "whiteboard",
+]
+ai = ["dep:cditor-ai-openai"]
+sqlite = ["dep:cditor-storage-sqlite"]
+postgres = ["dep:cditor-storage-postgres", "dep:sqlx"]
+code-highlight = ["cditor-editor-gpui/code-highlight"]
+mermaid = ["cditor-editor-gpui/mermaid"]
+whiteboard = ["cditor-editor-gpui/whiteboard"]
+
 [dependencies]
 cditor-sdk = { path = "../../crates/cditor-sdk" }
-cditor-ai-openai = { path = "../../crates/cditor-ai-openai" }
-cditor-editor-gpui = { path = "../../crates/cditor-editor-gpui" }
+cditor-ai-openai = { path = "../../crates/cditor-ai-openai", optional = true }
+cditor-editor-gpui = { path = "../../crates/cditor-editor-gpui", default-features = false, features = ["font-kit"] }
 cditor-core = { path = "../../crates/cditor-core" }
 cditor-runtime = { path = "../../crates/cditor-runtime" }
 cditor-session = { path = "../../crates/cditor-session" }
 cditor-storage = { path = "../../crates/cditor-storage" }
-cditor-storage-postgres = { path = "../../crates/cditor-storage-postgres" }
-cditor-storage-sqlite = { path = "../../crates/cditor-storage-sqlite" }
+cditor-storage-postgres = { path = "../../crates/cditor-storage-postgres", optional = true }
+cditor-storage-sqlite = { path = "../../crates/cditor-storage-sqlite", optional = true }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
 tokio = { version = "1", features = ["sync", "time"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid"], optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 
 [dev-dependencies]

@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use drafftink_core::shapes::{Shape, ShapeId, ShapeTrait};
-use gpui::{AppContext, Context, KeyDownEvent};
+use gpui::{Context, KeyDownEvent};
 use kurbo::Point;
 
 use super::DrafftBoardView;
@@ -210,9 +210,9 @@ impl DrafftBoardView {
     }
 
     fn schedule_text_caret_tick(&self, epoch: u64, cx: &mut Context<Self>) {
-        let tick = cx.background_spawn(async move {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-        });
+        let tick = cx
+            .background_executor()
+            .timer(std::time::Duration::from_millis(500));
         cx.spawn(async move |view, cx| {
             let _ = tick.await;
             let _ = view.update(cx, |view, cx| {

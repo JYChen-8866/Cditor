@@ -1,8 +1,5 @@
-use std::{
-    collections::HashMap,
-    ops::Range,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, ops::Range, time::Duration};
+use web_time::Instant;
 
 use cditor_editor_protocol::ProtocolError;
 

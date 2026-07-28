@@ -1,4 +1,7 @@
-use gpui::{App, Bounds, Corners, Hsla, PathBuilder, Pixels, Point, Window, point, px, rgba, size};
+use gpui::{
+    App, Bounds, Corners, FillOptions, FillRule, Hsla, PathBuilder, PathStyle, Pixels, Point,
+    Window, point, px, rgba, size,
+};
 use kurbo::{PathEl, Point as KurboPoint, Rect, Shape};
 
 use super::plan::{PaintCommand, PaintKind, PaintPlan};
@@ -24,7 +27,7 @@ fn paint_command(command: &PaintCommand, origin: Point<Pixels>, window: &mut Win
         return;
     }
     let mut builder = match &command.kind {
-        PaintKind::Fill => PathBuilder::fill(),
+        PaintKind::Fill => nonzero_fill_builder(),
         PaintKind::Stroke { width, dash } => {
             let builder = PathBuilder::stroke(px(*width));
             match dash {
@@ -55,6 +58,12 @@ fn paint_command(command: &PaintCommand, origin: Point<Pixels>, window: &mut Win
     if let Ok(path) = builder.build() {
         window.paint_path(path, color(command.color));
     }
+}
+
+fn nonzero_fill_builder() -> PathBuilder {
+    PathBuilder::fill().with_style(PathStyle::Fill(
+        FillOptions::default().with_fill_rule(FillRule::NonZero),
+    ))
 }
 
 fn paint_image(
@@ -139,4 +148,19 @@ fn gpui_point(value: KurboPoint, origin: Point<Pixels>) -> Point<Pixels> {
 
 fn color(value: u32) -> Hsla {
     rgba(value).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fill_builder_matches_drafft_vello_nonzero_rule() {
+        let builder = nonzero_fill_builder();
+        let PathStyle::Fill(options) = builder.style else {
+            panic!("fill builder must use fill tessellation");
+        };
+
+        assert_eq!(options.fill_rule, FillRule::NonZero);
+    }
 }

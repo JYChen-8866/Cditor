@@ -373,9 +373,15 @@ mod tests {
         table.normalize();
 
         let layout = table_layout_from_payload(&table);
+        let expected_column_width = BODY_BLOCK_CONTENT_WIDTH_PX as f32 / 3.0;
 
-        assert_eq!(layout.width_px, BODY_BLOCK_CONTENT_WIDTH_PX as f32);
-        assert_eq!(layout.column_widths, vec![240.0, 240.0, 240.0]);
+        assert!((layout.width_px - BODY_BLOCK_CONTENT_WIDTH_PX as f32).abs() < 0.001);
+        assert!(
+            layout
+                .column_widths
+                .iter()
+                .all(|width| (*width - expected_column_width).abs() < 0.001)
+        );
     }
 
     #[test]

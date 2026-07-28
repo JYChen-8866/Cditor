@@ -20,6 +20,7 @@ members = [
     "crates/cditor-text",
     "components/cditor-component",
     "components/cditor-whiteboard",
+    "apps/cditor-web",
 ]
 exclude = ["components/cditor-whiteboard-drafft"]
 default-members = ["apps/cditor-desktop"]

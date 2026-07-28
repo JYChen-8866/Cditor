@@ -188,6 +188,7 @@ impl RichTextLayoutSpans {
         sliced
     }
 
+    #[cfg(feature = "code-highlight")]
     pub(crate) fn as_inline_spans(&self) -> Option<&[InlineSpan]> {
         match &self.storage {
             RichTextLayoutSpanStorage::Materialized(spans) => Some(spans.spans.as_slice()),

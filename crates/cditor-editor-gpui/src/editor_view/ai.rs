@@ -172,7 +172,7 @@ impl CditorV2View {
                     AiProviderError::Cancelled | AiProviderError::ChannelClosed
                 )
             {
-                let _ = error_sender.send_blocking(AiStreamEvent::Error {
+                let _ = error_sender.try_send(AiStreamEvent::Error {
                     request_id,
                     message: error.to_string(),
                 });
@@ -192,7 +192,7 @@ impl CditorV2View {
                 .unwrap_or(false);
             if should_cancel {
                 timeout_cancellation.cancel();
-                let _ = timeout_sender.send_blocking(AiStreamEvent::Error {
+                let _ = timeout_sender.try_send(AiStreamEvent::Error {
                     request_id,
                     message: format!("AI stream timed out after {:?}", stream_token.timeout()),
                 });

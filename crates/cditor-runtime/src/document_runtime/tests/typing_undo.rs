@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use cditor_core::clipboard::ClipboardSelection;
 use cditor_core::ids::SurfaceId;

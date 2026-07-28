@@ -1,8 +1,5 @@
 use drafftink_core::{
-    shapes::{
-        FillPattern, FontFamily, FontWeight as DrafftFontWeight, PathStyle, Shape, Sloppiness,
-        StrokeStyle,
-    },
+    shapes::{FillPattern, PathStyle, Shape, Sloppiness, StrokeStyle},
     tools::ToolKind,
 };
 use gpui::{
@@ -38,16 +35,6 @@ const STROKE_STYLES: [(StrokeStyle, &str); 3] = [
     (StrokeStyle::Solid, "Solid"),
     (StrokeStyle::Dashed, "Dashed"),
     (StrokeStyle::Dotted, "Dotted"),
-];
-const FONT_FAMILIES: [(FontFamily, &str); 3] = [
-    (FontFamily::GelPen, "GelPen"),
-    (FontFamily::GelPenSerif, "GelPen Serif"),
-    (FontFamily::VanillaExtract, "Vanilla"),
-];
-const FONT_WEIGHTS: [(DrafftFontWeight, &str); 3] = [
-    (DrafftFontWeight::Light, "Light"),
-    (DrafftFontWeight::Regular, "Regular"),
-    (DrafftFontWeight::Heavy, "Heavy"),
 ];
 const FONT_SIZES: [(f64, &str); 4] = [(16.0, "S"), (20.0, "M"), (28.0, "L"), (36.0, "XL")];
 
@@ -85,7 +72,7 @@ impl DrafftBoardView {
             !self.board.selected().is_empty() && !is_property_drawing_tool(self.board.tool());
         let show_alignment = show_selection && self.board.selected().len() >= 2;
         let section_count = usize::from(show_corner)
-            + text_properties.map(|_| 3).unwrap_or_default()
+            + usize::from(text_properties.is_some())
             + usize::from(math_size.is_some())
             + usize::from(show_sloppiness)
             + usize::from(show_fill)
@@ -120,11 +107,8 @@ impl DrafftBoardView {
                     .child("Properties"),
             );
 
-        if let Some((family, weight, size)) = text_properties {
-            panel = panel
-                .child(self.font_family_section(family, cx))
-                .child(self.font_weight_section(weight, cx))
-                .child(self.font_size_section(size, false, cx));
+        if let Some(size) = text_properties {
+            panel = panel.child(self.font_size_section(size, false, cx));
         }
         if let Some(size) = math_size {
             panel = panel.child(self.font_size_section(size, true, cx));
@@ -158,40 +142,6 @@ impl DrafftBoardView {
             panel = panel.child(self.alignment_section(cx));
         }
         panel.into_any_element()
-    }
-
-    fn font_family_section(&self, current: FontFamily, cx: &mut Context<Self>) -> AnyElement {
-        section(
-            "Font Family",
-            FONT_FAMILIES
-                .into_iter()
-                .enumerate()
-                .map(|(index, (family, label))| {
-                    segment(("font-family", index), label, current == family)
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            view.board.set_text_font_family(family);
-                            cx.notify();
-                        }))
-                        .into_any_element()
-                }),
-        )
-    }
-
-    fn font_weight_section(&self, current: DrafftFontWeight, cx: &mut Context<Self>) -> AnyElement {
-        section(
-            "Font Weight",
-            FONT_WEIGHTS
-                .into_iter()
-                .enumerate()
-                .map(|(index, (weight, label))| {
-                    segment(("font-weight", index), label, current == weight)
-                        .on_click(cx.listener(move |view, _, _, cx| {
-                            view.board.set_text_font_weight(weight);
-                            cx.notify();
-                        }))
-                        .into_any_element()
-                }),
-        )
     }
 
     fn font_size_section(&self, current: f64, math: bool, cx: &mut Context<Self>) -> AnyElement {
@@ -620,12 +570,12 @@ impl DrafftBoardView {
         })
     }
 
-    fn selected_text_properties(&self) -> Option<(FontFamily, DrafftFontWeight, f64)> {
+    fn selected_text_properties(&self) -> Option<f64> {
         self.board.selected().iter().find_map(|id| {
             let Some(Shape::Text(text)) = self.board.canvas.document.get_shape(*id) else {
                 return None;
             };
-            Some((text.font_family, text.font_weight, text.font_size))
+            Some(text.font_size)
         })
     }
 

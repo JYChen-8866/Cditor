@@ -377,6 +377,9 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn delete_backward(&mut self) -> Result<bool, String> {
+        if self.active_composition().is_some() {
+            return Ok(false);
+        }
         if self.selection.focused_table_cell.is_some() {
             return self.delete_backward_in_focused_table_cell();
         }
@@ -461,6 +464,9 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn delete_forward(&mut self) -> Result<bool, String> {
+        if self.active_composition().is_some() {
+            return Ok(false);
+        }
         if self.selection.focused_table_cell.is_some() {
             return self.delete_forward_in_focused_table_cell();
         }
