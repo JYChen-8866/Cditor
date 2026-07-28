@@ -19,11 +19,5 @@ serde_json = "1"
 name = "frame_baseline"
 harness = false
 
-[[bench]]
-name = "sqlite_local_storage"
-harness = false
-
 [dev-dependencies]
-cditor-storage-sqlite = { path = "../cditor-storage-sqlite" }
-tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread"] }

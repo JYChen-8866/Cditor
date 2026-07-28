@@ -2,7 +2,7 @@ use std::{fmt, sync::Arc, time::Duration};
 
 use cditor_core::ids::DocumentId;
 
-use super::options::{CditorBackend, CditorOptions, WorkspaceId};
+use super::options::{CditorDocumentSource, CditorOptions};
 
 #[derive(Clone)]
 pub struct Cditor {
@@ -52,22 +52,17 @@ impl Cditor {
     }
 
     pub fn demo(mut self) -> Self {
-        self.options.backend = CditorBackend::Demo;
+        self.options.source = CditorDocumentSource::Demo;
         self
     }
 
     pub fn large_demo(mut self) -> Self {
-        self.options.backend = CditorBackend::LargeDemo;
+        self.options.source = CditorDocumentSource::LargeDemo;
         self
     }
 
     pub fn memory(mut self) -> Self {
-        self.options.backend = CditorBackend::Memory;
-        self
-    }
-
-    pub fn with_workspace_id(mut self, workspace_id: WorkspaceId) -> Self {
-        self.options.workspace_id = Some(workspace_id);
+        self.options.source = CditorDocumentSource::Memory;
         self
     }
 
@@ -76,28 +71,16 @@ impl Cditor {
         self
     }
 
-    pub fn with_storage_provider(
+    pub fn with_storage(
         mut self,
-        provider: std::sync::Arc<dyn cditor_storage::StorageProvider>,
+        storage: std::sync::Arc<dyn cditor_storage::DocumentStorage>,
     ) -> Self {
-        self.options.backend = CditorBackend::Persistent { provider };
+        self.options.source = CditorDocumentSource::Storage(storage);
         self
     }
 
-    pub fn with_storage(
-        self,
-        storage: std::sync::Arc<dyn cditor_storage::DocumentStorage>,
-        label: impl Into<String>,
-    ) -> Self {
-        self.with_storage_provider(std::sync::Arc::new(
-            cditor_storage::StaticStorageProvider::new(label, storage),
-        ))
-    }
-
-    pub fn with_cloud_endpoint(mut self, endpoint: impl Into<String>) -> Self {
-        self.options.backend = CditorBackend::Cloud {
-            endpoint: endpoint.into(),
-        };
+    pub fn with_storage_load_timeout(mut self, timeout: Duration) -> Self {
+        self.options.storage_load_timeout = timeout.max(Duration::from_secs(1));
         self
     }
 
@@ -165,10 +148,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cditor_builder_defaults_to_demo_backend() {
+    fn cditor_builder_defaults_to_memory_source() {
         let cditor = Cditor::new();
 
-        assert_eq!(cditor.options().backend, CditorBackend::Demo);
+        assert_eq!(cditor.options().source, CditorDocumentSource::Memory);
         assert_eq!(cditor.options().payload_window_size, 128);
         assert_eq!(
             cditor.options().autosave_interval,
@@ -179,40 +162,61 @@ mod tests {
 
     #[test]
     fn cditor_builder_sets_document_backend_and_debug_options() {
-        struct TestProvider;
-        #[async_trait::async_trait]
-        impl cditor_storage::StorageProvider for TestProvider {
-            fn label(&self) -> &str {
-                "test"
-            }
-
-            async fn open(
-                &self,
-            ) -> cditor_storage::StorageResult<Arc<dyn cditor_storage::DocumentStorage>>
-            {
-                Err(cditor_storage::StorageError::InvalidConfiguration(
-                    "not opened by builder test".to_owned(),
-                ))
-            }
-        }
-        let provider: Arc<dyn cditor_storage::StorageProvider> = Arc::new(TestProvider);
+        let storage: Arc<dyn cditor_storage::DocumentStorage> = Arc::new(TestStorage::default());
         let cditor = Cditor::new()
-            .with_workspace_id(7)
             .with_document_id(42)
-            .with_storage_provider(provider.clone())
+            .with_storage(storage.clone())
             .with_debug_overlay(true)
             .with_readonly(true)
             .with_payload_window_size(0);
 
-        assert_eq!(cditor.options().workspace_id, Some(7));
         assert_eq!(cditor.options().document_id, Some(42));
         assert!(matches!(
-            &cditor.options().backend,
-            CditorBackend::Persistent { provider: configured } if Arc::ptr_eq(configured, &provider)
+            &cditor.options().source,
+            CditorDocumentSource::Storage(configured) if Arc::ptr_eq(configured, &storage)
         ));
         assert!(cditor.options().debug_overlay);
         assert!(cditor.options().readonly);
         assert_eq!(cditor.options().payload_window_size, 1);
+    }
+
+    #[derive(Default)]
+    struct TestStorage;
+
+    #[async_trait::async_trait]
+    impl cditor_storage::DocumentStorage for TestStorage {
+        fn backend_kind(&self) -> cditor_storage::StorageBackendKind {
+            cditor_storage::StorageBackendKind::Custom
+        }
+
+        fn capabilities(&self) -> cditor_storage::StorageCapabilities {
+            cditor_storage::StorageCapabilities {
+                payload_window: false,
+                emergency_log: false,
+            }
+        }
+
+        async fn load_document(
+            &self,
+            _request: cditor_storage::LoadDocumentRequest,
+        ) -> cditor_storage::StorageResult<cditor_storage::LoadedDocument> {
+            unreachable!("builder tests never open storage")
+        }
+
+        async fn load_payloads(
+            &self,
+            _document_id: DocumentId,
+            _block_ids: &[cditor_core::ids::BlockId],
+        ) -> cditor_storage::StorageResult<cditor_storage::LoadedPayloadBatch> {
+            unreachable!("builder tests never load payloads")
+        }
+
+        async fn commit(
+            &self,
+            _batch: cditor_storage::StorageSaveBatch,
+        ) -> cditor_storage::StorageResult<cditor_storage::StorageSaveOutcome> {
+            unreachable!("builder tests never commit")
+        }
     }
 
     #[test]

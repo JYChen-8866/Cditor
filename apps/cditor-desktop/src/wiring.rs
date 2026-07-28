@@ -173,13 +173,6 @@ fn build_view(builder: Cditor, cx: &mut Context<CditorV2View>) -> CditorV2View {
                 cx,
             )
         }
-        CditorColdStartPlan::Cloud { endpoint } => CditorV2View::loading_with_options(
-            format!("Cloud endpoint {endpoint} is loading in background"),
-            options.debug_overlay,
-            options.readonly,
-            options.autosave_interval,
-            cx,
-        ),
         CditorColdStartPlan::Invalid { reason } => CditorV2View::load_failed_with_options(
             reason,
             options.debug_overlay,

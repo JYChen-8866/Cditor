@@ -1,20 +1,10 @@
-#[cfg(feature = "sqlite")]
-use cditor_core::rich_text::RichBlockKind;
-#[cfg(any(feature = "sqlite", feature = "postgres"))]
-use cditor_desktop::CditorStorageExt;
 use cditor_desktop::wiring::build_component;
-#[cfg(feature = "sqlite")]
-use cditor_sdk::command::BlockTransform;
 use cditor_sdk::command::CditorCommand;
 use cditor_sdk::document::{
     Affinity, DocumentPosition, DocumentSelection, SaveStatus, ScrollAlignment, TextOffset,
 };
 use cditor_sdk::{Cditor, CditorError};
-#[cfg(feature = "sqlite")]
-use cditor_storage::StorageBackendKind;
 use gpui::TestAppContext;
-#[cfg(feature = "sqlite")]
-use tempfile::TempDir;
 
 #[gpui::test]
 fn component_exposes_ready_state_and_readonly_control(cx: &mut TestAppContext) {
@@ -65,18 +55,9 @@ fn newer_schema_readonly_cannot_be_disabled_by_the_host(cx: &mut TestAppContext)
 }
 
 #[gpui::test]
-fn handle_reports_loading_and_component_drop(cx: &mut TestAppContext) {
-    let component = cx.update(|cx| {
-        build_component(
-            Cditor::new().with_cloud_endpoint("https://example.invalid"),
-            cx,
-        )
-        .unwrap()
-    });
+fn handle_reports_component_drop(cx: &mut TestAppContext) {
+    let component = cx.update(|cx| build_component(Cditor::new().memory(), cx).unwrap());
     let handle = component.handle.clone();
-
-    assert!(!cx.read(|cx| handle.is_ready(cx)));
-    assert_eq!(cx.update(|cx| handle.undo(cx)), Err(CditorError::NotReady));
 
     drop(component);
     cx.run_until_parked();
@@ -89,19 +70,6 @@ fn handle_reports_loading_and_component_drop(cx: &mut TestAppContext) {
         cx.read(|cx| handle.diagnostics(cx)),
         Err(CditorError::ComponentDropped)
     );
-}
-
-#[gpui::test]
-#[cfg(feature = "postgres")]
-fn build_rejects_invalid_postgres_configuration(cx: &mut TestAppContext) {
-    let result = cx.update(|cx| {
-        build_component(
-            Cditor::new().with_postgres_url("postgres://localhost/cditor"),
-            cx,
-        )
-    });
-
-    assert!(matches!(result, Err(CditorError::InvalidInput(_))));
 }
 
 #[gpui::test]
@@ -137,102 +105,6 @@ fn selection_command_and_virtual_scroll_share_runtime_truth(cx: &mut TestAppCont
             .scroll_to_block(4, ScrollAlignment::Center, cx)
             .unwrap()
     });
-}
-
-#[gpui::test]
-#[cfg(feature = "sqlite")]
-fn sqlite_autosaves_and_reopens_through_same_contract(cx: &mut TestAppContext) {
-    let temp = TempDir::new().unwrap();
-    let path = temp.path().join("sdk.cditor.db");
-    let component = cx.update(|cx| {
-        build_component(
-            Cditor::new()
-                .with_document_id(1)
-                .with_sqlite_path(&path)
-                .with_autosave(1),
-            cx,
-        )
-        .unwrap()
-    });
-    let handle = component.handle.clone();
-    cx.run_until_parked();
-    assert!(cx.read(|cx| handle.is_ready(cx)));
-    assert_eq!(
-        cx.read(|cx| handle.diagnostics(cx).unwrap().storage_backend),
-        Some(StorageBackendKind::Sqlite)
-    );
-
-    let caret = DocumentSelection::caret(DocumentPosition {
-        block_id: 1,
-        offset: TextOffset::Utf8Bytes(0),
-        affinity: Affinity::Downstream,
-    });
-    cx.update(|cx| handle.set_selection(caret, cx).unwrap());
-    let heading =
-        CditorCommand::TransformBlock(BlockTransform::Kind(RichBlockKind::Heading { level: 2 }));
-    assert!(cx.update(|cx| handle.execute(heading.clone(), cx).unwrap().changed()));
-
-    cx.executor()
-        .advance_clock(std::time::Duration::from_secs(2));
-    cx.run_until_parked();
-    assert_eq!(
-        cx.read(|cx| handle.save_status(cx)),
-        SaveStatus::LocallySaved
-    );
-    drop(component);
-    cx.run_until_parked();
-
-    let reopened = cx.update(|cx| {
-        build_component(
-            Cditor::new().with_document_id(1).with_sqlite_path(&path),
-            cx,
-        )
-        .unwrap()
-    });
-    let reopened_handle = reopened.handle;
-    cx.run_until_parked();
-    assert!(cx.read(|cx| reopened_handle.is_ready(cx)));
-    cx.update(|cx| reopened_handle.set_selection(caret, cx).unwrap());
-    assert!(!cx.read(|cx| reopened_handle.command_state(&heading, cx).enabled));
-}
-
-#[gpui::test]
-#[cfg(feature = "sqlite")]
-fn flush_waits_for_sqlite_commit_and_checkpoint(cx: &mut TestAppContext) {
-    let temp = TempDir::new().unwrap();
-    let path = temp.path().join("explicit-flush.cditor.db");
-    let component = cx.update(|cx| {
-        build_component(
-            Cditor::new()
-                .with_document_id(8)
-                .with_sqlite_path(&path)
-                .without_autosave(),
-            cx,
-        )
-        .unwrap()
-    });
-    let handle = component.handle.clone();
-    cx.run_until_parked();
-
-    let caret = DocumentSelection::caret(DocumentPosition {
-        block_id: 1,
-        offset: TextOffset::Utf8Bytes(0),
-        affinity: Affinity::Downstream,
-    });
-    cx.update(|cx| handle.set_selection(caret, cx).unwrap());
-    let heading =
-        CditorCommand::TransformBlock(BlockTransform::Kind(RichBlockKind::Heading { level: 3 }));
-    assert!(cx.update(|cx| handle.execute(heading.clone(), cx).unwrap().changed()));
-
-    let task = cx.update(|cx| handle.flush(cx));
-    let report = cx.foreground_executor().block_test(task).unwrap();
-    assert!(report.revision > 0);
-    assert_eq!(report.saved_blocks, 1);
-    assert_eq!(
-        cx.read(|cx| handle.save_status(cx)),
-        SaveStatus::LocallySaved
-    );
-    assert!(cx.read(|cx| handle.close_guard(cx).can_close_safely));
 }
 
 #[gpui::test]

@@ -77,3 +77,23 @@ fn public_sdk_does_not_export_gpui_component_types() {
         assert!(!source.contains(forbidden), "SDK leaked {forbidden}");
     }
 }
+
+#[test]
+fn editor_builder_does_not_own_database_configuration() {
+    let source = include_str!("../src/cditor.rs");
+    for forbidden in [
+        "with_workspace_id",
+        "with_storage_provider",
+        "with_sqlite",
+        "with_postgres",
+        "with_cloud_endpoint",
+        "database_url",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "editor builder leaked host database concern: {forbidden}"
+        );
+    }
+    assert!(source.contains("with_storage"));
+    assert!(source.contains("with_document_id"));
+}

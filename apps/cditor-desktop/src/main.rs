@@ -27,7 +27,7 @@ fn configured_cditor() -> Cditor {
     });
     write_stderr(format_args!(
         "Cditor backend: {:?}, document: {:?}",
-        cditor.options().backend,
+        cditor.options().source,
         cditor.options().document_id
     ));
     configure_ai(cditor)

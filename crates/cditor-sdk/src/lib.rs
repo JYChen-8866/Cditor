@@ -10,4 +10,4 @@ pub mod providers;
 
 pub use cditor::Cditor;
 pub use error::CditorError;
-pub use options::CditorOptions;
+pub use options::{CditorDocumentSource, CditorOptions};

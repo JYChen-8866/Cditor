@@ -1,10 +1,8 @@
 use std::fmt;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use cditor_core::document::BlockIndexRecord;
 use cditor_core::edit::{EditTransaction, ExternalUndoBlobRef};
-use cditor_core::ids::AssetId;
 use cditor_core::ids::{BlockId, DocumentId};
 use cditor_core::rich_text::{BlockAttrs, BlockPayloadRecord};
 use cditor_core::schema::VersionedEnvelope;
@@ -12,24 +10,20 @@ use cditor_core::schema::VersionedEnvelope;
 use crate::error::StorageResult;
 use crate::layout_cache::LayoutCacheKey;
 use crate::page_layout_snapshot::StoragePageLayoutSnapshot;
-use crate::query_index::{
-    BacklinkRecord, FtsApplyResult, LocalIndexRebuildRequest, LocalSearchHit, LocalSearchRequest,
-};
-use crate::{AssetManifestRecord, AssetReference, AssetUploadMutation, ProvisionalAssetRequest};
 use crate::{MaterializedCheckpoint, MaterializedRebuildPlan};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StorageBackendKind {
-    Sqlite,
-    Postgres,
+    Local,
+    Remote,
     Custom,
 }
 
 impl fmt::Display for StorageBackendKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::Sqlite => "SQLite",
-            Self::Postgres => "PostgreSQL",
+            Self::Local => "local content store",
+            Self::Remote => "remote content store",
             Self::Custom => "custom",
         })
     }
@@ -38,26 +32,17 @@ impl fmt::Display for StorageBackendKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StorageCapabilities {
     pub payload_window: bool,
-    pub full_text_search: bool,
-    pub cloud_sync: bool,
-    pub server_authoritative: bool,
     pub emergency_log: bool,
 }
 
 impl StorageCapabilities {
-    pub const SQLITE: Self = Self {
+    pub const LOCAL: Self = Self {
         payload_window: true,
-        full_text_search: true,
-        cloud_sync: false,
-        server_authoritative: false,
         emergency_log: true,
     };
 
-    pub const POSTGRES: Self = Self {
+    pub const REMOTE: Self = Self {
         payload_window: true,
-        full_text_search: true,
-        cloud_sync: false,
-        server_authoritative: true,
         emergency_log: false,
     };
 }
@@ -78,7 +63,6 @@ pub struct EmergencyLogAppendOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StorageDocumentMetadata {
     pub document_id: DocumentId,
-    pub workspace_id: u64,
     pub title: String,
     pub structure_version: u64,
     pub content_version: u64,
@@ -89,7 +73,6 @@ pub struct StorageDocumentMetadata {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadDocumentRequest {
     pub document_id: DocumentId,
-    pub workspace_id: u64,
     pub initial_payload_window_blocks: usize,
     pub visible_index_version: i64,
     pub layout_key: LayoutCacheKey,
@@ -281,115 +264,9 @@ pub trait DocumentStorage: Send + Sync {
         Ok(None)
     }
 
-    async fn search_local(
-        &self,
-        _request: LocalSearchRequest,
-    ) -> StorageResult<Vec<LocalSearchHit>> {
-        Err(crate::error::StorageError::Backend {
-            backend: self.backend_kind(),
-            message: "local full-text search is not supported by this backend".to_owned(),
-        })
-    }
-
-    async fn backlinks(
-        &self,
-        _target_document_id: DocumentId,
-        _target_block_id: Option<BlockId>,
-        _limit: usize,
-    ) -> StorageResult<Vec<BacklinkRecord>> {
-        Ok(Vec::new())
-    }
-
-    async fn rebuild_local_query_index(
-        &self,
-        _request: LocalIndexRebuildRequest,
-    ) -> StorageResult<FtsApplyResult> {
-        Err(crate::error::StorageError::Backend {
-            backend: self.backend_kind(),
-            message: "local query-index rebuild is not supported by this backend".to_owned(),
-        })
-    }
-
-    async fn create_provisional_asset(
-        &self,
-        _request: ProvisionalAssetRequest,
-    ) -> StorageResult<AssetManifestRecord> {
-        Err(crate::error::StorageError::Backend {
-            backend: self.backend_kind(),
-            message: "asset manifests are not supported by this backend".to_owned(),
-        })
-    }
-
-    async fn asset_manifest(
-        &self,
-        _asset_id: AssetId,
-    ) -> StorageResult<Option<AssetManifestRecord>> {
-        Ok(None)
-    }
-
-    async fn update_asset_upload(
-        &self,
-        _asset_id: AssetId,
-        _mutation: AssetUploadMutation,
-    ) -> StorageResult<AssetManifestRecord> {
-        Err(crate::error::StorageError::Backend {
-            backend: self.backend_kind(),
-            message: "asset upload state is not supported by this backend".to_owned(),
-        })
-    }
-
-    async fn pending_asset_uploads(
-        &self,
-        _workspace_id: u64,
-        _limit: usize,
-    ) -> StorageResult<Vec<AssetManifestRecord>> {
-        Ok(Vec::new())
-    }
-
-    async fn asset_references(&self, _asset_id: AssetId) -> StorageResult<Vec<AssetReference>> {
-        Ok(Vec::new())
-    }
-
     async fn commit(&self, batch: StorageSaveBatch) -> StorageResult<StorageSaveOutcome>;
 
     async fn flush(&self) -> StorageResult<()> {
         Ok(())
-    }
-}
-
-#[async_trait]
-pub trait StorageProvider: Send + Sync {
-    fn label(&self) -> &str;
-
-    fn open_timeout(&self) -> std::time::Duration {
-        std::time::Duration::from_secs(90)
-    }
-
-    async fn open(&self) -> StorageResult<Arc<dyn DocumentStorage>>;
-}
-
-#[derive(Clone)]
-pub struct StaticStorageProvider {
-    label: String,
-    storage: Arc<dyn DocumentStorage>,
-}
-
-impl StaticStorageProvider {
-    pub fn new(label: impl Into<String>, storage: Arc<dyn DocumentStorage>) -> Self {
-        Self {
-            label: label.into(),
-            storage,
-        }
-    }
-}
-
-#[async_trait]
-impl StorageProvider for StaticStorageProvider {
-    fn label(&self) -> &str {
-        &self.label
-    }
-
-    async fn open(&self) -> StorageResult<Arc<dyn DocumentStorage>> {
-        Ok(self.storage.clone())
     }
 }

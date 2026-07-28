@@ -4,7 +4,7 @@ use cditor_core::document::{DocumentIndex, VisibleDocumentIndex};
 use cditor_core::layout::{PAGE_POLICY_VERSION, PageLayoutIndex, PagePolicy};
 use cditor_core::schema::CURRENT_DOCUMENT_FORMAT;
 use cditor_runtime::document_runtime::{DocumentRuntimeColdStartData, DocumentRuntimeIndexSource};
-use cditor_sdk::options::{CditorBackend, CditorOptions};
+use cditor_sdk::options::{CditorDocumentSource, CditorOptions};
 use cditor_session::{
     DocumentPersistence, EmergencyRecoveryDecision, EmergencyRecoveryPlan, PersistencePipeline,
     PreparedSessionColdStartResult, SessionColdStartRequest, plan_emergency_recovery,
@@ -51,9 +51,6 @@ pub enum CditorColdStartPlan {
         label: String,
         timeout: std::time::Duration,
     },
-    Cloud {
-        endpoint: String,
-    },
     Invalid {
         reason: String,
     },
@@ -61,22 +58,19 @@ pub enum CditorColdStartPlan {
 
 impl CditorColdStartPlan {
     pub fn from_options(options: &CditorOptions) -> Self {
-        match &options.backend {
-            CditorBackend::Demo => Self::Demo,
-            CditorBackend::LargeDemo => Self::LargeDemo,
-            CditorBackend::Memory => Self::Memory,
-            CditorBackend::Persistent { provider } => match options.document_id {
+        match &options.source {
+            CditorDocumentSource::Demo => Self::Demo,
+            CditorDocumentSource::LargeDemo => Self::LargeDemo,
+            CditorDocumentSource::Memory => Self::Memory,
+            CditorDocumentSource::Storage(storage) => match options.document_id {
                 Some(document_id) => Self::Persistent {
                     document_id,
-                    label: provider.label().to_owned(),
-                    timeout: provider.open_timeout(),
+                    label: storage.backend_kind().to_string(),
+                    timeout: options.storage_load_timeout,
                 },
                 None => Self::Invalid {
-                    reason: format!("{} backend requires document_id", provider.label()),
+                    reason: format!("{} storage requires document_id", storage.backend_kind()),
                 },
-            },
-            CditorBackend::Cloud { endpoint } => Self::Cloud {
-                endpoint: endpoint.clone(),
             },
         }
     }
@@ -165,22 +159,20 @@ pub async fn load_session_from_options_with_progress(
         Some(document_id) => document_id,
         None => return Ok(None),
     };
-    progress(CditorColdStartProgress::new("正在连接数据库", 0));
-    let storage: Arc<dyn DocumentStorage> = match &options.backend {
-        CditorBackend::Demo
-        | CditorBackend::LargeDemo
-        | CditorBackend::Memory
-        | CditorBackend::Cloud { .. } => return Ok(None),
-        CditorBackend::Persistent { provider } => provider.open().await?,
+    progress(CditorColdStartProgress::new("正在读取文档", 0));
+    let storage: Arc<dyn DocumentStorage> = match &options.source {
+        CditorDocumentSource::Demo
+        | CditorDocumentSource::LargeDemo
+        | CditorDocumentSource::Memory => return Ok(None),
+        CditorDocumentSource::Storage(storage) => storage.clone(),
     };
     progress(CditorColdStartProgress::new(
-        "已连接数据库，正在读取文档",
+        "已获得内容存储，正在读取文档",
         1,
     ));
     load_session_from_storage(
         storage,
         document_id,
-        options.workspace_id.unwrap_or(1),
         cold_start_options(options),
         &mut progress,
     )
@@ -191,7 +183,6 @@ pub async fn load_session_from_options_with_progress(
 async fn load_session_from_storage(
     storage: Arc<dyn DocumentStorage>,
     document_id: cditor_core::ids::DocumentId,
-    workspace_id: u64,
     options: StorageRuntimeLoadOptions,
     progress: &mut (dyn FnMut(CditorColdStartProgress) + Send),
 ) -> StorageResult<CditorSessionLoadResult> {
@@ -212,7 +203,6 @@ async fn load_session_from_storage(
         .load_document_with_progress(
             LoadDocumentRequest {
                 document_id,
-                workspace_id,
                 initial_payload_window_blocks: options.initial_payload_window_blocks,
                 visible_index_version: options.visible_index_version,
                 layout_key: options.layout_key,
@@ -401,7 +391,3 @@ fn cold_start_options(options: &CditorOptions) -> StorageRuntimeLoadOptions {
         ..StorageRuntimeLoadOptions::default()
     }
 }
-
-#[cfg(all(test, feature = "sqlite", feature = "postgres"))]
-#[path = "storage_host_tests.rs"]
-mod tests;

@@ -279,13 +279,13 @@ mod tests {
         manager.apply_memory_edit(42, 2);
         manager.begin_save(42);
 
-        manager.save_failed(42, 2, "sqlite write fail");
+        manager.save_failed(42, 2, "content store write failed");
 
         let state = manager.state(42).unwrap();
         assert_eq!(state.persisted_version, 1);
         assert_eq!(state.memory_version, 2);
         assert_eq!(state.state, PersistenceState::SaveFailed);
-        assert_eq!(state.last_error, Some("sqlite write fail"));
+        assert_eq!(state.last_error, Some("content store write failed"));
         assert!(manager.pinned_blocks().contains(&42));
         assert_eq!(
             manager.recovery_queue().iter().copied().collect::<Vec<_>>(),
@@ -325,7 +325,7 @@ mod tests {
         manager.track_clean_block(42, 1);
         manager.apply_memory_edit(42, 2);
         manager.begin_save(42);
-        manager.save_failed(42, 2, "sqlite write fail");
+        manager.save_failed(42, 2, "content store write failed");
 
         manager.begin_save(42);
         manager.save_succeeded(42, 2);

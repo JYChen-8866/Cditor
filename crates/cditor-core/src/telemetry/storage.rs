@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StorageBackendKind {
-    Sqlite,
-    Postgres,
+    Local,
+    Remote,
     Memory,
 }
 
@@ -107,29 +107,29 @@ mod tests {
     fn events() -> Vec<StorageEvent> {
         vec![
             StorageEvent::SaveStatusChanged {
-                backend: StorageBackendKind::Sqlite,
+                backend: StorageBackendKind::Local,
                 from: SaveStatusKind::SavingLocal,
                 to: SaveStatusKind::LocallySaved,
             },
             StorageEvent::TransactionDurable {
-                backend: StorageBackendKind::Sqlite,
+                backend: StorageBackendKind::Local,
                 duration_us: 12_000,
                 operation_count: 3,
                 payload_bytes: 640,
             },
             StorageEvent::JournalReplay {
-                backend: StorageBackendKind::Sqlite,
+                backend: StorageBackendKind::Local,
                 outcome: RecoveryOutcome::ReplaySucceeded,
                 replayed_operations: 17,
                 duration_us: 90_000,
             },
             StorageEvent::Checkpoint {
-                backend: StorageBackendKind::Postgres,
+                backend: StorageBackendKind::Remote,
                 duration_us: 40_000,
                 truncated_operations: 210,
             },
             StorageEvent::Error {
-                backend: StorageBackendKind::Sqlite,
+                backend: StorageBackendKind::Local,
                 operation: StorageOperationKind::WriteTransaction,
                 error: StorageErrorKind::DiskFull,
             },

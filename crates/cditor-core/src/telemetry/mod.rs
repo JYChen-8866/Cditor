@@ -124,7 +124,7 @@ mod tests {
                 line_count: 3,
             }),
             TelemetryEvent::Storage(StorageEvent::SaveStatusChanged {
-                backend: StorageBackendKind::Sqlite,
+                backend: StorageBackendKind::Local,
                 from: SaveStatusKind::DirtyMemory,
                 to: SaveStatusKind::SavingLocal,
             }),

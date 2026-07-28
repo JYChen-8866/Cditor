@@ -7,8 +7,6 @@ members = [
     "crates/cditor-editor-protocol",
     "crates/cditor-theme",
     "crates/cditor-storage",
-    "crates/cditor-storage-postgres",
-    "crates/cditor-storage-sqlite",
     "crates/cditor-runtime",
     "crates/cditor-session",
     "crates/cditor-viewport",

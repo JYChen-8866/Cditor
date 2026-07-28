@@ -1,77 +1,65 @@
-use std::time::Duration;
-
-use std::sync::Arc;
+use std::{fmt, sync::Arc, time::Duration};
 
 use cditor_core::ids::DocumentId;
-use cditor_storage::StorageProvider;
-
-pub type WorkspaceId = u64;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CditorOptions {
-    pub workspace_id: Option<WorkspaceId>,
-    pub document_id: Option<DocumentId>,
-    pub backend: CditorBackend,
-    pub readonly: bool,
-    pub debug_overlay: bool,
-    pub payload_window_size: usize,
-    pub autosave_interval: Option<Duration>,
-}
+use cditor_storage::DocumentStorage;
 
 #[derive(Clone)]
-pub enum CditorBackend {
+pub enum CditorDocumentSource {
+    Memory,
     Demo,
     LargeDemo,
-    Memory,
-    Persistent { provider: Arc<dyn StorageProvider> },
-    Cloud { endpoint: String },
+    Storage(Arc<dyn DocumentStorage>),
 }
 
-impl PartialEq for CditorBackend {
+impl PartialEq for CditorDocumentSource {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Demo, Self::Demo)
-            | (Self::LargeDemo, Self::LargeDemo)
-            | (Self::Memory, Self::Memory) => true,
-            (Self::Persistent { provider: a }, Self::Persistent { provider: b }) => {
-                Arc::ptr_eq(a, b)
-            }
-            (Self::Cloud { endpoint: a }, Self::Cloud { endpoint: b }) => a == b,
+            (Self::Memory, Self::Memory)
+            | (Self::Demo, Self::Demo)
+            | (Self::LargeDemo, Self::LargeDemo) => true,
+            (Self::Storage(a), Self::Storage(b)) => Arc::ptr_eq(a, b),
             _ => false,
         }
     }
 }
 
-impl Eq for CditorBackend {}
+impl Eq for CditorDocumentSource {}
 
-impl std::fmt::Debug for CditorBackend {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for CditorDocumentSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Memory => formatter.write_str("Memory"),
             Self::Demo => formatter.write_str("Demo"),
             Self::LargeDemo => formatter.write_str("LargeDemo"),
-            Self::Memory => formatter.write_str("Memory"),
-            Self::Persistent { provider } => formatter
-                .debug_struct("Persistent")
-                .field("provider", &provider.label())
-                .finish(),
-            Self::Cloud { endpoint } => formatter
-                .debug_struct("Cloud")
-                .field("endpoint", endpoint)
+            Self::Storage(storage) => formatter
+                .debug_tuple("Storage")
+                .field(&storage.backend_kind())
                 .finish(),
         }
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CditorOptions {
+    pub document_id: Option<DocumentId>,
+    pub source: CditorDocumentSource,
+    pub readonly: bool,
+    pub debug_overlay: bool,
+    pub payload_window_size: usize,
+    pub autosave_interval: Option<Duration>,
+    pub storage_load_timeout: Duration,
+}
+
 impl Default for CditorOptions {
     fn default() -> Self {
         Self {
-            workspace_id: None,
             document_id: None,
-            backend: CditorBackend::Demo,
+            source: CditorDocumentSource::Memory,
             readonly: false,
             debug_overlay: false,
             payload_window_size: 128,
             autosave_interval: Some(Duration::from_millis(250)),
+            storage_load_timeout: Duration::from_secs(90),
         }
     }
 }

@@ -5,54 +5,6 @@ use cditor_core::ids::{BlockId, DocumentId};
 use cditor_core::layout::{HeightConfidence, HeightEstimate};
 use cditor_core::version::StructureVersion;
 
-pub const BLOCK_LAYOUT_TABLE_SQL: &str = r#"CREATE TABLE block_layout (
-    block_id TEXT NOT NULL,
-    layout_key_hash TEXT NOT NULL,
-    width_bucket INTEGER NOT NULL,
-    exact_width REAL,
-    content_version INTEGER NOT NULL,
-    attrs_version INTEGER NOT NULL DEFAULT 0,
-    style_version INTEGER NOT NULL DEFAULT 0,
-    font_version INTEGER NOT NULL DEFAULT 0,
-    theme_version INTEGER NOT NULL DEFAULT 0,
-    scale_factor REAL NOT NULL DEFAULT 1.0,
-    measured_height REAL,
-    estimated_height REAL NOT NULL,
-    confidence INTEGER NOT NULL DEFAULT 0,
-    max_error_hint REAL NOT NULL DEFAULT 0,
-    line_count INTEGER,
-    layout_cost INTEGER NOT NULL DEFAULT 0,
-    measured_at INTEGER,
-    PRIMARY KEY (block_id, layout_key_hash)
-);"#;
-
-pub const PAGE_LAYOUT_TABLE_SQL: &str = r#"CREATE TABLE page_layout (
-    document_id TEXT NOT NULL,
-    visible_index_version INTEGER NOT NULL DEFAULT 0,
-    structure_version INTEGER NOT NULL,
-    layout_key_hash TEXT NOT NULL,
-    page_policy_version INTEGER NOT NULL,
-    page_index INTEGER NOT NULL,
-    block_start_index INTEGER NOT NULL,
-    block_count INTEGER NOT NULL,
-    first_block_id TEXT,
-    last_block_id TEXT,
-    height REAL NOT NULL,
-    measured_ratio REAL NOT NULL DEFAULT 0,
-    confidence INTEGER NOT NULL DEFAULT 0,
-    max_error_hint REAL NOT NULL DEFAULT 0,
-    dirty INTEGER NOT NULL DEFAULT 0,
-    updated_at INTEGER NOT NULL,
-    PRIMARY KEY (
-        document_id,
-        visible_index_version,
-        structure_version,
-        layout_key_hash,
-        page_policy_version,
-        page_index
-    )
-);"#;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LayoutCacheKey {
     pub width_bucket: u16,
@@ -356,19 +308,6 @@ pub fn deserialize_confidence(value: u8) -> HeightConfidence {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn schemas_define_block_and_page_layout_tables() {
-        assert!(BLOCK_LAYOUT_TABLE_SQL.contains("CREATE TABLE block_layout"));
-        assert!(BLOCK_LAYOUT_TABLE_SQL.contains("measured_height"));
-        assert!(BLOCK_LAYOUT_TABLE_SQL.contains("estimated_height"));
-        assert!(BLOCK_LAYOUT_TABLE_SQL.contains("width_bucket"));
-        assert!(BLOCK_LAYOUT_TABLE_SQL.contains("layout_key_hash"));
-        assert!(PAGE_LAYOUT_TABLE_SQL.contains("CREATE TABLE page_layout"));
-        assert!(PAGE_LAYOUT_TABLE_SQL.contains("structure_version"));
-        assert!(PAGE_LAYOUT_TABLE_SQL.contains("page_policy_version"));
-        assert!(PAGE_LAYOUT_TABLE_SQL.contains("measured_ratio"));
-    }
 
     #[test]
     fn cold_start_loads_historical_height_without_full_measure() {

@@ -102,7 +102,6 @@ mod tests {
                 state: MaterializedDocumentState {
                     metadata: StorageDocumentMetadata {
                         document_id: 9,
-                        workspace_id: 1,
                         title: "Recovered".to_owned(),
                         structure_version: 1,
                         content_version: 1,

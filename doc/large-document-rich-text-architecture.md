@@ -228,7 +228,7 @@ UI Entity 只是当前窗口投影
 
 ```mermaid
 flowchart TD
-    A[PostgreSQL Document Store] --> B[Document Index]
+    A[Host-injected Document Store] --> B[Document Index]
     A --> C[Block Payload Cache]
 
     B --> D[Page Layout Index]
@@ -257,7 +257,7 @@ flowchart TD
 
 | 模块 | 职责 |
 |---|---|
-| `DocumentStore` | PostgreSQL 持久化，按窗口/范围读取 payload/meta，异步同步到 runtime |
+| `DocumentStore` | 宿主注入的内容端口，按窗口/范围读取 payload/meta，异步同步到 runtime |
 | `DocumentIndex` | 维护全局 block 顺序、id、depth、kind、轻量高度 meta |
 | `PageLayoutIndex` | 以 page 为单位维护全局高度与 offset 映射 |
 | `VirtualScrollState` | 维护全局滚动坐标、viewport、anchor |

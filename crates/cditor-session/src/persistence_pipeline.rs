@@ -390,7 +390,7 @@ mod tests {
         }
 
         fn capabilities(&self) -> StorageCapabilities {
-            StorageCapabilities::SQLITE
+            StorageCapabilities::LOCAL
         }
 
         async fn load_document(
@@ -447,7 +447,7 @@ mod tests {
         fn capabilities(&self) -> StorageCapabilities {
             StorageCapabilities {
                 emergency_log: true,
-                ..StorageCapabilities::POSTGRES
+                ..StorageCapabilities::REMOTE
             }
         }
 

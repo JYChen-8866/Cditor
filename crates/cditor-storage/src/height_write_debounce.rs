@@ -73,7 +73,7 @@ impl HeightWriteSink for InMemoryHeightWriteSink {
         if self.fail_next {
             self.fail_next = false;
             return Err(HeightWriteError::SinkFailed(
-                "simulated sqlite write failure",
+                "simulated content store write failure",
             ));
         }
         self.writes.push(writes.to_vec());
@@ -236,7 +236,7 @@ mod tests {
     use cditor_core::layout::{HeightConfidence, HeightEstimate};
 
     #[test]
-    fn typing_layout_height_updates_write_memory_first_not_sqlite_per_char() {
+    fn typing_layout_height_updates_write_memory_first_not_store_per_char() {
         let mut debouncer = HeightWriteDebouncer::default();
         let mut sink = InMemoryHeightWriteSink::default();
         let key = key(10, 800, 1);
@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_write_failure_moves_batch_to_dirty_queue_and_can_retry() {
+    fn store_write_failure_moves_batch_to_dirty_queue_and_can_retry() {
         let mut debouncer = HeightWriteDebouncer::default();
         let mut sink = InMemoryHeightWriteSink {
             fail_next: true,
@@ -344,7 +344,7 @@ mod tests {
         let error = debouncer.flush_if_due(500, &mut sink).unwrap_err();
         assert_eq!(
             error,
-            HeightWriteError::SinkFailed("simulated sqlite write failure")
+            HeightWriteError::SinkFailed("simulated content store write failure")
         );
         assert_eq!(debouncer.dirty_len(), 1);
 

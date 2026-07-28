@@ -177,7 +177,6 @@ pub async fn seed_mixed_storage_document(
 fn storage_contract_request(document_id: cditor_core::ids::DocumentId) -> LoadDocumentRequest {
     LoadDocumentRequest {
         document_id,
-        workspace_id: 1,
         initial_payload_window_blocks: 32,
         visible_index_version: DOCUMENT_INDEX_VISIBLE_VERSION,
         layout_key: LayoutCacheKey {
@@ -209,7 +208,7 @@ impl DocumentStorage for FailFirstStorage {
     fn capabilities(&self) -> StorageCapabilities {
         StorageCapabilities {
             emergency_log: false,
-            ..StorageCapabilities::SQLITE
+            ..StorageCapabilities::LOCAL
         }
     }
 

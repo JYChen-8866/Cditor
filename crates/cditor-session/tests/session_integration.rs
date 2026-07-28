@@ -108,7 +108,7 @@ impl DocumentStorage for ProbeStorage {
     }
 
     fn capabilities(&self) -> StorageCapabilities {
-        StorageCapabilities::POSTGRES
+        StorageCapabilities::REMOTE
     }
 
     async fn load_document(&self, _request: LoadDocumentRequest) -> StorageResult<LoadedDocument> {
