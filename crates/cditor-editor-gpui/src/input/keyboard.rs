@@ -60,19 +60,6 @@ impl CditorV2View {
             );
             return;
         }
-        if matches!(
-            command,
-            GuiInputCommand::CopySelection
-                | GuiInputCommand::CutSelection
-                | GuiInputCommand::DeleteBackward
-                | GuiInputCommand::DeleteForward
-        ) && let Some(request) = self
-            .ready_session()
-            .and_then(|session| session.selection_materialization_request().ok().flatten())
-            && self.schedule_selection_materialization(command, request, cx)
-        {
-            return;
-        }
         let should_scroll_focus = !matches!(
             command,
             GuiInputCommand::Ignore | GuiInputCommand::CopySelection

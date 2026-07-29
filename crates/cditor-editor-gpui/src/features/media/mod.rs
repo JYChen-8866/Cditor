@@ -101,7 +101,10 @@ pub fn render_image_block(
             ))
             .child(render_image_resize_handle(
                 block_id,
+                content_version,
                 width,
+                width / height.max(1.0),
+                caption_state.is_some(),
                 max_width,
                 theme,
                 resize_view,
@@ -332,7 +335,10 @@ pub(crate) fn image_width_ratio_milli_for_width(width_px: f32, max_width_px: f32
 
 fn render_image_resize_handle(
     block_id: BlockId,
+    content_version: u64,
     current_width_px: f32,
+    image_aspect_ratio: f32,
+    has_caption: bool,
     max_width_px: f32,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
@@ -353,7 +359,10 @@ fn render_image_resize_handle(
             view.update(cx, |view, cx| {
                 view.start_image_resize_from_gui(
                     block_id,
+                    content_version,
                     current_width_px,
+                    image_aspect_ratio,
+                    has_caption,
                     max_width_px,
                     event.position,
                     window,
@@ -408,7 +417,7 @@ fn render_image_resize_grip_dot(theme: GuiTheme) -> AnyElement {
         .into_any_element()
 }
 
-fn image_block_measured_height(image_height_px: f32, has_caption: bool) -> f64 {
+pub(crate) fn image_block_measured_height(image_height_px: f32, has_caption: bool) -> f64 {
     f64::from(
         image_height_px
             + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32

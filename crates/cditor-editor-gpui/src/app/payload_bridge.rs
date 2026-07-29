@@ -14,7 +14,6 @@ use cditor_session::{
 };
 
 use crate::editor_view::CditorV2View;
-use crate::input::GuiInputCommand;
 
 fn prefetch_payload_commit_cost(record_count: usize, missing_count: usize) -> WorkCost {
     let payload_count = record_count.saturating_add(missing_count);
@@ -281,7 +280,8 @@ impl CditorV2View {
 
     pub(crate) fn schedule_selection_materialization(
         &mut self,
-        command: GuiInputCommand,
+        command: cditor_editor_protocol::command::CditorCommand,
+        source: cditor_editor_protocol::command::CommandSource,
         request: SelectionMaterializationRequest,
         cx: &mut Context<Self>,
     ) -> bool {
@@ -358,7 +358,7 @@ impl CditorV2View {
                             Err(_) => false,
                         };
                         if should_replay {
-                            view.apply_input_command(command, cx);
+                            let _ = view.dispatch_command(command, source, cx);
                         }
                         view.schedule_persistent_payload_cache_trim(cx);
                         cx.notify();

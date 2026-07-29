@@ -121,7 +121,7 @@ impl DocumentEditorView {
         editor_viewport_height_px: f32,
         document_layout: DocumentLayoutMetrics,
         readonly: bool,
-        image_resize_preview: Option<(BlockId, f32)>,
+        image_resize_preview: Option<(BlockId, f32, f64)>,
         table_resize_preview: Option<TableResizePreview>,
         table_reorder_preview: Option<TableReorderPreview>,
         table_range_selection: Option<TableCellRangeSelection>,
@@ -157,7 +157,10 @@ impl DocumentEditorView {
                     DocumentTextGeometry::for_block(block, self.theme, document_layout);
                 let text_layout_width_px = text_geometry.width_px;
                 let top = block_y;
-                let height = block.layout.effective_height();
+                let height = image_resize_preview
+                    .filter(|(preview_block_id, _, _)| *preview_block_id == block.block_id)
+                    .map(|(_, _, preview_height)| preview_height)
+                    .unwrap_or_else(|| block.layout.effective_height());
                 block_y += height;
                 let text_viewport = DocumentTextViewport::for_block(
                     top,
@@ -306,8 +309,10 @@ impl DocumentEditorView {
                             table_axis_selection
                                 .filter(|selection| selection.block_id == block.block_id),
                             image_resize_preview
-                                .filter(|(preview_block_id, _)| *preview_block_id == block.block_id)
-                                .map(|(_, width)| width),
+                                .filter(|(preview_block_id, _, _)| {
+                                    *preview_block_id == block.block_id
+                                })
+                                .map(|(_, width, _)| width),
                             table_resize_preview.filter(|(preview_block_id, _, _, _)| {
                                 *preview_block_id == block.block_id
                             }),

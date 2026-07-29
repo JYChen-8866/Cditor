@@ -13,6 +13,25 @@ fn readonly_policy_allows_query_and_clipboard_without_allowing_mutation() {
 }
 
 #[test]
+fn selection_payload_materialization_covers_all_selection_consumers() {
+    for command in [
+        CditorCommand::CopySelection,
+        CditorCommand::CutSelection,
+        CditorCommand::DeleteSelection,
+        CditorCommand::DeleteBackward,
+        CditorCommand::DeleteForward,
+    ] {
+        assert!(command_requires_selection_materialization(&command));
+    }
+    assert!(!command_requires_selection_materialization(
+        &CditorCommand::SelectAll
+    ));
+    assert!(!command_requires_selection_materialization(
+        &CditorCommand::ToggleBold
+    ));
+}
+
+#[test]
 fn inline_mark_query_reports_checked_mixed_and_unchecked() {
     let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(
         1,

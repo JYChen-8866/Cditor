@@ -38,6 +38,15 @@ impl CditorV2View {
         source: CommandSource,
         cx: &mut Context<Self>,
     ) -> Result<CommandOutcome, CditorError> {
+        if command_requires_selection_materialization(&command)
+            && let Some(request) = self
+                .ready_session()
+                .and_then(|session| session.selection_materialization_request().ok().flatten())
+            && self.schedule_selection_materialization(command.clone(), source, request, cx)
+        {
+            return Ok(CommandOutcome::no_op());
+        }
+
         if let CditorCommand::PasteClipboard = &command {
             command = if let Some(item) = cx.read_from_clipboard() {
                 if let Some(asset) = image_asset_from_clipboard_item(&item) {
@@ -200,6 +209,17 @@ fn keyboard_command_reveals_focused_block(command: &CditorCommand, source: Comma
                 | CditorCommand::DeleteBackward
                 | CditorCommand::DeleteForward
         )
+}
+
+fn command_requires_selection_materialization(command: &CditorCommand) -> bool {
+    matches!(
+        command,
+        CditorCommand::CopySelection
+            | CditorCommand::CutSelection
+            | CditorCommand::DeleteSelection
+            | CditorCommand::DeleteBackward
+            | CditorCommand::DeleteForward
+    )
 }
 
 fn runtime_dispatches(command: &CditorCommand) -> bool {

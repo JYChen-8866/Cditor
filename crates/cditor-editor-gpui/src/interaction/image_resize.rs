@@ -10,9 +10,12 @@ use cditor_editor_protocol::command::{CommandSource, EditorCommand};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct GuiImageResizeDrag {
     pub(crate) block_id: BlockId,
+    content_version: u64,
     start_pointer_x: f32,
     start_width_px: f32,
     pub(crate) current_width_px: f32,
+    image_aspect_ratio: f32,
+    has_caption: bool,
     max_width_px: f32,
 }
 
@@ -20,7 +23,10 @@ impl CditorV2View {
     pub(crate) fn start_image_resize_from_gui(
         &mut self,
         block_id: BlockId,
+        content_version: u64,
         current_width_px: f32,
+        image_aspect_ratio: f32,
+        has_caption: bool,
         max_width_px: f32,
         position: Point<Pixels>,
         window: &mut Window,
@@ -38,9 +44,12 @@ impl CditorV2View {
         self.interaction.action_block_id = Some(block_id);
         self.interaction.image_resize_drag = Some(GuiImageResizeDrag {
             block_id,
+            content_version,
             start_pointer_x: f32::from(position.x),
             start_width_px: current_width_px,
             current_width_px: current_width_px.clamp(max_width_px * 0.2, max_width_px),
+            image_aspect_ratio,
+            has_caption,
             max_width_px,
         });
         if let CditorViewState::Ready(session) = &self.state {
@@ -52,10 +61,14 @@ impl CditorV2View {
         cx.notify();
     }
 
-    pub(crate) fn image_resize_preview(&self) -> Option<(BlockId, f32)> {
-        self.interaction
-            .image_resize_drag
-            .map(|drag| (drag.block_id, drag.current_width_px))
+    pub(crate) fn image_resize_preview(&self) -> Option<(BlockId, f32, f64)> {
+        self.interaction.image_resize_drag.map(|drag| {
+            let measured_height = crate::features::media::image_block_measured_height(
+                drag.current_width_px / drag.image_aspect_ratio.max(f32::EPSILON),
+                drag.has_caption,
+            );
+            (drag.block_id, drag.current_width_px, measured_height)
+        })
     }
 
     pub(crate) fn update_image_resize_drag(
@@ -73,6 +86,17 @@ impl CditorV2View {
             return true;
         }
         drag.current_width_px = next_width;
+        let measured_height = crate::features::media::image_block_measured_height(
+            next_width / drag.image_aspect_ratio.max(f32::EPSILON),
+            drag.has_caption,
+        );
+        if let Some(session) = self.ready_session() {
+            let _ = session.queue_measured_block_height(
+                drag.block_id,
+                drag.content_version,
+                measured_height,
+            );
+        }
         self.interaction.image_resize_drag = Some(drag);
         cx.notify();
         true

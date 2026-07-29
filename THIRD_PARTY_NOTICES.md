@@ -19,16 +19,25 @@ The exact resolved revisions and transitive dependencies are recorded in
 `Cargo.lock`. Binary and source distributions must retain the license material
 required by these components.
 
-## cditor-whiteboard whiteboard
+## drafft-ink whiteboard
 
-Cditor ships the standalone `cditor-whiteboard` GPUI whiteboard as a bundled workspace
+Cditor includes a GPUI adaptation of the whiteboard from `drafft-ink`. The user
+interface and Cditor integration were adapted to GPUI; upstream copyright and
+license terms remain applicable to the derived component.
+
+- Project: <https://github.com/PatWie/drafft-ink>
+- Component: `components/cditor-whiteboard-drafft`
+- Vendored upstream source: `components/cditor-whiteboard-drafft/vendor/drafft-ink`
+- Upstream license: GNU Affero General Public License v3
+- License text: `components/cditor-whiteboard-drafft/vendor/drafft-ink/LICENSE`
+
+Redistributors and operators of modified network-accessible versions must review
+and comply with the AGPL-3.0 source-availability requirements applicable to this
 component.
 
-- Component: `components/cditor-whiteboard`
-- License: GPL-3.0-or-later
-- Component documentation: `components/cditor-whiteboard/README.md`
+## cditor-whiteboard assets
 
-The whiteboard bundle includes the following third-party visual assets.
+Cditor also contains whiteboard visual assets used by its GPUI components.
 
 ### JetBrains Mono
 
