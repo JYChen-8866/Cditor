@@ -27,19 +27,19 @@ pub(crate) const CJK_BOLD: &[u8] = include_bytes!(concat!(
 ));
 const ASSISTANT_REGULAR: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/assets/Assistant-Regular.woff2"
+    "/assets/Assistant-Regular.ttf"
 ));
 const ASSISTANT_MEDIUM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/assets/Assistant-Medium.woff2"
+    "/assets/Assistant-Medium.ttf"
 ));
 const ASSISTANT_SEMIBOLD: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/assets/Assistant-SemiBold.woff2"
+    "/assets/Assistant-SemiBold.ttf"
 ));
 const ASSISTANT_BOLD: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/assets/Assistant-Bold.woff2"
+    "/assets/Assistant-Bold.ttf"
 ));
 
 pub fn bundled_fonts() -> Vec<Cow<'static, [u8]>> {
