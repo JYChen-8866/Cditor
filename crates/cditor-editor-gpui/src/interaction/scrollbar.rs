@@ -136,6 +136,10 @@ impl CditorV2View {
         if !visual.enabled {
             return;
         }
+        // Entering thumb-drag mode changes the foreground policy. Release a
+        // wheel/render request that may still own the single visible lane so the
+        // first pointer movement can use the local frame-critical load directly.
+        let _ = session.reset_payload_window_tasks();
         self.interaction.scrollbar_drag = Some(GuiScrollbarDrag);
         cx.notify();
     }
@@ -145,8 +149,17 @@ impl CditorV2View {
             return;
         }
         self.pause_caret_blink(cx);
-        if let CditorViewState::Ready(session) = &self.state {
-            let _ = session.drag_scrollbar_to_ratio(ratio);
+        let Some(session) = self.ready_session().cloned() else {
+            return;
+        };
+        let moved = session
+            .drag_scrollbar_to_ratio(ratio)
+            .is_ok_and(|update| update.is_some());
+        if moved
+            && let Ok(Some(storage_request)) = session.payload_storage_request()
+            && let Ok(block_range) = session.current_foreground_payload_range()
+        {
+            self.schedule_scrollbar_payload_window(storage_request, block_range, cx);
         }
         cx.notify();
     }

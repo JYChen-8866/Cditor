@@ -429,7 +429,12 @@ impl Render for CditorV2View {
                 let payload_plan =
                     payload_frame_plan(&projection, payload_storage_request.is_some());
                 pending_payload_window_range = payload_plan.visible;
-                pending_payload_prefetch_range = payload_plan.prefetch;
+                pending_payload_prefetch_range = self
+                    .interaction
+                    .scrollbar_drag
+                    .is_none()
+                    .then_some(payload_plan.prefetch)
+                    .flatten();
                 self.cache.code_highlights.sync_visible_window(
                     &projection,
                     self.features.code_highlight_theme,

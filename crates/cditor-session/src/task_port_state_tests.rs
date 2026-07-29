@@ -108,6 +108,104 @@ fn successful_completion_exposes_and_immediately_dispatches_latest_pending_range
 }
 
 #[test]
+fn scrollbar_drag_keeps_the_in_flight_result_and_coalesces_to_the_latest_target() {
+    let handle = EditorSession::new(cold_window_runtime(), false).into_handle();
+    let start = Instant::now();
+    let (old_token, old_request) = dispatch(&handle, 64..96, start);
+    let old_generation = old_request.generation;
+
+    assert_eq!(
+        handle
+            .schedule_scrollbar_payload_window_task(192..224, start + Duration::from_millis(1))
+            .unwrap(),
+        PayloadWindowTaskSchedule::Busy
+    );
+    assert_eq!(
+        handle.pending_payload_window_range().unwrap(),
+        Some(192..224)
+    );
+    assert_eq!(
+        handle
+            .complete_payload_window_task_with_reschedule(
+                old_token,
+                Ok(loaded_result(old_request, "intermediate")),
+            )
+            .unwrap(),
+        Some((PayloadWindowApplyDecision::Applied, Some(192..224)))
+    );
+    let PayloadWindowTaskSchedule::Dispatch {
+        token: latest_token,
+        request: latest_request,
+    } = handle
+        .schedule_pending_payload_window_task(start + Duration::from_millis(2))
+        .unwrap()
+    else {
+        panic!("latest scrollbar target must dispatch after the in-flight result")
+    };
+    assert!(latest_request.generation > old_generation);
+    assert_eq!(latest_request.block_range, 192..224);
+    assert_eq!(
+        handle
+            .complete_payload_window_task(
+                latest_token,
+                Ok(loaded_result(latest_request, "latest")),
+            )
+            .unwrap(),
+        Some(PayloadWindowApplyDecision::Applied)
+    );
+}
+
+#[test]
+fn scrollbar_drag_reuses_an_in_flight_request_for_the_same_window() {
+    let handle = EditorSession::new(cold_window_runtime(), false).into_handle();
+    let start = Instant::now();
+    let (_token, request) = dispatch(&handle, 64..96, start);
+    let generation = request.generation;
+    let loading_count = request.block_ids.len();
+
+    assert_eq!(
+        handle
+            .schedule_scrollbar_payload_window_task(64..96, start + Duration::from_millis(1))
+            .unwrap(),
+        PayloadWindowTaskSchedule::Busy
+    );
+
+    let session = handle.try_session_mut().unwrap();
+    assert_eq!(session.runtime.payload_window_generation(), generation);
+    assert_eq!(session.runtime.pending_payload_load_count(), loading_count);
+}
+
+#[test]
+fn scrollbar_drag_returning_to_the_active_window_discards_a_stale_pending_target() {
+    let handle = EditorSession::new(cold_window_runtime(), false).into_handle();
+    let start = Instant::now();
+    let (token, request) = dispatch(&handle, 64..96, start);
+
+    assert_eq!(
+        handle
+            .schedule_scrollbar_payload_window_task(192..224, start + Duration::from_millis(1))
+            .unwrap(),
+        PayloadWindowTaskSchedule::Busy
+    );
+    assert_eq!(
+        handle
+            .schedule_scrollbar_payload_window_task(64..96, start + Duration::from_millis(2))
+            .unwrap(),
+        PayloadWindowTaskSchedule::Busy
+    );
+    assert_eq!(handle.pending_payload_window_range().unwrap(), None);
+    assert_eq!(
+        handle
+            .complete_payload_window_task_with_reschedule(
+                token,
+                Ok(loaded_result(request, "active")),
+            )
+            .unwrap(),
+        Some((PayloadWindowApplyDecision::Applied, None))
+    );
+}
+
+#[test]
 fn failed_completion_releases_lane_and_reschedules_latest_pending_range() {
     let handle = EditorSession::new(cold_window_runtime(), false).into_handle();
     let start = Instant::now();

@@ -1,4 +1,6 @@
 use std::ops::Range;
+#[cfg(not(target_family = "wasm"))]
+use std::time::Duration;
 use web_time::Instant;
 
 use gpui::{AppContext, Context};
@@ -23,7 +25,141 @@ fn prefetch_payload_commit_cost(record_count: usize, missing_count: usize) -> Wo
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
+const LOCAL_SCROLLBAR_FOREGROUND_TIMEOUT: Duration = Duration::from_millis(4);
+
 impl CditorV2View {
+    pub(crate) fn schedule_scrollbar_payload_window(
+        &mut self,
+        storage_request: PayloadStorageRequest,
+        block_range: Range<usize>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(session) = self.ready_session().cloned() else {
+            return;
+        };
+        match session.schedule_scrollbar_payload_window_task(block_range.clone(), Instant::now()) {
+            Ok(PayloadWindowTaskSchedule::Dispatch { token, request }) => {
+                crate::diagnostics::payload_pipeline::trace_payload(
+                    "drag-schedule.dispatch",
+                    format_args!(
+                        "generation={} range={:?} ids={}",
+                        request.generation,
+                        request.block_range,
+                        request.block_ids.len()
+                    ),
+                );
+                #[cfg(not(target_family = "wasm"))]
+                if storage_request.is_local() {
+                    self.load_local_scrollbar_payload_window(storage_request, token, request, cx);
+                    return;
+                }
+                self.load_storage_payload_window(storage_request, token, request, cx);
+            }
+            Ok(PayloadWindowTaskSchedule::Idle) => {
+                crate::diagnostics::payload_pipeline::trace_payload_state(
+                    "drag-schedule.resident",
+                    format_args!("range={block_range:?}"),
+                );
+            }
+            Ok(PayloadWindowTaskSchedule::Busy) => {
+                crate::diagnostics::payload_pipeline::trace_payload_state(
+                    "drag-schedule.in-flight",
+                    format_args!("range={block_range:?}"),
+                );
+            }
+            Ok(other) => {
+                crate::diagnostics::payload_pipeline::trace_payload(
+                    "drag-schedule.unexpected",
+                    format_args!("range={block_range:?} result={other:?}"),
+                );
+            }
+            Err(error) => {
+                crate::diagnostics::payload_pipeline::trace_payload(
+                    "drag-schedule.error",
+                    format_args!("range={block_range:?} error={error}"),
+                );
+            }
+        }
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    fn load_local_scrollbar_payload_window(
+        &mut self,
+        storage_request: PayloadStorageRequest,
+        token: SessionTaskToken,
+        request: PayloadWindowLoadRequest,
+        cx: &mut Context<Self>,
+    ) {
+        let generation = request.generation;
+        let block_range = request.block_range.clone();
+        let requested_count = request.block_ids.len();
+        crate::diagnostics::payload_pipeline::trace_payload(
+            "drag-query.start",
+            format_args!("generation={generation} range={block_range:?} ids={requested_count}"),
+        );
+
+        // SQLite payload reads for one complete render window are sub-millisecond
+        // in the desktop trace. Completing this bounded local read before notify
+        // removes the async callback/frame gap that otherwise paints an old stable
+        // window while the thumb is already at its new position.
+        let query_started = Instant::now();
+        let fallback_storage_request = storage_request.clone();
+        let loaded = run_payload_load(
+            storage_request,
+            &request.block_ids,
+            LOCAL_SCROLLBAR_FOREGROUND_TIMEOUT,
+            "local scrollbar payload load",
+        );
+        let query_elapsed = query_started.elapsed();
+        let loaded = match loaded {
+            Ok(loaded) => loaded,
+            Err(message) => {
+                crate::diagnostics::payload_pipeline::trace_payload(
+                    "drag-query.fallback",
+                    format_args!(
+                        "generation={generation} range={block_range:?} elapsed_ms={:.2} error={message}",
+                        query_elapsed.as_secs_f64() * 1000.0
+                    ),
+                );
+                self.load_storage_payload_window(fallback_storage_request, token, request, cx);
+                return;
+            }
+        };
+        let prepare_started = Instant::now();
+        let result =
+            PayloadWindowLoadResult::prepare(request, loaded.records, loaded.missing_block_ids);
+        let prepare_elapsed = prepare_started.elapsed();
+        let Some(session) = self.ready_session().cloned() else {
+            return;
+        };
+        let applied = session.complete_payload_window_task_with_reschedule(token, Ok(result));
+        crate::diagnostics::payload_pipeline::trace_payload(
+            "drag-query.commit",
+            format_args!(
+                "generation={generation} range={block_range:?} query_ms={:.2} prepare_ms={:.2} result={applied:?}",
+                query_elapsed.as_secs_f64() * 1000.0,
+                prepare_elapsed.as_secs_f64() * 1000.0
+            ),
+        );
+
+        // No pointer event can enter while this main-thread callback is running,
+        // so an inline local completion cannot have a newer pending drag range.
+        // A non-empty range still matters for host-triggered work queued just
+        // before the drag and is dispatched through the regular async bridge.
+        let pending_range = applied
+            .as_ref()
+            .ok()
+            .and_then(|completion| completion.as_ref())
+            .and_then(|(_, pending_range)| pending_range.clone());
+        if let Some(pending_range) = pending_range
+            && let Ok(Some(storage_request)) = session.payload_storage_request()
+        {
+            self.schedule_storage_payload_window(storage_request, pending_range, cx);
+        }
+        self.schedule_persistent_payload_cache_trim(cx);
+    }
+
     pub(crate) fn schedule_storage_payload_window(
         &mut self,
         storage_request: PayloadStorageRequest,
@@ -311,7 +447,19 @@ impl CditorV2View {
                     if let Some(pending_range) = pending_range
                         && let Ok(Some(storage_request)) = session.payload_storage_request()
                     {
-                        view.schedule_storage_payload_window(storage_request, pending_range, cx);
+                        if view.interaction.scrollbar_drag.is_some() {
+                            view.schedule_scrollbar_payload_window(
+                                storage_request,
+                                pending_range,
+                                cx,
+                            );
+                        } else {
+                            view.schedule_storage_payload_window(
+                                storage_request,
+                                pending_range,
+                                cx,
+                            );
+                        }
                     }
                     view.schedule_persistent_payload_cache_trim(cx);
                     cx.notify();
@@ -351,7 +499,19 @@ impl CditorV2View {
                     if let Some(pending_range) = pending_range
                         && let Ok(Some(storage_request)) = session.payload_storage_request()
                     {
-                        view.schedule_storage_payload_window(storage_request, pending_range, cx);
+                        if view.interaction.scrollbar_drag.is_some() {
+                            view.schedule_scrollbar_payload_window(
+                                storage_request,
+                                pending_range,
+                                cx,
+                            );
+                        } else {
+                            view.schedule_storage_payload_window(
+                                storage_request,
+                                pending_range,
+                                cx,
+                            );
+                        }
                     }
                     cx.notify();
                 });

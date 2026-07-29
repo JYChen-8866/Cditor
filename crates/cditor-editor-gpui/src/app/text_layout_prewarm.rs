@@ -197,15 +197,24 @@ impl CditorV2View {
 
         pending.sort_by_key(|task| task.rank);
         let mut synchronous_visible_layouts = 0;
+        let scrollbar_dragging = self.interaction.scrollbar_drag.is_some();
         for task in pending {
             let visible_inline_slot = task.rank > 1
                 || synchronous_visible_layouts < MAX_SYNCHRONOUS_VISIBLE_LAYOUTS_PER_FRAME;
-            if visible_inline_slot
-                && self
-                    .scheduling
-                    .main_thread
-                    .try_admit_inline(task.kind, task.cost)
-            {
+            // A resident payload is not visibly real until its text layout has
+            // been shaped. The generic drag budget admits only four measurements
+            // per frame, which turns the rest of a 15-25 block viewport into
+            // deferred placeholder bars even though SQLite already returned.
+            // Shape the bounded physical viewport now; render-window overscan and
+            // segmented long text continue through the normal budgeted path.
+            let force_drag_visible = scrollbar_dragging && task.rank == 1 && visible_inline_slot;
+            let admitted = force_drag_visible
+                || (visible_inline_slot
+                    && self
+                        .scheduling
+                        .main_thread
+                        .try_admit_inline(task.kind, task.cost));
+            if admitted {
                 cached_text_layout_with_request(
                     &task.input,
                     task.theme,

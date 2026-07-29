@@ -137,6 +137,34 @@ fn planned_projection_sizes_render_overscan_by_viewport_height() {
 }
 
 #[test]
+fn scrollbar_foreground_range_guards_the_complete_render_window() {
+    let mut runtime = runtime_with_paragraph_blocks(10_000);
+    runtime
+        .layout
+        .scroll
+        .scroll_to_global_offset(
+            runtime.layout.height_index.offset_of_block(2_000).unwrap(),
+            cditor_viewport::scroll::ScrollOrigin::UserWheel,
+        )
+        .unwrap();
+    let render_range = runtime
+        .projection_for_window_planned()
+        .render_window
+        .block_range;
+    runtime.begin_scrollbar_drag(ScrollbarPolicy::default());
+
+    let foreground_range = runtime.current_foreground_payload_range();
+
+    assert_eq!(foreground_range.start, render_range.start - 2);
+    assert_eq!(
+        foreground_range.end,
+        (render_range.end + 2).min(runtime.document.visible_index.total_visible_count())
+    );
+    assert!(foreground_range.start <= render_range.start);
+    assert!(foreground_range.end >= render_range.end);
+}
+
+#[test]
 fn critical_memory_pressure_removes_render_overscan_but_keeps_visible_core() {
     let mut runtime = runtime_with_paragraph_blocks(10_000);
     let target_index = 2_000;
@@ -290,6 +318,7 @@ fn remote_target_keeps_the_stable_projection_until_visible_payloads_are_ready() 
     let request = runtime
         .plan_payload_window_load_if_needed(preparing.payload_visible_block_range.clone())
         .expect("remote visible core needs payloads");
+    assert_eq!(request.block_range, preparing.payload_visible_block_range);
     let records = request
         .block_ids
         .iter()
@@ -306,6 +335,10 @@ fn remote_target_keeps_the_stable_projection_until_visible_payloads_are_ready() 
         loaded.render_window.block_range
     );
     assert_eq!(
+        committed.render_window.block_range,
+        preparing.payload_visible_block_range
+    );
+    assert_eq!(
         committed.scroll.global_scroll_top,
         runtime.layout.scroll.global_scroll_top
     );
@@ -317,6 +350,7 @@ fn remote_target_keeps_the_stable_projection_until_visible_payloads_are_ready() 
             .unwrap();
         runtime.document.payload_window.get(block_id).is_some()
     }));
+    assert!(committed.blocks.iter().all(|block| !block.placeholder));
 }
 
 #[test]

@@ -27,6 +27,7 @@ pub enum PayloadWindowTaskSchedule {
 pub(super) struct PayloadWindowTaskState {
     last_dispatched_at: Option<Instant>,
     pending_range: Option<Range<usize>>,
+    active_range: Option<Range<usize>>,
 }
 
 impl SessionTaskCoordinator {
@@ -46,6 +47,7 @@ impl SessionTaskCoordinator {
             return false;
         }
         self.active.remove(&SessionTaskKind::PayloadWindow);
+        self.payload.active_range = None;
         true
     }
 
@@ -65,8 +67,9 @@ impl SessionTaskCoordinator {
         self.payload.pending_range.clone()
     }
 
-    fn mark_payload_dispatched(&mut self, now: Instant) {
+    fn mark_payload_dispatched(&mut self, now: Instant, block_range: Range<usize>) {
         self.payload.last_dispatched_at = Some(now);
+        self.payload.active_range = Some(block_range);
     }
 
     fn reset_payload(&mut self) -> Option<u64> {
@@ -83,6 +86,54 @@ impl SessionTaskCoordinator {
 }
 
 impl EditorSessionHandle {
+    /// Schedules the scrollbar drag's latest foreground target.
+    ///
+    /// A continuously moving thumb must not cancel every request before its
+    /// completion reaches the UI thread. Keep the current bounded read alive and
+    /// coalesce all newer events to one pending range; completion dispatches that
+    /// latest range immediately.
+    pub fn schedule_scrollbar_payload_window_task(
+        &self,
+        block_range: Range<usize>,
+        now: Instant,
+    ) -> Result<PayloadWindowTaskSchedule, ProtocolError> {
+        let mut session = self.try_session_mut()?;
+        if let Some(generation) = session.tasks.reset_prefetch() {
+            session.runtime.cancel_payload_window_load(generation);
+        }
+        if session.tasks.payload.active_range.as_ref() == Some(&block_range) {
+            // The thumb may move A -> B -> A before A's read completes. A is now
+            // the latest target again, so retaining pending B would make the
+            // completion chase a position the user has already left.
+            session.tasks.clear_pending_payload_range();
+            return Ok(PayloadWindowTaskSchedule::Busy);
+        }
+        if session.tasks.is_active(SessionTaskKind::PayloadWindow) {
+            session.tasks.queue_latest_payload_range(block_range);
+            return Ok(PayloadWindowTaskSchedule::Busy);
+        }
+        session.tasks.clear_pending_payload_range();
+        let Some(request) = session
+            .runtime
+            .plan_payload_window_load_if_needed(block_range)
+        else {
+            return Ok(PayloadWindowTaskSchedule::Idle);
+        };
+        let key = request.generation;
+        let session_id = session.id;
+        let SessionTaskAdmission::Started(token) =
+            session
+                .tasks
+                .begin(session_id, SessionTaskKind::PayloadWindow, key)
+        else {
+            unreachable!("scrollbar payload lane was checked while holding the session borrow")
+        };
+        session
+            .tasks
+            .mark_payload_dispatched(now, request.block_range.clone());
+        Ok(PayloadWindowTaskSchedule::Dispatch { token, request })
+    }
+
     pub fn schedule_payload_window_task(
         &self,
         block_range: Range<usize>,
@@ -111,7 +162,9 @@ impl EditorSessionHandle {
             .begin(session_id, SessionTaskKind::PayloadWindow, key)
         {
             SessionTaskAdmission::Started(token) => {
-                session.tasks.mark_payload_dispatched(now);
+                session
+                    .tasks
+                    .mark_payload_dispatched(now, request.block_range.clone());
                 Ok(PayloadWindowTaskSchedule::Dispatch { token, request })
             }
             SessionTaskAdmission::Duplicate | SessionTaskAdmission::Busy => {
@@ -150,7 +203,9 @@ impl EditorSessionHandle {
         else {
             unreachable!("payload lane was checked while holding the session borrow")
         };
-        session.tasks.mark_payload_dispatched(now);
+        session
+            .tasks
+            .mark_payload_dispatched(now, request.block_range.clone());
         Ok(PayloadWindowTaskSchedule::Dispatch { token, request })
     }
 

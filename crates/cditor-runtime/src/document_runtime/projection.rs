@@ -5,6 +5,8 @@ mod payload_readiness;
 mod placeholder;
 mod window_planning;
 
+const SCROLLBAR_FOREGROUND_GUARD_BLOCKS: usize = 2;
+
 impl DocumentRuntime {
     pub fn block_content_version(&self, block_id: BlockId) -> Option<u64> {
         self.document
@@ -61,12 +63,20 @@ impl DocumentRuntime {
             .max(desired_ranges.page_range.end);
         let payload_prefetch_block_range = self.payload_prefetch_range(&desired_ranges.block_range);
         self.ensure_demo_payload_window(&payload_prefetch_block_range);
+        let payload_visible_block_range = if self.layout.scrollbar_drag.is_some() {
+            // A scrollbar drag can jump thousands of blocks between frames. Treat
+            // the complete render window as foreground data so an atomic window
+            // commit never exposes placeholder overscan around a loaded core.
+            desired_ranges.block_range.clone()
+        } else {
+            desired_ranges.visible_block_range.clone()
+        };
 
         let desired = ProjectionWindowTarget {
             structure_version: self.document.visible_index.source_structure_version,
             page_range: desired_ranges.page_range.clone(),
             block_range: desired_ranges.block_range.clone(),
-            visible_block_range: desired_ranges.visible_block_range.clone(),
+            visible_block_range: payload_visible_block_range.clone(),
             presented_scroll_top: self.layout.scroll.global_scroll_top,
         };
         let desired_ready = self.payloads_resident_for(&desired.visible_block_range);
@@ -118,7 +128,7 @@ impl DocumentRuntime {
                 projection
             }
         };
-        projection.payload_visible_block_range = desired_ranges.visible_block_range;
+        projection.payload_visible_block_range = payload_visible_block_range;
         projection.payload_prefetch_block_range = payload_prefetch_block_range;
         projection.payload_prefetch_resident = payload_prefetch_resident;
         projection.layout_prefetch_page_range = layout_prefetch_page_range;
@@ -128,6 +138,29 @@ impl DocumentRuntime {
             Some(projection.blocks.len()),
         );
         projection
+    }
+
+    /// Foreground payload range for the viewport's current interaction target.
+    ///
+    /// Scrollbar dragging uses the complete render window because a large jump
+    /// has no adjacent resident window to provide real overscan content. Other
+    /// interactions retain the smaller physical viewport core.
+    pub fn current_foreground_payload_range(&self) -> Range<usize> {
+        let ranges = self.viewport_window_ranges();
+        if self.layout.scrollbar_drag.is_some() {
+            let total_visible = self.document.visible_index.total_visible_count();
+            ranges
+                .block_range
+                .start
+                .saturating_sub(SCROLLBAR_FOREGROUND_GUARD_BLOCKS)
+                ..ranges
+                    .block_range
+                    .end
+                    .saturating_add(SCROLLBAR_FOREGROUND_GUARD_BLOCKS)
+                    .min(total_visible)
+        } else {
+            ranges.visible_block_range
+        }
     }
 
     pub fn projection(&mut self, request: ProjectionRequest) -> EditorViewProjection {

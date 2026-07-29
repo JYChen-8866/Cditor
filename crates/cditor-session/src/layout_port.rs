@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
 use cditor_runtime::DocumentRuntime;
@@ -240,6 +242,13 @@ impl EditorSessionHandle {
         ratio: f64,
     ) -> Result<Option<ScrollbarDragUpdate>, ProtocolError> {
         project_drag_scrollbar_to_ratio(&mut self.try_session_mut()?.runtime, ratio)
+    }
+
+    pub fn current_foreground_payload_range(&self) -> Result<Range<usize>, ProtocolError> {
+        Ok(self
+            .try_session_mut()?
+            .runtime
+            .current_foreground_payload_range())
     }
 
     pub fn end_scrollbar_drag(&self) -> Result<Option<ScrollbarDragEnd>, ProtocolError> {

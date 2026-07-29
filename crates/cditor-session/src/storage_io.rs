@@ -1,5 +1,5 @@
 use cditor_core::edit::{EditTransaction, ExternalUndoBlobRef, UndoExternalizationJob};
-use cditor_storage::{LoadedPayloadBatch, StorageError};
+use cditor_storage::{LoadedPayloadBatch, StorageBackendKind, StorageError};
 
 use crate::{DocumentPersistence, EditorSessionHandle, SessionIoExecutor, session::busy_error};
 
@@ -83,6 +83,19 @@ impl EditorSessionHandle {
             references,
         }))
     }
+}
+
+impl PayloadStorageRequest {
+    /// Local stores have a bounded, in-process payload path suitable for the
+    /// scrollbar's frame-critical foreground read. Remote and custom stores
+    /// must stay on the asynchronous bridge because their latency is not bounded.
+    pub fn is_local(&self) -> bool {
+        supports_scrollbar_foreground_load(self.session.backend_kind())
+    }
+}
+
+const fn supports_scrollbar_foreground_load(backend: StorageBackendKind) -> bool {
+    matches!(backend, StorageBackendKind::Local)
 }
 
 pub async fn execute_payload_load(
@@ -205,7 +218,9 @@ pub fn run_undo_blob_delete(
 #[cfg(test)]
 mod tests {
     use cditor_runtime::DocumentRuntime;
+    use cditor_storage::StorageBackendKind;
 
+    use super::supports_scrollbar_foreground_load;
     use crate::EditorSession;
 
     #[test]
@@ -215,5 +230,18 @@ mod tests {
         assert!(handle.payload_storage_request().unwrap().is_none());
         assert!(handle.undo_blob_write_request().unwrap().is_none());
         assert!(handle.undo_blob_delete_request().unwrap().is_none());
+    }
+
+    #[test]
+    fn only_local_storage_uses_the_scrollbar_foreground_load() {
+        assert!(supports_scrollbar_foreground_load(
+            StorageBackendKind::Local
+        ));
+        assert!(!supports_scrollbar_foreground_load(
+            StorageBackendKind::Remote
+        ));
+        assert!(!supports_scrollbar_foreground_load(
+            StorageBackendKind::Custom
+        ));
     }
 }
