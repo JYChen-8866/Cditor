@@ -162,6 +162,16 @@ fn scrollbar_foreground_range_guards_the_complete_render_window() {
     );
     assert!(foreground_range.start <= render_range.start);
     assert!(foreground_range.end >= render_range.end);
+
+    let mut edge_runtime = runtime_with_paragraph_blocks(10_000);
+    let policy = ScrollbarPolicy::default();
+    edge_runtime.begin_scrollbar_drag(policy);
+    assert_eq!(edge_runtime.current_foreground_payload_range().start, 0);
+    edge_runtime
+        .drag_scrollbar_to_ratio(policy, 1.0)
+        .unwrap()
+        .unwrap();
+    assert_eq!(edge_runtime.current_foreground_payload_range().end, 10_000);
 }
 
 #[test]

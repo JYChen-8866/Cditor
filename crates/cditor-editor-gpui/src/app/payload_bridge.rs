@@ -26,7 +26,7 @@ fn prefetch_payload_commit_cost(record_count: usize, missing_count: usize) -> Wo
 }
 
 #[cfg(not(target_family = "wasm"))]
-const LOCAL_SCROLLBAR_FOREGROUND_TIMEOUT: Duration = Duration::from_millis(4);
+const LOCAL_SCROLLBAR_FOREGROUND_TIMEOUT: Duration = Duration::from_millis(10);
 
 impl CditorV2View {
     pub(crate) fn schedule_scrollbar_payload_window(
@@ -99,10 +99,10 @@ impl CditorV2View {
             format_args!("generation={generation} range={block_range:?} ids={requested_count}"),
         );
 
-        // SQLite payload reads for one complete render window are sub-millisecond
-        // in the desktop trace. Completing this bounded local read before notify
-        // removes the async callback/frame gap that otherwise paints an old stable
-        // window while the thumb is already at its new position.
+        // Release traces keep a complete SQLite render-window read below 5ms.
+        // The 10ms budget also covers first-drag executor/connection scheduling
+        // while staying below one 60Hz frame. Completing the read before notify
+        // avoids painting an old stable window at the thumb's new position.
         let query_started = Instant::now();
         let fallback_storage_request = storage_request.clone();
         let loaded = run_payload_load(
