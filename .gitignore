@@ -1,18 +1,38 @@
+# ── Rust build artifacts ──
 /target/
-/dist/
-/.env
-/minimal-editor-assets/
+*/target/
 
-# Local SQLite editor database and WAL sidecars
+# ── WASM build outputs ──
+*.wasm
+
+# ── Frontend build outputs ──
+/dist/
+apps/cditor-web/www/dist/
+
+# ── Node dependencies & cache ──
+node_modules/
+.npm-cache/
+
+# ── macOS installers ──
+*.dmg
+
+# ── Environment & secrets ──
+/.env
+
+# ── Local databases ──
 /workspace.cditor.db
 /workspace.cditor.db-shm
 /workspace.cditor.db-wal
 
-# macOS metadata
-.DS_Store
+# ── macOS metadata ──
+**/.DS_Store
 
-# Local AI/editor tool state
+# ── Local tool state ──
 .sc/
 
-# The workspace root owns dependency resolution.
+# ── Workspace root owns dependency resolution ──
 /crates/*/Cargo.lock
+
+# ── Minimal editor assets (temp) ──
+/minimal-editor-assets/
+/doc/
