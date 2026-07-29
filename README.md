@@ -1,8 +1,9 @@
 # Cditor
 
 English | [简体中文](README.zh-CN.md)
+<img width="1521" height="1073" alt="image" src="https://github.com/user-attachments/assets/3c38c5e0-2c44-4e4e-ac49-b6841dad2c9f" />
 
-<img width="1920" height="1140" alt="Cditor editor screenshot" src="https://github.com/user-attachments/assets/7224e1ec-a13a-4d0c-987c-75d3db81289a" />
+<img width="1510" height="1066" alt="image" src="https://github.com/user-attachments/assets/57b68491-9215-45fa-b159-967d4a2eec3c" />
 
 Cditor is an open-source, block-based rich-text editor built in Rust with [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui). It is designed for large documents, native desktop performance, stable virtual scrolling, structured editing, and embedding in other GPUI applications.
 
