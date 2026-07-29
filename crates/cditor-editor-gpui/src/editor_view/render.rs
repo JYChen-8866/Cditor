@@ -484,6 +484,27 @@ impl Render for CditorV2View {
                         .is_some_and(|drag| drag.exceeded_threshold)
                         || self.interaction.table_interaction_mode.is_dragging(),
                 };
+                let image_caption_states = projection
+                    .blocks
+                    .iter()
+                    .filter_map(|block| {
+                        let cditor_core::rich_text::BlockPayloadView::Loaded(payload) =
+                            &block.payload
+                        else {
+                            return None;
+                        };
+                        if !matches!(
+                            payload.payload,
+                            cditor_core::rich_text::BlockPayload::Image(_)
+                        ) {
+                            return None;
+                        }
+                        self.text_surface_render_state(crate::surfaces::caption::surface_id(
+                            block.block_id,
+                        ))
+                        .map(|state| (block.block_id, state))
+                    })
+                    .collect::<std::collections::HashMap<_, _>>();
                 let document_editor = DocumentEditorView::new(theme);
                 let internal_scroll = prepare_internal_scroll_projection(self, &projection);
                 pending_table_scroll_offsets.extend(internal_scroll.corrected_table_scroll_offsets);
@@ -491,6 +512,8 @@ impl Render for CditorV2View {
                     .child(document_editor.render(
                         &projection,
                         view.clone(),
+                        &image_caption_states,
+                        &self.scheduling.workers,
                         self.focus.editor.clone(),
                         self.focus.code_language.clone(),
                         self.interaction.hovered_block_id,

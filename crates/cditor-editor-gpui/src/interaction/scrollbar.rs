@@ -64,9 +64,6 @@ pub(crate) fn render_scrollbar(
         .right(px(GUI_SCROLLBAR_RIGHT_PX))
         .w(px(INTERNAL_SCROLLBAR_TRACK_WIDTH_PX))
         .h(px(page_scrollbar_track_height(viewport_height_px)))
-        .border_l(px(1.0))
-        .border_color(rgb(theme.border))
-        .bg(rgb(theme.scrollbar_track))
         .child(scrollbar)
         .into_any_element()
 }

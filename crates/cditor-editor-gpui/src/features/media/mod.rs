@@ -7,10 +7,11 @@ use gpui::{
     ParentElement, RenderImage, ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
+use crate::app::worker_admission::EditorWorkerAdmission;
 use crate::editor_view::CditorV2View;
 use crate::image_loader::{RasterImageElement, load_render_image};
 use crate::image_preview::open_image_preview;
-use crate::surfaces::TextSurfaceInteractionGeometry;
+use crate::surfaces::{TextSurfaceInteractionGeometry, TextSurfaceRenderState};
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
 use crate::theme::GuiTheme;
 use cditor_core::ids::{BlockId, SurfaceId};
@@ -37,14 +38,21 @@ pub fn render_image_block(
     layout_version: u64,
     image: &ImagePayload,
     theme: GuiTheme,
+    caption_state: Option<TextSurfaceRenderState>,
+    workers: &EditorWorkerAdmission,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
     image_resize_preview_width_px: Option<f32>,
     cx: &mut App,
 ) -> AnyElement {
-    let caption_surface_id = crate::surfaces::caption::surface_id(block_id);
-    let caption_state = view.read(cx).text_surface_render_state(caption_surface_id);
-    let loaded = load_render_image(&image.source, block_id, content_version, view.clone(), cx);
+    let loaded = load_render_image(
+        &image.source,
+        block_id,
+        content_version,
+        workers,
+        view.clone(),
+        cx,
+    );
     let display_size = loaded.as_deref().map(|render_image| {
         display_image_size_px(render_image, image, image_resize_preview_width_px)
     });
@@ -114,7 +122,7 @@ pub fn render_image_block(
         .when_some(caption_state, |this, state| {
             this.child(render_image_caption(
                 block_id,
-                caption_surface_id,
+                crate::surfaces::caption::surface_id(block_id),
                 state,
                 layout_version,
                 caption_width.unwrap_or(DEFAULT_IMAGE_MAX_WIDTH_PX),

@@ -1,3 +1,4 @@
+use crate::clipboard_assets::image_asset_from_clipboard_item;
 use gpui::{ClipboardItem, Context};
 use std::sync::OnceLock;
 
@@ -33,10 +34,38 @@ impl CditorV2View {
 
     pub(crate) fn dispatch_command(
         &mut self,
-        command: CditorCommand,
+        mut command: CditorCommand,
         source: CommandSource,
         cx: &mut Context<Self>,
     ) -> Result<CommandOutcome, CditorError> {
+        if let CditorCommand::PasteClipboard = &command {
+            command = if let Some(item) = cx.read_from_clipboard() {
+                if let Some(asset) = image_asset_from_clipboard_item(&item) {
+                    CditorCommand::InsertImageAsset {
+                        payload: asset.payload,
+                    }
+                } else if let Some(text) = item.text() {
+                    CditorCommand::ApplyClipboardData {
+                        text,
+                        metadata_json: item.metadata().cloned(),
+                    }
+                } else {
+                    return Ok(CommandOutcome::no_op());
+                }
+            } else {
+                return Ok(CommandOutcome::no_op());
+            };
+        }
+
+        if let CditorCommand::CutSelection = &command {
+            if let Some(session) = self.ready_session() {
+                if let Ok(Some(text)) = session.selected_text() {
+                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                }
+            }
+            command = CditorCommand::DeleteSelection;
+        }
+
         let code_line_break_target = code_line_break_target(self, &command);
         let reveal_focused_block = keyboard_command_reveals_focused_block(&command, source);
         let invocation = command.invocation(source);
@@ -269,8 +298,6 @@ fn gui_handler_for_command(command: &CditorCommand) -> Option<GuiInputCommand> {
         CditorCommand::Redo => GuiInputCommand::RedoFocusedBlock,
         CditorCommand::SelectAll => GuiInputCommand::SelectAllFocusedText,
         CditorCommand::CopySelection => GuiInputCommand::CopySelection,
-        CditorCommand::CutSelection => GuiInputCommand::CutSelection,
-        CditorCommand::PasteClipboard => GuiInputCommand::PasteClipboard,
         CditorCommand::DeleteSelection => GuiInputCommand::DeleteBackward,
         CditorCommand::ToggleBold => GuiInputCommand::ToggleBold,
         CditorCommand::ToggleItalic => GuiInputCommand::ToggleItalic,

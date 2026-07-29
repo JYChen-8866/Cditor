@@ -3,6 +3,7 @@ use gpui::{
     px, rgb,
 };
 
+use crate::app::worker_admission::EditorWorkerAdmission;
 use crate::block::block_content::render_block_content;
 use crate::block::block_shell::{BlockActionState, block_shell};
 use crate::document::DocumentTextViewport;
@@ -22,6 +23,7 @@ use crate::input::{
     hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,
 };
 use crate::platform::EDITOR_MONO_FONT_FAMILY;
+use crate::surfaces::TextSurfaceRenderState;
 use crate::theme::GuiTheme;
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
@@ -45,6 +47,8 @@ impl BlockView {
         view: Entity<CditorV2View>,
         focus: FocusHandle,
         code_language_focus: FocusHandle,
+        image_caption_state: Option<TextSurfaceRenderState>,
+        workers: &EditorWorkerAdmission,
         hovered: bool,
         action: BlockActionState,
         table_axis_selection: Option<TableAxisSelection>,
@@ -76,6 +80,8 @@ impl BlockView {
             view.clone(),
             focus,
             code_language_focus,
+            image_caption_state,
+            workers,
             action,
             table_axis_selection,
             image_resize_preview_width_px,
@@ -169,6 +175,8 @@ fn render_kind_content(
     view: Entity<CditorV2View>,
     focus: FocusHandle,
     code_language_focus: FocusHandle,
+    image_caption_state: Option<TextSurfaceRenderState>,
+    workers: &EditorWorkerAdmission,
     action: BlockActionState,
     table_axis_selection: Option<TableAxisSelection>,
     image_resize_preview_width_px: Option<f32>,
@@ -196,6 +204,8 @@ fn render_kind_content(
         theme,
         view.clone(),
         focus,
+        image_caption_state,
+        workers,
         image_resize_preview_width_px,
         table_resize_preview,
         table_reorder_preview,

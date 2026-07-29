@@ -5,6 +5,7 @@ use gpui::{
     ParentElement, ScrollHandle, Styled, div, prelude::FluentBuilder, px,
 };
 
+use crate::app::worker_admission::EditorWorkerAdmission;
 use crate::block::{
     BlockActionState, BlockDragOverlaySnapshot, BlockView, render_block_drag_overlay,
 };
@@ -33,6 +34,7 @@ use crate::overlays::table::{
     TableReorderOverlayViewport, render_table_horizontal_scrollbar,
     render_table_reorder_preview_overlay,
 };
+use crate::surfaces::TextSurfaceRenderState;
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::EditorViewProjection;
@@ -104,6 +106,8 @@ impl DocumentEditorView {
         &self,
         projection: &EditorViewProjection,
         view: Entity<CditorV2View>,
+        image_caption_states: &HashMap<BlockId, TextSurfaceRenderState>,
+        workers: &EditorWorkerAdmission,
         focus: FocusHandle,
         code_language_focus: FocusHandle,
         hovered_block_id: Option<BlockId>,
@@ -295,6 +299,8 @@ impl DocumentEditorView {
                             view.clone(),
                             focus.clone(),
                             code_language_focus.clone(),
+                            image_caption_states.get(&block.block_id).cloned(),
+                            workers,
                             show_hover_gutter,
                             block_action,
                             table_axis_selection

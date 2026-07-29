@@ -18,6 +18,7 @@ use cditor_core::ids::BlockId;
 use cditor_runtime::{MainThreadWorkKind, WorkCost, WorkerTaskKind};
 
 use crate::app::main_thread_scheduler::MainThreadApplyRequest;
+use crate::app::worker_admission::EditorWorkerAdmission;
 use crate::editor_view::CditorV2View;
 
 pub trait RemoteImageDataSource: Send + Sync + 'static {
@@ -155,6 +156,7 @@ pub fn load_render_image(
     src: &str,
     block_id: BlockId,
     content_version: u64,
+    workers: &EditorWorkerAdmission,
     view: Entity<CditorV2View>,
     cx: &mut App,
 ) -> Option<Arc<RenderImage>> {
@@ -173,12 +175,7 @@ pub fn load_render_image(
         };
     }
 
-    let Some(permit) = view
-        .read(cx)
-        .scheduling
-        .workers
-        .try_acquire(WorkerTaskKind::ImageDecode)
-    else {
+    let Some(permit) = workers.try_acquire(WorkerTaskKind::ImageDecode) else {
         if let Ok(mut cache) = image_cache().lock() {
             cache.abort_start(src);
         }

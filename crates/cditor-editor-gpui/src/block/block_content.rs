@@ -2,6 +2,7 @@ use gpui::{
     AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div, px,
 };
 
+use crate::app::worker_admission::EditorWorkerAdmission;
 use crate::block::placeholder::{
     render_empty_ai_hint, render_error, render_loading, render_placeholder,
 };
@@ -18,6 +19,7 @@ use crate::features::text::collection::render_collection_block;
 use crate::features::whiteboard::WhiteboardThumbnailCache;
 #[cfg(feature = "whiteboard")]
 use crate::features::whiteboard::render_whiteboard_thumbnail;
+use crate::surfaces::TextSurfaceRenderState;
 use crate::text::{
     RichTextElement, RichTextLayoutInput, SegmentedRichTextElement, SegmentedTextViewport,
 };
@@ -36,6 +38,8 @@ pub(crate) fn render_block_content(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
+    image_caption_state: Option<TextSurfaceRenderState>,
+    workers: &EditorWorkerAdmission,
     image_resize_preview_width_px: Option<f32>,
     table_resize_preview: Option<TableResizePreview>,
     table_reorder_preview: Option<TableReorderPreview>,
@@ -83,6 +87,8 @@ pub(crate) fn render_block_content(
                     block.layout.layout_version,
                     image,
                     theme,
+                    image_caption_state,
+                    workers,
                     view,
                     focus,
                     image_resize_preview_width_px,
@@ -115,8 +121,9 @@ pub(crate) fn render_block_content(
                 if matches!(
                     block.kind,
                     cditor_core::rich_text::RichBlockKind::Code { .. }
-                ) && let Some(spans) =
-                    code_highlights.spans(block.block_id, input.content_version)
+                ) && block.marked_range.is_none()
+                    && let Some(spans) =
+                        code_highlights.spans(block.block_id, input.content_version)
                 {
                     input.spans = spans;
                 }
