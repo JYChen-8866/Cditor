@@ -4,6 +4,7 @@
 
 <img width="1641" height="1099" alt="image" src="https://github.com/user-attachments/assets/3357c38d-2732-4cf2-b833-dfd055067339" />
 
+<img width="1521" height="1070" alt="image" src="https://github.com/user-attachments/assets/ecc9420f-db41-4499-8689-8fbda7b7b7f8" />
 
 Cditor 是一个使用 Rust 和 [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) 构建的开源 Block 富文本编辑器。项目专注于大文档、原生桌面性能、稳定虚拟滚动、结构化编辑，以及嵌入其他 GPUI 应用的能力。
 
