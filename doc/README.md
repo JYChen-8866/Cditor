@@ -1,0 +1,46 @@
+# Documentation Index
+
+文档以 [成熟 Notion 类编辑器总体设计与重构总计划](architecture/cditor-mature-notion-editor-master-design.md) 为目标架构；[大文档富文本架构](large-document-rich-text-architecture.md) 是其性能与虚拟化基础。新增实现应先确认文档状态，避免把历史迁移方案当成当前结构。
+
+## 当前架构与状态
+
+- [成熟 Notion 类编辑器总体设计与重构总计划](architecture/cditor-mature-notion-editor-master-design.md)
+- [大文档富文本架构](large-document-rich-text-architecture.md)
+- [大文档实现状态](large-document-rich-text-implementation-status.md)
+- [当前工程结构](architecture/project-structure.md)
+- [Workspace 依赖图快照](architecture/dependency-graph-v2.txt)
+- [V2 GUI 架构](architecture/v2-rich-text-editor-gui-architecture.md)
+- [数据库实现方案](architecture/database-implementation-plan.md)
+- [SQLite/PostgreSQL 双后端设计](architecture/sqlite-postgres-dual-backend-design.md)
+- [PostgreSQL 最小编辑器](architecture/minimal-postgres-editor.md)
+- [远程 PostgreSQL](architecture/remote-postgres.md)
+- [白板集成架构](whiteboard-integration-architecture.md)
+
+## 开发与集成指南
+
+- [Cditor 组件接口与集成指南](guides/cditor-component-integration.md)
+- [Cditor 组件 SDK 接口设计](architecture/cditor-component-sdk-api-design.md)
+- [富文本编辑器常用操作清单](guides/富文本编辑器常用操作清单.md)
+
+## 功能计划与验收
+
+- [当前编辑器问题与任务清单](plans/current-editor-issues-deep-analysis-and-task-list.md)
+- [大文档任务清单](plans/large-document-rich-text-task-list.md)
+- [表格功能计划](plans/notion-table-feature-plan.md)
+- [表格交互重设计](plans/notion-table-interaction-redesign.md)
+- [编辑器重构验收基线](acceptance/2026-07-16-editor-refactor-baseline.md)
+- [cditor-text 性能基准报告](acceptance/2026-07-16-cditor-text-benchmark.md)
+- [表格手动验收](acceptance/table-manual-acceptance.md)
+- [表格完成总结](acceptance/table-completion-summary.md)
+- [架构原型](prototypes/)
+
+## 重构设计
+
+- [Parley 编辑器架构重设计](parley-editor-architecture-redesign.md)
+- [Parley 0.11 能力审计](parley-0.11-capability-audit.md)
+- [Parley 文本布局迁移](parley-text-layout-migration.md)
+- [骨架屏加载计划](refactor/skeleton-loading-plan.md)
+
+## 历史迁移资料
+
+[历史迁移目录](archive/migrations/README.md)、[历史模块拆分记录](archive/refactors/2026-07-module-split-plan.md)与 [V2 目录迁移记录](archive/architecture/architecture-v2-migration-record.md)用于保留迁移背景，不代表当前目录和命令。当前 crate 与脚本入口以项目根目录 [README](../README.md) 为准。

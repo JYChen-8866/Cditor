@@ -35,4 +35,9 @@ node_modules/
 
 # ── Minimal editor assets (temp) ──
 /minimal-editor-assets/
-/doc/
+
+# ── Documentation prototype dependencies & caches ──
+/doc/prototypes/**/node_modules/
+/doc/prototypes/**/.npm-cache/
+/doc/prototypes/**/dist/
+/doc/prototypes/**/.vite/

@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Notion Table Prototype</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --page: #ffffff;
+      --text: #37352f;
+      --muted: #9b9a97;
+      --border: #e9e9e7;
+      --border-strong: #d8d8d6;
+      --header: #f7f6f4;
+      --hover: #f1f1ef;
+      --selected: #e8f2ff;
+      --accent: #2383e2;
+      --accent-soft: #dbeafe;
+      --menu-bg: #ffffff;
+      --shadow: 0 12px 32px rgba(15, 23, 42, .14), 0 2px 8px rgba(15, 23, 42, .08);
+      --radius: 8px;
+      --cell-h: 36px;
+      --gutter: 28px;
+      --scrollbar: #c7c7c5;
+      --scrollbar-hover: #9b9a97;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .app {
+      width: min(980px, calc(100vw - 48px));
+      margin: 48px auto;
+    }
+
+    .table-block {
+      position: relative;
+      padding-left: var(--gutter);
+    }
+
+    .table-scroll {
+      position: relative;
+      overflow: auto hidden;
+      padding-bottom: 14px;
+      scrollbar-width: none;
+    }
+
+    .table-scroll::-webkit-scrollbar { display: none; }
+
+    table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: max-content;
+      min-width: 720px;
+      table-layout: fixed;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--page);
+    }
+
+    col { width: 180px; }
+    col:first-child { width: 170px; }
+
+    td {
+      position: relative;
+      min-width: 120px;
+      height: var(--cell-h);
+      min-height: var(--cell-h);
+      padding: 7px 10px;
+      border-top: 1px solid transparent;
+      border-left: 1px solid transparent;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      outline: 0;
+      background: var(--page);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    tr:first-child td {
+      background: var(--header);
+      font-weight: 500;
+    }
+
+    td:last-child { border-right: 0; }
+    tr:last-child td { border-bottom: 0; }
+    tr:first-child td { border-top-color: transparent; }
+    td:first-child { border-left-color: transparent; }
+
+    td:hover { background: var(--hover); }
+    tr:first-child td:hover { background: #efeeeb; }
+
+    td.hover-row-edge {
+      border-left-color: #9b9a97;
+    }
+
+    td.hover-col-edge {
+      border-top-color: #9b9a97;
+    }
+
+    td.active {
+      background: var(--page);
+      box-shadow: inset 0 0 0 2px var(--accent);
+      z-index: 3;
+    }
+
+    td.range {
+      background: var(--selected);
+      border-color: var(--selected);
+    }
+
+    td.row-selected,
+    td.col-selected {
+      background: transparent;
+    }
+
+    td[contenteditable="true"]:empty::before {
+      content: "请输入...";
+      color: var(--muted);
+    }
+
+    .row-handle,
+    .col-handle {
+      position: absolute;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      opacity: 0;
+      pointer-events: none;
+      cursor: grab;
+      user-select: none;
+      transition: opacity .12s, background .12s, color .12s, transform .12s;
+      z-index: 6;
+    }
+
+    .row-handle {
+      left: calc(var(--gutter) - 28px);
+      width: 16px;
+      height: 28px;
+    }
+
+    .col-handle {
+      top: -15px;
+      width: 28px;
+      height: 16px;
+    }
+
+    .row-handle.visible,
+    .col-handle.visible,
+    .row-handle.selected,
+    .col-handle.selected {
+      opacity: 1;
+    }
+
+    .row-handle.selected,
+    .col-handle.selected {
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 14px;
+      border-radius: 5px;
+      color: #ffffff;
+      background: var(--accent);
+      transform: translate(-3px, 0);
+      z-index: 12;
+      pointer-events: auto;
+    }
+
+    .row-handle.selected {
+      width: 16px;
+      height: 22px;
+      transform: translate(0, -3px);
+    }
+
+    .dots {
+      width: 10px;
+      height: 10px;
+      display: grid;
+      grid-template-columns: repeat(2, 2px);
+      grid-template-rows: repeat(2, 2px);
+      gap: 2px;
+    }
+
+    .dots i {
+      width: 2px;
+      height: 2px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .row-handle:not(.selected) .dots,
+    .col-handle:not(.selected) .dots {
+      display: none;
+    }
+
+    .axis-outline {
+      position: absolute;
+      display: none;
+      pointer-events: none;
+      z-index: 9;
+    }
+
+    .axis-outline span {
+      position: absolute;
+      background: var(--accent);
+      border-radius: 1px;
+    }
+
+    .axis-outline .edge-top,
+    .axis-outline .edge-bottom {
+      height: 2px;
+    }
+
+    .axis-outline .edge-left,
+    .axis-outline .edge-right {
+      width: 2px;
+    }
+
+    .axis-outline .edge-top-left,
+    .axis-outline .edge-top-right {
+      top: 0;
+    }
+
+    .axis-outline .edge-bottom {
+      left: 0;
+      right: 0;
+      bottom: 0;
+    }
+
+    .axis-outline .edge-left {
+      left: 0;
+      top: 0;
+      bottom: 0;
+    }
+
+    .axis-outline .edge-right {
+      right: 0;
+      top: 0;
+      bottom: 0;
+    }
+
+    .axis-outline .edge-gap {
+      position: absolute;
+      top: 0;
+      height: 2px;
+      background: #9b9a97;
+      border-radius: 2px;
+    }
+
+    .cell-gutter {
+      position: absolute;
+      display: none;
+      width: 24px;
+      height: 14px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      pointer-events: auto;
+      cursor: grab;
+      z-index: 14;
+    }
+
+    .cell-gutter::before {
+      content: "";
+      position: absolute;
+      left: 5px;
+      top: 6px;
+      width: 14px;
+      height: 2px;
+      border-radius: 2px;
+      background: #9b9a97;
+    }
+
+    .cell-gutter.row {
+      width: 14px;
+      height: 24px;
+    }
+
+    .cell-gutter.row::before {
+      left: 6px;
+      top: 5px;
+      width: 2px;
+      height: 14px;
+    }
+
+    .cell-gutter .dots {
+      display: none;
+    }
+
+    .resize-line,
+    .drop-line {
+      position: absolute;
+      pointer-events: none;
+      background: var(--accent);
+      z-index: 8;
+      display: none;
+    }
+
+    .resize-line.vertical,
+    .drop-line.vertical {
+      top: 0;
+      width: 2px;
+      height: calc(100% - 14px);
+    }
+
+    .resize-line.horizontal,
+    .drop-line.horizontal {
+      left: var(--gutter);
+      height: 2px;
+      width: calc(100% - var(--gutter));
+    }
+
+    .menu {
+      position: absolute;
+      width: 230px;
+      max-height: 286px;
+      overflow: auto;
+      padding: 6px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--menu-bg);
+      box-shadow: var(--shadow);
+      z-index: 20;
+      display: none;
+    }
+
+    .menu input {
+      width: 100%;
+      height: 30px;
+      margin-bottom: 6px;
+      padding: 0 9px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      outline: 0;
+      font: inherit;
+    }
+
+    .menu button {
+      width: 100%;
+      height: 32px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 8px;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .menu button:hover { background: var(--hover); }
+    .menu .sep {
+      height: 1px;
+      margin: 5px 4px;
+      background: var(--border);
+    }
+
+    .custom-scrollbar {
+      position: absolute;
+      left: var(--gutter);
+      right: 0;
+      bottom: 0;
+      height: 8px;
+      border-radius: 999px;
+      background: transparent;
+    }
+
+    .thumb {
+      position: absolute;
+      top: 0;
+      height: 8px;
+      min-width: 32px;
+      border-radius: 999px;
+      background: var(--scrollbar);
+      cursor: grab;
+    }
+
+    .thumb:hover,
+    .thumb.dragging {
+      background: var(--scrollbar-hover);
+      cursor: grabbing;
+    }
+
+    .caption {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="table-block" id="tableBlock">
+      <div class="table-scroll" id="scrollArea">
+        <table id="table">
+          <colgroup>
+            <col><col><col><col><col>
+          </colgroup>
+          <tbody>
+            <tr>
+              <td contenteditable="true">Name</td>
+              <td contenteditable="true">Status</td>
+              <td contenteditable="true">Owner</td>
+              <td contenteditable="true">Notes</td>
+              <td contenteditable="true">Date</td>
+            </tr>
+            <tr>
+              <td contenteditable="true">Prototype</td>
+              <td contenteditable="true">In progress</td>
+              <td contenteditable="true">Cditor</td>
+              <td contenteditable="true">水平滚动、选区、行列菜单</td>
+              <td contenteditable="true">Today</td>
+            </tr>
+            <tr>
+              <td contenteditable="true">IME</td>
+              <td contenteditable="true">Todo</td>
+              <td contenteditable="true"></td>
+              <td contenteditable="true">候选框跟随单元格 caret</td>
+              <td contenteditable="true"></td>
+            </tr>
+            <tr>
+              <td contenteditable="true">Resize</td>
+              <td contenteditable="true">Done</td>
+              <td contenteditable="true"></td>
+              <td contenteditable="true">拖动边缘调整列宽</td>
+              <td contenteditable="true"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="custom-scrollbar" id="bar"><div class="thumb" id="thumb"></div></div>
+      <div class="axis-outline" id="axisOutline">
+        <span class="edge-top edge-top-left"></span>
+        <span class="edge-top edge-top-right"></span>
+        <span class="edge-gap"></span>
+        <span class="edge-bottom"></span>
+        <span class="edge-left"></span>
+        <span class="edge-right"></span>
+      </div>
+      <button class="cell-gutter col" id="cellColGutter" aria-label="Select column">
+        <span class="dots"><i></i><i></i><i></i><i></i></span>
+      </button>
+      <button class="cell-gutter row" id="cellRowGutter" aria-label="Select row">
+        <span class="dots"><i></i><i></i><i></i><i></i></span>
+      </button>
+      <div class="resize-line" id="resizeLine"></div>
+      <div class="drop-line" id="dropLine"></div>
+      <div class="menu" id="menu">
+        <input id="menuSearch" placeholder="搜索操作..." />
+        <div id="menuItems"></div>
+      </div>
+    </section>
+    <p class="caption">一个静态 HTML 原型：单击编辑，拖选选区，点击行/列小点打开菜单，拖动列边缘改宽，底部滚动条可拖动。</p>
+  </main>
+
+  <script>
+    const block = document.querySelector("#tableBlock");
+    const scrollArea = document.querySelector("#scrollArea");
+    const table = document.querySelector("#table");
+    const tbody = table.tBodies[0];
+    const bar = document.querySelector("#bar");
+    const thumb = document.querySelector("#thumb");
+    const menu = document.querySelector("#menu");
+    const menuSearch = document.querySelector("#menuSearch");
+    const menuItems = document.querySelector("#menuItems");
+    const axisOutline = document.querySelector("#axisOutline");
+    const cellColGutter = document.querySelector("#cellColGutter");
+    const cellRowGutter = document.querySelector("#cellRowGutter");
+    const resizeLine = document.querySelector("#resizeLine");
+
+    let activeCell = null;
+    let selected = { type: null, index: null };
+    let handles = [];
+    let dragSelect = null;
+    let resizing = null;
+    let scrolling = null;
+
+    const actions = {
+      row: [
+        ["insert-above", "↑", "在上方插入"],
+        ["insert-below", "↓", "在下方插入"],
+        ["duplicate-row", "⧉", "创建副本"],
+        ["delete-row", "⌫", "删除行"],
+        ["sep"],
+        ["align-left", "↤", "左对齐"],
+        ["align-center", "↔", "居中"],
+        ["align-right", "↦", "右对齐"],
+        ["merge", "▦", "合并单元格"],
+      ],
+      col: [
+        ["insert-left", "←", "在左侧插入"],
+        ["insert-right", "→", "在右侧插入"],
+        ["duplicate-col", "⧉", "创建副本"],
+        ["delete-col", "⌫", "删除列"],
+        ["sep"],
+        ["align-left", "↤", "左对齐"],
+        ["align-center", "↔", "居中"],
+        ["align-right", "↦", "右对齐"],
+        ["merge", "▦", "合并单元格"],
+      ]
+    };
+
+    function cells() {
+      return [...tbody.rows].flatMap(row => [...row.cells]);
+    }
+
+    function cellAt(row, col) {
+      return tbody.rows[row]?.cells[col] || null;
+    }
+
+    function indexOfCell(cell) {
+      return {
+        row: cell.parentElement.rowIndex,
+        col: cell.cellIndex
+      };
+    }
+
+    function renderHandles() {
+      handles.forEach(handle => handle.remove());
+      handles = [];
+
+      [...tbody.rows].forEach((row, rowIndex) => {
+        const first = row.cells[0];
+        const rect = first.getBoundingClientRect();
+        const root = block.getBoundingClientRect();
+        const handle = makeHandle("row", rowIndex);
+        handle.style.top = `${rect.top - root.top + rect.height / 2 - 14}px`;
+        block.appendChild(handle);
+        handles.push(handle);
+      });
+
+      [...tbody.rows[0].cells].forEach((cell, colIndex) => {
+        const rect = cell.getBoundingClientRect();
+        const root = block.getBoundingClientRect();
+        const handle = makeHandle("col", colIndex);
+        handle.style.left = `${rect.left - root.left + rect.width / 2 - 14}px`;
+        block.appendChild(handle);
+        handles.push(handle);
+      });
+      renderAxisOutline();
+    }
+
+    function makeHandle(type, index) {
+      const handle = document.createElement("button");
+      handle.className = `${type === "row" ? "row" : "col"}-handle`;
+      handle.dataset.type = type;
+      handle.dataset.index = index;
+      handle.innerHTML = `<span class="dots"><i></i><i></i><i></i><i></i></span>`;
+      handle.addEventListener("mouseenter", () => handle.classList.add("visible"));
+      handle.addEventListener("mouseleave", () => {
+        if (!handle.classList.contains("selected")) handle.classList.remove("visible");
+      });
+      handle.addEventListener("mousedown", event => {
+        event.preventDefault();
+        selectAxis(type, index);
+        openMenu(type, index, handle);
+      });
+      return handle;
+    }
+
+    function clearClasses() {
+      cells().forEach(cell => cell.classList.remove("active", "range", "row-selected", "col-selected", "hover-row-edge", "hover-col-edge"));
+      handles.forEach(handle => handle.classList.remove("selected"));
+      axisOutline.style.display = "none";
+    }
+
+    function selectAxis(type, index) {
+      selected = { type, index };
+      activeCell = null;
+      hideCellGutters(true);
+      clearClasses();
+      if (type === "row") {
+        [...tbody.rows[index].cells].forEach(cell => cell.classList.add("row-selected"));
+      } else {
+        [...tbody.rows].forEach(row => row.cells[index]?.classList.add("col-selected"));
+      }
+      handles
+        .filter(handle => handle.dataset.type === type && Number(handle.dataset.index) === index)
+        .forEach(handle => handle.classList.add("visible", "selected"));
+      renderAxisOutline();
+    }
+
+    function revealHoverHandles(row, col) {
+      clearHoverEdges();
+      handles.forEach(handle => {
+        if (!handle.classList.contains("selected")) handle.classList.remove("visible");
+      });
+      handles
+        .filter(handle => Number(handle.dataset.index) === row && handle.dataset.type === "row")
+        .forEach(handle => handle.classList.add("visible"));
+      handles
+        .filter(handle => Number(handle.dataset.index) === col && handle.dataset.type === "col")
+        .forEach(handle => handle.classList.add("visible"));
+      cellAt(row, 0)?.classList.add("hover-row-edge");
+      cellAt(0, col)?.classList.add("hover-col-edge");
+    }
+
+    function clearHoverEdges() {
+      cells().forEach(cell => cell.classList.remove("hover-row-edge", "hover-col-edge"));
+    }
+
+    function showCellGutters(cell) {
+      const rect = cell.getBoundingClientRect();
+      const root = block.getBoundingClientRect();
+      const { row, col } = indexOfCell(cell);
+      cellColGutter.dataset.row = row;
+      cellColGutter.dataset.col = col;
+      cellRowGutter.dataset.row = row;
+      cellRowGutter.dataset.col = col;
+      cellColGutter.style.left = `${rect.left - root.left + rect.width / 2 - 11}px`;
+      cellColGutter.style.top = `${rect.top - root.top - 7}px`;
+      cellRowGutter.style.left = `${rect.left - root.left - 7}px`;
+      cellRowGutter.style.top = `${rect.top - root.top + rect.height / 2 - 11}px`;
+      cellColGutter.style.display = "block";
+      cellRowGutter.style.display = "block";
+    }
+
+    function hideCellGutters(force = false) {
+      if (activeCell && !force) return;
+      [cellColGutter, cellRowGutter].forEach(gutter => {
+        gutter.style.display = "none";
+      });
+    }
+
+    function refreshActiveCellGutter() {
+      if (activeCell) showCellGutters(activeCell);
+    }
+
+    function renderAxisOutline() {
+      if (!selected.type && selected.type !== "row" && selected.type !== "col") {
+        axisOutline.style.display = "none";
+        return;
+      }
+      const root = block.getBoundingClientRect();
+      const targetCells = selected.type === "row"
+        ? [...tbody.rows[selected.index].cells]
+        : [...tbody.rows].map(row => row.cells[selected.index]).filter(Boolean);
+      if (!targetCells.length) {
+        axisOutline.style.display = "none";
+        return;
+      }
+      const rects = targetCells.map(cell => cell.getBoundingClientRect());
+      const left = Math.min(...rects.map(rect => rect.left)) - root.left;
+      const top = Math.min(...rects.map(rect => rect.top)) - root.top;
+      const right = Math.max(...rects.map(rect => rect.right)) - root.left;
+      const bottom = Math.max(...rects.map(rect => rect.bottom)) - root.top;
+      axisOutline.style.left = `${left - 1}px`;
+      axisOutline.style.top = `${top - 1}px`;
+      axisOutline.style.width = `${right - left + 2}px`;
+      axisOutline.style.height = `${bottom - top + 2}px`;
+      const width = right - left + 2;
+      const gapWidth = selected.type === "col" ? 18 : 0;
+      const selectedRect = rects[0];
+      const selectedCenter = selected.type === "col"
+        ? selectedRect.left - root.left - left + selectedRect.width / 2
+        : width / 2;
+      const gapLeft = selectedCenter - gapWidth / 2;
+      const topLeft = axisOutline.querySelector(".edge-top-left");
+      const topRight = axisOutline.querySelector(".edge-top-right");
+      const gap = axisOutline.querySelector(".edge-gap");
+      topLeft.style.left = "0px";
+      topLeft.style.width = `${Math.max(0, gapLeft)}px`;
+      topRight.style.left = `${gapLeft + gapWidth}px`;
+      topRight.style.right = "0px";
+      gap.style.display = selected.type === "col" ? "block" : "none";
+      gap.style.left = `${gapLeft}px`;
+      gap.style.width = `${gapWidth}px`;
+      axisOutline.style.display = "block";
+    }
+
+    function selectRange(from, to) {
+      clearClasses();
+      const top = Math.min(from.row, to.row);
+      const bottom = Math.max(from.row, to.row);
+      const left = Math.min(from.col, to.col);
+      const right = Math.max(from.col, to.col);
+      for (let row = top; row <= bottom; row++) {
+        for (let col = left; col <= right; col++) {
+          cellAt(row, col)?.classList.add("range");
+        }
+      }
+    }
+
+    function setActive(cell) {
+      activeCell = cell;
+      selected = { type: null, index: null };
+      clearClasses();
+      cell.classList.add("active");
+      showCellGutters(cell);
+      closeMenu();
+    }
+
+    function openMenu(type, index, anchor) {
+      menu.dataset.type = type;
+      menu.dataset.index = index;
+      menuSearch.value = "";
+      renderMenuItems(actions[type]);
+      const rect = anchor.getBoundingClientRect();
+      const root = block.getBoundingClientRect();
+      const top = Math.min(rect.bottom - root.top + 7, window.innerHeight - root.top - 310);
+      const left = Math.min(rect.left - root.left, block.clientWidth - 238);
+      menu.style.top = `${Math.max(0, top)}px`;
+      menu.style.left = `${Math.max(0, left)}px`;
+      menu.style.display = "block";
+      menuSearch.focus();
+    }
+
+    function closeMenu() {
+      menu.style.display = "none";
+    }
+
+    function renderMenuItems(items) {
+      const query = menuSearch.value.trim().toLowerCase();
+      menuItems.innerHTML = "";
+      items
+        .filter(item => item[0] === "sep" || item[2].toLowerCase().includes(query))
+        .forEach(item => {
+          if (item[0] === "sep") {
+            menuItems.appendChild(Object.assign(document.createElement("div"), { className: "sep" }));
+            return;
+          }
+          const button = document.createElement("button");
+          button.innerHTML = `<span>${item[1]}</span><span>${item[2]}</span>`;
+          button.addEventListener("click", () => runAction(item[0]));
+          menuItems.appendChild(button);
+        });
+    }
+
+    function runAction(action) {
+      const type = menu.dataset.type;
+      const index = Number(menu.dataset.index);
+      if (action === "insert-above") insertRow(index);
+      if (action === "insert-below") insertRow(index + 1);
+      if (action === "duplicate-row") duplicateRow(index);
+      if (action === "delete-row") tbody.rows.length > 1 && tbody.deleteRow(index);
+      if (action === "insert-left") insertColumn(index);
+      if (action === "insert-right") insertColumn(index + 1);
+      if (action === "duplicate-col") duplicateColumn(index);
+      if (action === "delete-col") [...tbody.rows].forEach(row => row.cells.length > 1 && row.deleteCell(index));
+      if (action.startsWith("align-")) applyAlign(action.replace("align-", ""), type, index);
+      closeMenu();
+      renderHandles();
+      syncScrollbar();
+    }
+
+    function insertRow(index) {
+      const row = tbody.insertRow(index);
+      for (let i = 0; i < tbody.rows[0].cells.length; i++) {
+        const cell = row.insertCell(i);
+        cell.contentEditable = "true";
+      }
+      bindCells();
+    }
+
+    function duplicateRow(index) {
+      const clone = tbody.rows[index].cloneNode(true);
+      tbody.insertBefore(clone, tbody.rows[index + 1] || null);
+      bindCells();
+    }
+
+    function insertColumn(index) {
+      [...tbody.rows].forEach(row => {
+        const cell = row.insertCell(index);
+        cell.contentEditable = "true";
+      });
+      const col = document.createElement("col");
+      table.querySelector("colgroup").insertBefore(col, table.querySelectorAll("col")[index] || null);
+      bindCells();
+    }
+
+    function duplicateColumn(index) {
+      [...tbody.rows].forEach(row => {
+        const clone = row.cells[index].cloneNode(true);
+        row.insertBefore(clone, row.cells[index + 1] || null);
+      });
+      const col = document.createElement("col");
+      table.querySelector("colgroup").insertBefore(col, table.querySelectorAll("col")[index + 1] || null);
+      bindCells();
+    }
+
+    function applyAlign(align, type, index) {
+      const value = align === "center" ? "center" : align === "right" ? "right" : "left";
+      if (type === "row") [...tbody.rows[index].cells].forEach(cell => cell.style.textAlign = value);
+      if (type === "col") [...tbody.rows].forEach(row => row.cells[index].style.textAlign = value);
+    }
+
+    function bindCells() {
+      cells().forEach(cell => {
+        cell.onmousedown = event => {
+          setActive(cell);
+          dragSelect = { start: indexOfCell(cell), current: indexOfCell(cell) };
+        };
+        cell.onmouseenter = () => {
+          const { row, col } = indexOfCell(cell);
+          revealHoverHandles(row, col);
+          if (!activeCell) showCellGutters(cell);
+          if (dragSelect && window.getSelection().isCollapsed) {
+            dragSelect.current = indexOfCell(cell);
+            selectRange(dragSelect.start, dragSelect.current);
+          }
+        };
+        cell.onmouseleave = () => {
+          if (!activeCell) hideCellGutters();
+        };
+        cell.onmousemove = event => maybeStartResize(event, cell);
+      });
+    }
+
+    function maybeStartResize(event, cell) {
+      const rect = cell.getBoundingClientRect();
+      const nearRight = rect.right - event.clientX < 5;
+      cell.style.cursor = nearRight ? "col-resize" : "text";
+    }
+
+    table.addEventListener("mousedown", event => {
+      const cell = event.target.closest("td");
+      if (!cell) return;
+      const rect = cell.getBoundingClientRect();
+      if (rect.right - event.clientX < 5) {
+        event.preventDefault();
+        resizing = {
+          col: cell.cellIndex,
+          startX: event.clientX,
+          startWidth: cell.offsetWidth
+        };
+        resizeLine.className = "resize-line vertical";
+        resizeLine.style.display = "block";
+      }
+    });
+
+    table.addEventListener("mouseleave", () => {
+      clearHoverEdges();
+      handles.forEach(handle => {
+        if (!handle.classList.contains("selected")) handle.classList.remove("visible");
+      });
+      hideCellGutters();
+    });
+
+    cellColGutter.addEventListener("mousedown", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      selectAxis("col", Number(cellColGutter.dataset.col));
+    });
+
+    cellRowGutter.addEventListener("mousedown", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      selectAxis("row", Number(cellRowGutter.dataset.row));
+    });
+
+    window.addEventListener("mousemove", event => {
+      if (resizing) {
+        const next = Math.max(120, resizing.startWidth + event.clientX - resizing.startX);
+        const col = table.querySelectorAll("col")[resizing.col];
+        col.style.width = `${next}px`;
+        const root = block.getBoundingClientRect();
+        resizeLine.style.left = `${event.clientX - root.left}px`;
+        syncScrollbar();
+      }
+      if (scrolling) {
+        const dx = event.clientX - scrolling.startX;
+        const maxScroll = scrollArea.scrollWidth - scrollArea.clientWidth;
+        const maxThumb = bar.clientWidth - thumb.offsetWidth;
+        scrollArea.scrollLeft = scrolling.startScroll + dx * (maxScroll / Math.max(1, maxThumb));
+      }
+    });
+
+    window.addEventListener("mouseup", () => {
+      dragSelect = null;
+      resizing = null;
+      resizeLine.style.display = "none";
+      scrolling = null;
+      thumb.classList.remove("dragging");
+      renderHandles();
+    });
+
+    thumb.addEventListener("mousedown", event => {
+      event.preventDefault();
+      scrolling = {
+        startX: event.clientX,
+        startScroll: scrollArea.scrollLeft
+      };
+      thumb.classList.add("dragging");
+    });
+
+    scrollArea.addEventListener("scroll", () => {
+      syncScrollbar();
+      renderHandles();
+      refreshActiveCellGutter();
+    });
+
+    scrollArea.addEventListener("wheel", event => {
+      if (Math.abs(event.deltaX) > 0 || event.shiftKey) {
+        event.preventDefault();
+        scrollArea.scrollLeft += event.deltaX || event.deltaY;
+      }
+    }, { passive: false });
+
+    menuSearch.addEventListener("input", () => renderMenuItems(actions[menu.dataset.type] || []));
+    document.addEventListener("mousedown", event => {
+      if (!menu.contains(event.target) && !event.target.closest(".row-handle, .col-handle")) closeMenu();
+    });
+
+    function syncScrollbar() {
+      const maxScroll = scrollArea.scrollWidth - scrollArea.clientWidth;
+      if (maxScroll <= 0) {
+        thumb.style.display = "none";
+        return;
+      }
+      thumb.style.display = "block";
+      const width = Math.max(32, bar.clientWidth * (scrollArea.clientWidth / scrollArea.scrollWidth));
+      const maxThumb = bar.clientWidth - width;
+      thumb.style.width = `${width}px`;
+      thumb.style.left = `${maxThumb * (scrollArea.scrollLeft / maxScroll)}px`;
+    }
+
+    bindCells();
+    renderHandles();
+    syncScrollbar();
+    window.addEventListener("resize", () => {
+      renderHandles();
+      refreshActiveCellGutter();
+      syncScrollbar();
+    });
+  </script>
+</body>
+</html>
