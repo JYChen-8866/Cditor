@@ -14,6 +14,10 @@ pub(crate) mod trace;
 
 pub use actions::bind_cditor_keys;
 pub use ai_prompt::{AiPromptEditAction, AiPromptKeyResult, AiPromptState, apply_ai_prompt_action};
+#[allow(
+    unused_imports,
+    reason = "kept as part of the input module's public language-item API"
+)]
 pub use code_language::{
     CODE_LANGUAGE_VISIBLE_SUGGESTIONS, CodeLanguageEditAction, CodeLanguageEditKeyResult,
     CodeLanguageEditState, CodeLanguageItem, CodeLanguagePopupPlacement,

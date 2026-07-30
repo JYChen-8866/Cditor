@@ -1,4 +1,4 @@
-use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
+use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis, SvgIcon};
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::RichBlockKind;
 use gpui::{
@@ -19,6 +19,21 @@ const SLASH_MENU_PANEL_PADDING_PX: f32 = 4.0;
 const SLASH_MENU_ICON_SIZE_PX: f32 = 36.0;
 const SLASH_MENU_VIEWPORT_MARGIN_PX: f32 = 8.0;
 const SLASH_MENU_ANCHOR_GAP_PX: f32 = 4.0;
+const SLASH_MENU_SVG_ICON_SIZE_PX: f32 = 20.0;
+
+const ICON_AI: &[u8] = include_bytes!("../../../../assets/icons/inline-ai.svg");
+const ICON_HEADING_1: &[u8] = include_bytes!("../../../../assets/icons/heading-1.svg");
+const ICON_HEADING_2: &[u8] = include_bytes!("../../../../assets/icons/heading-2.svg");
+const ICON_HEADING_3: &[u8] = include_bytes!("../../../../assets/icons/heading-3.svg");
+const ICON_TODO: &[u8] = include_bytes!("../../../../assets/icons/todo.svg");
+const ICON_BULLETED_LIST: &[u8] = include_bytes!("../../../../assets/icons/bulleted-list.svg");
+const ICON_NUMBER_LIST: &[u8] = include_bytes!("../../../../assets/icons/number-list.svg");
+const ICON_QUOTE: &[u8] = include_bytes!("../../../../assets/icons/quote.svg");
+const ICON_CODE: &[u8] = include_bytes!("../../../../assets/icons/code.svg");
+const ICON_MATH: &[u8] = include_bytes!("../../../../assets/icons/math.svg");
+const ICON_MERMAID: &[u8] = include_bytes!("../../../../assets/icons/mermaid.svg");
+const ICON_TABLE: &[u8] = include_bytes!("../../../../assets/icons/table.svg");
+const ICON_WHITEBOARD: &[u8] = include_bytes!("../../../../assets/icons/whiteboard.svg");
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlashMenuState {
@@ -361,6 +376,7 @@ fn render_slash_menu_row(
     } else {
         theme.panel
     };
+    let icon = render_slash_menu_item_icon(&item, theme);
     div()
         .flex()
         .flex_none()
@@ -395,7 +411,7 @@ fn render_slash_menu_row(
                 .justify_center()
                 .text_size(px(12.0))
                 .text_color(rgb(theme.text))
-                .child(item.icon),
+                .child(icon),
         )
         .child(
             div()
@@ -426,6 +442,38 @@ fn render_slash_menu_row(
         .into_any_element()
 }
 
+fn render_slash_menu_item_icon(item: &SlashMenuItem, theme: GuiTheme) -> AnyElement {
+    if let Some((key, source)) = slash_menu_svg_icon(item) {
+        SvgIcon::new(key, source)
+            .color(rgb(theme.text))
+            .size(px(SLASH_MENU_SVG_ICON_SIZE_PX))
+            .into_any_element()
+    } else {
+        div().child(item.icon).into_any_element()
+    }
+}
+
+fn slash_menu_svg_icon(item: &SlashMenuItem) -> Option<(&'static str, &'static [u8])> {
+    if item.command == Some(SlashMenuCommand::AskAi) {
+        return Some(("slash-menu-ai", ICON_AI));
+    }
+    match &item.kind {
+        RichBlockKind::Heading { level: 1 } => Some(("slash-menu-heading-1", ICON_HEADING_1)),
+        RichBlockKind::Heading { level: 2 } => Some(("slash-menu-heading-2", ICON_HEADING_2)),
+        RichBlockKind::Heading { level: 3 } => Some(("slash-menu-heading-3", ICON_HEADING_3)),
+        RichBlockKind::Todo { .. } => Some(("slash-menu-todo", ICON_TODO)),
+        RichBlockKind::BulletedList => Some(("slash-menu-bulleted-list", ICON_BULLETED_LIST)),
+        RichBlockKind::NumberedList => Some(("slash-menu-number-list", ICON_NUMBER_LIST)),
+        RichBlockKind::Quote => Some(("slash-menu-quote", ICON_QUOTE)),
+        RichBlockKind::Code { .. } => Some(("slash-menu-code", ICON_CODE)),
+        RichBlockKind::Math => Some(("slash-menu-math", ICON_MATH)),
+        RichBlockKind::Mermaid => Some(("slash-menu-mermaid", ICON_MERMAID)),
+        RichBlockKind::Table => Some(("slash-menu-table", ICON_TABLE)),
+        RichBlockKind::Whiteboard => Some(("slash-menu-whiteboard", ICON_WHITEBOARD)),
+        _ => None,
+    }
+}
+
 pub fn slash_scroll_delta_rows(delta_y: f32) -> isize {
     if delta_y.abs() < 1.0 {
         return 0;
@@ -437,6 +485,32 @@ pub fn slash_scroll_delta_rows(delta_y: f32) -> isize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provided_svg_icons_cover_the_matching_slash_menu_items() {
+        let items = slash_menu_items();
+        for label in [
+            "Ask AI",
+            "Heading 1",
+            "Heading 2",
+            "Heading 3",
+            "Todo",
+            "Bulleted list",
+            "Numbered list",
+            "Quote",
+            "Code",
+            "Math",
+            "Mermaid",
+            "Table",
+            "Whiteboard",
+        ] {
+            let item = items.iter().find(|item| item.label == label).unwrap();
+            let (_, source) = slash_menu_svg_icon(item).expect("provided SVG is mapped");
+            assert!(std::str::from_utf8(source).unwrap().starts_with("<svg"));
+        }
+        let text = items.iter().find(|item| item.label == "Text").unwrap();
+        assert!(slash_menu_svg_icon(text).is_none());
+    }
 
     #[test]
     fn slash_query_detects_active_token_before_caret() {
