@@ -12,15 +12,16 @@ fn gutter_format_controls_use_the_provided_svg_assets() {
         InlineFormatAction::Bold,
         InlineFormatAction::Italic,
         InlineFormatAction::Underline,
+        InlineFormatAction::Strike,
         InlineFormatAction::Code,
     ] {
         let (_, source) = format_icon_source(action).expect("provided formatting SVG is mapped");
         assert!(std::str::from_utf8(source).unwrap().starts_with("<svg"));
     }
-    assert!(format_icon_source(InlineFormatAction::Strike).is_none());
     assert_eq!(FORMAT_ICON_SIZE_PX, 24.0);
     assert_eq!(GUTTER_FORMAT_ROW_PADDING_PX, 8.0);
     assert_eq!(FORMAT_BUTTON_SIZE_PX, 30.0);
+    assert_eq!(GUTTER_FORMAT_BUTTON_SIZE_PX, 36.0);
     assert_eq!(TOOLBAR_GROUP_LABEL_HEIGHT_PX, 26.0);
     assert_eq!(POPUP_MENU_ITEM_FONT_SIZE_PX, 14.0);
     assert_eq!(POPUP_MENU_LABEL_FONT_SIZE_PX, 11.0);
@@ -101,7 +102,7 @@ fn gutter_toolbar_opens_left_and_aligns_with_the_gutter_top() {
 fn gutter_toolbar_stays_inside_the_viewport_when_left_or_bottom_space_is_tight() {
     assert_eq!(
         gutter_floating_toolbar_position(180.0, 700.0, 1_000.0, 800.0),
-        (10.0, 376.0),
+        (10.0, 370.0),
     );
     assert_eq!(
         gutter_floating_toolbar_position(320.0, 2.0, 1_200.0, 800.0),
@@ -146,5 +147,21 @@ fn ai_actions_use_a_real_scroll_range_for_all_commands() {
 
     assert_eq!(AI_ACTION_COUNT, 6);
     assert!(content_height > AI_ACTIONS_VIEWPORT_HEIGHT_PX);
-    assert_eq!(content_height, 150.0);
+    assert_eq!(content_height, 216.0);
+}
+
+#[test]
+fn ai_actions_use_provided_svg_icons_and_shared_row_metrics() {
+    for icon in [
+        ICON_AI_IMPROVE,
+        ICON_AI_PROOFREAD,
+        ICON_AI_SHORTEN,
+        ICON_AI_EXPAND,
+        ICON_AI_EXPLAIN,
+        ICON_AI_TRANSLATE,
+    ] {
+        assert!(std::str::from_utf8(icon).unwrap().starts_with("<svg"));
+    }
+    assert_eq!(AI_ACTION_ROW_HEIGHT_PX, 36.0);
+    assert_eq!(FORMAT_ICON_SIZE_PX, 24.0);
 }

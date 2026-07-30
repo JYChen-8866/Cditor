@@ -25,23 +25,31 @@ use super::color_menu::{ActiveColor, ColorMenuAction, PaletteColor, render_color
 pub(crate) const TOOLBAR_WIDTH_PX: f32 = 194.0;
 pub(crate) const GUTTER_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 const TOOLBAR_HEIGHT_PX: f32 = 324.0;
-const GUTTER_MENU_HEIGHT_PX: f32 = 414.0;
+const GUTTER_MENU_HEIGHT_PX: f32 = 420.0;
 const VIEWPORT_MARGIN_PX: f32 = 10.0;
 const TOOLBAR_ANCHOR_GAP_PX: f32 = 8.0;
 const AI_ACTIONS_VIEWPORT_HEIGHT_PX: f32 = 110.0;
-const AI_ACTION_ROW_HEIGHT_PX: f32 = 25.0;
+const AI_ACTION_ROW_HEIGHT_PX: f32 = 36.0;
 const AI_ACTION_COUNT: usize = 6;
 const FORMAT_ICON_SIZE_PX: f32 = 24.0;
 const GUTTER_FORMAT_ROW_PADDING_PX: f32 = 8.0;
 const FORMAT_BUTTON_SIZE_PX: f32 = 30.0;
+const GUTTER_FORMAT_BUTTON_SIZE_PX: f32 = 36.0;
 const TOOLBAR_GROUP_LABEL_HEIGHT_PX: f32 = 26.0;
 
 const ICON_COLOR: &[u8] = include_bytes!("../../../../assets/icons/color.svg");
 const ICON_BOLD: &[u8] = include_bytes!("../../../../assets/icons/bold.svg");
 const ICON_ITALIC: &[u8] = include_bytes!("../../../../assets/icons/itaic.svg");
 const ICON_UNDERLINE: &[u8] = include_bytes!("../../../../assets/icons/underline.svg");
+const ICON_STRIKETHROUGH: &[u8] = include_bytes!("../../../../assets/icons/strikethrough.svg");
 const ICON_INLINE_CODE: &[u8] = include_bytes!("../../../../assets/icons/inlie-code.svg");
 const ICON_SUBMENU_ARROW: &[u8] = include_bytes!("../../../../assets/icons/jiantou.svg");
+const ICON_AI_IMPROVE: &[u8] = include_bytes!("../../../../assets/icons/ai-improve.svg");
+const ICON_AI_PROOFREAD: &[u8] = include_bytes!("../../../../assets/icons/ai-proofread.svg");
+const ICON_AI_SHORTEN: &[u8] = include_bytes!("../../../../assets/icons/ai-shorten.svg");
+const ICON_AI_EXPAND: &[u8] = include_bytes!("../../../../assets/icons/ai-expand.svg");
+const ICON_AI_EXPLAIN: &[u8] = include_bytes!("../../../../assets/icons/ai-explain.svg");
+const ICON_AI_TRANSLATE: &[u8] = include_bytes!("../../../../assets/icons/ai-translate.svg");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InlineFormatAction {
@@ -705,10 +713,10 @@ fn render_inline_format_row(
     div()
         .w_full()
         .flex()
-        .gap(px(4.0))
         .when(use_svg_icons, |row| {
-            row.px(px(GUTTER_FORMAT_ROW_PADDING_PX))
+            row.px(px(GUTTER_FORMAT_ROW_PADDING_PX)).justify_between()
         })
+        .when(!use_svg_icons, |row| row.gap(px(4.0)))
         .children([
             render_format_button(
                 InlineFormatAction::Bold,
@@ -772,8 +780,14 @@ fn render_format_button(
     };
     div()
         .id(("inline-format", action_index(action)))
-        .h(px(FORMAT_BUTTON_SIZE_PX))
-        .when(use_svg_icon, |button| button.flex_1().min_w(px(0.0)))
+        .h(px(if use_svg_icon {
+            GUTTER_FORMAT_BUTTON_SIZE_PX
+        } else {
+            FORMAT_BUTTON_SIZE_PX
+        }))
+        .when(use_svg_icon, |button| {
+            button.w(px(GUTTER_FORMAT_BUTTON_SIZE_PX)).flex_none()
+        })
         .when(!use_svg_icon, |button| {
             button.w(px(FORMAT_BUTTON_SIZE_PX)).flex_none()
         })
@@ -833,8 +847,8 @@ fn format_icon_source(action: InlineFormatAction) -> Option<(&'static str, &'sta
         InlineFormatAction::Bold => Some(("gutter-format-bold", ICON_BOLD)),
         InlineFormatAction::Italic => Some(("gutter-format-italic", ICON_ITALIC)),
         InlineFormatAction::Underline => Some(("gutter-format-underline", ICON_UNDERLINE)),
+        InlineFormatAction::Strike => Some(("gutter-format-strikethrough", ICON_STRIKETHROUGH)),
         InlineFormatAction::Code => Some(("gutter-format-inline-code", ICON_INLINE_CODE)),
-        InlineFormatAction::Strike => None,
     }
 }
 
@@ -859,13 +873,13 @@ fn render_ai_actions(
     enabled: bool,
     scroll_handle: &ScrollHandle,
 ) -> AnyElement {
-    const ACTIONS: &[(&str, &str)] = &[
-        ("改进写作", "Improve writing"),
-        ("校对", "Fix spelling and grammar"),
-        ("缩短", "Make shorter"),
-        ("扩写", "Make longer"),
-        ("解释", "Explain this text"),
-        ("翻译", "Translate this text"),
+    const ACTIONS: &[(&str, &str, &[u8])] = &[
+        ("改进写作", "Improve writing", ICON_AI_IMPROVE),
+        ("校对", "Fix spelling and grammar", ICON_AI_PROOFREAD),
+        ("缩短", "Make shorter", ICON_AI_SHORTEN),
+        ("扩写", "Make longer", ICON_AI_EXPAND),
+        ("解释", "Explain this text", ICON_AI_EXPLAIN),
+        ("翻译", "Translate this text", ICON_AI_TRANSLATE),
     ];
     debug_assert_eq!(ACTIONS.len(), AI_ACTION_COUNT);
     let estimated_content_height = ACTIONS.len() as f32 * AI_ACTION_ROW_HEIGHT_PX;
@@ -879,14 +893,15 @@ fn render_ai_actions(
         .on_scroll_wheel(move |_event, _window, cx| {
             scroll_view.update(cx, |_view, cx| cx.notify());
         })
-        .children(ACTIONS.iter().map(|(label, instruction)| {
+        .children(ACTIONS.iter().map(|(label, instruction, icon)| {
             div()
                 .h(px(AI_ACTION_ROW_HEIGHT_PX))
                 .flex_none()
                 .w_full()
-                .px(px(7.0))
+                .px(px(8.0))
                 .flex()
                 .items_center()
+                .gap(px(10.0))
                 .rounded(px(4.0))
                 .text_size(px(POPUP_MENU_ITEM_FONT_SIZE_PX))
                 .text_color(rgb(if enabled { theme.text } else { theme.muted }))
@@ -903,6 +918,22 @@ fn render_ai_actions(
                             cx.stop_propagation();
                         })
                 })
+                .child(
+                    div()
+                        .flex_none()
+                        .size(px(36.0))
+                        .rounded(px(4.0))
+                        .border_1()
+                        .border_color(rgb(theme.border))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            SvgIcon::new("ai-action-icon", *icon)
+                                .color(rgb(if enabled { theme.text } else { theme.muted }))
+                                .size(px(FORMAT_ICON_SIZE_PX)),
+                        ),
+                )
                 .child(*label)
                 .into_any_element()
         }));
