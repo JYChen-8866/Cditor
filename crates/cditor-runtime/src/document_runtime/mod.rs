@@ -31,6 +31,7 @@ mod local_transaction;
 mod markdown_paste;
 mod markdown_transaction;
 mod media;
+mod page_local_layout;
 mod payload_cache;
 mod payload_hydration;
 mod payload_window;
@@ -98,7 +99,10 @@ use self::{
         HistoryState, RuntimeUndoEvent, TextSnapshot, TypingUndoGroup, TypingUndoRequest,
         UndoScrollSnapshot,
     },
-    layout_state::{LayoutState, PendingMeasuredHeight},
+    layout_state::{
+        LayoutState, PendingMeasuredHeight, ProjectionState, ProjectionWindowDecision,
+        ProjectionWindowTarget, StableProjectionSnapshot,
+    },
     selection::FocusedTextSelection,
     selection_state::{FocusedTableCell, VisualCaretPosition},
     structure_insert::EnterSplitMode,
@@ -145,8 +149,9 @@ use cditor_core::ids::{AssetId, BlockId, CollectionId, CommentThreadId, Document
 use cditor_core::import_plan::ImportedBlockDocument;
 use cditor_core::layout::{
     BlockHeightIndex, BlockLayoutMeta, HeightConfidence, HeightEstimate,
-    IMAGE_BLOCK_ESTIMATED_HEIGHT_PX, PageLayoutIndex, PagePolicy, estimate_block_height,
-    estimate_text_payload_height, layout_width_for_kind, text_line_height_for_kind,
+    IMAGE_BLOCK_ESTIMATED_HEIGHT_PX, PAGE_POLICY_VERSION, PageLayoutIdentity, PageLayoutIndex,
+    PageLocalHeightIndex, PagePolicy, estimate_block_height, estimate_text_payload_height,
+    layout_width_for_kind, text_line_height_for_kind,
 };
 use cditor_core::rich_text::TableCellAlign;
 use cditor_core::rich_text::{
@@ -166,11 +171,6 @@ use cditor_viewport::window::{
     PlaceholderWindow, RenderWindow, ScrollDirection, WindowPlanDecision, WindowPlanRequest,
     WindowPlanner, WindowPlannerPolicy,
 };
-use cditor_viewport::window::{
-    WindowCommitCoordinator as ProjectionWindowCommitState,
-    WindowCommitDecision as ProjectionWindowDecision, WindowCommitTarget as ProjectionWindowTarget,
-};
-
 fn input_trace_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
@@ -184,6 +184,28 @@ fn trace_input(event: &str, details: impl std::fmt::Display) {
     if input_trace_enabled() {
         crate::diagnostics::write_stderr(format_args!(
             "[cditor][input][runtime][{event}] {details}"
+        ));
+    }
+}
+
+fn image_resize_trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("CDITOR_TRACE_IMAGE_RESIZE")
+            .map(|value| {
+                matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn trace_image_resize(event: &str, details: impl std::fmt::Display) {
+    if image_resize_trace_enabled() {
+        crate::diagnostics::write_stderr(format_args!(
+            "[cditor][image-resize][runtime][{event}] {details}"
         ));
     }
 }

@@ -319,8 +319,10 @@ fn cached_page_layout(
     loaded.page_layout_snapshot.as_ref().and_then(|snapshot| {
         snapshot
             .to_page_layout_index(
+                loaded.metadata.document_id,
                 options.visible_index_version,
                 loaded.metadata.structure_version,
+                visible_index.visibility_version,
                 options.layout_key,
                 options.page_policy_version,
                 PagePolicy::default(),

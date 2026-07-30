@@ -298,18 +298,12 @@ impl DocumentRuntime {
         }
 
         self.document.index.layout_meta[document_index].update_height(next_height);
-        let height_change = self
-            .layout
+        self.layout
             .height_index
             .update_height(visible_index, next_height)
             .map_err(|error| error.to_string())?;
         if let Some(page_index) = self.layout.page_layout.page_for_block_index(visible_index) {
-            let next_page_height =
-                self.layout.page_layout.pages[page_index].height + height_change.delta;
-            self.layout
-                .page_layout
-                .update_page_height(page_index, next_page_height)
-                .map_err(|error| error.to_string())?;
+            self.synchronize_page_after_global_update(page_index)?;
         }
         let total_height = self.scroll_extent_height(self.layout.page_layout.total_height());
         self.layout

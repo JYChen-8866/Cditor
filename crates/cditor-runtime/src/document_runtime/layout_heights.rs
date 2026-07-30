@@ -16,28 +16,53 @@ impl DocumentRuntime {
         height: f64,
     ) -> Result<bool, String> {
         if !height.is_finite() || height < 0.0 {
+            trace_image_resize(
+                "height.reject",
+                format_args!("block={block_id} version={content_version} height={height} invalid"),
+            );
             return Err(format!(
                 "invalid measured height for block {block_id}: {height}"
             ));
         }
         let Some(payload) = self.document.payload_window.get(block_id) else {
+            trace_image_resize(
+                "height.reject",
+                format_args!(
+                    "block={block_id} version={content_version} height={height:.2} payload_missing"
+                ),
+            );
             return Ok(false);
         };
         if payload.content_version != content_version {
+            trace_image_resize(
+                "height.reject",
+                format_args!(
+                    "block={block_id} requested_version={content_version} current_version={} height={height:.2} stale_version",
+                    payload.content_version,
+                ),
+            );
             return Ok(false);
         }
         let Some(document_index) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
 
-        let previous_height = self
+        let indexed_height = self
             .document
             .visible_index
             .visible_index_of(block_id)
-            .and_then(|visible_index| self.layout.height_index.heights.get(visible_index).copied())
-            .unwrap_or_else(|| self.document.index.layout_meta[document_index].effective_height());
-        if (previous_height - height).abs() < 0.5 {
+            .and_then(|visible_index| self.layout.height_index.heights.get(visible_index).copied());
+        let metadata_height = self.document.index.layout_meta[document_index].effective_height();
+        let index_matches = indexed_height.is_none_or(|previous| (previous - height).abs() < 0.5);
+        let metadata_matches = (metadata_height - height).abs() < 0.5;
+        if index_matches && metadata_matches {
             self.layout.pending_measured_heights.remove(&block_id);
+            trace_image_resize(
+                "height.unchanged",
+                format_args!(
+                    "block={block_id} version={content_version} indexed={indexed_height:?} metadata={metadata_height:.2} next={height:.2}"
+                ),
+            );
             return Ok(false);
         }
 
@@ -47,6 +72,13 @@ impl DocumentRuntime {
                 content_version,
                 height,
             },
+        );
+        trace_image_resize(
+            "height.queued",
+            format_args!(
+                "block={block_id} version={content_version} indexed={indexed_height:?} metadata={metadata_height:.2} next={height:.2} pending={} ",
+                self.layout.pending_measured_heights.len(),
+            ),
         );
         Ok(true)
     }
@@ -68,9 +100,19 @@ impl DocumentRuntime {
             .then(|| self.target_for_global_offset(self.layout.scroll.global_scroll_top))
             .flatten();
         let pending = std::mem::take(&mut self.layout.pending_measured_heights);
-        let mut page_deltas: HashMap<usize, f64> = HashMap::new();
+        trace_image_resize(
+            "height.flush_begin",
+            format_args!(
+                "priority={priority:?} pending={} scroll_top={:.2} total={:.2}",
+                pending.len(),
+                self.layout.scroll.global_scroll_top,
+                self.layout.page_layout.total_height(),
+            ),
+        );
+        let mut affected_pages = HashSet::new();
         let mut should_restore_anchor = false;
         let mut applied = false;
+        let mut global_height_changed = false;
 
         for (block_id, pending_height) in pending {
             let Some(payload) = self.document.payload_window.get(block_id) else {
@@ -90,7 +132,7 @@ impl DocumentRuntime {
                 continue;
             };
 
-            let previous_height = self
+            let indexed_height = self
                 .layout
                 .height_index
                 .heights
@@ -99,24 +141,45 @@ impl DocumentRuntime {
                 .unwrap_or_else(|| {
                     self.document.index.layout_meta[document_index].effective_height()
                 });
-            if (previous_height - pending_height.height).abs() < 0.5 {
+            let metadata_height =
+                self.document.index.layout_meta[document_index].effective_height();
+            let index_matches = (indexed_height - pending_height.height).abs() < 0.5;
+            let metadata_matches = (metadata_height - pending_height.height).abs() < 0.5;
+            if index_matches && metadata_matches {
                 continue;
             }
 
-            self.document.index.layout_meta[document_index].update_height(pending_height.height);
-            self.layout.dirty = true;
-            let height_change = self
-                .layout
-                .height_index
-                .update_height(visible_index, pending_height.height)
-                .map_err(|error| error.to_string())?;
-            if let Some(page_index) = self.layout.page_layout.page_for_block_index(visible_index) {
-                *page_deltas.entry(page_index).or_insert(0.0) += height_change.delta;
+            if !metadata_matches {
+                self.document.index.layout_meta[document_index]
+                    .update_height(pending_height.height);
             }
-            if let Some(anchor) = viewport_anchor
-                && visible_index <= anchor.block_index
-            {
-                should_restore_anchor = true;
+            self.layout.dirty = true;
+            trace_image_resize(
+                "height.applied",
+                format_args!(
+                    "block={block_id} visible_index={visible_index} version={} indexed={indexed_height:.2} metadata={metadata_height:.2} next={:.2} update_index={} update_metadata={}",
+                    pending_height.content_version,
+                    pending_height.height,
+                    !index_matches,
+                    !metadata_matches,
+                ),
+            );
+            if !index_matches {
+                self.layout
+                    .height_index
+                    .update_height(visible_index, pending_height.height)
+                    .map_err(|error| error.to_string())?;
+                global_height_changed = true;
+                if let Some(page_index) =
+                    self.layout.page_layout.page_for_block_index(visible_index)
+                {
+                    affected_pages.insert(page_index);
+                }
+                if let Some(anchor) = viewport_anchor
+                    && visible_index <= anchor.block_index
+                {
+                    should_restore_anchor = true;
+                }
             }
             applied = true;
         }
@@ -125,15 +188,29 @@ impl DocumentRuntime {
             return Ok(false);
         }
 
-        for (page_index, delta) in page_deltas {
-            if delta.abs() < 0.5 {
-                continue;
-            }
-            let next_page_height = self.layout.page_layout.pages[page_index].height + delta;
-            self.layout
-                .page_layout
-                .update_page_height(page_index, next_page_height)
-                .map_err(|error| error.to_string())?;
+        if !global_height_changed {
+            trace_image_resize(
+                "height.flush_end",
+                format_args!(
+                    "priority={priority:?} metadata_only=true total={:.2} displayed_total={:.2} scroll_top={:.2}",
+                    self.layout.page_layout.total_height(),
+                    self.layout.scroll.displayed_total_height,
+                    self.layout.scroll.global_scroll_top,
+                ),
+            );
+            return Ok(true);
+        }
+
+        for page_index in affected_pages {
+            let before = self.layout.page_layout.pages[page_index].height;
+            self.synchronize_page_after_global_update(page_index)?;
+            trace_image_resize(
+                "page.synchronized",
+                format_args!(
+                    "page={page_index} before={before:.2} after={:.2}",
+                    self.layout.page_layout.pages[page_index].height,
+                ),
+            );
         }
 
         let previous_model_total_height = self.layout.scroll.model_total_height;
@@ -168,6 +245,14 @@ impl DocumentRuntime {
                 .scroll_to_global_offset(restored, ScrollOrigin::ProgrammaticVirtualScroll)
                 .map_err(|error| error.to_string())?;
         }
+
+        trace_image_resize(
+            "height.flush_end",
+            format_args!(
+                "priority={priority:?} total={total_height:.2} displayed_total={:.2} scroll_top={:.2} restore_anchor={should_restore_anchor}",
+                self.layout.scroll.displayed_total_height, self.layout.scroll.global_scroll_top,
+            ),
+        );
 
         Ok(true)
     }

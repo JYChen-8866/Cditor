@@ -55,6 +55,7 @@ impl DocumentRuntime {
         // many block entities are created in a frame. This is the same bounded
         // path used by the synthetic 100k fixture and by resident/PG documents.
         let desired_ranges = self.viewport_window_ranges();
+        self.preheat_page_local_cache(desired_ranges.page_range.clone());
         layout_prefetch_page_range.start = layout_prefetch_page_range
             .start
             .min(desired_ranges.page_range.start);
@@ -84,7 +85,7 @@ impl DocumentRuntime {
             && self.payloads_resident_for_prefetch_cached(&payload_prefetch_block_range);
         let desired_failed = self.payload_terminal_failure_for(&desired.visible_block_range);
         let stable = self.layout.projection.publication.stable.clone();
-        let decision = self.layout.projection.window.reconcile(
+        let decision = self.layout.projection.reconcile(
             desired,
             desired_ready,
             stable.as_ref().is_some_and(|stable| {
@@ -229,20 +230,11 @@ impl DocumentRuntime {
             return self.placeholder_projection_for_ranges(page_range, block_range);
         }
         let block_ids = self.document.visible_index.visible_block_ids[block_range.clone()].to_vec();
-        let local_height_index =
-            BlockHeightIndex::new(block_ids.iter().enumerate().map(|(local_index, block_id)| {
-                let source_index = self
-                    .document
-                    .index
-                    .index_of(*block_id)
-                    .unwrap_or(block_range.start + local_index);
-                HeightEstimate::new(
-                    self.document.index.layout_meta[source_index].effective_height(),
-                    HeightConfidence::Historical,
-                    4.0,
-                )
-            }))
-            .expect("projection local heights are valid");
+        let local_height_index = BlockHeightIndex::new(block_range.clone().map(|visible_index| {
+            self.cached_or_global_height_estimate(visible_index)
+                .expect("projection block range is covered by the global height index")
+        }))
+        .expect("projection local heights are valid");
         let render_window = RenderWindow::loaded(
             page_range.clone(),
             block_range.clone(),
@@ -464,7 +456,7 @@ impl DocumentRuntime {
         EditorViewProjection {
             document_id: self.document_id,
             viewport_revision: 0,
-            window_generation: self.layout.projection_window.generation(),
+            window_generation: self.layout.projection.generation(),
             scroll: self.layout.scroll,
             render_window,
             payload_visible_block_range: block_range.clone(),

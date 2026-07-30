@@ -36,6 +36,31 @@ pub struct BlockHeightIndex {
     prefix: FenwickTree,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlockHeightIndexView {
+    pub start: usize,
+    pub heights: Vec<f64>,
+    pub confidence: Vec<HeightConfidence>,
+    prefix: FenwickTree,
+}
+
+impl BlockHeightIndexView {
+    pub fn from_index(
+        index: &BlockHeightIndex,
+        range: Range<usize>,
+    ) -> Result<Self, BlockHeightIndexError> {
+        validate_range(&range, index.heights.len())?;
+        let heights = index.heights[range.clone()].to_vec();
+        let confidence = index.confidence[range.clone()].to_vec();
+        Ok(Self {
+            start: range.start,
+            heights,
+            confidence,
+            prefix: FenwickTree::from_values(&index.heights[range]),
+        })
+    }
+}
+
 impl BlockHeightIndex {
     pub fn new(
         estimates: impl IntoIterator<Item = HeightEstimate>,
@@ -135,6 +160,10 @@ impl BlockHeightIndex {
             block_top,
             offset_in_block: clamped_y - block_top,
         })
+    }
+
+    pub fn view(&self, range: Range<usize>) -> Result<BlockHeightIndexView, BlockHeightIndexError> {
+        BlockHeightIndexView::from_index(self, range)
     }
 
     pub fn update_height(
@@ -237,6 +266,18 @@ impl BlockHeightIndex {
         Ok(())
     }
 
+    pub fn update_range_confidence(
+        &mut self,
+        range: Range<usize>,
+        confidence: HeightConfidence,
+    ) -> Result<(), BlockHeightIndexError> {
+        validate_range(&range, self.heights.len())?;
+        for index in range {
+            self.confidence[index] = confidence;
+        }
+        Ok(())
+    }
+
     pub fn rebuild_range(
         &mut self,
         range: Range<usize>,
@@ -264,6 +305,48 @@ impl BlockHeightIndex {
 
     fn rebuild_prefix(&mut self) {
         self.prefix = FenwickTree::from_values(&self.heights);
+    }
+}
+
+impl BlockHeightIndexView {
+    pub fn len(&self) -> usize {
+        self.heights.len()
+    }
+
+    pub fn total_height(&self) -> f64 {
+        self.prefix.total_sum()
+    }
+
+    pub fn offset_of_block(&self, index: usize) -> Option<f64> {
+        if index <= self.heights.len() {
+            Some(self.prefix.prefix_sum(index))
+        } else {
+            None
+        }
+    }
+
+    pub fn block_at_offset(&self, local_y: f64) -> Option<BlockOffsetHit> {
+        if self.heights.is_empty() {
+            return None;
+        }
+        let total_height = self.total_height();
+        let clamped_y = local_y.clamp(0.0, total_height.max(0.0));
+        if clamped_y >= total_height {
+            let index = self.heights.len() - 1;
+            let block_top = self.prefix.prefix_sum(index);
+            return Some(BlockOffsetHit {
+                index,
+                block_top,
+                offset_in_block: self.heights[index],
+            });
+        }
+        let index = self.prefix.lower_bound_prefix(clamped_y);
+        let block_top = self.prefix.prefix_sum(index);
+        Some(BlockOffsetHit {
+            index,
+            block_top,
+            offset_in_block: clamped_y - block_top,
+        })
     }
 }
 

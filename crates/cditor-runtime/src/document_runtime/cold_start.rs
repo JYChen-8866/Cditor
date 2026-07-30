@@ -174,8 +174,22 @@ impl DocumentRuntime {
         page_layout
             .validate_covers_blocks(self.document.visible_index.total_visible_count())
             .map_err(|error| error.to_string())?;
+        let cached_identity = page_layout
+            .page_layout_identity()
+            .ok_or_else(|| "cached page layout identity is missing".to_owned())?;
+        let expected_identity = self.current_page_layout_identity();
+        if cached_identity.document_id != expected_identity.document_id
+            || cached_identity.structure_version != expected_identity.structure_version
+            || cached_identity.visibility_version != expected_identity.visibility_version
+            || cached_identity.page_policy_version != expected_identity.page_policy_version
+        {
+            return Err(format!(
+                "cached page layout identity does not match the runtime: cached {cached_identity:?}, expected {expected_identity:?}"
+            ));
+        }
         let total_height = self.scroll_extent_height(page_layout.total_height());
         self.layout.page_layout = page_layout;
+        self.layout.page_local_cache.clear();
         self.layout
             .scroll
             .set_model_total_height(total_height)

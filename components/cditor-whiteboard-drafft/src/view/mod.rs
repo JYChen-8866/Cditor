@@ -51,6 +51,25 @@ pub type SceneChangeFn = Rc<dyn Fn(String, &mut App)>;
 pub use actions::bind_drafft_keys;
 pub use focus::FocusRequestFn;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DrafftChromeMode {
+    Full,
+    BottomToolbarOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DrafftChromeVisibility {
+    full_editor_chrome: bool,
+    bottom_toolbar: bool,
+}
+
+fn chrome_visibility(read_only: bool, mode: DrafftChromeMode) -> DrafftChromeVisibility {
+    DrafftChromeVisibility {
+        full_editor_chrome: !read_only && matches!(mode, DrafftChromeMode::Full),
+        bottom_toolbar: !read_only,
+    }
+}
+
 pub struct DrafftBoardView {
     board: DrafftBoard,
     focus: FocusHandle,
@@ -81,6 +100,7 @@ pub struct DrafftBoardView {
     text_outline_engine: Rc<RefCell<paint::TextOutlineEngine>>,
     image_paint_engine: Rc<RefCell<paint::ImagePaintEngine>>,
     read_only: bool,
+    chrome_mode: DrafftChromeMode,
     on_change: Option<SceneChangeFn>,
     on_focus_request: Option<FocusRequestFn>,
     last_observed_document_revision: u64,
@@ -212,6 +232,7 @@ impl DrafftBoardView {
             text_outline_engine: Rc::new(RefCell::new(paint::TextOutlineEngine::new())),
             image_paint_engine: Rc::new(RefCell::new(paint::ImagePaintEngine::default())),
             read_only,
+            chrome_mode: DrafftChromeMode::Full,
             on_change: None,
             on_focus_request: None,
             last_observed_document_revision: initial_document_revision,
@@ -260,6 +281,14 @@ impl DrafftBoardView {
 
     pub fn is_read_only(&self) -> bool {
         self.read_only
+    }
+
+    pub fn set_chrome_mode(&mut self, mode: DrafftChromeMode) {
+        self.chrome_mode = mode;
+    }
+
+    pub fn chrome_mode(&self) -> DrafftChromeMode {
+        self.chrome_mode
     }
 
     fn local_point(&self, point: Point<Pixels>) -> KurboPoint {
@@ -569,17 +598,61 @@ impl Render for DrafftBoardView {
             .on_action(cx.listener(|view, _: &Ignore, _window, cx| view.ignore_bound_action(cx)))
             .on_key_down(cx.listener(Self::on_key_down))
             .on_key_up(cx.listener(Self::on_key_up));
-        if !self.read_only {
+        let chrome = chrome_visibility(self.read_only, self.chrome_mode);
+        if chrome.full_editor_chrome {
             root = root
                 .child(self.render_toolbar(cx))
                 .child(self.render_file_menu(cx))
                 .child(self.render_tabs(cx))
                 .child(self.render_properties(cx))
-                .child(self.render_bottom_toolbar(cx))
                 .child(self.render_right_panel(cx))
                 .child(self.render_math_editor(cx));
         }
+        if chrome.bottom_toolbar {
+            root = root.child(self.render_bottom_toolbar(cx));
+        }
         root
+    }
+}
+
+#[cfg(test)]
+mod chrome_tests {
+    use super::*;
+
+    #[test]
+    fn embedded_mode_keeps_only_the_bottom_toolbar() {
+        assert_eq!(
+            chrome_visibility(false, DrafftChromeMode::BottomToolbarOnly),
+            DrafftChromeVisibility {
+                full_editor_chrome: false,
+                bottom_toolbar: true,
+            }
+        );
+        assert_eq!(
+            chrome_visibility(true, DrafftChromeMode::BottomToolbarOnly),
+            DrafftChromeVisibility {
+                full_editor_chrome: false,
+                bottom_toolbar: false,
+            }
+        );
+    }
+
+    #[test]
+    fn full_mode_preserves_editable_and_read_only_chrome_policy() {
+        assert_eq!(
+            chrome_visibility(false, DrafftChromeMode::Full),
+            DrafftChromeVisibility {
+                full_editor_chrome: true,
+                bottom_toolbar: true,
+            }
+        );
+        assert_eq!(
+            chrome_visibility(true, DrafftChromeMode::Full),
+            DrafftChromeVisibility {
+                full_editor_chrome: false,
+                bottom_toolbar: false,
+            }
+        );
     }
 }
 

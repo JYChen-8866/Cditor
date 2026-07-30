@@ -131,10 +131,34 @@ impl DocumentRuntime {
             .map(|model| model.text().to_owned())
             .unwrap_or_default();
 
+        // Horizontal rules deliberately commit on Enter so typing their marker
+        // does not transform the block before the user confirms it.
+        if matches!(kind, RichBlockKind::Paragraph)
+            && matches!(text.as_str(), "---" | "***" | "___")
+        {
+            self.apply_local_block_payload_transaction(
+                block_id,
+                EditTransactionKind::ExplicitCommand,
+                RichBlockKind::Separator,
+                BlockPayload::Empty,
+            )?;
+            return Ok(());
+        }
+
         // Handle code fence shortcut
         if matches!(kind, RichBlockKind::Paragraph)
             && let Some(RichBlockKind::Code { language }) = code_fence_shortcut(&text)
         {
+            if language.as_deref() == Some("mermaid") {
+                self.apply_local_block_payload_transaction(
+                    block_id,
+                    EditTransactionKind::ExplicitCommand,
+                    RichBlockKind::Mermaid,
+                    BlockPayload::RichText { spans: Vec::new() },
+                )?;
+                self.focus_block_at_offset(block_id, 0)?;
+                return Ok(());
+            }
             self.apply_local_block_payload_transaction(
                 block_id,
                 EditTransactionKind::ExplicitCommand,

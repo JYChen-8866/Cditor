@@ -392,11 +392,10 @@ fn space_shortcut_turns_marker_into_heading_block() {
 }
 
 #[test]
-fn space_shortcuts_cover_dynamic_lists_dividers_and_callouts() {
+fn space_shortcuts_cover_dynamic_lists_and_callouts() {
     let cases = [
         ("42.", RichBlockKind::NumberedList),
         ("+", RichBlockKind::BulletedList),
-        ("---", RichBlockKind::Separator),
         (
             "> [!WARNING]",
             RichBlockKind::Callout {
@@ -425,12 +424,45 @@ fn space_shortcuts_cover_dynamic_lists_dividers_and_callouts() {
             .get(1)
             .expect("converted payload");
         assert_eq!(payload.kind, expected_kind, "marker: {marker}");
-        if marker == "---" {
-            assert_eq!(payload.payload, BlockPayload::Empty);
-        } else {
-            assert_eq!(payload.plain_text(), "");
-        }
+        assert_eq!(payload.plain_text(), "");
     }
+}
+
+#[test]
+fn horizontal_rule_shortcuts_commit_on_enter_instead_of_space() {
+    for marker in ["---", "***", "___"] {
+        let mut runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                marker,
+            )],
+            720.0,
+        );
+        runtime.focus_block_at_offset(1, marker.len()).unwrap();
+
+        runtime.handle_enter().unwrap();
+
+        let payload = runtime.block_payload_record(1).unwrap();
+        assert_eq!(payload.kind, RichBlockKind::Separator, "marker: {marker}");
+        assert_eq!(payload.payload, BlockPayload::Empty);
+    }
+
+    let mut space = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "---",
+        )],
+        720.0,
+    );
+    space.focus_block_at_offset(1, 3).unwrap();
+    space.insert_space_or_markdown_shortcut().unwrap();
+    let payload = space.block_payload_record(1).unwrap();
+    assert_eq!(payload.kind, RichBlockKind::Paragraph);
+    assert_eq!(payload.plain_text(), "--- ");
 }
 
 #[test]
@@ -544,6 +576,32 @@ fn enter_shortcut_turns_code_fence_into_code_block() {
         panic!("payload should be loaded");
     };
     assert_eq!(payload.plain_text(), "");
+}
+
+#[test]
+fn enter_shortcut_turns_mermaid_fence_into_focused_mermaid_source() {
+    let marker = "```mermaid";
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            marker,
+        )],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, marker.len()).unwrap();
+
+    runtime.handle_enter().unwrap();
+
+    let payload = runtime.block_payload_record(1).unwrap();
+    assert_eq!(payload.kind, RichBlockKind::Mermaid);
+    assert_eq!(
+        payload.payload,
+        BlockPayload::RichText { spans: Vec::new() }
+    );
+    assert_eq!(runtime.focused_block_id(), Some(1));
+    assert_eq!(runtime.caret_offset_for_block(1), Some(0));
 }
 
 #[test]

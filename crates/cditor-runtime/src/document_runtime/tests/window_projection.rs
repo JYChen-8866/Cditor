@@ -717,8 +717,8 @@ fn failed_remote_target_is_explicit_while_the_last_stable_window_remains_recover
             .map(|failure| failure.attempts),
         Some(MAX_PAYLOAD_WINDOW_LOAD_ATTEMPTS)
     );
-    assert!(runtime.layout.projection_window.stable().is_some());
-    assert!(runtime.layout.projection_window.preparing().is_none());
+    assert!(runtime.layout.projection.publication.stable.is_some());
+    assert!(runtime.layout.projection.window.preparing.is_none());
 
     assert!(runtime.retry_failed_payload_window(failed.payload_visible_block_range.clone()) > 0);
     let retrying = runtime.projection_for_window_planned();

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use cditor_whiteboard::{Scene, WhiteboardView};
+use cditor_whiteboard_drafft::DrafftChromeMode;
 use gpui::{AppContext, Context};
 
 use crate::editor_view::CditorV2View;
@@ -84,9 +85,14 @@ impl WhiteboardThumbnailCache {
                 deferred = true;
                 continue;
             }
-            let entity =
-                super::backend::try_create_drafft_board(scene_json, read_only, block_id, cx)
-                    .unwrap_or_else(|_| legacy_entity(scene_json, theme, cx));
+            let entity = super::backend::try_create_drafft_board(
+                scene_json,
+                read_only,
+                DrafftChromeMode::BottomToolbarOnly,
+                block_id,
+                cx,
+            )
+            .unwrap_or_else(|_| legacy_entity(scene_json, theme, cx));
             self.entries.insert(
                 block_id,
                 WhiteboardThumbnailEntry {

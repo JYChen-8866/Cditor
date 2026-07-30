@@ -248,6 +248,14 @@ mod tests {
             2,
         )
         .unwrap()
+        .with_identity(cditor_core::layout::PageLayoutIdentity::for_page(
+            9,
+            3,
+            0,
+            1,
+            cditor_core::layout::PAGE_POLICY_VERSION,
+            0,
+        ))
     }
 
     fn emergency_entry() -> EmergencyLogEntry {

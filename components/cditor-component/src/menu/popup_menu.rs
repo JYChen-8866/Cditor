@@ -99,6 +99,7 @@ pub enum PopupMenuItem {
     Item {
         icon: Option<PopupMenuIcon>,
         label: SharedString,
+        description: Option<SharedString>,
         disabled: bool,
         checked: bool,
         action: Option<Box<dyn Action>>,
@@ -114,6 +115,7 @@ pub enum PopupMenuItem {
     Submenu {
         icon: Option<PopupMenuIcon>,
         label: SharedString,
+        description: Option<SharedString>,
         disabled: bool,
         menu: Entity<PopupMenu>,
     },
@@ -126,6 +128,7 @@ impl PopupMenuItem {
         Self::Item {
             icon: None,
             label: label.into(),
+            description: None,
             disabled: false,
             checked: false,
             action: None,
@@ -151,6 +154,7 @@ impl PopupMenuItem {
         Self::Submenu {
             icon: None,
             label: label.into(),
+            description: None,
             disabled: false,
             menu,
         }
@@ -169,6 +173,19 @@ impl PopupMenuItem {
             Self::Item { icon: value, .. }
             | Self::ElementItem { icon: value, .. }
             | Self::Submenu { icon: value, .. } => *value = Some(icon),
+            _ => {}
+        }
+        self
+    }
+
+    pub fn description(mut self, description: impl Into<SharedString>) -> Self {
+        match &mut self {
+            Self::Item {
+                description: value, ..
+            }
+            | Self::Submenu {
+                description: value, ..
+            } => *value = Some(description.into()),
             _ => {}
         }
         self
@@ -267,6 +284,7 @@ pub struct PopupMenu {
     scrollable: bool,
     scroll_handle: ScrollHandle,
     submenu_anchor: (Anchor, Pixels),
+    rich_rows: bool,
 }
 
 impl PopupMenu {
@@ -286,6 +304,7 @@ impl PopupMenu {
             scrollable: false,
             scroll_handle: ScrollHandle::default(),
             submenu_anchor: (Anchor::TopLeft, Pixels::ZERO),
+            rich_rows: false,
         }
     }
 
@@ -332,8 +351,20 @@ impl PopupMenu {
         self
     }
 
+    pub fn rich_rows(mut self, rich_rows: bool) -> Self {
+        self.rich_rows = rich_rows;
+        self
+    }
+
     pub fn item(mut self, item: PopupMenuItem) -> Self {
         self.push_item(item);
+        self
+    }
+
+    pub fn map_last_item(mut self, map: impl FnOnce(PopupMenuItem) -> PopupMenuItem) -> Self {
+        if let Some(item) = self.menu_items.pop() {
+            self.menu_items.push(map(item));
+        }
         self
     }
 
@@ -642,24 +673,31 @@ impl PopupMenu {
             _ => false,
         };
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
-        let (icon, label, checked) = match item {
+        let (icon, label, description, checked) = match item {
             PopupMenuItem::Item {
                 icon,
                 label,
+                description,
                 checked,
                 ..
-            } => (icon, label, *checked),
-            PopupMenuItem::Submenu { icon, label, .. } => (icon, label, false),
+            } => (icon, label, description, *checked),
+            PopupMenuItem::Submenu {
+                icon,
+                label,
+                description,
+                ..
+            } => (icon, label, description, false),
             _ => unreachable!(),
         };
+        let rich_rows = self.rich_rows;
         let mut row = div()
             .id(("popup-menu-item", index))
-            .h(px(26.0))
+            .h(px(if rich_rows { 48.0 } else { 26.0 }))
             .w_full()
             .px(px(8.0))
             .flex()
             .items_center()
-            .gap(px(4.0))
+            .gap(px(if rich_rows { 10.0 } else { 4.0 }))
             .rounded(self.style.radius)
             .text_size(px(POPUP_MENU_ITEM_FONT_SIZE_PX))
             .text_color(if disabled {
@@ -690,9 +728,48 @@ impl PopupMenu {
                     )
             });
         if has_left_icon {
-            row = row.child(Self::render_icon(icon, checked, self.style, window, cx));
+            let icon = Self::render_icon(icon, checked, self.style, window, cx);
+            row = row.child(if rich_rows {
+                div()
+                    .flex_none()
+                    .size(px(36.0))
+                    .rounded(self.style.radius)
+                    .border_1()
+                    .border_color(self.style.border)
+                    .bg(self.style.background)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(icon)
+                    .into_any_element()
+            } else {
+                icon
+            });
         }
-        row = row.child(div().flex_1().child(label.clone()));
+        row = row.child(if rich_rows {
+            div()
+                .min_w(px(0.0))
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap(px(1.0))
+                .child(
+                    div()
+                        .text_size(px(POPUP_MENU_ITEM_FONT_SIZE_PX))
+                        .child(label.clone()),
+                )
+                .when_some(description.clone(), |column, description| {
+                    column.child(
+                        div()
+                            .text_size(px(POPUP_MENU_LABEL_FONT_SIZE_PX))
+                            .text_color(self.style.muted_foreground)
+                            .child(description),
+                    )
+                })
+                .into_any_element()
+        } else {
+            div().flex_1().child(label.clone()).into_any_element()
+        });
         if checked && self.check_side == PopupMenuCheckSide::Right {
             row = row.child(
                 div()
@@ -872,5 +949,14 @@ mod tests {
     fn popup_menu_font_scale_matches_editor_menu_rows() {
         assert_eq!(POPUP_MENU_ITEM_FONT_SIZE_PX, 14.0);
         assert_eq!(POPUP_MENU_LABEL_FONT_SIZE_PX, 11.0);
+    }
+
+    #[test]
+    fn rich_rows_are_opt_in_and_keep_descriptions() {
+        let item = PopupMenuItem::new("Text").description("Plain text block");
+        let PopupMenuItem::Item { description, .. } = item else {
+            panic!("standard item")
+        };
+        assert_eq!(description.as_deref(), Some("Plain text block"));
     }
 }

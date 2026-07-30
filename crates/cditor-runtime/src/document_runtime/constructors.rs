@@ -200,7 +200,15 @@ impl DocumentRuntime {
 
         let start = Instant::now();
         let page_layout = PageLayoutIndex::from_block_height_index(&height_index, page_policy)
-            .expect("demo pages are valid");
+            .expect("demo pages are valid")
+            .with_identity(cditor_core::layout::PageLayoutIdentity::for_page(
+                document_id,
+                visible_index.source_structure_version,
+                visible_index.visibility_version,
+                0,
+                cditor_core::layout::PAGE_POLICY_VERSION,
+                0,
+            ));
         log_runtime_timing(
             "runtime.layout.page_layout",
             start,
@@ -250,6 +258,7 @@ impl DocumentRuntime {
             layout: LayoutState {
                 height_index,
                 page_layout,
+                page_local_cache: HashMap::new(),
                 scroll,
                 table_horizontal_scroll_offsets: HashMap::new(),
                 payload_window_generation: 0,
@@ -258,8 +267,7 @@ impl DocumentRuntime {
                 last_planned_scroll_top: 0.0,
                 window_plan_clock_ms: 0,
                 window_memory_pressure: WindowMemoryPressure::Normal,
-                projection_window: ProjectionWindowCommitState::default(),
-                stable_projection: None,
+                projection: ProjectionState::default(),
                 pending_measured_heights: HashMap::new(),
                 dirty: false,
                 scrollbar_drag: None,

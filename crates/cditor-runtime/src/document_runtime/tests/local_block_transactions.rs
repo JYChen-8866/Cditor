@@ -66,6 +66,37 @@ fn image_resize_is_one_drag_transaction_and_undo_redo_round_trips() {
 }
 
 #[test]
+fn committed_image_resize_applies_its_final_height_to_the_new_payload_version() {
+    let mut runtime = image_runtime();
+    let final_height = 354.11;
+
+    assert!(runtime.apply_measured_height(1, 1, final_height).unwrap());
+    assert_eq!(runtime.page_layout_total_height(), final_height);
+    assert!(runtime.update_image_display_width_ratio(1, 650).unwrap());
+    assert_eq!(runtime.pending_layout_task_count(), 0);
+    assert_eq!(runtime.page_layout_total_height(), final_height);
+    assert_eq!(
+        runtime.projection_for_window().blocks[0]
+            .layout
+            .effective_height(),
+        IMAGE_BLOCK_ESTIMATED_HEIGHT_PX
+    );
+
+    let committed_version = runtime.block_payload_record(1).unwrap().content_version;
+    assert_eq!(committed_version, 2);
+    assert!(
+        runtime
+            .apply_measured_height(1, committed_version, final_height)
+            .unwrap()
+    );
+    assert_eq!(runtime.pending_layout_task_count(), 0);
+    assert_eq!(runtime.page_layout_total_height(), final_height);
+    let projection = runtime.projection_for_window();
+    assert_eq!(projection.blocks[0].layout.effective_height(), final_height);
+    assert_eq!(projection.render_window.height(), final_height);
+}
+
+#[test]
 fn whiteboard_scene_commit_is_replayable_block_transaction() {
     let mut edited = whiteboard_runtime();
     assert!(

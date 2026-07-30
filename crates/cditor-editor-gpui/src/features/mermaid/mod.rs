@@ -10,6 +10,8 @@ mod render;
 mod theme;
 
 #[cfg(feature = "mermaid")]
+pub(crate) use actions::show_focused_source_after_enter;
+#[cfg(feature = "mermaid")]
 pub(crate) use cache::{MermaidRenderCache, MermaidRenderStatus};
 #[cfg(not(feature = "mermaid"))]
 pub(crate) use disabled::{MermaidRenderCache, render_mermaid_block};

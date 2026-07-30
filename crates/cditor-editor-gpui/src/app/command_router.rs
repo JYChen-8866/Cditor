@@ -14,10 +14,18 @@ use cditor_sdk::{CditorError, command::CommandState, event::CditorEvent};
 
 impl CditorV2View {
     pub(crate) fn apply_input_command(&mut self, command: GuiInputCommand, cx: &mut Context<Self>) {
+        let show_mermaid_source_after_enter = matches!(command, GuiInputCommand::HandleEnter);
         let Some(command) = command.cditor_command() else {
             return;
         };
-        let _ = self.dispatch_command(command, CommandSource::Keyboard, cx);
+        if self
+            .dispatch_command(command, CommandSource::Keyboard, cx)
+            .is_ok()
+            && show_mermaid_source_after_enter
+        {
+            #[cfg(feature = "mermaid")]
+            crate::features::mermaid::show_focused_source_after_enter(self, cx);
+        }
     }
 
     pub fn sdk_execute_command(

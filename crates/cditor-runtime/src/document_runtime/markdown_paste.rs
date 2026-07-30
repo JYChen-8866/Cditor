@@ -48,15 +48,12 @@ impl DocumentRuntime {
             .unwrap_or(RichBlockKind::Paragraph);
         if let Some((kind, marker_len)) = block_kind_shortcut_with_marker_len(&(text.clone() + " "))
             && marker_len == text.len() + 1
+            && !matches!(kind, RichBlockKind::Divider | RichBlockKind::Separator)
             && should_apply_space_block_markdown_shortcut(&current_kind, &kind)
         {
             self.cancel_composition();
             self.push_undo_snapshot(block_id)?;
-            let payload = if matches!(kind, RichBlockKind::Divider | RichBlockKind::Separator) {
-                BlockPayload::Empty
-            } else {
-                BlockPayload::RichText { spans: Vec::new() }
-            };
+            let payload = BlockPayload::RichText { spans: Vec::new() };
             self.replace_block_kind_and_payload(block_id, kind, payload)?;
             return Ok(true);
         }

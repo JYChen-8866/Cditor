@@ -124,7 +124,9 @@ impl DocumentRuntime {
             &self.layout.height_index,
             PagePolicy::default(),
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string())?
+        .with_identity(self.current_page_layout_identity());
+        self.layout.page_local_cache.clear();
         let total_height = self.scroll_extent_height(self.layout.page_layout.total_height());
         self.layout
             .scroll

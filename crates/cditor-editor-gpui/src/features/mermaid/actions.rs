@@ -15,6 +15,27 @@ pub(crate) fn toggle_source_from_gui(
     cx.notify();
 }
 
+pub(crate) fn show_focused_source_after_enter(
+    view: &mut CditorV2View,
+    cx: &mut Context<CditorV2View>,
+) -> bool {
+    let Some((block_id, kind)) = view
+        .ready_session()
+        .and_then(|session| session.focused_block_kind().ok().flatten())
+    else {
+        return false;
+    };
+    if !matches!(kind, cditor_core::rich_text::RichBlockKind::Mermaid)
+        || !view.cache.mermaid_source_blocks.insert(block_id)
+    {
+        return false;
+    }
+
+    crate::features::media::invalidate_rendered_media_height_report(block_id);
+    cx.notify();
+    true
+}
+
 fn toggle_source_visibility(visible_sources: &mut HashSet<BlockId>, block_id: BlockId) -> bool {
     if visible_sources.remove(&block_id) {
         false

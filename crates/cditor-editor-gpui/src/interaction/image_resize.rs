@@ -52,6 +52,13 @@ impl CditorV2View {
             has_caption,
             max_width_px,
         });
+        crate::diagnostics::image_resize::trace(
+            "start",
+            format_args!(
+                "block={block_id} version={content_version} width={current_width_px:.2} max_width={max_width_px:.2} aspect={image_aspect_ratio:.5} caption={has_caption} pointer_x={:.2}",
+                f32::from(position.x)
+            ),
+        );
         if let CditorViewState::Ready(session) = &self.state {
             let _ = session.dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
                 cditor_editor_protocol::command::CditorCommand::FocusBlock { block_id },
@@ -90,13 +97,22 @@ impl CditorV2View {
             next_width / drag.image_aspect_ratio.max(f32::EPSILON),
             drag.has_caption,
         );
-        if let Some(session) = self.ready_session() {
-            let _ = session.queue_measured_block_height(
+        let applied = self.ready_session().map(|session| {
+            session.apply_measured_block_height(
                 drag.block_id,
                 drag.content_version,
                 measured_height,
-            );
-        }
+            )
+        });
+        crate::diagnostics::image_resize::trace(
+            "drag",
+            format_args!(
+                "block={} version={} pointer_x={:.2} width={next_width:.2} height={measured_height:.2} apply={applied:?}",
+                drag.block_id,
+                drag.content_version,
+                f32::from(position.x),
+            ),
+        );
         self.interaction.image_resize_drag = Some(drag);
         cx.notify();
         true
@@ -108,6 +124,18 @@ impl CditorV2View {
         };
         clear_committed_image_resize_action(&mut self.interaction.action_block_id, drag.block_id);
         let ratio = image_width_ratio_milli_for_width(drag.current_width_px, drag.max_width_px);
+        crate::diagnostics::image_resize::trace(
+            "commit.begin",
+            format_args!(
+                "block={} preview_version={} width={:.2} ratio={} aspect={:.5} caption={}",
+                drag.block_id,
+                drag.content_version,
+                drag.current_width_px,
+                ratio,
+                drag.image_aspect_ratio,
+                drag.has_caption,
+            ),
+        );
         if let Err(error) = self.dispatch_command(
             EditorCommand::SetMediaWidthRatio {
                 block_id: drag.block_id,
@@ -116,10 +144,43 @@ impl CditorV2View {
             CommandSource::Toolbar,
             cx,
         ) {
+            crate::diagnostics::image_resize::trace(
+                "commit.command_error",
+                format_args!("block={} error={error}", drag.block_id),
+            );
             self.status.save_status = EditorSaveStatus::Failed(error.to_string());
             self.interaction.image_resize_drag = None;
-        } else if let Some(committed) = self.interaction.image_resize_drag.as_mut() {
-            committed.content_version = committed.content_version.saturating_add(1);
+        } else {
+            let measured_height = crate::features::media::image_block_measured_height(
+                drag.current_width_px / drag.image_aspect_ratio.max(f32::EPSILON),
+                drag.has_caption,
+            );
+            let committed_content_version = self.ready_session().and_then(|session| {
+                session
+                    .loaded_payload_record(drag.block_id)
+                    .ok()
+                    .flatten()
+                    .map(|record| record.content_version)
+            });
+            if let Some(content_version) = committed_content_version {
+                let applied = self.ready_session().map(|session| {
+                    session.apply_measured_block_height(
+                        drag.block_id,
+                        content_version,
+                        measured_height,
+                    )
+                });
+                crate::diagnostics::image_resize::trace(
+                    "commit.height",
+                    format_args!(
+                        "block={} committed_version={} width={:.2} height={measured_height:.2} apply={applied:?}",
+                        drag.block_id, content_version, drag.current_width_px,
+                    ),
+                );
+                if let Some(committed) = self.interaction.image_resize_drag.as_mut() {
+                    committed.content_version = content_version;
+                }
+            }
             let timer = cx
                 .background_executor()
                 .timer(std::time::Duration::from_millis(32));
@@ -131,6 +192,10 @@ impl CditorV2View {
                         .image_resize_drag
                         .is_some_and(|current| current.block_id == drag.block_id)
                     {
+                        crate::diagnostics::image_resize::trace(
+                            "commit.preview_clear",
+                            format_args!("block={}", drag.block_id),
+                        );
                         view.interaction.image_resize_drag = None;
                         cx.notify();
                     }
@@ -155,6 +220,8 @@ fn clear_committed_image_resize_action(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cditor_core::rich_text::{BlockPayload, BlockPayloadRecord, ImagePayload, RichBlockKind};
+    use gpui::{AppContext, TestAppContext, point, px};
 
     #[test]
     fn committing_image_resize_clears_matching_action_root() {
@@ -172,5 +239,59 @@ mod tests {
         clear_committed_image_resize_action(&mut action_block_id, 7);
 
         assert_eq!(action_block_id, Some(8));
+    }
+
+    #[gpui::test]
+    fn dragging_applies_the_latest_image_height_before_the_next_projection(
+        cx: &mut TestAppContext,
+    ) {
+        let runtime = cditor_runtime::DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord {
+                block_id: 1,
+                content_version: 1,
+                kind: RichBlockKind::Image,
+                payload: BlockPayload::Image(ImagePayload {
+                    source: "asset://image".to_owned(),
+                    ..ImagePayload::default()
+                }),
+            }],
+            720.0,
+        );
+        let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+        view.update(cx, |view, cx| {
+            view.interaction.image_resize_drag = Some(GuiImageResizeDrag {
+                block_id: 1,
+                content_version: 1,
+                start_pointer_x: 0.0,
+                start_width_px: 400.0,
+                current_width_px: 400.0,
+                image_aspect_ratio: 2.0,
+                has_caption: false,
+                max_width_px: 704.0,
+            });
+
+            assert!(view.update_image_resize_drag(point(px(200.0), px(0.0)), cx));
+            let preview = view.image_resize_preview().unwrap();
+            let frame = view
+                .ready_session()
+                .unwrap()
+                .render_frame(cditor_session::RenderFrameRequest {
+                    viewport_height: 720.0,
+                    include_diagnostics: false,
+                    height_correction_priority: crate::scroll::HeightCorrectionPriority::Normal,
+                    min_scrollbar_thumb_height: 24.0,
+                })
+                .unwrap();
+            let image = frame
+                .projection
+                .blocks
+                .iter()
+                .find(|block| block.block_id == 1)
+                .unwrap();
+
+            assert_eq!(image.layout.effective_height(), preview.2);
+        });
     }
 }

@@ -161,6 +161,23 @@ impl DocumentEditorView {
                     .filter(|(preview_block_id, _, _)| *preview_block_id == block.block_id)
                     .map(|(_, _, preview_height)| preview_height)
                     .unwrap_or_else(|| block.layout.effective_height());
+                if image_resize_preview
+                    .is_some_and(|(preview_block_id, _, _)| preview_block_id == block.block_id)
+                {
+                    crate::diagnostics::image_resize::trace(
+                        "projection.preview",
+                        format_args!(
+                            "block={} visible_index={} top={top:.2} projected_height={:.2} preview_height={height:.2} before={:.2} window_height={:.2} after={:.2} range={:?}",
+                            block.block_id,
+                            block.visible_index,
+                            block.layout.effective_height(),
+                            projection.before_window_height,
+                            projection.render_window.height(),
+                            projection.after_window_height,
+                            projection.render_window.block_range,
+                        ),
+                    );
+                }
                 block_y += height;
                 let text_viewport = DocumentTextViewport::for_block(
                     top,

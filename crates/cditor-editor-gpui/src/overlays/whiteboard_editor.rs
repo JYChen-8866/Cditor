@@ -1,3 +1,4 @@
+use cditor_component::SvgIcon;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
 };
@@ -18,6 +19,8 @@ pub(crate) fn render_whiteboard_editor(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
 ) -> AnyElement {
+    const MINISIZE: &[u8] = include_bytes!("../../../../assets/icons/minisize.svg");
+
     let close_view = view;
     div()
         .id(("whiteboard-editor-overlay", session.block_id))
@@ -55,7 +58,24 @@ pub(crate) fn render_whiteboard_editor(
                     });
                     cx.stop_propagation();
                 })
-                .child("×"),
+                .child(
+                    SvgIcon::new("whiteboard-minisize-icon", MINISIZE)
+                        .color(rgb(theme.text))
+                        .size(px(16.0)),
+                ),
         )
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn minimized_button_uses_the_shared_svg_asset() {
+        const MINISIZE: &[u8] = include_bytes!("../../../../assets/icons/minisize.svg");
+        assert!(
+            std::str::from_utf8(MINISIZE)
+                .unwrap()
+                .contains("lucide-minimize")
+        );
+    }
 }

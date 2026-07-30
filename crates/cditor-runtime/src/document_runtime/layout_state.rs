@@ -5,6 +5,7 @@ use super::*;
 pub(super) struct LayoutState {
     pub(super) height_index: BlockHeightIndex,
     pub(super) page_layout: PageLayoutIndex,
+    pub(super) page_local_cache: HashMap<usize, PageLocalHeightIndex>,
     pub(super) scroll: VirtualScrollState,
     pub(super) table_horizontal_scroll_offsets: HashMap<BlockId, f32>,
     pub(super) payload_window_generation: u64,
@@ -43,6 +44,16 @@ pub(super) struct ProjectionWindowState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(super) enum ProjectionWindowDecision {
+    Stable(ProjectionWindowTarget),
+    ColdPlaceholder(ProjectionWindowTarget),
+    FailedTarget {
+        target: ProjectionWindowTarget,
+        stable: Option<ProjectionWindowTarget>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(super) struct ProjectionPublicationState {
     pub(super) next_frame_id: u64,
     pub(super) stable: Option<StableProjectionSnapshot>,
@@ -70,6 +81,90 @@ pub(super) enum ProjectionWindowLoadState {
     PreparingNext,
     ColdPlaceholder,
     Failed,
+}
+
+impl Default for ProjectionState {
+    fn default() -> Self {
+        Self {
+            window: ProjectionWindowState {
+                generation: 0,
+                desired: None,
+                preparing: None,
+                load_state: ProjectionWindowLoadState::ColdPlaceholder,
+            },
+            publication: ProjectionPublicationState {
+                next_frame_id: 0,
+                stable: None,
+            },
+        }
+    }
+}
+
+impl ProjectionState {
+    pub(super) fn generation(&self) -> u64 {
+        self.window.generation
+    }
+
+    pub(super) fn reconcile(
+        &mut self,
+        desired: ProjectionWindowTarget,
+        desired_ready: bool,
+        stable_valid: bool,
+        desired_failed: bool,
+    ) -> ProjectionWindowDecision {
+        let invalidated_stable = self.publication.stable.is_some() && !stable_valid;
+        if !stable_valid {
+            self.publication.stable = None;
+        }
+
+        let desired_changed = self
+            .window
+            .desired
+            .as_ref()
+            .is_none_or(|current| !current.same_window_as(&desired));
+        if desired_changed || invalidated_stable {
+            self.window.generation = self.window.generation.saturating_add(1);
+        }
+        self.window.desired = Some(desired.clone());
+
+        if desired_ready {
+            self.window.preparing = None;
+            self.window.load_state = ProjectionWindowLoadState::CurrentStable;
+            return ProjectionWindowDecision::Stable(desired);
+        }
+
+        self.window.preparing = Some(desired.clone());
+        let stable = self
+            .publication
+            .stable
+            .as_ref()
+            .map(|snapshot| snapshot.target.clone());
+        if desired_failed {
+            self.window.preparing = None;
+            self.window.load_state = ProjectionWindowLoadState::Failed;
+            return ProjectionWindowDecision::FailedTarget {
+                target: desired,
+                stable,
+            };
+        }
+
+        if let Some(stable) = stable {
+            self.window.load_state = ProjectionWindowLoadState::PreparingNext;
+            ProjectionWindowDecision::Stable(stable)
+        } else {
+            self.window.load_state = ProjectionWindowLoadState::ColdPlaceholder;
+            ProjectionWindowDecision::ColdPlaceholder(desired)
+        }
+    }
+}
+
+impl ProjectionWindowTarget {
+    fn same_window_as(&self, other: &Self) -> bool {
+        self.structure_version == other.structure_version
+            && self.page_range == other.page_range
+            && self.block_range == other.block_range
+            && self.visible_block_range == other.visible_block_range
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -127,5 +222,41 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(runtime.global_scroll_top(), 48.0);
+    }
+
+    fn projection_target(start: usize, scroll_top: f64) -> ProjectionWindowTarget {
+        ProjectionWindowTarget {
+            structure_version: 1,
+            page_range: start / 10..start / 10 + 1,
+            block_range: start..start + 10,
+            visible_block_range: start + 2..start + 6,
+            presented_scroll_top: scroll_top,
+        }
+    }
+
+    #[test]
+    fn projection_state_keeps_stable_publication_while_next_target_prepares() {
+        let mut state = ProjectionState::default();
+        let stable = projection_target(0, 0.0);
+        assert_eq!(
+            state.reconcile(stable.clone(), true, false, false),
+            ProjectionWindowDecision::Stable(stable.clone())
+        );
+        state.publication.stable = Some(StableProjectionSnapshot {
+            frame_id: 0,
+            target: stable.clone(),
+            projection: DocumentRuntime::demo().projection_for_window(),
+        });
+
+        let desired = projection_target(100, 3_200.0);
+        assert_eq!(
+            state.reconcile(desired.clone(), false, true, false),
+            ProjectionWindowDecision::Stable(stable)
+        );
+        assert_eq!(state.window.preparing, Some(desired));
+        assert_eq!(
+            state.window.load_state,
+            ProjectionWindowLoadState::PreparingNext
+        );
     }
 }

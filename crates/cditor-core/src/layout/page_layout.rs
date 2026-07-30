@@ -1,11 +1,61 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::ops::Range;
 
 use crate::layout::{BlockHeightIndex, HeightConfidence};
 
 pub const DEFAULT_MAX_PAGE_BLOCKS: usize = 1_000;
 pub const DEFAULT_TARGET_PAGE_HEIGHT: f64 = 30_000.0;
 pub const PAGE_POLICY_VERSION: u64 = 1;
+
+mod cache;
+mod local;
+mod mutation;
+
+pub use cache::{CachedPageMismatchPolicy, CachedPageRestore};
+pub use local::{PageLocalBlockOffsetHit, PageLocalHeightIndex};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PageLayoutIdentity {
+    pub document_id: u64,
+    pub structure_version: u64,
+    pub visibility_version: u64,
+    pub layout_key_hash: u64,
+    pub page_policy_version: u64,
+    pub page_index: usize,
+}
+
+impl PageLayoutIdentity {
+    pub fn for_page(
+        document_id: u64,
+        structure_version: u64,
+        visibility_version: u64,
+        layout_key_hash: u64,
+        page_policy_version: u64,
+        page_index: usize,
+    ) -> Self {
+        Self {
+            document_id,
+            structure_version,
+            visibility_version,
+            layout_key_hash,
+            page_policy_version,
+            page_index,
+        }
+    }
+
+    pub fn same_layout_context(&self, other: &Self) -> bool {
+        self.document_id == other.document_id
+            && self.structure_version == other.structure_version
+            && self.visibility_version == other.visibility_version
+            && self.layout_key_hash == other.layout_key_hash
+            && self.page_policy_version == other.page_policy_version
+    }
+
+    pub fn for_page_index(self, page_index: usize) -> Self {
+        Self { page_index, ..self }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PageLayout {
@@ -95,6 +145,7 @@ impl PageBlockEstimate {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageLayoutIndex {
+    pub identity: Option<PageLayoutIdentity>,
     pub policy: PagePolicy,
     pub pages: Vec<PageLayout>,
     height_index: PageHeightFenwick,
@@ -194,6 +245,7 @@ impl PageLayoutIndex {
 
         let height_index = PageHeightFenwick::from_pages(&pages);
         Ok(Self {
+            identity: None,
             policy,
             pages,
             height_index,
@@ -232,12 +284,18 @@ impl PageLayoutIndex {
         }
         let height_index = PageHeightFenwick::from_pages(&pages);
         let index = Self {
+            identity: None,
             policy,
             pages,
             height_index,
         };
         index.validate_covers_blocks(total_visible_blocks)?;
         Ok(index)
+    }
+
+    pub fn with_identity(mut self, identity: PageLayoutIdentity) -> Self {
+        self.identity = Some(identity);
+        self
     }
 
     pub fn page_count(&self) -> usize {
@@ -254,6 +312,12 @@ impl PageLayoutIndex {
         } else {
             None
         }
+    }
+
+    pub fn page_bounds(&self, page: usize) -> Option<Range<f64>> {
+        let top = self.offset_of_page(page)?;
+        let layout = self.pages.get(page)?;
+        Some(top..top + layout.height)
     }
 
     pub fn page_at_offset(&self, global_y: f64) -> Option<PageOffsetHit> {
@@ -279,6 +343,177 @@ impl PageLayoutIndex {
             page_index,
             page_top,
             offset_in_page: clamped_y - page_top,
+        })
+    }
+
+    pub fn page_layout_identity(&self) -> Option<PageLayoutIdentity> {
+        self.identity
+    }
+
+    pub fn page_identity(&self, page: usize) -> Option<PageLayoutIdentity> {
+        self.pages
+            .get(page)
+            .and_then(|_| self.identity.map(|identity| identity.for_page_index(page)))
+    }
+
+    pub fn assert_identity_matches(
+        &self,
+        identity: PageLayoutIdentity,
+    ) -> Result<(), PageLayoutIndexError> {
+        match self.identity {
+            Some(current)
+                if current.same_layout_context(&identity)
+                    && identity.page_index < self.pages.len() =>
+            {
+                Ok(())
+            }
+            Some(current) if !current.same_layout_context(&identity) => {
+                Err(PageLayoutIndexError::PageIdentityMismatch {
+                    cached: current,
+                    expected: identity,
+                })
+            }
+            Some(_) => Err(PageLayoutIndexError::PageOutOfBounds {
+                page: identity.page_index,
+                len: self.pages.len(),
+            }),
+            None => Err(PageLayoutIndexError::MissingPageIdentity),
+        }
+    }
+
+    pub fn page_summary(&self, page: usize) -> Option<PageSummary> {
+        self.pages.get(page).copied().map(PageSummary::from)
+    }
+
+    pub fn page_summaries(&self) -> impl Iterator<Item = PageSummary> + '_ {
+        self.pages.iter().copied().map(PageSummary::from)
+    }
+
+    pub fn local_height_index_from_global(
+        &self,
+        page: usize,
+        global: &BlockHeightIndex,
+    ) -> Result<PageLocalHeightIndex, PageLayoutIndexError> {
+        let Some(summary) = self.page_summary(page) else {
+            return Err(PageLayoutIndexError::PageOutOfBounds {
+                page,
+                len: self.pages.len(),
+            });
+        };
+        if summary.block_end() > global.len() {
+            return Err(PageLayoutIndexError::CoverageTailMismatch {
+                covered: global.len(),
+                total: summary.block_end(),
+            });
+        }
+        self.local_height_index(
+            page,
+            &global.heights[summary.block_start..summary.block_end()],
+            &global.confidence[summary.block_start..summary.block_end()],
+        )
+    }
+
+    pub fn local_height_index(
+        &self,
+        page: usize,
+        heights: &[f64],
+        confidence: &[HeightConfidence],
+    ) -> Result<PageLocalHeightIndex, PageLayoutIndexError> {
+        let Some(summary) = self.page_summary(page) else {
+            return Err(PageLayoutIndexError::PageOutOfBounds {
+                page,
+                len: self.pages.len(),
+            });
+        };
+        if heights.len() != summary.block_count || confidence.len() != summary.block_count {
+            return Err(PageLayoutIndexError::CoverageTailMismatch {
+                covered: heights.len().min(confidence.len()),
+                total: summary.block_count,
+            });
+        }
+        for height in heights {
+            validate_height(*height)?;
+        }
+        let non_exact_count = confidence
+            .iter()
+            .filter(|confidence| **confidence != HeightConfidence::Exact)
+            .count();
+        let error_per_non_exact = if non_exact_count == 0 {
+            0.0
+        } else {
+            summary.max_error_hint / non_exact_count as f64
+        };
+        Ok(PageLocalHeightIndex::new(
+            summary.page_index,
+            summary.block_start,
+            heights.to_vec(),
+            confidence.to_vec(),
+            confidence
+                .iter()
+                .map(|confidence| {
+                    if *confidence == HeightConfidence::Exact {
+                        0.0
+                    } else {
+                        error_per_non_exact
+                    }
+                })
+                .collect(),
+        ))
+    }
+
+    pub fn rebuild_from_block_height_index(
+        &mut self,
+        block_height_index: &BlockHeightIndex,
+    ) -> Result<(), PageLayoutIndexError> {
+        let identity = self.identity;
+        let rebuilt = Self::from_block_height_index(block_height_index, self.policy)?;
+        self.pages = rebuilt.pages;
+        self.height_index = rebuilt.height_index;
+        self.identity = identity;
+        Ok(())
+    }
+
+    pub fn synchronize_page_from_local(
+        &mut self,
+        local: &PageLocalHeightIndex,
+    ) -> Result<PageHeightChange, PageLayoutIndexError> {
+        let page = local.page_index;
+        let Some(layout) = self.pages.get(page) else {
+            return Err(PageLayoutIndexError::PageOutOfBounds {
+                page,
+                len: self.pages.len(),
+            });
+        };
+        if layout.block_start != local.block_start || layout.block_count != local.len() {
+            return Err(PageLayoutIndexError::CoverageGapOrOverlap {
+                expected_start: layout.block_start,
+                actual_start: local.block_start,
+            });
+        }
+        let exact = local
+            .confidence
+            .iter()
+            .filter(|confidence| **confidence == HeightConfidence::Exact)
+            .count();
+        let old_height = layout.height;
+        let new_height = local.total_height();
+        let layout = &mut self.pages[page];
+        layout.height = new_height;
+        layout.measured_ratio = exact as f32 / local.len().max(1) as f32;
+        layout.confidence = local
+            .confidence
+            .iter()
+            .copied()
+            .fold(HeightConfidence::Exact, aggregate_confidence);
+        layout.dirty =
+            local.dirty_range().is_some() || layout.confidence != HeightConfidence::Exact;
+        layout.max_error_hint = local.max_error_hints.iter().sum();
+        self.height_index.add(page, new_height - old_height);
+        Ok(PageHeightChange {
+            page,
+            old_height,
+            new_height,
+            delta: new_height - old_height,
         })
     }
 
@@ -371,6 +606,39 @@ pub struct PageHeightChange {
     pub delta: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PageSummary {
+    pub page_index: usize,
+    pub block_start: usize,
+    pub block_count: usize,
+    pub height: f64,
+    pub measured_ratio: f32,
+    pub confidence: HeightConfidence,
+    pub max_error_hint: f64,
+    pub dirty: bool,
+}
+
+impl PageSummary {
+    pub fn block_end(&self) -> usize {
+        self.block_start + self.block_count
+    }
+}
+
+impl From<PageLayout> for PageSummary {
+    fn from(layout: PageLayout) -> Self {
+        Self {
+            page_index: layout.page_index,
+            block_start: layout.block_start,
+            block_count: layout.block_count,
+            height: layout.height,
+            measured_ratio: layout.measured_ratio,
+            confidence: layout.confidence,
+            max_error_hint: layout.max_error_hint,
+            dirty: layout.dirty,
+        }
+    }
+}
+
 fn build_page(
     page_index: usize,
     block_start: usize,
@@ -419,11 +687,15 @@ struct PageHeightFenwick {
 
 impl PageHeightFenwick {
     fn from_pages(pages: &[PageLayout]) -> Self {
+        Self::from_values(&pages.iter().map(|page| page.height).collect::<Vec<_>>())
+    }
+
+    fn from_values(values: &[f64]) -> Self {
         let mut tree = Self {
-            tree: vec![0.0; pages.len() + 1],
+            tree: vec![0.0; values.len() + 1],
         };
-        for (index, page) in pages.iter().enumerate() {
-            tree.add(index, page.height);
+        for (index, value) in values.iter().copied().enumerate() {
+            tree.add(index, value);
         }
         tree
     }
@@ -507,6 +779,25 @@ pub enum PageLayoutIndexError {
     },
     InvalidMeasuredRatio(f32),
     InvalidMaxErrorHint(f64),
+    MissingPageIdentity,
+    PageIdentityMismatch {
+        cached: PageLayoutIdentity,
+        expected: PageLayoutIdentity,
+    },
+    InvalidLocalRange {
+        start: usize,
+        end: usize,
+        len: usize,
+    },
+    LocalReplacementLengthMismatch {
+        range_len: usize,
+        replacement_len: usize,
+    },
+    InvalidPageSplit {
+        page: usize,
+        split_at: usize,
+        block_count: usize,
+    },
 }
 
 impl Display for PageLayoutIndexError {
@@ -550,6 +841,32 @@ impl Display for PageLayoutIndexError {
             Self::InvalidMaxErrorHint(error) => {
                 write!(formatter, "invalid max error hint: {error}")
             }
+            Self::MissingPageIdentity => write!(formatter, "page layout identity is missing"),
+            Self::PageIdentityMismatch { cached, expected } => write!(
+                formatter,
+                "page layout identity mismatch: cached {cached:?}, expected {expected:?}"
+            ),
+            Self::InvalidLocalRange { start, end, len } => {
+                write!(
+                    formatter,
+                    "invalid page-local range {start}..{end} for len {len}"
+                )
+            }
+            Self::LocalReplacementLengthMismatch {
+                range_len,
+                replacement_len,
+            } => write!(
+                formatter,
+                "page-local replacement length mismatch: range {range_len}, replacement {replacement_len}"
+            ),
+            Self::InvalidPageSplit {
+                page,
+                split_at,
+                block_count,
+            } => write!(
+                formatter,
+                "invalid split for page {page}: split {split_at}, block count {block_count}"
+            ),
         }
     }
 }
@@ -618,6 +935,8 @@ mod tests {
         assert_eq!(page_index.offset_of_page(0), Some(0.0));
         assert_eq!(page_index.offset_of_page(1), Some(30.0));
         assert_eq!(page_index.offset_of_page(2), Some(100.0));
+        assert_eq!(page_index.page_bounds(1), Some(30.0..100.0));
+        assert_eq!(page_index.page_bounds(2), None);
         assert_eq!(page_index.page_at_offset(0.0).unwrap().page_index, 0);
         assert_eq!(page_index.page_at_offset(29.9).unwrap().page_index, 0);
         assert_eq!(page_index.page_at_offset(30.0).unwrap().page_index, 1);
@@ -651,6 +970,66 @@ mod tests {
                 covered: 2,
                 total: 3
             }
+        ));
+    }
+
+    #[test]
+    fn page_local_index_maps_offsets_and_synchronizes_summary() {
+        let global = BlockHeightIndex::new([
+            HeightEstimate::new(10.0, HeightConfidence::Historical, 0.0),
+            HeightEstimate::new(20.0, HeightConfidence::Historical, 0.0),
+            HeightEstimate::new(30.0, HeightConfidence::Historical, 0.0),
+            HeightEstimate::new(40.0, HeightConfidence::Historical, 0.0),
+        ])
+        .unwrap();
+        let mut pages = PageLayoutIndex::from_block_height_index(
+            &global,
+            PagePolicy {
+                max_blocks: 2,
+                target_height: 1_000.0,
+                ..PagePolicy::default()
+            },
+        )
+        .unwrap();
+        let mut local = pages.local_height_index_from_global(1, &global).unwrap();
+        assert_eq!(local.total_height(), 70.0);
+        assert_eq!(local.offset_of_block(1), Some(30.0));
+        let hit = local.block_at_offset(35.0).unwrap();
+        assert_eq!(hit.local_index, 1);
+        assert_eq!(hit.global_block_index, 3);
+        assert_eq!(hit.offset_in_block, 5.0);
+
+        local.update_height(0, 50.0).unwrap();
+        let change = pages.synchronize_page_from_local(&local).unwrap();
+        assert_eq!(change.delta, 20.0);
+        assert_eq!(pages.pages[1].height, 90.0);
+        assert_eq!(pages.total_height(), 120.0);
+    }
+
+    #[test]
+    fn page_local_batch_updates_merge_and_clear_dirty_ranges() {
+        let global = BlockHeightIndex::new([
+            HeightEstimate::new(10.0, HeightConfidence::Historical, 2.0),
+            HeightEstimate::new(20.0, HeightConfidence::Historical, 2.0),
+            HeightEstimate::new(30.0, HeightConfidence::Historical, 2.0),
+            HeightEstimate::new(40.0, HeightConfidence::Historical, 2.0),
+        ])
+        .unwrap();
+        let pages =
+            PageLayoutIndex::from_block_height_index(&global, PagePolicy::default()).unwrap();
+        let mut local = pages.local_height_index_from_global(0, &global).unwrap();
+
+        assert_eq!(local.range_total_height(1..3), Some(50.0));
+        local.update_height(3, 45.0).unwrap();
+        assert_eq!(local.dirty_range(), Some(3..4));
+        assert_eq!(local.update_heights(1..3, &[25.0, 35.0]).unwrap(), 10.0);
+        assert_eq!(local.dirty_range(), Some(1..4));
+        assert_eq!(local.total_height(), 115.0);
+        local.clear_dirty();
+        assert_eq!(local.dirty_range(), None);
+        assert!(matches!(
+            local.update_heights(1..3, &[1.0]),
+            Err(PageLayoutIndexError::LocalReplacementLengthMismatch { .. })
         ));
     }
 

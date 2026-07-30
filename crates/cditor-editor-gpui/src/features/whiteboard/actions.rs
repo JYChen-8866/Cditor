@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use cditor_whiteboard::{Scene, WhiteboardView};
+use cditor_whiteboard_drafft::DrafftChromeMode;
 use gpui::{AppContext, Context};
 
 use crate::editor_view::{CditorV2View, CditorViewState};
@@ -25,13 +26,18 @@ impl CditorV2View {
         };
         let readonly = self.status.readonly;
         if let Some(board) = self.cache.whiteboard_thumbnails.checkout_drafft(block_id) {
+            board.set_drafft_chrome_mode(DrafftChromeMode::Full, cx);
             self.features.whiteboard_editor = Some(WhiteboardEditorSession { block_id, board });
             cx.notify();
             return true;
         }
-        if let Ok(board) =
-            super::backend::try_create_drafft_board(&scene_json, readonly, block_id, cx)
-        {
+        if let Ok(board) = super::backend::try_create_drafft_board(
+            &scene_json,
+            readonly,
+            DrafftChromeMode::Full,
+            block_id,
+            cx,
+        ) {
             self.features.whiteboard_editor = Some(WhiteboardEditorSession { block_id, board });
             cx.notify();
             return true;
@@ -97,6 +103,9 @@ impl CditorV2View {
             .unwrap_or_else(|| "{}".to_owned());
         let is_drafft = session.board.is_drafft();
         if is_drafft {
+            session
+                .board
+                .set_drafft_chrome_mode(DrafftChromeMode::BottomToolbarOnly, cx);
             self.cache
                 .whiteboard_thumbnails
                 .checkin(session.block_id, session.board.clone());

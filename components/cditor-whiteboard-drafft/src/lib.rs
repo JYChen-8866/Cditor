@@ -26,4 +26,6 @@ pub use model_host::document::{parse_document, parse_document_json, parse_librar
 #[cfg(feature = "drafft-core")]
 pub use model_host::{DrafftBoard, PointerOutcome};
 #[cfg(feature = "drafft-core")]
-pub use view::{DrafftBoardView, FocusRequestFn, SceneChangeFn, bind_drafft_keys};
+pub use view::{
+    DrafftBoardView, DrafftChromeMode, FocusRequestFn, SceneChangeFn, bind_drafft_keys,
+};

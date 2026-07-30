@@ -60,7 +60,7 @@ impl DocumentRuntime {
         EditorViewProjection {
             document_id: self.document_id,
             viewport_revision: 0,
-            window_generation: self.layout.projection_window.generation(),
+            window_generation: self.layout.projection.generation(),
             scroll: self.layout.scroll,
             render_window,
             payload_visible_block_range: visible_block_range,

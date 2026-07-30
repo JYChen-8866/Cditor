@@ -237,6 +237,7 @@ pub fn build_slash_callout_popup_menu(
     PopupMenu::build(window, cx, move |menu, _window, _cx| {
         CALLOUT_MENU_ITEMS.iter().fold(
             menu.style(style)
+                .rich_rows(true)
                 .action_context(action_context)
                 .min_w(px(SECONDARY_MENU_WIDTH_PX))
                 .max_w(px(SECONDARY_MENU_WIDTH_PX)),
@@ -245,6 +246,7 @@ pub fn build_slash_callout_popup_menu(
                 let variant = item.variant;
                 menu.item(
                     PopupMenuItem::new(item.label)
+                        .description(item.description)
                         .icon(PopupMenuIcon::new(move |_, _| {
                             SvgIcon::new(item.icon_key, item.icon)
                                 .color(style.foreground)

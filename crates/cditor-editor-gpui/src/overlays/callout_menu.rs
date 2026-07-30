@@ -6,6 +6,7 @@ pub struct CalloutMenuItem {
     pub label: &'static str,
     pub icon_key: &'static str,
     pub icon: &'static [u8],
+    pub description: &'static str,
 }
 
 const ICON_NOTE: &[u8] = include_bytes!("../../../../assets/icons/note.svg");
@@ -20,30 +21,35 @@ pub const CALLOUT_MENU_ITEMS: &[CalloutMenuItem] = &[
         label: "!NOTE",
         icon_key: "callout-note",
         icon: ICON_NOTE,
+        description: "普通提示信息",
     },
     CalloutMenuItem {
         variant: CalloutVariant::Tip,
         label: "!TIP",
         icon_key: "callout-tip",
         icon: ICON_TIP,
+        description: "有用的建议或技巧",
     },
     CalloutMenuItem {
         variant: CalloutVariant::Important,
         label: "!IMPORTANT",
         icon_key: "callout-important",
         icon: ICON_IMPORTANT,
+        description: "需要特别关注的信息",
     },
     CalloutMenuItem {
         variant: CalloutVariant::Warning,
         label: "!WARNING",
         icon_key: "callout-warning",
         icon: ICON_WARNING,
+        description: "需要谨慎处理的警告",
     },
     CalloutMenuItem {
         variant: CalloutVariant::Caution,
         label: "!CAUTION",
         icon_key: "callout-caution",
         icon: ICON_CAUTION,
+        description: "可能导致风险的注意事项",
     },
 ];
 
@@ -69,7 +75,7 @@ mod tests {
         assert!(
             CALLOUT_MENU_ITEMS
                 .iter()
-                .all(|item| item.icon.starts_with(b"<svg"))
+                .all(|item| item.icon.starts_with(b"<svg") && !item.description.is_empty())
         );
     }
 }

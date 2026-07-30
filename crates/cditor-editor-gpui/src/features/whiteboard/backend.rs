@@ -3,6 +3,7 @@ use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorComm
 use gpui::{AnyElement, AppContext, Context, Entity, IntoElement};
 
 use crate::editor_view::CditorV2View;
+use cditor_whiteboard_drafft::DrafftChromeMode;
 
 #[derive(Clone)]
 pub(crate) enum WhiteboardBackendEntity {
@@ -31,11 +32,21 @@ impl WhiteboardBackendEntity {
             Self::Drafft(_) => true,
         }
     }
+
+    pub(crate) fn set_drafft_chrome_mode(&self, mode: DrafftChromeMode, cx: &mut gpui::App) {
+        if let Self::Drafft(entity) = self {
+            entity.update(cx, |board, cx| {
+                board.set_chrome_mode(mode);
+                cx.notify();
+            });
+        }
+    }
 }
 
 pub(crate) fn try_create_drafft_board(
     scene_json: &str,
     read_only: bool,
+    chrome_mode: DrafftChromeMode,
     block_id: BlockId,
     cx: &mut Context<CditorV2View>,
 ) -> Result<WhiteboardBackendEntity, String> {
@@ -43,12 +54,14 @@ pub(crate) fn try_create_drafft_board(
     cditor_whiteboard_drafft::parse_document_json(scene_json)?;
     let scene_json = scene_json.to_owned();
     let entity = cx.new(|board_cx| {
-        cditor_whiteboard_drafft::DrafftBoardView::from_document_json(
+        let mut board = cditor_whiteboard_drafft::DrafftBoardView::from_document_json(
             &scene_json,
             read_only,
             board_cx,
         )
-        .expect("Drafft scene was validated before entity creation")
+        .expect("Drafft scene was validated before entity creation");
+        board.set_chrome_mode(chrome_mode);
+        board
     });
     if !read_only {
         let host = cx.entity().downgrade();

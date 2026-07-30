@@ -1,3 +1,4 @@
+use cditor_component::SvgIcon;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
 };
@@ -66,6 +67,8 @@ fn expand_button(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
 ) -> impl IntoElement {
+    const FULLSCREEN: &[u8] = include_bytes!("../../../../../assets/icons/fullscreen.svg");
+
     div()
         .id(("whiteboard-expand", block_id))
         .absolute()
@@ -89,7 +92,11 @@ fn expand_button(
             });
             cx.stop_propagation();
         })
-        .child("↗")
+        .child(
+            SvgIcon::new("whiteboard-fullscreen-icon", FULLSCREEN)
+                .color(rgb(theme.text))
+                .size(px(16.0)),
+        )
 }
 
 #[cfg(test)]
@@ -107,5 +114,11 @@ mod tests {
     fn thumbnail_height_matches_the_stable_block_inner_box() {
         assert_eq!(WHITEBOARD_THUMBNAIL_HEIGHT_PX, 472.0);
         assert_eq!(WHITEBOARD_FRAME_RADIUS_PX, 6.0);
+    }
+
+    #[test]
+    fn fullscreen_button_uses_the_shared_svg_asset() {
+        const FULLSCREEN: &[u8] = include_bytes!("../../../../../assets/icons/fullscreen.svg");
+        assert!(std::str::from_utf8(FULLSCREEN).unwrap().contains("<svg"));
     }
 }

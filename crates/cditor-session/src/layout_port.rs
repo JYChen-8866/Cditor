@@ -42,6 +42,17 @@ pub fn project_measured_block_height(
         .map_err(|message| layout_error(runtime, message))
 }
 
+pub fn project_apply_measured_block_height(
+    runtime: &mut DocumentRuntime,
+    block_id: BlockId,
+    content_version: u64,
+    measured_height: f64,
+) -> Result<bool, ProtocolError> {
+    runtime
+        .apply_measured_height(block_id, content_version, measured_height)
+        .map_err(|message| layout_error(runtime, message))
+}
+
 pub fn project_scroll_input_frame(
     runtime: &mut DocumentRuntime,
     accumulator: &mut ScrollAccumulator,
@@ -174,6 +185,21 @@ impl EditorSessionHandle {
         measured_height: f64,
     ) -> Result<bool, ProtocolError> {
         project_measured_block_height(
+            &mut self.try_session_mut()?.runtime,
+            block_id,
+            content_version,
+            measured_height,
+        )
+    }
+
+    /// Applies a user-committed geometry change before its visual preview is removed.
+    pub fn apply_measured_block_height(
+        &self,
+        block_id: BlockId,
+        content_version: u64,
+        measured_height: f64,
+    ) -> Result<bool, ProtocolError> {
+        project_apply_measured_block_height(
             &mut self.try_session_mut()?.runtime,
             block_id,
             content_version,
@@ -348,6 +374,16 @@ mod tests {
         assert!(
             handle
                 .queue_measured_block_height(block_id, content_version, 240.0)
+                .unwrap()
+        );
+        assert!(
+            handle
+                .apply_measured_block_height(block_id, content_version, 240.0)
+                .unwrap()
+        );
+        assert!(
+            !handle
+                .apply_measured_block_height(block_id, content_version, 240.0)
                 .unwrap()
         );
         assert!(

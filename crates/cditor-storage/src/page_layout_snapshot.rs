@@ -1,5 +1,5 @@
 use cditor_core::ids::BlockId;
-use cditor_core::layout::{PageLayout, PageLayoutIndex, PagePolicy};
+use cditor_core::layout::{PageLayout, PageLayoutIdentity, PageLayoutIndex, PagePolicy};
 
 use crate::error::{StorageError, StorageResult};
 use crate::layout_cache::LayoutCacheKey;
@@ -71,8 +71,10 @@ impl StoragePageLayoutSnapshot {
 
     pub fn to_page_layout_index(
         &self,
+        expected_document_id: u64,
         expected_visible_index_version: i64,
         expected_structure_version: u64,
+        expected_visibility_version: u64,
         expected_layout_key: LayoutCacheKey,
         expected_page_policy_version: u64,
         policy: PagePolicy,
@@ -93,7 +95,15 @@ impl StoragePageLayoutSnapshot {
             policy,
             visible_block_ids.len(),
         )
-        .map_err(|error| StorageError::CorruptData(error.to_string()))?;
+        .map_err(|error| StorageError::CorruptData(error.to_string()))?
+        .with_identity(PageLayoutIdentity::for_page(
+            expected_document_id,
+            expected_structure_version,
+            expected_visibility_version,
+            stable_layout_key_hash(&self.layout_key_hash),
+            expected_page_policy_version,
+            0,
+        ));
 
         for page in &self.pages {
             let end = page.layout.block_end();
@@ -112,6 +122,15 @@ impl StoragePageLayoutSnapshot {
         }
         Ok(index)
     }
+}
+
+fn stable_layout_key_hash(value: &str) -> u64 {
+    value
+        .as_bytes()
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+        })
 }
 
 #[cfg(test)]
@@ -159,12 +178,31 @@ mod tests {
     #[test]
     fn validates_context_coverage_and_visible_boundaries() {
         let index = snapshot()
-            .to_page_layout_index(2, 7, layout_key(), 1, PagePolicy::default(), &[11, 12])
+            .to_page_layout_index(
+                9,
+                2,
+                7,
+                0,
+                layout_key(),
+                1,
+                PagePolicy::default(),
+                &[11, 12],
+            )
             .unwrap();
         assert_eq!(index.total_height(), 88.0);
+        assert_eq!(index.page_identity(0).unwrap().document_id, 9);
 
         let error = snapshot()
-            .to_page_layout_index(2, 7, layout_key(), 1, PagePolicy::default(), &[11, 99])
+            .to_page_layout_index(
+                9,
+                2,
+                7,
+                0,
+                layout_key(),
+                1,
+                PagePolicy::default(),
+                &[11, 99],
+            )
             .unwrap_err();
         assert!(error.to_string().contains("boundaries"));
     }
@@ -172,7 +210,16 @@ mod tests {
     #[test]
     fn rejects_stale_snapshot_context() {
         let error = snapshot()
-            .to_page_layout_index(2, 8, layout_key(), 1, PagePolicy::default(), &[11, 12])
+            .to_page_layout_index(
+                9,
+                2,
+                8,
+                0,
+                layout_key(),
+                1,
+                PagePolicy::default(),
+                &[11, 12],
+            )
             .unwrap_err();
         assert!(error.to_string().contains("context"));
     }

@@ -613,6 +613,38 @@ fn keyboard_enter_reveals_the_new_focused_block_in_the_document_viewport(cx: &mu
     });
 }
 
+#[cfg(feature = "mermaid")]
+#[gpui::test]
+fn mermaid_fence_enter_opens_the_new_block_in_source_edit_mode(cx: &mut TestAppContext) {
+    let marker = "```mermaid";
+    let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            marker,
+        )],
+        720.0,
+    );
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, marker.len());
+    let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+    view.update(cx, |view, cx| {
+        view.apply_input_command(GuiInputCommand::HandleEnter, cx);
+
+        let context = view
+            .ready_session()
+            .unwrap()
+            .focused_text_block_context()
+            .unwrap()
+            .unwrap();
+        assert_eq!(context.block_id, 1);
+        assert_eq!(context.kind, RichBlockKind::Mermaid);
+        assert_eq!(context.text, "");
+        assert!(view.cache.mermaid_source_blocks.contains(&1));
+    });
+}
+
 #[test]
 fn only_keyboard_editing_commands_request_document_caret_reveal() {
     assert!(keyboard_command_reveals_focused_block(

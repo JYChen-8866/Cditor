@@ -278,6 +278,7 @@ pub struct RasterImageElement {
     fit: ObjectFit,
     radius: Pixels,
     cover_position_y: Option<f32>,
+    trace_identity: Option<(BlockId, u64)>,
 }
 
 impl RasterImageElement {
@@ -288,7 +289,14 @@ impl RasterImageElement {
             fit,
             radius,
             cover_position_y: None,
+            trace_identity: None,
         }
+    }
+
+    #[must_use]
+    pub fn trace_image_block(mut self, block_id: BlockId, content_version: u64) -> Self {
+        self.trace_identity = Some((block_id, content_version));
+        self
     }
 }
 
@@ -353,11 +361,21 @@ impl Element for RasterImageElement {
         &mut self,
         _: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
+        bounds: Bounds<Pixels>,
         (): &mut (),
         _window: &mut Window,
         _cx: &mut App,
     ) {
+        if let Some((block_id, content_version)) = self.trace_identity {
+            crate::diagnostics::image_resize::trace(
+                "raster.prepaint",
+                format_args!(
+                    "block={block_id} version={content_version} bounds={bounds:?} image_size={:?} frames={}",
+                    self.image.size(0),
+                    self.image.frame_count(),
+                ),
+            );
+        }
     }
 
     fn paint(
@@ -378,7 +396,16 @@ impl Element for RasterImageElement {
             |position_y| positioned_cover_bounds(bounds, self.image.size(0), position_y),
         );
         let corner_radii = Corners::all(self.radius).clamp_radii_for_quad_size(image_bounds.size);
-        let _ = window.paint_image(image_bounds, corner_radii, self.image.clone(), 0, false);
+        let result = window.paint_image(image_bounds, corner_radii, self.image.clone(), 0, false);
+        if let Some((block_id, content_version)) = self.trace_identity {
+            crate::diagnostics::image_resize::trace(
+                "raster.paint",
+                format_args!(
+                    "block={block_id} version={content_version} container={bounds:?} image_bounds={image_bounds:?} image_size={:?} result={result:?}",
+                    self.image.size(0),
+                ),
+            );
+        }
     }
 }
 

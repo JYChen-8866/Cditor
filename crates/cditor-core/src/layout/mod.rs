@@ -42,10 +42,11 @@ pub use columns::{
     ColumnsLayoutModel, DEFAULT_COLUMN_GAP_PX, MAX_COLUMNS_PER_GROUP, MIN_COLUMN_WIDTH_PX,
 };
 pub use height_index::{
-    BlockHeightIndex, BlockHeightIndexError, BlockOffsetHit, HeightChange, HeightConfidence,
-    HeightEstimate,
+    BlockHeightIndex, BlockHeightIndexError, BlockHeightIndexView, BlockOffsetHit, HeightChange,
+    HeightConfidence, HeightEstimate,
 };
 pub use page_layout::{
-    PAGE_POLICY_VERSION, PageBlockEstimate, PageHeightChange, PageLayout, PageLayoutIndex,
-    PageLayoutIndexError, PageOffsetHit, PagePolicy,
+    CachedPageMismatchPolicy, CachedPageRestore, PAGE_POLICY_VERSION, PageBlockEstimate,
+    PageHeightChange, PageLayout, PageLayoutIdentity, PageLayoutIndex, PageLayoutIndexError,
+    PageLocalBlockOffsetHit, PageLocalHeightIndex, PageOffsetHit, PagePolicy, PageSummary,
 };

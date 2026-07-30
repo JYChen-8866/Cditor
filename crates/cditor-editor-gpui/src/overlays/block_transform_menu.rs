@@ -14,7 +14,7 @@ use crate::presentation::block_registry::{
 };
 
 pub const BLOCK_TRANSFORM_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
-const BLOCK_TRANSFORM_MENU_HEIGHT_PX: f32 = 372.0;
+const BLOCK_TRANSFORM_MENU_HEIGHT_PX: f32 = 588.0;
 const BLOCK_TRANSFORM_MENU_GAP_PX: f32 = 6.0;
 const PRIMARY_TOOLBAR_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 const PRIMARY_TOOLBAR_CONTENT_LEFT_PX: f32 = 8.0;
@@ -93,6 +93,24 @@ impl BlockTransformAction {
     fn label(self) -> &'static str {
         self.metadata().label
     }
+
+    fn description(self) -> &'static str {
+        match self.kind() {
+            RichBlockKind::Paragraph => "转换为普通文本区块",
+            RichBlockKind::Heading { level: 1 } => "转换为一级标题",
+            RichBlockKind::Heading { level: 2 } => "转换为二级标题",
+            RichBlockKind::Heading { .. } => "转换为三级标题",
+            RichBlockKind::BulletedList => "转换为项目符号列表",
+            RichBlockKind::NumberedList => "转换为编号列表",
+            RichBlockKind::Todo { .. } => "转换为待办事项",
+            RichBlockKind::Quote => "转换为引用区块",
+            RichBlockKind::Callout { .. } => "选择提示区块类型",
+            RichBlockKind::Code { .. } => "转换为代码区块",
+            RichBlockKind::Math => "转换为数学公式",
+            RichBlockKind::Mermaid => "转换为 Mermaid 图表",
+            _ => "转换当前区块类型",
+        }
+    }
 }
 
 pub fn block_transform_menu_opens_left(toolbar_x: f32, viewport_width: f32) -> bool {
@@ -122,6 +140,7 @@ pub fn build_block_transform_popup_menu(
     PopupMenu::build(window, cx, move |menu, window, cx| {
         let mut menu = menu
             .style(style)
+            .rich_rows(true)
             .check_side(PopupMenuCheckSide::Right)
             .min_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX))
             .max_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX));
@@ -131,47 +150,52 @@ pub fn build_block_transform_popup_menu(
             let icon = popup_icon_for_action(action, style);
             if matches!(action.kind(), RichBlockKind::Callout { .. }) {
                 let submenu_view = view.clone();
-                menu = menu.submenu_with_icon_and_disabled(
-                    Some(icon),
-                    action.label(),
-                    !enabled,
-                    window,
-                    cx,
-                    move |submenu, _window, _cx| {
-                        CALLOUT_MENU_ITEMS.iter().fold(
-                            submenu
-                                .style(style)
-                                .check_side(PopupMenuCheckSide::Right)
-                                .min_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX))
-                                .max_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX)),
-                            |submenu, item| {
-                                let item_view = submenu_view.clone();
-                                let variant = item.variant;
-                                submenu.item(
-                                    PopupMenuItem::new(item.label)
-                                        .icon(popup_icon(item.icon_key, item.icon, style))
-                                        .checked(current_callout == Some(variant))
-                                        .disabled(!enabled)
-                                        .on_click(move |_, _, cx| {
-                                            item_view.update(cx, |view, cx| {
-                                                view.transform_block_kind_from_toolbar(
-                                                    block_id,
-                                                    RichBlockKind::Callout { variant },
-                                                    cx,
-                                                );
-                                            });
-                                        }),
-                                )
-                            },
-                        )
-                    },
-                );
+                menu = menu
+                    .submenu_with_icon_and_disabled(
+                        Some(icon),
+                        action.label(),
+                        !enabled,
+                        window,
+                        cx,
+                        move |submenu, _window, _cx| {
+                            CALLOUT_MENU_ITEMS.iter().fold(
+                                submenu
+                                    .style(style)
+                                    .rich_rows(true)
+                                    .check_side(PopupMenuCheckSide::Right)
+                                    .min_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX))
+                                    .max_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX)),
+                                |submenu, item| {
+                                    let item_view = submenu_view.clone();
+                                    let variant = item.variant;
+                                    submenu.item(
+                                        PopupMenuItem::new(item.label)
+                                            .description(item.description)
+                                            .icon(popup_icon(item.icon_key, item.icon, style))
+                                            .checked(current_callout == Some(variant))
+                                            .disabled(!enabled)
+                                            .on_click(move |_, _, cx| {
+                                                item_view.update(cx, |view, cx| {
+                                                    view.transform_block_kind_from_toolbar(
+                                                        block_id,
+                                                        RichBlockKind::Callout { variant },
+                                                        cx,
+                                                    );
+                                                });
+                                            }),
+                                    )
+                                },
+                            )
+                        },
+                    )
+                    .map_last_item(|item| item.description(action.description()));
                 continue;
             }
 
             let row_view = view.clone();
             menu = menu.item(
                 PopupMenuItem::new(action.label())
+                    .description(action.description())
                     .icon(icon)
                     .checked(current == Some(action))
                     .disabled(!enabled)
@@ -255,6 +279,7 @@ mod tests {
                 .all(|action| !matches!(action.kind(), RichBlockKind::Toggle))
         );
         for action in actions {
+            assert!(!action.description().is_empty());
             assert_eq!(
                 BlockTransformAction::from_kind(&action.kind()),
                 Some(action)
@@ -279,6 +304,11 @@ mod tests {
                 .map(|item| item.label)
                 .collect::<Vec<_>>(),
             vec!["!NOTE", "!TIP", "!IMPORTANT", "!WARNING", "!CAUTION"]
+        );
+        assert!(
+            CALLOUT_MENU_ITEMS
+                .iter()
+                .all(|item| !item.description.is_empty())
         );
         assert_eq!(
             CALLOUT_MENU_ITEMS
@@ -319,7 +349,7 @@ mod tests {
     #[test]
     fn transform_submenu_clamps_inside_the_vertical_viewport() {
         assert_eq!(block_transform_menu_top_offset(10.0, 600.0), -8.0);
-        assert_eq!(block_transform_menu_top_offset(320.0, 600.0), -110.0);
+        assert_eq!(block_transform_menu_top_offset(320.0, 600.0), -318.0);
     }
 
     #[test]

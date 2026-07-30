@@ -56,7 +56,17 @@ pub fn render_image_block(
     let display_size = loaded.as_deref().map(|render_image| {
         display_image_size_px(render_image, image, image_resize_preview_width_px)
     });
-    if let Some((_, height)) = display_size {
+    crate::diagnostics::image_resize::trace(
+        "media.render",
+        format_args!(
+            "block={block_id} version={content_version} loaded={} preview_width={image_resize_preview_width_px:?} display_size={display_size:?} source_len={}",
+            loaded.is_some(),
+            image.source.len(),
+        ),
+    );
+    if let Some((_, height)) = display_size
+        && should_schedule_rendered_media_height_report(image_resize_preview_width_px)
+    {
         let measured_height = image_block_measured_height(height, caption_state.is_some());
         schedule_rendered_media_height_report(
             view.clone(),
@@ -94,11 +104,10 @@ pub fn render_image_block(
                 open_image_preview(preview_image.clone(), true, true, cx);
                 cx.stop_propagation();
             })
-            .child(RasterImageElement::new(
-                render_image,
-                ObjectFit::Contain,
-                px(0.0),
-            ))
+            .child(
+                RasterImageElement::new(render_image, ObjectFit::Contain, px(0.0))
+                    .trace_image_block(block_id, content_version),
+            )
             .child(render_image_resize_handle(
                 block_id,
                 content_version,
@@ -135,6 +144,12 @@ pub fn render_image_block(
             ))
         })
         .into_any_element()
+}
+
+fn should_schedule_rendered_media_height_report(
+    image_resize_preview_width_px: Option<f32>,
+) -> bool {
+    image_resize_preview_width_px.is_none()
 }
 
 fn render_image_caption(
@@ -230,8 +245,16 @@ pub(crate) fn schedule_rendered_media_height_report(
         })
         .unwrap_or(false);
     if already_scheduled {
+        crate::diagnostics::image_resize::trace(
+            "height_report.deduplicated",
+            format_args!("block={block_id} version={content_version} height={measured_height:.2}"),
+        );
         return;
     }
+    crate::diagnostics::image_resize::trace(
+        "height_report.scheduled",
+        format_args!("block={block_id} version={content_version} height={measured_height:.2}"),
+    );
 
     let async_cx = cx.to_async();
     cx.foreground_executor()
@@ -250,12 +273,19 @@ pub(crate) fn schedule_rendered_media_height_report(
                             ..WorkCost::ZERO
                         },
                         move |view, cx| {
-                            if crate::cache::queue_rendered_media_height(
+                            let queued = crate::cache::queue_rendered_media_height(
                                 view,
                                 block_id,
                                 content_version,
                                 measured_height,
-                            ) {
+                            );
+                            crate::diagnostics::image_resize::trace(
+                                "height_report.applied",
+                                format_args!(
+                                    "block={block_id} version={content_version} height={measured_height:.2} queued={queued}"
+                                ),
+                            );
+                            if queued {
                                 view.mark_dirty(cx);
                                 cx.notify();
                             }
@@ -480,6 +510,12 @@ mod tests {
             IMAGE_RESIZE_HANDLE_ROW_HEIGHT_PX * IMAGE_RESIZE_HANDLE_DOT_ROWS[2] as f32,
             18.0
         );
+    }
+
+    #[test]
+    fn active_resize_is_the_only_height_writer_for_its_image() {
+        assert!(!should_schedule_rendered_media_height_report(Some(480.0)));
+        assert!(should_schedule_rendered_media_height_report(None));
     }
 
     fn test_render_image(width: u32, height: u32) -> RenderImage {
