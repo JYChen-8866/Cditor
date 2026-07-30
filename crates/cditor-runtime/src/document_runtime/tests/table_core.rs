@@ -385,7 +385,7 @@ fn projection_outputs_visible_cells_for_merged_table_geometry() {
     assert_eq!(merged.col_span, 2);
     assert_eq!(merged.x_px, 0.0);
     assert_eq!(merged.y_px, 0.0);
-    assert_eq!(merged.width_px, 720.0);
+    assert_eq!(merged.width_px, 800.0);
     assert_eq!(merged.height_px, 72.0);
 }
 

@@ -83,24 +83,43 @@ impl DocumentRuntime {
         let payload_prefetch_resident = desired_ready
             && self.payloads_resident_for_prefetch_cached(&payload_prefetch_block_range);
         let desired_failed = self.payload_terminal_failure_for(&desired.visible_block_range);
-        let stable = self.layout.projection_window.stable().cloned();
-        let stable_valid = stable.as_ref().is_some_and(|stable| {
-            stable.structure_version == self.document.visible_index.source_structure_version
-                && self.payloads_resident_for(&stable.visible_block_range)
-        });
-        let decision = self.layout.projection_window.reconcile(
+        let stable = self.layout.projection.publication.stable.clone();
+        let decision = self.layout.projection.window.reconcile(
             desired,
             desired_ready,
-            stable_valid,
+            stable.as_ref().is_some_and(|stable| {
+                stable.target.structure_version
+                    == self.document.visible_index.source_structure_version
+                    && stable.target.block_range == stable.projection.render_window.block_range
+            }),
             desired_failed,
         );
         let mut projection = match decision {
-            ProjectionWindowDecision::Stable(stable) => {
-                self.document.payload_window.block_range = stable.block_range.clone();
-                let mut projection =
-                    self.projection_for_ranges(stable.page_range, stable.block_range);
-                projection.scroll.global_scroll_top = stable.presented_scroll_top;
-                projection
+            ProjectionWindowDecision::Stable(stable_target) => {
+                self.document.payload_window.block_range = stable_target.block_range.clone();
+                if desired_ready {
+                    let mut projection = self.projection_for_ranges(
+                        stable_target.page_range.clone(),
+                        stable_target.block_range.clone(),
+                    );
+                    projection.scroll.global_scroll_top = stable_target.presented_scroll_top;
+                    let frame_id = self.layout.projection.publication.next_frame_id;
+                    self.layout.projection.publication.next_frame_id += 1;
+                    self.layout.projection.publication.stable = Some(StableProjectionSnapshot {
+                        frame_id,
+                        target: stable_target.clone(),
+                        projection: projection.clone(),
+                    });
+                    projection
+                } else if let Some(snapshot) = stable.as_ref() {
+                    snapshot.projection.clone()
+                } else {
+                    self.placeholder_projection_for_ranges_with_visible_core(
+                        stable_target.page_range,
+                        stable_target.block_range,
+                        stable_target.visible_block_range,
+                    )
+                }
             }
             ProjectionWindowDecision::ColdPlaceholder(desired)
             | ProjectionWindowDecision::FailedTarget {
@@ -113,12 +132,20 @@ impl DocumentRuntime {
             ),
             ProjectionWindowDecision::FailedTarget {
                 target,
-                stable: Some(stable),
+                stable: Some(stable_target),
             } => {
-                self.document.payload_window.block_range = stable.block_range.clone();
-                let mut projection =
-                    self.projection_for_ranges(stable.page_range, stable.block_range);
-                projection.scroll.global_scroll_top = stable.presented_scroll_top;
+                self.document.payload_window.block_range = stable_target.block_range.clone();
+                let mut projection = stable
+                    .as_ref()
+                    .map(|snapshot| snapshot.projection.clone())
+                    .unwrap_or_else(|| {
+                        self.placeholder_projection_for_ranges_with_visible_core(
+                            stable_target.page_range,
+                            stable_target.block_range,
+                            stable_target.visible_block_range,
+                        )
+                    });
+                projection.scroll.global_scroll_top = stable_target.presented_scroll_top;
                 projection.placeholder_window_failure =
                     self.payload_failure_view_for(&target.visible_block_range);
                 projection.placeholder_window_error = projection

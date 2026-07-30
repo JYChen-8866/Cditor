@@ -79,8 +79,11 @@ impl DocumentRuntime {
         if let Some(stable) = self.layout.projection_window.stable() {
             protected_ranges.push(stable.block_range.clone());
         }
+        if let Some(stable_projection) = self.layout.stable_projection.as_ref() {
+            protected_ranges.push(stable_projection.render_window.block_range.clone());
+        }
         if let Some(preparing) = self.layout.projection_window.preparing() {
-            protected_ranges.push(preparing.block_range.clone());
+            protected_ranges.push(preparing.visible_block_range.clone());
         }
         let mut protected = protected_ranges
             .into_iter()

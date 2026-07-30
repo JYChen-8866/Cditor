@@ -259,6 +259,7 @@ impl DocumentRuntime {
                 window_plan_clock_ms: 0,
                 window_memory_pressure: WindowMemoryPressure::Normal,
                 projection_window: ProjectionWindowCommitState::default(),
+                stable_projection: None,
                 pending_measured_heights: HashMap::new(),
                 dirty: false,
                 scrollbar_drag: None,

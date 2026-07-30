@@ -169,14 +169,14 @@ fn table_track_resize_updates_payload_projection_and_content_version() {
         .table_view
         .as_ref()
         .expect("table projection");
-    assert_eq!(table_view.width_px, 720.0);
+    assert_eq!(table_view.width_px, 800.0);
     assert_eq!(table_view.height_px, 92.0);
     let resized_cell = table_view
         .visible_cells
         .iter()
         .find(|cell| cell.position == (TableCellPosition { row: 1, col: 1 }))
         .expect("resized cell");
-    assert_eq!(resized_cell.x_px, 540.0);
+    assert_eq!(resized_cell.x_px, 620.0);
     assert_eq!(resized_cell.y_px, 36.0);
     assert_eq!(resized_cell.width_px, 180.0);
     assert_eq!(resized_cell.height_px, 56.0);

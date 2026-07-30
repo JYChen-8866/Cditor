@@ -2,6 +2,284 @@ use super::*;
 use crate::content::payload_window::MAX_PAYLOAD_WINDOW_LOAD_ATTEMPTS;
 
 #[test]
+fn small_document_requires_the_complete_render_window_before_commit() {
+    let mut runtime = runtime_with_paragraph_blocks(24);
+
+    let projection = runtime.projection_for_window_planned();
+
+    assert_eq!(projection.render_window.block_range, 0..24);
+    assert_eq!(
+        projection.payload_visible_block_range,
+        projection.render_window.block_range
+    );
+}
+
+#[test]
+fn large_document_uses_a_bounded_atomic_render_window() {
+    let mut runtime = runtime_with_paragraph_blocks(3_000);
+
+    let projection = runtime.projection_for_window_planned();
+
+    assert!(projection.render_window.block_range.len() <= 320);
+    assert_eq!(
+        projection.payload_visible_block_range,
+        projection.render_window.block_range
+    );
+}
+
+fn assert_loaded_versions_do_not_regress(
+    previous: &EditorViewProjection,
+    next: &EditorViewProjection,
+) {
+    let next_blocks = next
+        .blocks
+        .iter()
+        .map(|block| (block.block_id, block))
+        .collect::<HashMap<_, _>>();
+    for previous_block in &previous.blocks {
+        let BlockPayloadView::Loaded(previous_payload) = &previous_block.payload else {
+            continue;
+        };
+        let Some(next_block) = next_blocks.get(&previous_block.block_id) else {
+            continue;
+        };
+        let BlockPayloadView::Loaded(next_payload) = &next_block.payload else {
+            panic!(
+                "loaded block {} regressed to placeholder",
+                previous_block.block_id
+            );
+        };
+        assert!(next_payload.content_version >= previous_payload.content_version);
+    }
+}
+
+#[test]
+fn committed_projection_survives_payload_cache_loss_without_skeletons() {
+    let mut runtime = runtime_with_paragraph_blocks(24);
+    let committed = runtime.projection_for_window_planned();
+    assert!(committed.blocks.iter().all(|block| !block.placeholder));
+
+    let evicted_ids = committed
+        .blocks
+        .iter()
+        .map(|block| block.block_id)
+        .filter(|block_id| *block_id != 1)
+        .collect::<Vec<_>>();
+    for block_id in evicted_ids {
+        runtime.document.payload_window.payloads.remove(&block_id);
+    }
+
+    let retained = runtime.projection_for_window_planned();
+
+    assert_eq!(retained.blocks.len(), committed.blocks.len());
+    assert!(retained.blocks.iter().all(|block| !block.placeholder));
+    assert_eq!(
+        retained
+            .blocks
+            .iter()
+            .map(|block| block.block_id)
+            .collect::<Vec<_>>(),
+        committed
+            .blocks
+            .iter()
+            .map(|block| block.block_id)
+            .collect::<Vec<_>>()
+    );
+    assert_loaded_versions_do_not_regress(&committed, &retained);
+}
+
+#[test]
+fn projection_lifecycle_randomized_actions_never_downgrade_loaded_blocks() {
+    let mut runtime = runtime_with_paragraph_blocks(1_000);
+    let mut stable = runtime.projection_for_window_planned();
+    let mut seed = 0x5eed_cafe_f00d_u64;
+
+    for step in 0..512 {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        match seed % 4 {
+            0 => {
+                let block_ids = stable
+                    .blocks
+                    .iter()
+                    .map(|block| block.block_id)
+                    .filter(|block_id| block_id % 3 == step % 3)
+                    .collect::<Vec<_>>();
+                for block_id in block_ids {
+                    runtime.document.payload_window.payloads.remove(&block_id);
+                }
+            }
+            1 => {
+                let max_scroll = runtime.layout.scroll.max_scroll_top();
+                let target = (seed as f64 % max_scroll.max(1.0)).min(max_scroll);
+                runtime
+                    .layout
+                    .scroll
+                    .scroll_to_global_offset(
+                        target,
+                        cditor_viewport::scroll::ScrollOrigin::UserWheel,
+                    )
+                    .unwrap();
+            }
+            2 => {
+                let _ = runtime.trim_payload_cache(
+                    crate::PayloadCachePolicy {
+                        max_entries: 64,
+                        max_estimated_bytes: usize::MAX,
+                    },
+                    [],
+                );
+            }
+            _ => {}
+        }
+
+        let next = runtime.projection_for_window_planned();
+        assert_loaded_versions_do_not_regress(&stable, &next);
+        assert!(next.render_window.block_range.len() <= 320);
+        stable = next;
+    }
+}
+
+#[test]
+fn ime_composition_refreshes_the_focused_block_without_downgrading_peers() {
+    let mut runtime = runtime_with_paragraph_blocks(24);
+    runtime.focus_block(1);
+    let stable = runtime.projection_for_window_planned();
+
+    runtime.begin_or_update_composition(1, 0..0, "中").unwrap();
+    let preview = runtime.projection_for_window_planned();
+
+    assert_loaded_versions_do_not_regress(&stable, &preview);
+    assert!(preview.blocks.iter().all(|block| !block.placeholder));
+    let focused = preview
+        .blocks
+        .iter()
+        .find(|block| block.block_id == 1)
+        .unwrap();
+    assert_eq!(focused.marked_range, Some(0.."中".len()));
+}
+
+#[test]
+fn selection_refresh_does_not_downgrade_any_loaded_block() {
+    let mut runtime = runtime_with_paragraph_blocks(24);
+    let stable = runtime.projection_for_window_planned();
+
+    runtime
+        .set_document_selection(DocumentSelection::caret(TextPosition::downstream(12, 0)))
+        .unwrap();
+    let selected = runtime.projection_for_window_planned();
+
+    assert_loaded_versions_do_not_regress(&stable, &selected);
+    assert!(selected.blocks.iter().all(|block| !block.placeholder));
+    assert!(
+        selected
+            .blocks
+            .iter()
+            .any(|block| block.block_id == 12 && block.focused)
+    );
+}
+
+#[test]
+fn inserting_and_deleting_blocks_recommit_without_skeleton_gaps() {
+    let mut runtime = runtime_with_paragraph_blocks(24);
+    let before_insert = runtime.projection_for_window_planned();
+
+    let inserted_id = runtime.insert_paragraph_after_block(12).unwrap();
+    let after_insert = runtime.projection_for_window_planned();
+    assert!(after_insert.blocks.iter().all(|block| !block.placeholder));
+    assert!(
+        after_insert
+            .blocks
+            .iter()
+            .any(|block| block.block_id == inserted_id)
+    );
+    assert_loaded_versions_do_not_regress(&before_insert, &after_insert);
+
+    assert!(runtime.delete_block_by_id(inserted_id).unwrap());
+    let after_delete = runtime.projection_for_window_planned();
+    assert!(after_delete.blocks.iter().all(|block| !block.placeholder));
+    assert!(
+        after_delete
+            .blocks
+            .iter()
+            .all(|block| block.block_id != inserted_id)
+    );
+    assert_loaded_versions_do_not_regress(&before_insert, &after_delete);
+}
+
+#[test]
+fn local_insert_commits_loaded_without_downgrading_existing_blocks() {
+    let mut runtime = runtime_with_paragraph_blocks(24);
+    let stable = runtime.projection_for_window_planned();
+
+    let inserted_id = runtime.insert_paragraph_after_block(1).unwrap();
+    let inserted = runtime.projection_for_window_planned();
+
+    assert_loaded_versions_do_not_regress(&stable, &inserted);
+    assert!(inserted.blocks.iter().all(|block| !block.placeholder));
+    assert!(
+        inserted
+            .blocks
+            .iter()
+            .any(|block| block.block_id == inserted_id)
+    );
+}
+
+#[test]
+fn local_delete_commits_without_skeleton_gap() {
+    let mut runtime = runtime_with_paragraph_blocks(24);
+    let stable = runtime.projection_for_window_planned();
+
+    assert!(runtime.delete_block_by_id(12).unwrap());
+    let deleted = runtime.projection_for_window_planned();
+
+    assert_loaded_versions_do_not_regress(&stable, &deleted);
+    assert!(deleted.blocks.iter().all(|block| !block.placeholder));
+    assert!(deleted.blocks.iter().all(|block| block.block_id != 12));
+}
+
+#[test]
+fn structure_move_reconciles_loaded_blocks_by_id_without_skeletons() {
+    let mut runtime = runtime_with_paragraph_blocks(24);
+    let stable = runtime.projection_for_window_planned();
+
+    assert!(runtime.move_block_subtree_before(1, Some(4)).unwrap());
+    let moved = runtime.projection_for_window_planned();
+
+    assert_loaded_versions_do_not_regress(&stable, &moved);
+    assert!(moved.blocks.iter().all(|block| !block.placeholder));
+    let ids = moved
+        .blocks
+        .iter()
+        .map(|block| block.block_id)
+        .collect::<Vec<_>>();
+    assert_eq!(&ids[0..4], &[2, 3, 1, 4]);
+}
+
+#[test]
+fn fold_and_unfold_keep_remaining_and_restored_blocks_loaded() {
+    let mut runtime = runtime_with_kind_depths(vec![
+        (RichBlockKind::Heading { level: 1 }, 0, None),
+        (RichBlockKind::Paragraph, 1, Some(1)),
+        (RichBlockKind::Paragraph, 1, Some(1)),
+        (RichBlockKind::Paragraph, 0, None),
+    ]);
+    let expanded = runtime.projection_for_window_planned();
+
+    assert!(runtime.toggle_block_fold(1).unwrap());
+    let folded = runtime.projection_for_window_planned();
+    assert_loaded_versions_do_not_regress(&expanded, &folded);
+    assert!(folded.blocks.iter().all(|block| !block.placeholder));
+
+    assert!(runtime.toggle_block_fold(1).unwrap());
+    let restored = runtime.projection_for_window_planned();
+    assert_loaded_versions_do_not_regress(&folded, &restored);
+    assert!(restored.blocks.iter().all(|block| !block.placeholder));
+    assert_eq!(restored.blocks.len(), 4);
+}
+
+#[test]
 fn planned_window_hysteresis_keeps_boundary_window_stable() {
     let mut runtime = runtime_with_paragraph_blocks(3_000);
     runtime.layout.window_planner = WindowPlanner::new(
@@ -536,7 +814,7 @@ fn cold_projection_keeps_an_explicit_error_after_payload_load_failure() {
 }
 
 #[test]
-fn terminal_failure_in_offscreen_overscan_does_not_block_a_cold_visible_core() {
+fn terminal_failure_in_atomic_render_window_blocks_cold_commit() {
     let records = (1..=100 as BlockId)
         .map(|block_id| {
             BlockIndexRecord::new(
@@ -552,33 +830,33 @@ fn terminal_failure_in_offscreen_overscan_does_not_block_a_cold_visible_core() {
     let mut runtime =
         DocumentRuntime::from_index_records_with_window(1, records, Vec::new(), 1, 720.0, 0..0);
     let cold = runtime.projection_for_window_planned();
-    let offscreen_index = cold.payload_visible_block_range.end;
+    let failed_index = cold.payload_visible_block_range.end.saturating_sub(1);
 
-    assert!(cold.render_window.block_range.contains(&offscreen_index));
-    assert!(!cold.payload_visible_block_range.contains(&offscreen_index));
-    let offscreen_block_id = runtime
+    assert!(cold.render_window.block_range.contains(&failed_index));
+    assert!(cold.payload_visible_block_range.contains(&failed_index));
+    let failed_block_id = runtime
         .document
         .visible_index
-        .id_at_visible_index(offscreen_index)
+        .id_at_visible_index(failed_index)
         .unwrap();
     for _ in 0..MAX_PAYLOAD_WINDOW_LOAD_ATTEMPTS {
         runtime
             .document
             .payload_window
-            .mark_failed(offscreen_block_id, "offscreen sqlite read failed");
+            .mark_failed(failed_block_id, "render window sqlite read failed");
     }
 
     let still_cold = runtime.projection_for_window_planned();
     assert!(still_cold.render_window.is_placeholder());
-    assert!(still_cold.placeholder_window_failure.is_none());
+    assert!(still_cold.placeholder_window_failure.is_some());
     assert_eq!(
         still_cold.payload_visible_block_range,
         cold.payload_visible_block_range
     );
     let visible_request = runtime
         .plan_payload_window_load_if_needed(still_cold.payload_visible_block_range.clone())
-        .expect("offscreen terminal failure must not suppress the cold visible request");
-    assert!(!visible_request.block_ids.contains(&offscreen_block_id));
+        .expect("resident peers may continue loading around a terminally failed block");
+    assert!(!visible_request.block_ids.contains(&failed_block_id));
     let records = visible_request
         .block_ids
         .iter()
@@ -592,21 +870,31 @@ fn terminal_failure_in_offscreen_overscan_does_not_block_a_cold_visible_core() {
         Vec::new(),
     ));
 
+    let blocked = runtime.projection_for_window_planned();
+    assert!(blocked.render_window.is_placeholder());
+    assert!(blocked.placeholder_window_failure.is_some());
+
+    assert_eq!(
+        runtime.retry_failed_payload_window(blocked.payload_visible_block_range.clone()),
+        1
+    );
+    let retry = runtime
+        .plan_payload_window_load_if_needed(blocked.payload_visible_block_range.clone())
+        .expect("explicit retry includes the failed atomic-window block");
+    assert!(retry.block_ids.contains(&failed_block_id));
+    let retry_records = retry
+        .block_ids
+        .iter()
+        .map(|block_id| {
+            BlockPayloadRecord::rich_text(*block_id, RichBlockKind::Paragraph, "retried")
+        })
+        .collect();
+    runtime.apply_payload_window_result(prepared_payload_result(retry, retry_records, Vec::new()));
+
     let committed = runtime.projection_for_window_planned();
     assert!(!committed.render_window.is_placeholder());
     assert!(committed.placeholder_window_failure.is_none());
-    assert!(
-        committed
-            .payload_visible_block_range
-            .clone()
-            .all(|visible_index| {
-                runtime
-                    .document
-                    .visible_index
-                    .id_at_visible_index(visible_index)
-                    .is_some_and(|block_id| runtime.document.payload_window.get(block_id).is_some())
-            })
-    );
+    assert!(committed.blocks.iter().all(|block| !block.placeholder));
 }
 
 #[test]

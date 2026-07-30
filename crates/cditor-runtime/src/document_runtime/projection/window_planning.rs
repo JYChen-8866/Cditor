@@ -105,15 +105,15 @@ impl DocumentRuntime {
             .unwrap_or(start_page)
             .saturating_add(1)
             .min(self.layout.page_layout.page_count());
+        let block_range = start..end;
         ViewportWindowRanges {
             page_range: start_page..end_page.max(start_page.saturating_add(1)),
-            block_range: start..end,
-            // The visible core must obey the same hard entity bound as the
-            // render window. Corrupt or legacy zero-height estimates can make
-            // block_at_offset report a very distant viewport end; allowing that
-            // through here would turn one visible query and its main-thread
-            // commit into an unbounded operation.
-            visible_block_range: current..viewport_end.saturating_add(1).min(end),
+            // The complete bounded render window is the atomic readiness unit.
+            // This prevents a committed frame from mixing loaded viewport rows
+            // with placeholder overscan rows, without depending on total document
+            // size: the range is always capped by MAX_RENDER_WINDOW_BLOCKS.
+            visible_block_range: block_range.clone(),
+            block_range,
         }
     }
 

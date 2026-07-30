@@ -103,7 +103,7 @@ impl CditorV2View {
     }
 
     pub(crate) fn commit_image_resize_drag(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(drag) = super::take_drag(&mut self.interaction.image_resize_drag) else {
+        let Some(drag) = self.interaction.image_resize_drag else {
             return false;
         };
         clear_committed_image_resize_action(&mut self.interaction.action_block_id, drag.block_id);
@@ -117,6 +117,26 @@ impl CditorV2View {
             cx,
         ) {
             self.status.save_status = EditorSaveStatus::Failed(error.to_string());
+            self.interaction.image_resize_drag = None;
+        } else if let Some(committed) = self.interaction.image_resize_drag.as_mut() {
+            committed.content_version = committed.content_version.saturating_add(1);
+            let timer = cx
+                .background_executor()
+                .timer(std::time::Duration::from_millis(32));
+            cx.spawn(async move |view, cx| {
+                timer.await;
+                let _ = view.update(cx, |view, cx| {
+                    if view
+                        .interaction
+                        .image_resize_drag
+                        .is_some_and(|current| current.block_id == drag.block_id)
+                    {
+                        view.interaction.image_resize_drag = None;
+                        cx.notify();
+                    }
+                });
+            })
+            .detach();
         }
         cx.notify();
         true

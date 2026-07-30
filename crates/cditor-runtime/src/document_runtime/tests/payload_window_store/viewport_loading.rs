@@ -174,21 +174,27 @@ fn incremental_scroll_keeps_resident_blocks_and_only_placeholds_missing_edges() 
         .collect::<Vec<_>>();
     let mut runtime =
         DocumentRuntime::from_index_records_with_window(1, records, payloads, 1, 720.0, 0..80);
+    let stable = runtime.projection_for_window_planned();
+    assert!(stable.blocks.iter().all(|block| !block.placeholder));
 
     runtime
         .layout
         .scroll
         .scroll_to_global_offset(1_280.0, cditor_viewport::scroll::ScrollOrigin::UserWheel)
         .unwrap();
-    let projection = runtime.projection_for_window_planned();
+    let preparing = runtime.projection_for_window_planned();
 
-    assert!(!projection.render_window.is_placeholder());
-    assert!(projection.placeholder_window_height.is_none());
-    assert!(projection.blocks.iter().any(|block| !block.placeholder));
-    assert!(projection.blocks.iter().any(|block| block.placeholder));
+    assert!(!preparing.render_window.is_placeholder());
+    assert!(preparing.placeholder_window_height.is_none());
+    assert!(preparing.blocks.iter().all(|block| !block.placeholder));
+    assert_eq!(
+        preparing.render_window.block_range, stable.render_window.block_range,
+        "an incomplete adjacent target must retain the complete stable frame"
+    );
+    let desired_range = runtime.current_foreground_payload_range();
     assert!(
         runtime
-            .plan_payload_window_load_if_needed(projection.render_window.block_range.clone())
+            .plan_payload_window_load_if_needed(desired_range)
             .is_some()
     );
 }

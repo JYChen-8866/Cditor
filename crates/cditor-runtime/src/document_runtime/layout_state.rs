@@ -13,7 +13,7 @@ pub(super) struct LayoutState {
     pub(super) last_planned_scroll_top: f64,
     pub(super) window_plan_clock_ms: u64,
     pub(super) window_memory_pressure: WindowMemoryPressure,
-    pub(super) projection_window: ProjectionWindowCommitState,
+    pub(super) projection: ProjectionState,
     pub(super) pending_measured_heights: HashMap<BlockId, PendingMeasuredHeight>,
     pub(super) dirty: bool,
     pub(super) scrollbar_drag: Option<ScrollbarDragSession>,
@@ -26,6 +26,50 @@ pub(super) struct PayloadResidencyProbe {
     pub(super) visibility_version: u64,
     pub(super) residency_revision: u64,
     pub(super) resident: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct ProjectionState {
+    pub(super) window: ProjectionWindowState,
+    pub(super) publication: ProjectionPublicationState,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct ProjectionWindowState {
+    pub(super) generation: u64,
+    pub(super) desired: Option<ProjectionWindowTarget>,
+    pub(super) preparing: Option<ProjectionWindowTarget>,
+    pub(super) load_state: ProjectionWindowLoadState,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct ProjectionPublicationState {
+    pub(super) next_frame_id: u64,
+    pub(super) stable: Option<StableProjectionSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct StableProjectionSnapshot {
+    pub(super) frame_id: u64,
+    pub(super) target: ProjectionWindowTarget,
+    pub(super) projection: EditorViewProjection,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct ProjectionWindowTarget {
+    pub(super) structure_version: u64,
+    pub(super) page_range: Range<usize>,
+    pub(super) block_range: Range<usize>,
+    pub(super) visible_block_range: Range<usize>,
+    pub(super) presented_scroll_top: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ProjectionWindowLoadState {
+    CurrentStable,
+    PreparingNext,
+    ColdPlaceholder,
+    Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
