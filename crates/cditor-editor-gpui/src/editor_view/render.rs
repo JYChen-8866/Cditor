@@ -47,6 +47,9 @@ use internal_scroll::prepare_internal_scroll_projection;
 #[path = "render/payload_scheduling.rs"]
 mod payload_scheduling;
 use payload_scheduling::payload_frame_plan;
+#[cfg(test)]
+#[path = "render/focus_tests.rs"]
+mod focus_tests;
 mod status;
 
 impl Render for CditorV2View {
@@ -55,28 +58,10 @@ impl Render for CditorV2View {
         self.run_main_thread_applies(frame_started, cx);
         let theme = GuiTheme::light();
         let focus = self.focus.editor.clone();
-        let complex_block_owns_focus = self.ready_session().is_some_and(|session| {
-            session.input_context().is_ok_and(|context| {
-                matches!(
-                    context.target,
-                    Some(cditor_runtime::InputTarget::ComplexBlock { .. })
-                )
-            })
-        });
-        #[cfg(feature = "whiteboard")]
-        let whiteboard_editor_open = self.features.whiteboard_editor.is_some();
-        #[cfg(not(feature = "whiteboard"))]
-        let whiteboard_editor_open = false;
         if self.overlay.ai_prompt.is_some() {
             if !self.focus.ai_prompt.is_focused(window) {
                 window.focus(&self.focus.ai_prompt, cx);
             }
-        } else if !whiteboard_editor_open
-            && !complex_block_owns_focus
-            && !focus.is_focused(window)
-            && !self.focus.code_language.is_focused(window)
-        {
-            window.focus(&focus, cx);
         }
         self.set_caret_blink_enabled(focus.is_focused(window), cx);
         self.sdk_register_focus_observers(window, cx);
