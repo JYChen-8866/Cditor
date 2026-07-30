@@ -1,4 +1,7 @@
-use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
+use cditor_component::{
+    InteractiveScrollbar, InteractiveScrollbarStyle, POPUP_MENU_ITEM_FONT_SIZE_PX,
+    POPUP_MENU_LABEL_FONT_SIZE_PX, ScrollbarAxis,
+};
 use cditor_core::rich_text::InlineColorTarget;
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -24,7 +27,19 @@ const COLOR_MENU_RIGHT_OFFSET_PX: f32 =
 const COLOR_MENU_LEFT_OFFSET_PX: f32 =
     -(COLOR_MENU_WIDTH_PX + PRIMARY_TOOLBAR_CONTENT_LEFT_PX + COLOR_MENU_GAP_PX);
 const COLOR_TRIGGER_TOP_IN_TOOLBAR_PX: f32 = 40.0;
-const COLOR_MENU_ESTIMATED_CONTENT_HEIGHT_PX: f32 = 690.0;
+const COLOR_ACTION_ROW_HEIGHT_PX: f32 = 48.0;
+const COLOR_SWATCH_CONTAINER_SIZE_PX: f32 = 36.0;
+const COLOR_SWATCH_SIZE_PX: f32 = 24.0;
+const COLOR_ACTION_GAP_PX: f32 = 10.0;
+const COLOR_SECTION_HEIGHT_PX: f32 = 28.0;
+const COLOR_DIVIDER_HEIGHT_PX: f32 = 13.0;
+const COLOR_ACTIONS_PER_SECTION: f32 = PaletteColor::ALL.len() as f32 + 1.0;
+const COLOR_MENU_ESTIMATED_CONTENT_HEIGHT_PX: f32 = COLOR_SECTION_HEIGHT_PX
+    + COLOR_ACTION_ROW_HEIGHT_PX
+    + COLOR_DIVIDER_HEIGHT_PX
+    + COLOR_SECTION_HEIGHT_PX * 2.0
+    + COLOR_ACTION_ROW_HEIGHT_PX * COLOR_ACTIONS_PER_SECTION * 2.0
+    + COLOR_DIVIDER_HEIGHT_PX;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PaletteColor {
@@ -175,6 +190,15 @@ impl ColorMenuAction {
             (InlineColorTarget::Background, None) => "默认背景".to_owned(),
             (InlineColorTarget::Text, Some(color)) => format!("{}文本", color.name()),
             (InlineColorTarget::Background, Some(color)) => format!("{}背景", color.name()),
+        }
+    }
+
+    const fn description(self) -> &'static str {
+        match (self.target, self.color) {
+            (InlineColorTarget::Text, None) => "恢复默认文字颜色",
+            (InlineColorTarget::Background, None) => "恢复默认背景颜色",
+            (InlineColorTarget::Text, Some(_)) => "设置文字颜色",
+            (InlineColorTarget::Background, Some(_)) => "设置背景颜色",
         }
     }
 }
@@ -383,12 +407,12 @@ fn render_color_action_row(
     let id = color_action_index(action) + usize::from(last_used) * 32;
     div()
         .id(("color-menu-action", id))
-        .h(px(29.0))
+        .h(px(COLOR_ACTION_ROW_HEIGHT_PX))
         .w_full()
-        .px(px(6.0))
+        .px(px(8.0))
         .flex()
         .items_center()
-        .gap(px(9.0))
+        .gap(px(COLOR_ACTION_GAP_PX))
         .rounded(px(4.0))
         .bg(rgb(if active {
             theme.action_background
@@ -418,11 +442,28 @@ fn render_color_action_row(
             cx.stop_propagation();
         })
         .child(render_swatch(action, theme))
-        .child(div().flex_1().text_size(px(13.0)).child(action.label()))
+        .child(
+            div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .justify_center()
+                .child(
+                    div()
+                        .text_size(px(POPUP_MENU_ITEM_FONT_SIZE_PX))
+                        .child(action.label()),
+                )
+                .child(
+                    div()
+                        .text_size(px(POPUP_MENU_LABEL_FONT_SIZE_PX))
+                        .text_color(rgb(theme.muted))
+                        .child(action.description()),
+                ),
+        )
         .when(active, |row| {
             row.child(
                 div()
-                    .text_size(px(13.0))
+                    .text_size(px(POPUP_MENU_ITEM_FONT_SIZE_PX))
                     .font_weight(FontWeight::MEDIUM)
                     .child("✓"),
             )
@@ -433,7 +474,7 @@ fn render_color_action_row(
 fn render_swatch(action: ColorMenuAction, theme: GuiTheme) -> AnyElement {
     match action.target {
         InlineColorTarget::Text => div()
-            .size(px(24.0))
+            .size(px(COLOR_SWATCH_CONTAINER_SIZE_PX))
             .flex_none()
             .flex()
             .items_center()
@@ -441,7 +482,7 @@ fn render_swatch(action: ColorMenuAction, theme: GuiTheme) -> AnyElement {
             .rounded(px(4.0))
             .border_1()
             .border_color(rgb(theme.border))
-            .text_size(px(15.0))
+            .text_size(px(POPUP_MENU_ITEM_FONT_SIZE_PX))
             .font_weight(FontWeight::MEDIUM)
             .text_color(rgb(action
                 .color
@@ -450,26 +491,36 @@ fn render_swatch(action: ColorMenuAction, theme: GuiTheme) -> AnyElement {
             .child("A")
             .into_any_element(),
         InlineColorTarget::Background => div()
-            .size(px(24.0))
+            .size(px(COLOR_SWATCH_CONTAINER_SIZE_PX))
             .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
             .rounded(px(4.0))
             .border_1()
             .border_color(rgb(theme.border))
-            .bg(rgb(action
-                .color
-                .map(PaletteColor::background_swatch)
-                .unwrap_or(theme.panel)))
+            .child(
+                div()
+                    .size(px(COLOR_SWATCH_SIZE_PX))
+                    .rounded(px(3.0))
+                    .border_1()
+                    .border_color(rgb(theme.border))
+                    .bg(rgb(action
+                        .color
+                        .map(PaletteColor::background_swatch)
+                        .unwrap_or(theme.panel))),
+            )
             .into_any_element(),
     }
 }
 
 fn section_label(label: &'static str, theme: GuiTheme) -> AnyElement {
     div()
-        .h(px(25.0))
-        .px(px(6.0))
+        .h(px(COLOR_SECTION_HEIGHT_PX))
+        .px(px(8.0))
         .flex()
         .items_center()
-        .text_size(px(12.0))
+        .text_size(px(POPUP_MENU_LABEL_FONT_SIZE_PX))
         .text_color(rgb(theme.muted))
         .child(label)
         .into_any_element()
@@ -477,7 +528,7 @@ fn section_label(label: &'static str, theme: GuiTheme) -> AnyElement {
 
 fn section_divider(theme: GuiTheme) -> AnyElement {
     div()
-        .h(px(9.0))
+        .h(px(COLOR_DIVIDER_HEIGHT_PX - 4.0))
         .mb(px(4.0))
         .border_b_1()
         .border_color(rgb(theme.border))
@@ -605,5 +656,36 @@ mod tests {
             -(PRIMARY_TOOLBAR_CONTENT_LEFT_PX + COLOR_MENU_LEFT_OFFSET_PX + COLOR_MENU_WIDTH_PX),
             COLOR_MENU_GAP_PX
         );
+    }
+
+    #[test]
+    fn color_actions_have_descriptions_for_rich_rows() {
+        assert_eq!(
+            ColorMenuAction::text(None).description(),
+            "恢复默认文字颜色"
+        );
+        assert_eq!(
+            ColorMenuAction::background(None).description(),
+            "恢复默认背景颜色"
+        );
+        assert_eq!(
+            ColorMenuAction::text(Some(PaletteColor::Blue)).description(),
+            "设置文字颜色"
+        );
+        assert_eq!(
+            ColorMenuAction::background(Some(PaletteColor::Blue)).description(),
+            "设置背景颜色"
+        );
+    }
+
+    #[test]
+    fn color_menu_uses_the_shared_rich_row_metrics() {
+        assert_eq!(COLOR_ACTION_ROW_HEIGHT_PX, 48.0);
+        assert_eq!(COLOR_SWATCH_CONTAINER_SIZE_PX, 36.0);
+        assert_eq!(COLOR_ACTION_GAP_PX, 10.0);
+        assert_eq!(POPUP_MENU_ITEM_FONT_SIZE_PX, 14.0);
+        assert_eq!(POPUP_MENU_LABEL_FONT_SIZE_PX, 11.0);
+        assert_eq!(COLOR_MENU_ESTIMATED_CONTENT_HEIGHT_PX, 1118.0);
+        assert!(COLOR_MENU_ESTIMATED_CONTENT_HEIGHT_PX > COLOR_MENU_DESIRED_HEIGHT_PX);
     }
 }
