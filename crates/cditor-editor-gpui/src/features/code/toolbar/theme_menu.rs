@@ -1,6 +1,7 @@
 use crate::editor_view::CditorV2View;
-use crate::features::code::highlight::{CODE_THEME_ITEMS, CodeThemeItem, code_theme_item};
+use crate::features::code::highlight::{CODE_THEME_ITEMS, CodeThemeItem};
 use crate::theme::GuiTheme;
+use cditor_component::SvgIcon;
 use cditor_core::ids::BlockId;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled,
@@ -15,11 +16,10 @@ use super::{
 pub(super) fn render_code_theme_button(
     theme: GuiTheme,
     block_id: BlockId,
-    current_theme: &'static str,
+    _current_theme: &'static str,
     open: bool,
     view: Entity<CditorV2View>,
 ) -> AnyElement {
-    let item = code_theme_item(current_theme);
     div()
         .w(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
         .h(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
@@ -34,7 +34,7 @@ pub(super) fn render_code_theme_button(
             theme.code_toolbar_background
         }))
         .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
-        .child(render_code_theme_icon(item))
+        .child(render_code_theme_icon(theme))
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             view.update(cx, |view, cx| {
                 view.toggle_code_theme_menu_from_gui(block_id, cx);
@@ -44,23 +44,11 @@ pub(super) fn render_code_theme_button(
         .into_any_element()
 }
 
-fn render_code_theme_icon(item: CodeThemeItem) -> AnyElement {
-    div()
-        .relative()
-        .w(px(15.0))
-        .h(px(15.0))
-        .children(item.preview.into_iter().enumerate().map(|(index, color)| {
-            let column = index % 2;
-            let row = index / 2;
-            div()
-                .absolute()
-                .left(px(column as f32 * 7.0))
-                .top(px(row as f32 * 7.0))
-                .w(px(6.0))
-                .h(px(6.0))
-                .rounded(px(2.0))
-                .bg(rgb(color))
-        }))
+fn render_code_theme_icon(theme: GuiTheme) -> AnyElement {
+    const THEME: &[u8] = include_bytes!("../../../../../../assets/icons/theme.svg");
+    SvgIcon::new("code-toolbar-theme", THEME)
+        .color(rgb(theme.code_toolbar_icon))
+        .size(px(16.0))
         .into_any_element()
 }
 

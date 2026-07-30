@@ -1,12 +1,8 @@
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
+use cditor_component::SvgIcon;
+use gpui::{AnyElement, IntoElement, px, rgb};
 
 use super::selection::TableAxis;
 use super::style::{TABLE_AXIS_HANDLE_SIZE_PX, TABLE_AXIS_SELECTED_HANDLE_LONG_EDGE_PX};
-
-pub(super) const TABLE_COLUMN_HANDLE_DOT_ROWS: usize = 2;
-pub(super) const TABLE_COLUMN_HANDLE_DOT_COLUMNS: usize = 3;
-pub(super) const TABLE_ROW_HANDLE_DOT_ROWS: usize = 3;
-pub(super) const TABLE_ROW_HANDLE_DOT_COLUMNS: usize = 2;
 
 pub(super) fn table_axis_handle_dimensions(axis: TableAxis, expanded: bool) -> (f32, f32) {
     match (axis, expanded) {
@@ -23,52 +19,38 @@ pub(super) fn table_axis_handle_dimensions(axis: TableAxis, expanded: bool) -> (
 }
 
 pub(super) fn render_table_axis_handle_icon(axis: TableAxis, color: u32) -> AnyElement {
-    let (rows, columns, width, height) = match axis {
-        TableAxis::Column => (
-            TABLE_COLUMN_HANDLE_DOT_ROWS,
-            TABLE_COLUMN_HANDLE_DOT_COLUMNS,
-            10.0,
-            8.0,
-        ),
-        TableAxis::Row => (
-            TABLE_ROW_HANDLE_DOT_ROWS,
-            TABLE_ROW_HANDLE_DOT_COLUMNS,
-            8.0,
-            10.0,
-        ),
+    const GUTTER_VERTICAL: &[u8] = include_bytes!("../../../../../assets/icons/gutter.svg");
+    const GUTTER_HORIZONTAL: &[u8] =
+        include_bytes!("../../../../../assets/icons/gutter-horizontal.svg");
+    let (key, gutter) = match axis {
+        TableAxis::Row => ("table-gutter-vertical", GUTTER_VERTICAL),
+        TableAxis::Column => ("table-gutter-horizontal", GUTTER_HORIZONTAL),
     };
-    div()
-        .w(px(width))
-        .h(px(height))
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap(px(1.5))
-        .children((0..rows).map(move |_| {
-            div().flex().gap(px(1.5)).children(
-                (0..columns)
-                    .map(move |_| div().w(px(2.0)).h(px(2.0)).rounded(px(2.0)).bg(rgb(color))),
-            )
-        }))
+    SvgIcon::new(key, gutter)
+        .color(rgb(color))
+        .size(px(14.0))
         .into_any_element()
 }
-
-// 形状不变量：列把手横向、行把手纵向（编译期断言）。
-const _: () = assert!(TABLE_COLUMN_HANDLE_DOT_COLUMNS > TABLE_COLUMN_HANDLE_DOT_ROWS);
-const _: () = assert!(TABLE_ROW_HANDLE_DOT_ROWS > TABLE_ROW_HANDLE_DOT_COLUMNS);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn table_axis_grips_use_directional_six_dot_shapes() {
-        assert_eq!(
-            TABLE_COLUMN_HANDLE_DOT_ROWS * TABLE_COLUMN_HANDLE_DOT_COLUMNS,
-            6
+    fn table_axis_grips_use_the_shared_gutter_asset() {
+        const VERTICAL: &[u8] = include_bytes!("../../../../../assets/icons/gutter.svg");
+        const HORIZONTAL: &[u8] =
+            include_bytes!("../../../../../assets/icons/gutter-horizontal.svg");
+        assert!(
+            std::str::from_utf8(VERTICAL)
+                .unwrap()
+                .contains("cx=\"9\" cy=\"12\"")
         );
-        assert_eq!(TABLE_ROW_HANDLE_DOT_ROWS * TABLE_ROW_HANDLE_DOT_COLUMNS, 6);
+        assert!(
+            std::str::from_utf8(HORIZONTAL)
+                .unwrap()
+                .contains("cx=\"12\" cy=\"9\"")
+        );
     }
 
     #[test]

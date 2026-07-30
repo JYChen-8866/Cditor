@@ -2,17 +2,16 @@
 
 use crate::editor_view::CditorV2View;
 use crate::input::{
-    CODE_LANGUAGE_VISIBLE_SUGGESTIONS, CodeLanguageEditState, CodeLanguageItem,
-    CodeLanguagePopupPlacement, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement,
+    CODE_LANGUAGE_VISIBLE_SUGGESTIONS, CodeLanguageEditState, CodeLanguagePopupPlacement,
+    SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement,
 };
 use crate::theme::GuiTheme;
-use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
+use cditor_component::{Combobox, ComboboxItem, ComboboxPlacement, ComboboxStyle, SvgIcon};
 use cditor_core::ids::BlockId;
 use gpui::InteractiveElement;
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Entity, FocusHandle, IntoElement, MouseButton, ParentElement, PathBuilder, Styled,
-    canvas, deferred, div, point, px, rgb,
+    AnyElement, Entity, FocusHandle, IntoElement, MouseButton, ParentElement, Styled, div, px, rgb,
 };
 
 mod theme_menu;
@@ -20,6 +19,7 @@ mod theme_menu;
 use theme_menu::{render_code_theme_button, render_code_theme_popup};
 
 pub const V1_CODE_TOOLBAR_TOP_PX: f32 = 3.0;
+pub const V1_CODE_TOOLBAR_LEFT_PX: f32 = 6.0;
 pub const V1_CODE_TOOLBAR_RIGHT_PX: f32 = 6.0;
 pub const V1_CODE_TOOLBAR_OPACITY: f32 = 1.0;
 pub const V1_CODE_TOOLBAR_HEIGHT_PX: f32 = 30.0;
@@ -27,19 +27,15 @@ pub const V1_CODE_TOOLBAR_RADIUS_PX: f32 = 4.0;
 pub const V1_CODE_TOOLBAR_PADDING_PX: f32 = 2.0;
 pub const V1_CODE_TOOLBAR_BUTTON_SIZE_PX: f32 = 26.0;
 pub const V1_CODE_TOOLBAR_BUTTON_RADIUS_PX: f32 = 4.0;
-pub const V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX: f32 = 64.0;
+pub const V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX: f32 = 160.0;
 pub const V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX: f32 = 160.0;
-pub const V1_CODE_LANGUAGE_EDIT_WIDTH_PX: f32 = 132.0;
+pub const V1_CODE_LANGUAGE_EDIT_WIDTH_PX: f32 = 160.0;
 pub const V1_CODE_TOOLBAR_GAP_PX: f32 = 2.0;
 pub const V1_CODE_LANGUAGE_POPUP_GAP_PX: f32 = 6.0;
 #[cfg(test)]
 pub const V1_CODE_LANGUAGE_POPUP_MAX_HEIGHT_PX: f32 = 300.0;
-pub const V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX: f32 = 44.0;
+pub const V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX: f32 = 32.0;
 pub const V1_CODE_COPY_ICON_SIZE_PX: f32 = 16.0;
-pub const V1_CODE_COPY_ICON_RECT_SIZE_PX: f32 = 10.0;
-pub const V1_CODE_COPY_ICON_OFFSET_PX: f32 = 4.0;
-pub const V1_CODE_LANGUAGE_CHEVRON_SIZE_PX: f32 = 12.0;
-pub const V1_CODE_LANGUAGE_CHEVRON_STROKE_PX: f32 = 1.5;
 pub const V1_CODE_THEME_POPUP_WIDTH_PX: f32 = 220.0;
 pub const V1_CODE_THEME_ROW_HEIGHT_PX: f32 = 34.0;
 
@@ -57,6 +53,7 @@ pub fn render_code_toolbar(
     div()
         .absolute()
         .top(px(V1_CODE_TOOLBAR_TOP_PX))
+        .left(px(V1_CODE_TOOLBAR_LEFT_PX))
         .right(px(V1_CODE_TOOLBAR_RIGHT_PX))
         .opacity(V1_CODE_TOOLBAR_OPACITY)
         .flex()
@@ -65,9 +62,11 @@ pub fn render_code_toolbar(
         .gap(px(4.0))
         .child(
             div()
+                .w_full()
                 .h(px(V1_CODE_TOOLBAR_HEIGHT_PX))
                 .flex()
                 .items_center()
+                .justify_between()
                 .gap(px(V1_CODE_TOOLBAR_GAP_PX))
                 .rounded(px(V1_CODE_TOOLBAR_RADIUS_PX))
                 .p(px(V1_CODE_TOOLBAR_PADDING_PX))
@@ -81,14 +80,20 @@ pub fn render_code_toolbar(
                     view.clone(),
                     code_language_focus,
                 ))
-                .child(render_copy_button(theme, block_id, view.clone()))
-                .child(render_code_theme_button(
-                    theme,
-                    block_id,
-                    code_highlight_theme,
-                    code_theme_menu_open,
-                    view.clone(),
-                )),
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(V1_CODE_TOOLBAR_GAP_PX))
+                        .child(render_copy_button(theme, block_id, view.clone()))
+                        .child(render_code_theme_button(
+                            theme,
+                            block_id,
+                            code_highlight_theme,
+                            code_theme_menu_open,
+                            view.clone(),
+                        )),
+                ),
         )
         .when(code_theme_menu_open, |this| {
             this.child(render_code_theme_popup(
@@ -125,241 +130,107 @@ fn render_language_editor(
     let draft = language_edit
         .map(|edit| edit.draft.clone())
         .unwrap_or_default();
-    let input_view = view.clone();
-    let dismiss_view = view.clone();
-    div()
-        .relative()
-        .h(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
-        .flex()
-        .items_center()
-        .when(is_editing, |this| {
-            this.on_mouse_down_out(move |_event, window, cx| {
-                let _ = dismiss_view.update(cx, |view, cx| {
-                    view.dismiss_code_language_dropdown_from_gui(window, cx)
-                });
-            })
-        })
-        .child(
-            div()
-                .h(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
-                .min_w(px(V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX))
-                .max_w(px(V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX))
-                .px(px(8.0))
-                .flex()
-                .items_center()
-                .rounded(px(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX))
-                .text_color(rgb(theme.code_toolbar_text))
-                .bg(rgb(if is_editing {
-                    theme.code_toolbar_hover
-                } else {
-                    theme.code_toolbar_background
-                }))
-                .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
-                .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-                    input_view.update(cx, |view, cx| {
-                        view.toggle_code_language_dropdown_from_gui(
-                            block_id,
-                            current_language.as_deref(),
-                            f32::from(event.position.y),
-                            window,
-                            cx,
-                        );
-                    });
-                    cx.stop_propagation();
-                })
-                .child(
-                    div()
-                        .h_full()
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .overflow_hidden()
-                        .child(
-                            div()
-                                .min_w(px(0.0))
-                                .flex_shrink_1()
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .child(label),
-                        )
-                        .child(render_language_chevron(theme, is_editing)),
-                ),
-        )
-        .when(is_editing, |this| {
-            this.child(render_language_suggestions(
-                block_id,
-                theme,
-                suggestions,
-                selected_index,
-                scroll_start,
-                draft,
-                caret_offset,
-                marked_range,
-                code_language_focus.clone(),
-                language_edit
-                    .map(|edit| edit.placement)
-                    .unwrap_or(CodeLanguagePopupPlacement::Below),
-                view.clone(),
-            ))
-        })
-        .into_any_element()
-}
-
-fn render_language_chevron(theme: GuiTheme, expanded: bool) -> AnyElement {
-    let points = language_chevron_points(expanded);
-    canvas(
-        |_, _, _| {},
-        move |bounds, _, window, _| {
-            let origin = bounds.origin;
-            let mut path = PathBuilder::stroke(px(V1_CODE_LANGUAGE_CHEVRON_STROKE_PX));
-            path.move_to(point(
-                origin.x + px(points[0].0),
-                origin.y + px(points[0].1),
-            ));
-            path.line_to(point(
-                origin.x + px(points[1].0),
-                origin.y + px(points[1].1),
-            ));
-            path.line_to(point(
-                origin.x + px(points[2].0),
-                origin.y + px(points[2].1),
-            ));
-            if let Ok(path) = path.build() {
-                window.paint_path(path, rgb(theme.muted));
-            }
-        },
-    )
-    .size(px(V1_CODE_LANGUAGE_CHEVRON_SIZE_PX))
-    .flex_none()
-    .into_any_element()
-}
-
-const fn language_chevron_points(expanded: bool) -> [(f32, f32); 3] {
-    if expanded {
-        [(2.0, 8.0), (6.0, 4.0), (10.0, 8.0)]
-    } else {
-        [(2.0, 4.0), (6.0, 8.0), (10.0, 4.0)]
-    }
-}
-
-#[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
-fn render_language_suggestions(
-    block_id: BlockId,
-    theme: GuiTheme,
-    suggestions: Vec<CodeLanguageItem>,
-    selected_index: usize,
-    scroll_start: usize,
-    draft: String,
-    caret_offset: Option<usize>,
-    marked_range: Option<std::ops::Range<usize>>,
-    code_language_focus: FocusHandle,
-    placement: CodeLanguagePopupPlacement,
-    view: Entity<CditorV2View>,
-) -> AnyElement {
     let total_suggestions = suggestions.len();
     let scroll_start = scroll_start.min(total_suggestions.saturating_sub(1));
-    let mut panel = div()
-        .absolute()
-        .right(px(-(code_language_popup_right_overhang())))
-        .w(px(code_language_popup_width()))
-        .h(px(code_language_panel_height(total_suggestions)))
-        .rounded(px(8.0))
-        .border_1()
-        .border_color(rgb(theme.code_toolbar_border))
-        .bg(rgb(theme.code_toolbar_background))
-        .shadow_lg()
-        .occlude()
-        .overflow_hidden()
-        .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
-            cx.stop_propagation();
+    let checked_language = current_language
+        .as_deref()
+        .unwrap_or("plain text")
+        .to_owned();
+    let items = suggestions
+        .into_iter()
+        .enumerate()
+        .skip(scroll_start)
+        .take(CODE_LANGUAGE_VISIBLE_SUGGESTIONS)
+        .map(|(index, item)| {
+            let value = item.value.clone();
+            let checked = item.value.eq_ignore_ascii_case(&checked_language);
+            let select_view = view.clone();
+            ComboboxItem::new(item.label, move |_window, cx| {
+                let value = value.clone();
+                select_view.update(cx, |view, cx| {
+                    view.select_code_language_from_gui(block_id, value, cx);
+                });
+            })
+            .selected(index == selected_index)
+            .checked(checked)
         })
-        .on_scroll_wheel({
-            let view = view.clone();
-            move |event, _window, cx| {
-                let delta_y = f32::from(
-                    event
-                        .delta
-                        .pixel_delta(px(code_language_suggestion_row_height()))
-                        .y,
+        .collect();
+    let toggle_view = view.clone();
+    let dismiss_view = view.clone();
+    let wheel_view = view.clone();
+    let scrollbar_view = view.clone();
+    let placement = match language_edit.map(|edit| edit.placement) {
+        Some(CodeLanguagePopupPlacement::Above) => ComboboxPlacement::Above,
+        _ => ComboboxPlacement::Below,
+    };
+    Combobox::new(
+        label,
+        is_editing,
+        code_language_combobox_style(theme),
+        move |pointer_y, window, cx| {
+            toggle_view.update(cx, |view, cx| {
+                view.toggle_code_language_dropdown_from_gui(
+                    block_id,
+                    current_language.as_deref(),
+                    pointer_y,
+                    window,
+                    cx,
                 );
-                let delta_rows = scroll_delta_rows(delta_y);
-                if delta_rows != 0 {
-                    let changed = view.update(cx, |view, cx| {
-                        view.scroll_code_language_suggestions_from_gui(delta_rows, cx)
-                    });
-                    if changed {
-                        cx.stop_propagation();
-                    }
-                } else {
-                    cx.stop_propagation();
-                }
-            }
-        })
-        .when(placement == CodeLanguagePopupPlacement::Below, |panel| {
-            panel.top(px(
-                V1_CODE_TOOLBAR_BUTTON_SIZE_PX + V1_CODE_LANGUAGE_POPUP_GAP_PX
-            ))
-        })
-        .when(placement == CodeLanguagePopupPlacement::Above, |panel| {
-            panel.bottom(px(
-                V1_CODE_TOOLBAR_BUTTON_SIZE_PX + V1_CODE_LANGUAGE_POPUP_GAP_PX
-            ))
-        });
-
-    panel = panel.child(render_language_search_input(
+            });
+        },
+        move |window, cx| {
+            let _ = dismiss_view.update(cx, |view, cx| {
+                view.dismiss_code_language_dropdown_from_gui(window, cx)
+            });
+        },
+    )
+    .placement(placement)
+    .search(render_language_search_input(
         theme,
         draft,
         caret_offset,
         marked_range,
         code_language_focus,
         view.clone(),
-    ));
+    ))
+    .items(items, total_suggestions)
+    .scroll(
+        scroll_start,
+        CODE_LANGUAGE_VISIBLE_SUGGESTIONS,
+        move |delta_rows, _window, cx| {
+            wheel_view.update(cx, |view, cx| {
+                view.scroll_code_language_suggestions_from_gui(delta_rows, cx)
+            });
+        },
+        move |target_start, _window, cx| {
+            scrollbar_view.update(cx, |view, cx| {
+                view.set_code_language_scroll_start_from_gui(target_start, cx);
+            });
+        },
+    )
+    .popup_right_offset(px(0.0))
+    .into_any_element()
+}
 
-    if suggestions.is_empty() {
-        panel = panel.child(
-            div()
-                .h(px(code_language_suggestion_row_height()))
-                .flex()
-                .items_center()
-                .px(px(12.0))
-                .text_size(px(12.0))
-                .text_color(rgb(theme.muted))
-                .child("No matching suggestions"),
-        );
-    } else {
-        panel = panel.child(
-            div()
-                .w_full()
-                .h(px(code_language_list_height(total_suggestions)))
-                .bg(rgb(theme.code_toolbar_background))
-                .children(
-                    suggestions
-                        .into_iter()
-                        .enumerate()
-                        .skip(scroll_start)
-                        .take(CODE_LANGUAGE_VISIBLE_SUGGESTIONS)
-                        .map(|(index, item)| {
-                            render_language_suggestion_row(
-                                block_id,
-                                theme,
-                                item,
-                                index == selected_index,
-                                view.clone(),
-                            )
-                        }),
-                ),
-        );
-        if total_suggestions > CODE_LANGUAGE_VISIBLE_SUGGESTIONS {
-            panel = panel.child(render_language_scrollbar(
-                theme,
-                total_suggestions,
-                scroll_start,
-                view.clone(),
-            ));
-        }
+fn code_language_combobox_style(theme: GuiTheme) -> ComboboxStyle {
+    ComboboxStyle {
+        background: theme.code_toolbar_background,
+        hover: theme.code_toolbar_hover,
+        border: theme.code_toolbar_border,
+        text: theme.code_toolbar_text,
+        muted: theme.muted,
+        accent: theme.code_toolbar_hover,
+        focused_border: theme.focused,
+        trigger_height: px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX),
+        trigger_min_width: px(V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX),
+        trigger_max_width: px(V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX),
+        trigger_radius: px(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX),
+        popup_width: px(code_language_popup_width()),
+        popup_gap: px(V1_CODE_LANGUAGE_POPUP_GAP_PX),
+        popup_radius: px(8.0),
+        search_height: px(V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX),
+        row_height: px(code_language_suggestion_row_height()),
     }
-    deferred(panel).with_priority(100).into_any_element()
 }
 
 fn render_language_search_input(
@@ -370,23 +241,25 @@ fn render_language_search_input(
     code_language_focus: FocusHandle,
     view: Entity<CditorV2View>,
 ) -> AnyElement {
+    const SEARCH: &[u8] = include_bytes!("../../../../../../assets/icons/search.svg");
     div()
         .h(px(V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX))
-        .p(px(6.0))
+        .px(px(8.0))
         .border_b_1()
         .border_color(rgb(theme.code_toolbar_border))
         .child(
             div()
                 .w_full()
                 .h_full()
-                .px(px(8.0))
                 .flex()
                 .items_center()
-                .rounded(px(5.0))
-                .border_1()
-                .border_color(rgb(theme.focused))
-                .bg(rgb(theme.code_toolbar_background))
+                .gap(px(6.0))
                 .track_focus(&code_language_focus)
+                .child(
+                    SvgIcon::new("combobox-search", SEARCH)
+                        .color(rgb(theme.muted))
+                        .size(px(14.0)),
+                )
                 .child(SingleLineTextInputElement {
                     handler: view,
                     focus: code_language_focus,
@@ -404,10 +277,7 @@ fn render_language_search_input(
 }
 
 fn code_language_popup_width() -> f32 {
-    V1_CODE_LANGUAGE_EDIT_WIDTH_PX
-        + V1_CODE_TOOLBAR_BUTTON_SIZE_PX * 2.0
-        + V1_CODE_TOOLBAR_GAP_PX * 2.0
-        + V1_CODE_TOOLBAR_PADDING_PX * 2.0
+    V1_CODE_LANGUAGE_EDIT_WIDTH_PX + 2.0
 }
 
 #[cfg(test)]
@@ -416,114 +286,24 @@ fn code_language_popup_max_height() -> f32 {
         + CODE_LANGUAGE_VISIBLE_SUGGESTIONS as f32 * code_language_suggestion_row_height()
 }
 
+#[cfg(test)]
 fn code_language_panel_height(total_suggestions: usize) -> f32 {
     V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX + code_language_list_height(total_suggestions)
 }
 
+#[cfg(test)]
 fn code_language_list_height(total_suggestions: usize) -> f32 {
     total_suggestions.clamp(1, CODE_LANGUAGE_VISIBLE_SUGGESTIONS) as f32
         * code_language_suggestion_row_height()
 }
 
 fn code_language_suggestion_row_height() -> f32 {
-    34.0
+    24.0
 }
 
-fn scroll_delta_rows(delta_y: f32) -> isize {
-    if delta_y.abs() < 1.0 {
-        return 0;
-    }
-    let rows = (delta_y.abs() / code_language_suggestion_row_height())
-        .ceil()
-        .max(1.0) as isize;
-    if delta_y > 0.0 { -rows } else { rows }
-}
-
-fn render_language_scrollbar(
-    theme: GuiTheme,
-    total_suggestions: usize,
-    scroll_start: usize,
-    view: Entity<CditorV2View>,
-) -> AnyElement {
-    let track_height =
-        CODE_LANGUAGE_VISIBLE_SUGGESTIONS as f32 * code_language_suggestion_row_height() - 8.0;
-    let visible = CODE_LANGUAGE_VISIBLE_SUGGESTIONS.min(total_suggestions);
-    let max_start = total_suggestions.saturating_sub(visible);
-    let row_height = code_language_suggestion_row_height();
-
-    div()
-        .absolute()
-        .right_0()
-        .top(px(V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX + 4.0))
-        .w(px(10.0))
-        .h(px(track_height))
-        .child(InteractiveScrollbar::for_callback(
-            ScrollbarAxis::Vertical,
-            scroll_start.min(max_start) as f32 * row_height,
-            max_start as f32 * row_height,
-            visible as f32 / total_suggestions as f32,
-            InteractiveScrollbarStyle::notion(theme.muted, theme.code_toolbar_text),
-            move |offset_px, _window, cx| {
-                let target_start = (offset_px / row_height).round() as usize;
-                view.update(cx, |view, cx| {
-                    view.set_code_language_scroll_start_from_gui(target_start, cx);
-                });
-            },
-        ))
-        .into_any_element()
-}
-
+#[cfg(test)]
 fn code_language_popup_right_overhang() -> f32 {
-    V1_CODE_TOOLBAR_BUTTON_SIZE_PX * 2.0 + V1_CODE_TOOLBAR_GAP_PX * 2.0 + V1_CODE_TOOLBAR_PADDING_PX
-}
-
-fn render_language_suggestion_row(
-    block_id: BlockId,
-    theme: GuiTheme,
-    item: CodeLanguageItem,
-    selected: bool,
-    view: Entity<CditorV2View>,
-) -> AnyElement {
-    let value = item.value.clone();
-    let row_background = if selected {
-        theme.code_toolbar_hover
-    } else {
-        theme.code_toolbar_background
-    };
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_between()
-        .w_full()
-        .h(px(code_language_suggestion_row_height()))
-        .gap_3()
-        .px(px(12.0))
-        .cursor_pointer()
-        .bg(rgb(row_background))
-        .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)).cursor_pointer())
-        .child(
-            div()
-                .bg(rgb(row_background))
-                .text_size(px(13.0))
-                .text_color(rgb(theme.text))
-                .child(item.label),
-        )
-        .child(
-            div()
-                .bg(rgb(row_background))
-                .text_size(px(11.0))
-                .text_color(rgb(theme.muted))
-                .child(item.value),
-        )
-        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-            let value = value.clone();
-            view.update(cx, |view, cx| {
-                view.select_code_language_from_gui(block_id, value, cx);
-            });
-            cx.stop_propagation();
-        })
-        .into_any_element()
+    0.0
 }
 
 fn render_copy_button(
@@ -540,7 +320,7 @@ fn render_copy_button(
         .rounded(px(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX))
         .text_color(rgb(theme.code_toolbar_icon))
         .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
-        .child(render_copy_icon(theme))
+        .child(render_copy_icon(theme, block_id, view.clone()))
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             view.update(cx, |view, cx| {
                 super::actions::copy_code_block_from_gui(view, block_id, cx);
@@ -550,36 +330,21 @@ fn render_copy_button(
         .into_any_element()
 }
 
-fn render_copy_icon(theme: GuiTheme) -> AnyElement {
-    let icon_color = rgb(theme.code_toolbar_icon);
-    div()
-        .relative()
-        .w(px(V1_CODE_COPY_ICON_SIZE_PX))
-        .h(px(V1_CODE_COPY_ICON_SIZE_PX))
-        .child(
-            div()
-                .absolute()
-                .left(px(1.0))
-                .top(px(1.0))
-                .w(px(V1_CODE_COPY_ICON_RECT_SIZE_PX))
-                .h(px(V1_CODE_COPY_ICON_RECT_SIZE_PX))
-                .rounded(px(2.0))
-                .border_1()
-                .border_color(icon_color),
-        )
-        .child(
-            div()
-                .absolute()
-                .left(px(V1_CODE_COPY_ICON_OFFSET_PX))
-                .top(px(V1_CODE_COPY_ICON_OFFSET_PX))
-                .w(px(V1_CODE_COPY_ICON_RECT_SIZE_PX))
-                .h(px(V1_CODE_COPY_ICON_RECT_SIZE_PX))
-                .rounded(px(2.0))
-                .border_1()
-                .border_color(icon_color)
-                .bg(rgb(theme.code_toolbar_background)),
-        )
-        .into_any_element()
+fn render_copy_icon(theme: GuiTheme, block_id: BlockId, view: Entity<CditorV2View>) -> AnyElement {
+    const COPY: &[u8] = include_bytes!("../../../../../../assets/icons/copy.svg");
+    const COPY_CHECK: &[u8] = include_bytes!("../../../../../../assets/icons/copy-check.svg");
+
+    SvgIcon::dynamic(move |cx| {
+        let copied = view.read(cx).overlay.code_copy_feedback_block_id == Some(block_id);
+        if copied {
+            ("code-toolbar-copy-check", COPY_CHECK)
+        } else {
+            ("code-toolbar-copy", COPY)
+        }
+    })
+    .color(rgb(theme.code_toolbar_icon))
+    .size(px(V1_CODE_COPY_ICON_SIZE_PX))
+    .into_any_element()
 }
 
 #[cfg(test)]
@@ -589,25 +354,34 @@ mod tests {
     #[test]
     fn v1_code_toolbar_geometry_constants_match_editor2() {
         assert_eq!(V1_CODE_TOOLBAR_TOP_PX, 3.0);
+        assert_eq!(V1_CODE_TOOLBAR_LEFT_PX, 6.0);
         assert_eq!(V1_CODE_TOOLBAR_RIGHT_PX, 6.0);
         assert_eq!(V1_CODE_TOOLBAR_HEIGHT_PX, 30.0);
         assert_eq!(V1_CODE_TOOLBAR_RADIUS_PX, 4.0);
         assert_eq!(V1_CODE_TOOLBAR_BUTTON_SIZE_PX, 26.0);
         assert_eq!(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX, 4.0);
-        assert_eq!(V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX, 64.0);
+        assert_eq!(V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX, 160.0);
         assert_eq!(V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX, 160.0);
-        assert_eq!(V1_CODE_LANGUAGE_EDIT_WIDTH_PX, 132.0);
+        assert_eq!(V1_CODE_LANGUAGE_EDIT_WIDTH_PX, 160.0);
         assert_eq!(V1_CODE_TOOLBAR_GAP_PX, 2.0);
         assert_eq!(V1_CODE_LANGUAGE_POPUP_GAP_PX, 6.0);
         assert_eq!(V1_CODE_LANGUAGE_POPUP_MAX_HEIGHT_PX, 300.0);
-        assert_eq!(V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX, 44.0);
+        assert_eq!(V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX, 32.0);
         assert_eq!(V1_CODE_COPY_ICON_SIZE_PX, 16.0);
-        assert_eq!(V1_CODE_COPY_ICON_RECT_SIZE_PX, 10.0);
-        assert_eq!(V1_CODE_COPY_ICON_OFFSET_PX, 4.0);
-        assert_eq!(V1_CODE_LANGUAGE_CHEVRON_SIZE_PX, 12.0);
-        assert_eq!(V1_CODE_LANGUAGE_CHEVRON_STROKE_PX, 1.5);
         assert_eq!(V1_CODE_THEME_POPUP_WIDTH_PX, 220.0);
         assert_eq!(V1_CODE_THEME_ROW_HEIGHT_PX, 34.0);
+    }
+
+    #[test]
+    fn code_toolbar_controls_are_centered_inside_the_reserved_surface() {
+        assert_eq!(
+            V1_CODE_TOOLBAR_TOP_PX * 2.0 + V1_CODE_TOOLBAR_HEIGHT_PX,
+            cditor_core::layout::V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX as f32
+        );
+        assert_eq!(
+            V1_CODE_TOOLBAR_BUTTON_SIZE_PX + V1_CODE_TOOLBAR_PADDING_PX * 2.0,
+            V1_CODE_TOOLBAR_HEIGHT_PX
+        );
     }
 
     #[test]
@@ -616,46 +390,30 @@ mod tests {
     }
 
     #[test]
-    fn language_button_uses_intrinsic_width_with_bounded_overflow() {
-        const {
-            assert!(V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX < V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX);
-        }
-    }
-
-    #[test]
-    fn language_chevron_rotates_between_collapsed_and_expanded_states() {
+    fn language_combobox_uses_the_basic_single_select_fixed_width() {
         assert_eq!(
-            language_chevron_points(false),
-            [(2.0, 4.0), (6.0, 8.0), (10.0, 4.0)]
+            V1_CODE_LANGUAGE_BUTTON_MIN_WIDTH_PX,
+            V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX
         );
         assert_eq!(
-            language_chevron_points(true),
-            [(2.0, 8.0), (6.0, 4.0), (10.0, 8.0)]
+            code_language_popup_width(),
+            V1_CODE_LANGUAGE_BUTTON_MAX_WIDTH_PX + 2.0
         );
     }
 
     #[test]
     fn language_popup_matches_toolbar_width() {
-        assert_eq!(code_language_popup_width(), 192.0);
-        assert_eq!(code_language_popup_right_overhang(), 58.0);
+        assert_eq!(code_language_popup_width(), 162.0);
+        assert_eq!(code_language_popup_right_overhang(), 0.0);
     }
 
     #[test]
     fn language_popup_height_is_bounded_to_visible_rows() {
-        assert_eq!(code_language_suggestion_row_height(), 34.0);
-        assert_eq!(code_language_popup_max_height(), 282.0);
-        assert_eq!(code_language_panel_height(0), 78.0);
-        assert_eq!(code_language_panel_height(3), 146.0);
+        assert_eq!(code_language_suggestion_row_height(), 24.0);
+        assert_eq!(code_language_popup_max_height(), 296.0);
+        assert_eq!(code_language_panel_height(0), 56.0);
+        assert_eq!(code_language_panel_height(3), 104.0);
         assert!(code_language_popup_max_height() < V1_CODE_LANGUAGE_POPUP_MAX_HEIGHT_PX);
-    }
-
-    #[test]
-    fn language_popup_scroll_delta_maps_to_rows() {
-        assert_eq!(scroll_delta_rows(0.2), 0);
-        assert_eq!(scroll_delta_rows(1.0), -1);
-        assert_eq!(scroll_delta_rows(34.0), -1);
-        assert_eq!(scroll_delta_rows(35.0), -2);
-        assert_eq!(scroll_delta_rows(-35.0), 2);
     }
 
     #[test]

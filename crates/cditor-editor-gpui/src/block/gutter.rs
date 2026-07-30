@@ -4,6 +4,8 @@ use gpui::{
     Styled, Window, div, px, rgb,
 };
 
+use cditor_component::SvgIcon;
+
 use crate::block::chrome::{BLOCK_GUTTER_HEIGHT_PX, BLOCK_GUTTER_WIDTH_PX};
 use crate::theme::GuiTheme;
 
@@ -83,29 +85,10 @@ fn render_drag_button(
 }
 
 fn render_gutter_handle_icon(color: u32) -> AnyElement {
-    div()
-        .w(px(10.0))
-        .h(px(14.0))
-        .flex()
-        .flex_col()
-        .justify_center()
-        .items_center()
-        .gap(px(2.0))
-        .children((0..3).map(move |_| {
-            div()
-                .flex()
-                .gap(px(2.0))
-                .children((0..2).map(move |_| render_gutter_handle_dot(color)))
-        }))
-        .into_any_element()
-}
-
-fn render_gutter_handle_dot(color: u32) -> AnyElement {
-    div()
-        .w(px(2.0))
-        .h(px(2.0))
-        .rounded(px(2.0))
-        .bg(rgb(color))
+    const GUTTER: &[u8] = include_bytes!("../../../../assets/icons/gutter.svg");
+    SvgIcon::new("block-gutter", GUTTER)
+        .color(rgb(color))
+        .size(px(16.0))
         .into_any_element()
 }
 

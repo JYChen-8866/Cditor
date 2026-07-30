@@ -2,7 +2,7 @@ use cditor_core::ids::BlockId;
 use std::ops::Range;
 
 pub const CODE_LANGUAGE_MAX_SUGGESTIONS: usize = 64;
-pub const CODE_LANGUAGE_VISIBLE_SUGGESTIONS: usize = 7;
+pub const CODE_LANGUAGE_VISIBLE_SUGGESTIONS: usize = 11;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CodeLanguagePopupPlacement {

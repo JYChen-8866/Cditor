@@ -9,11 +9,6 @@ use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_runtime::{TableCellPosition, TableViewState};
 
-#[cfg(test)]
-use super::axis_grip::{
-    TABLE_COLUMN_HANDLE_DOT_COLUMNS, TABLE_COLUMN_HANDLE_DOT_ROWS, TABLE_ROW_HANDLE_DOT_COLUMNS,
-    TABLE_ROW_HANDLE_DOT_ROWS,
-};
 use super::axis_grip::{render_table_axis_handle_icon, table_axis_handle_dimensions};
 use super::cell_gutter::render_active_cell_gutters;
 use super::selection::{TableAxis, TableAxisSelection, TableCellRangeSelection};
@@ -345,15 +340,6 @@ mod tests {
     use cditor_runtime::{TableCellPosition, TableVisibleCell};
 
     use super::*;
-
-    #[test]
-    fn table_axis_handles_use_horizontal_and_vertical_six_dot_grips() {
-        assert_eq!(
-            TABLE_COLUMN_HANDLE_DOT_ROWS * TABLE_COLUMN_HANDLE_DOT_COLUMNS,
-            6
-        );
-        assert_eq!(TABLE_ROW_HANDLE_DOT_ROWS * TABLE_ROW_HANDLE_DOT_COLUMNS, 6);
-    }
 
     #[test]
     fn active_cell_owns_only_the_axis_handles_it_renders() {

@@ -80,6 +80,8 @@ pub(crate) struct OverlayUiState {
     pub(crate) ai_preview_scroll_handle: gpui::ScrollHandle,
     pub(crate) code_language_edit: Option<CodeLanguageEditState>,
     pub(crate) code_theme_menu_block_id: Option<BlockId>,
+    pub(crate) code_copy_feedback_block_id: Option<BlockId>,
+    pub(crate) code_copy_feedback_generation: u64,
     pub(crate) slash_menu: Option<SlashMenuState>,
     pub(crate) toast: Option<GuiToast>,
     pub(crate) table_menu_ui: crate::features::table::menu::TableMenuUiState,
