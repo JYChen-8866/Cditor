@@ -275,6 +275,15 @@ impl CditorV2View {
         self.submit_ai_prompt_instruction_from_gui(instruction, cx)
     }
 
+    pub(crate) fn clear_ai_prompt_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(prompt) = self.overlay.ai_prompt.as_mut() else {
+            return false;
+        };
+        prompt.clear();
+        cx.notify();
+        true
+    }
+
     pub(crate) fn apply_ai_prompt_action_from_gui(
         &mut self,
         action: AiPromptEditAction,

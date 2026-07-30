@@ -1,7 +1,7 @@
 use cditor_component::{
-    InteractiveScrollbar, InteractiveScrollbarStyle, POPUP_MENU_ITEM_FONT_SIZE_PX,
-    POPUP_MENU_LABEL_FONT_SIZE_PX, PopupMenu, PopupMenuItem, PopupMenuStyle, ScrollbarAxis,
-    SvgIcon,
+    Input, InputStyle, InteractiveScrollbar, InteractiveScrollbarStyle,
+    POPUP_MENU_ITEM_FONT_SIZE_PX, POPUP_MENU_LABEL_FONT_SIZE_PX, PopupMenu, PopupMenuItem,
+    PopupMenuStyle, ScrollbarAxis, SvgIcon,
 };
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -12,7 +12,7 @@ use gpui::{
 
 use crate::editor_view::CditorV2View;
 use crate::input::{AiPromptState, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement};
-use crate::menu_metrics::PRIMARY_MENU_WIDTH_PX;
+use crate::menu_metrics::{PRIMARY_MENU_HEIGHT_PX, PRIMARY_MENU_WIDTH_PX};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::CalloutVariant;
@@ -25,7 +25,6 @@ use super::color_menu::{ActiveColor, ColorMenuAction, PaletteColor, render_color
 pub(crate) const TOOLBAR_WIDTH_PX: f32 = 194.0;
 pub(crate) const GUTTER_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 const TOOLBAR_HEIGHT_PX: f32 = 324.0;
-const GUTTER_MENU_HEIGHT_PX: f32 = 420.0;
 const VIEWPORT_MARGIN_PX: f32 = 10.0;
 const TOOLBAR_ANCHOR_GAP_PX: f32 = 8.0;
 const AI_ACTIONS_VIEWPORT_HEIGHT_PX: f32 = 110.0;
@@ -38,6 +37,8 @@ const GUTTER_FORMAT_BUTTON_SIZE_PX: f32 = 36.0;
 const TOOLBAR_GROUP_LABEL_HEIGHT_PX: f32 = 26.0;
 
 const ICON_COLOR: &[u8] = include_bytes!("../../../../assets/icons/color.svg");
+const ICON_DELETE: &[u8] = include_bytes!("../../../../assets/icons/delete.svg");
+const ICON_TEXT: &[u8] = include_bytes!("../../../../assets/icons/text.svg");
 const ICON_BOLD: &[u8] = include_bytes!("../../../../assets/icons/bold.svg");
 const ICON_ITALIC: &[u8] = include_bytes!("../../../../assets/icons/itaic.svg");
 const ICON_UNDERLINE: &[u8] = include_bytes!("../../../../assets/icons/underline.svg");
@@ -50,6 +51,15 @@ const ICON_AI_SHORTEN: &[u8] = include_bytes!("../../../../assets/icons/ai-short
 const ICON_AI_EXPAND: &[u8] = include_bytes!("../../../../assets/icons/ai-expand.svg");
 const ICON_AI_EXPLAIN: &[u8] = include_bytes!("../../../../assets/icons/ai-explain.svg");
 const ICON_AI_TRANSLATE: &[u8] = include_bytes!("../../../../assets/icons/ai-translate.svg");
+const AI_ACTION_ICON_KEYS: [&str; AI_ACTION_COUNT] = [
+    "ai-action-improve",
+    "ai-action-proofread",
+    "ai-action-shorten",
+    "ai-action-expand",
+    "ai-action-explain",
+    "ai-action-translate",
+];
+const GUTTER_GROUP_LABELS: [&str; 3] = ["文字样式", "操作", "AI"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InlineFormatAction {
@@ -147,7 +157,7 @@ pub fn gutter_floating_toolbar_position(
         viewport_width,
     );
     let max_y =
-        (viewport_height - GUTTER_MENU_HEIGHT_PX - VIEWPORT_MARGIN_PX).max(VIEWPORT_MARGIN_PX);
+        (viewport_height - PRIMARY_MENU_HEIGHT_PX - VIEWPORT_MARGIN_PX).max(VIEWPORT_MARGIN_PX);
     let y = gutter_top.clamp(VIEWPORT_MARGIN_PX, max_y);
     (x, y)
 }
@@ -341,9 +351,10 @@ fn render_gutter_popup_content(
         .flex()
         .flex_col()
         .gap(px(4.0))
-        .child(toolbar_group_label("文字样式", theme))
+        .child(toolbar_group_label(GUTTER_GROUP_LABELS[0], theme))
         .child(render_inline_format_row(state, theme, view.clone(), true))
         .child(toolbar_divider(theme))
+        .child(toolbar_group_label(GUTTER_GROUP_LABELS[1], theme))
         .child(render_block_format_header(
             state,
             theme,
@@ -360,8 +371,15 @@ fn render_gutter_popup_content(
                 true,
             ))
         })
+        .child(render_delete_action(
+            theme,
+            view.clone(),
+            state.block_id,
+            state.delete_enabled,
+            true,
+        ))
         .child(toolbar_divider(theme))
-        .child(toolbar_group_label("AI", theme))
+        .child(toolbar_group_label(GUTTER_GROUP_LABELS[2], theme))
         .child(render_ai_actions(
             theme,
             view.clone(),
@@ -376,14 +394,6 @@ fn render_gutter_popup_content(
             state.ai_enabled,
             prompt,
             prompt_focus,
-        ))
-        .child(toolbar_divider(theme))
-        .child(render_delete_action(
-            theme,
-            view,
-            state.block_id,
-            state.delete_enabled,
-            true,
         ))
         .into_any_element()
 }
@@ -586,8 +596,11 @@ fn render_delete_action(
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_size(px(16.0))
-                .child("×"),
+                .child(
+                    SvgIcon::new("gutter-menu-delete", ICON_DELETE)
+                        .color(rgb(if enabled { theme.danger } else { theme.muted }))
+                        .size(px(FORMAT_ICON_SIZE_PX)),
+                ),
         )
         .child(
             div()
@@ -606,7 +619,14 @@ fn render_delete_action(
         )
         .into_any_element()
     } else {
-        row.text_size(px(13.0)).child("删除").into_any_element()
+        row.gap(px(8.0))
+            .child(
+                SvgIcon::new("floating-toolbar-delete-icon", ICON_DELETE)
+                    .color(rgb(if enabled { theme.danger } else { theme.muted }))
+                    .size(px(16.0)),
+            )
+            .child(div().text_size(px(13.0)).child("删除"))
+            .into_any_element()
     }
 }
 
@@ -641,7 +661,14 @@ fn render_block_format_header(
                 .items_center()
                 .justify_center()
                 .text_size(px(15.0))
-                .child("T"),
+                .child(if slash_style {
+                    SvgIcon::new("gutter-menu-text", ICON_TEXT)
+                        .color(rgb(theme.text))
+                        .size(px(FORMAT_ICON_SIZE_PX))
+                        .into_any_element()
+                } else {
+                    div().child("T").into_any_element()
+                }),
         )
         .child(if slash_style {
             div()
@@ -873,13 +900,43 @@ fn render_ai_actions(
     enabled: bool,
     scroll_handle: &ScrollHandle,
 ) -> AnyElement {
-    const ACTIONS: &[(&str, &str, &[u8])] = &[
-        ("改进写作", "Improve writing", ICON_AI_IMPROVE),
-        ("校对", "Fix spelling and grammar", ICON_AI_PROOFREAD),
-        ("缩短", "Make shorter", ICON_AI_SHORTEN),
-        ("扩写", "Make longer", ICON_AI_EXPAND),
-        ("解释", "Explain this text", ICON_AI_EXPLAIN),
-        ("翻译", "Translate this text", ICON_AI_TRANSLATE),
+    const ACTIONS: &[(&str, &str, &'static str, &[u8])] = &[
+        (
+            "改进写作",
+            "Improve writing",
+            AI_ACTION_ICON_KEYS[0],
+            ICON_AI_IMPROVE,
+        ),
+        (
+            "校对",
+            "Fix spelling and grammar",
+            AI_ACTION_ICON_KEYS[1],
+            ICON_AI_PROOFREAD,
+        ),
+        (
+            "缩短",
+            "Make shorter",
+            AI_ACTION_ICON_KEYS[2],
+            ICON_AI_SHORTEN,
+        ),
+        (
+            "扩写",
+            "Make longer",
+            AI_ACTION_ICON_KEYS[3],
+            ICON_AI_EXPAND,
+        ),
+        (
+            "解释",
+            "Explain this text",
+            AI_ACTION_ICON_KEYS[4],
+            ICON_AI_EXPLAIN,
+        ),
+        (
+            "翻译",
+            "Translate this text",
+            AI_ACTION_ICON_KEYS[5],
+            ICON_AI_TRANSLATE,
+        ),
     ];
     debug_assert_eq!(ACTIONS.len(), AI_ACTION_COUNT);
     let estimated_content_height = ACTIONS.len() as f32 * AI_ACTION_ROW_HEIGHT_PX;
@@ -893,7 +950,7 @@ fn render_ai_actions(
         .on_scroll_wheel(move |_event, _window, cx| {
             scroll_view.update(cx, |_view, cx| cx.notify());
         })
-        .children(ACTIONS.iter().map(|(label, instruction, icon)| {
+        .children(ACTIONS.iter().map(|(label, instruction, icon_key, icon)| {
             div()
                 .h(px(AI_ACTION_ROW_HEIGHT_PX))
                 .flex_none()
@@ -929,7 +986,7 @@ fn render_ai_actions(
                         .items_center()
                         .justify_center()
                         .child(
-                            SvgIcon::new("ai-action-icon", *icon)
+                            SvgIcon::new(*icon_key, *icon)
                                 .color(rgb(if enabled { theme.text } else { theme.muted }))
                                 .size(px(FORMAT_ICON_SIZE_PX)),
                         ),
@@ -971,28 +1028,29 @@ fn render_custom_ai_button(
     prompt: Option<&AiPromptState>,
     prompt_focus: FocusHandle,
 ) -> AnyElement {
-    let mut input = div()
-        .h(px(30.0))
-        .w_full()
-        .px(px(8.0))
-        .flex()
-        .items_center()
-        .rounded(px(4.0))
-        .border_1()
-        .border_color(rgb(theme.border))
-        .text_size(px(12.0))
-        .text_color(rgb(theme.muted));
     if !enabled {
-        input = input
+        return div()
+            .h(px(AI_ACTION_ROW_HEIGHT_PX))
+            .w_full()
+            .px(px(8.0))
+            .flex()
+            .items_center()
+            .rounded(px(4.0))
+            .border_1()
+            .border_color(rgb(theme.border))
+            .text_size(px(12.0))
             .opacity(0.45)
             .text_color(rgb(theme.muted))
-            .child("使用 AI 编辑…");
-    } else if let Some(prompt) = prompt {
-        input = input
-            .track_focus(&prompt_focus)
-            .child(SingleLineTextInputElement {
+            .child("使用 AI 编辑…")
+            .into_any_element();
+    }
+    if let Some(prompt) = prompt {
+        let clear_view = view.clone();
+        return Input::new(
+            "gutter-ai-prompt-input",
+            SingleLineTextInputElement {
                 handler: view,
-                focus: prompt_focus,
+                focus: prompt_focus.clone(),
                 value: prompt.draft.clone(),
                 placeholder: Some("使用 AI 编辑…".to_owned()),
                 caret_offset: Some(prompt.caret_offset),
@@ -1001,20 +1059,53 @@ fn render_custom_ai_button(
                 placeholder_color: theme.muted,
                 caret_color: theme.focused,
                 font_size: px(SINGLE_LINE_INPUT_FONT_SIZE_PX),
+            },
+            input_style(theme),
+        )
+        .height(px(AI_ACTION_ROW_HEIGHT_PX))
+        .focus(prompt_focus)
+        .cleanable(true)
+        .empty(prompt.draft.is_empty())
+        .on_clean(move |_window, cx| {
+            clear_view.update(cx, |view, cx| {
+                view.clear_ai_prompt_from_gui(cx);
             });
-    } else {
-        input = input
-            .cursor_pointer()
-            .hover(|style| style.bg(rgb(theme.hover_surface)))
-            .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-                view.update(cx, |view, cx| {
-                    view.open_ai_prompt_from_gui(x, y, cx);
-                });
-                cx.stop_propagation();
-            })
-            .child("使用 AI 编辑…");
+        })
+        .into_any_element();
     }
-    input.into_any_element()
+    div()
+        .h(px(AI_ACTION_ROW_HEIGHT_PX))
+        .w_full()
+        .px(px(8.0))
+        .flex()
+        .items_center()
+        .rounded(px(4.0))
+        .border_1()
+        .border_color(rgb(theme.border))
+        .text_size(px(12.0))
+        .text_color(rgb(theme.muted))
+        .cursor_pointer()
+        .hover(|style| style.bg(rgb(theme.hover_surface)))
+        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+            view.update(cx, |view, cx| {
+                view.open_ai_prompt_from_gui(x, y, cx);
+            });
+            cx.stop_propagation();
+        })
+        .child("使用 AI 编辑…")
+        .into_any_element()
+}
+
+fn input_style(theme: GuiTheme) -> InputStyle {
+    InputStyle {
+        background: rgb(theme.panel).into(),
+        foreground: rgb(theme.text).into(),
+        muted_foreground: rgb(theme.muted).into(),
+        border: rgb(theme.border).into(),
+        focused_border: rgb(theme.focused).into(),
+        hover_background: rgb(theme.hover_surface).into(),
+        radius: px(4.0),
+    }
 }
 
 fn toolbar_divider(theme: GuiTheme) -> AnyElement {

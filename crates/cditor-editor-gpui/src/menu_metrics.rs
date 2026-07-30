@@ -3,6 +3,8 @@ use gpui::{Bounds, Pixels, Size, point, px};
 /// Shared width for editor popup menus at every nesting level.
 pub(crate) const PRIMARY_MENU_WIDTH_PX: f32 = 320.0;
 pub(crate) const SECONDARY_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
+/// Shared viewport height for gutter menus and their secondary menus.
+pub(crate) const PRIMARY_MENU_HEIGHT_PX: f32 = 426.0;
 
 /// The Cditor root viewport expressed in host-window coordinates.
 ///
@@ -138,6 +140,7 @@ mod tests {
     fn primary_and_secondary_editor_menus_share_one_width() {
         assert_eq!(PRIMARY_MENU_WIDTH_PX, 320.0);
         assert_eq!(SECONDARY_MENU_WIDTH_PX, PRIMARY_MENU_WIDTH_PX);
+        assert_eq!(PRIMARY_MENU_HEIGHT_PX, 426.0);
     }
 
     #[test]

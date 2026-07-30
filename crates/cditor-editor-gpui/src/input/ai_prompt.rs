@@ -69,6 +69,12 @@ impl AiPromptState {
         self.marked_range = None;
     }
 
+    pub fn clear(&mut self) {
+        self.draft.clear();
+        self.caret_offset = 0;
+        self.marked_range = None;
+    }
+
     fn move_caret_to(&mut self, offset: usize) {
         self.caret_offset = clamp_to_char_boundary(&self.draft, offset);
         self.marked_range = None;
@@ -210,5 +216,17 @@ mod tests {
             apply_ai_prompt_action(&mut state, AiPromptEditAction::Submit),
             AiPromptKeyResult::Submit
         );
+    }
+
+    #[test]
+    fn clearing_prompt_resets_text_caret_and_marked_range() {
+        let mut state = AiPromptState::new(1, gpui::px(0.0), gpui::px(0.0));
+        state.replace_and_mark_range(0..0, "中文", Some(0..3));
+
+        state.clear();
+
+        assert!(state.draft.is_empty());
+        assert_eq!(state.caret_offset, 0);
+        assert_eq!(state.marked_range, None);
     }
 }

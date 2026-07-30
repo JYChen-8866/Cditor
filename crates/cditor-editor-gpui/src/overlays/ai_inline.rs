@@ -1,4 +1,6 @@
-use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
+use cditor_component::{
+    Input, InputStyle, InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis,
+};
 use cditor_runtime::{AiApplyMode, AiPreviewKind, AiPreviewSnapshot, AiPreviewStatus};
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -55,6 +57,34 @@ pub(crate) fn render_ai_prompt(
         viewport.height,
     );
     let can_submit = ai_prompt_can_submit(&prompt.draft);
+    let clear_view = view.clone();
+    let prompt_input = Input::new(
+        "ai-prompt-input",
+        SingleLineTextInputElement {
+            handler: view.clone(),
+            focus: focus.clone(),
+            value: prompt.draft.clone(),
+            placeholder: Some("使用 AI 编辑（@ 提醒以使用技能）".to_owned()),
+            caret_offset: Some(prompt.caret_offset),
+            marked_range: prompt.marked_range.clone(),
+            text_color: theme.text,
+            placeholder_color: theme.muted,
+            caret_color: theme.focused,
+            font_size: px(SINGLE_LINE_INPUT_FONT_SIZE_PX),
+        },
+        ai_input_style(theme),
+    )
+    .height(px(28.0))
+    .appearance(false)
+    .bordered(false)
+    .focus(focus.clone())
+    .cleanable(true)
+    .empty(prompt.draft.is_empty())
+    .on_clean(move |_window, cx| {
+        clear_view.update(cx, |view, cx| {
+            view.clear_ai_prompt_from_gui(cx);
+        });
+    });
     let panel = div()
         .absolute()
         .left(px(geometry.x))
@@ -99,19 +129,7 @@ pub(crate) fn render_ai_prompt(
                 .min_w(px(0.0))
                 .h(px(28.0))
                 .flex_1()
-                .track_focus(&focus)
-                .child(SingleLineTextInputElement {
-                    handler: view.clone(),
-                    focus,
-                    value: prompt.draft.clone(),
-                    placeholder: Some("使用 AI 编辑（@ 提醒以使用技能）".to_owned()),
-                    caret_offset: Some(prompt.caret_offset),
-                    marked_range: prompt.marked_range.clone(),
-                    text_color: theme.text,
-                    placeholder_color: theme.muted,
-                    caret_color: theme.focused,
-                    font_size: px(SINGLE_LINE_INPUT_FONT_SIZE_PX),
-                }),
+                .child(prompt_input),
         )
         .child(
             div()
@@ -141,6 +159,18 @@ pub(crate) fn render_ai_prompt(
                 .child("↑"),
         );
     deferred(panel).with_priority(150).into_any_element()
+}
+
+fn ai_input_style(theme: GuiTheme) -> InputStyle {
+    InputStyle {
+        background: rgb(theme.panel).into(),
+        foreground: rgb(theme.text).into(),
+        muted_foreground: rgb(theme.muted).into(),
+        border: rgb(theme.border).into(),
+        focused_border: rgb(theme.focused).into(),
+        hover_background: rgb(theme.hover_surface).into(),
+        radius: px(4.0),
+    }
 }
 
 fn ai_prompt_geometry(

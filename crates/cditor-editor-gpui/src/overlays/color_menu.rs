@@ -11,7 +11,7 @@ use gpui::{
 
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::editor_view::CditorV2View;
-use crate::menu_metrics::{PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
+use crate::menu_metrics::{PRIMARY_MENU_HEIGHT_PX, PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
 use crate::theme::GuiTheme;
 
 pub const COLOR_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
@@ -223,6 +223,7 @@ pub fn color_menu_geometry(
         viewport_height,
         PRIMARY_TOOLBAR_WIDTH_PX,
         COLOR_TRIGGER_TOP_IN_TOOLBAR_PX,
+        COLOR_MENU_DESIRED_HEIGHT_PX,
     )
 }
 
@@ -239,6 +240,7 @@ pub fn gutter_color_menu_geometry(
         viewport_height,
         GUTTER_MENU_WIDTH_PX,
         60.0,
+        PRIMARY_MENU_HEIGHT_PX,
     )
 }
 
@@ -249,11 +251,12 @@ fn color_menu_geometry_for_width(
     viewport_height: f32,
     toolbar_width: f32,
     trigger_top: f32,
+    desired_height: f32,
 ) -> ColorMenuGeometry {
     let opens_left =
         toolbar_x + toolbar_width + COLOR_MENU_GAP_PX + COLOR_MENU_WIDTH_PX > viewport_width - 10.0;
     let available_height = (viewport_height - 20.0).max(1.0);
-    let height = COLOR_MENU_DESIRED_HEIGHT_PX
+    let height = desired_height
         .min(available_height)
         .max(COLOR_MENU_MIN_HEIGHT_PX.min(available_height));
     let max_top = (viewport_height - height - 10.0).max(10.0);
@@ -644,6 +647,7 @@ mod tests {
 
         assert!(!text_toolbar.opens_left);
         assert!(gutter_menu.opens_left);
+        assert_eq!(gutter_menu.height, PRIMARY_MENU_HEIGHT_PX);
     }
 
     #[test]

@@ -7,15 +7,19 @@ use gpui::prelude::FluentBuilder;
 use gpui::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, ClickEvent, Context, DismissEvent, Edges,
     Entity, EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement, IntoElement,
-    KeyBinding, MouseButton, MouseDownEvent, ParentElement, Pixels, Render, ScrollHandle,
+    KeyBinding, MouseButton, MouseDownEvent, ParentElement, Pixels, Render, Rgba, ScrollHandle,
     SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window, actions, anchored,
     canvas, div, px, rems,
 };
 
 use crate::SvgIcon;
+use crate::scrollbar::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
 
 const CONTEXT: &str = "CditorPopupMenu";
 const SUBMENU_ARROW: &[u8] = include_bytes!("../../../../assets/icons/jiantou.svg");
+const POPUP_MENU_PADDING_PX: f32 = 4.0;
+const POPUP_MENU_ITEM_GAP_PX: f32 = 2.0;
+const POPUP_MENU_SCROLLBAR_WIDTH_PX: f32 = 10.0;
 pub const POPUP_MENU_ITEM_FONT_SIZE_PX: f32 = 14.0;
 pub const POPUP_MENU_LABEL_FONT_SIZE_PX: f32 = 11.0;
 
@@ -384,6 +388,33 @@ impl PopupMenu {
         {
             self.selected_index = None;
         }
+    }
+
+    fn estimated_content_height_px(&self) -> f32 {
+        let mut item_count = 0usize;
+        let mut height = 0.0;
+        for (index, item) in self.menu_items.iter().enumerate() {
+            if index + 1 == self.menu_items.len() && item.is_separator() {
+                continue;
+            }
+            item_count += 1;
+            height +=
+                match item {
+                    PopupMenuItem::Separator => 5.0,
+                    PopupMenuItem::Label(_) => 26.0,
+                    PopupMenuItem::Item { .. } | PopupMenuItem::Submenu { .. } => {
+                        if self.rich_rows { 48.0 } else { 26.0 }
+                    }
+                    PopupMenuItem::ElementItem { .. } => {
+                        if self.rich_rows {
+                            48.0
+                        } else {
+                            26.0
+                        }
+                    }
+                };
+        }
+        height + item_count.saturating_sub(1) as f32 * POPUP_MENU_ITEM_GAP_PX
     }
 
     pub fn set_style(&mut self, style: PopupMenuStyle) {
@@ -825,7 +856,33 @@ impl Render for PopupMenu {
         let max_height = self.max_height.unwrap_or_else(|| {
             (window.window_bounds().get_bounds().size.height * 0.5).min(px(450.0))
         });
+        let scroll_viewport_height = (f32::from(max_height) - POPUP_MENU_PADDING_PX * 2.0).max(1.0);
+        let estimated_content_height = self.estimated_content_height_px();
+        let show_scrollbar =
+            self.scrollable && estimated_content_height > scroll_viewport_height + 0.5;
         let entity = cx.entity().clone();
+        let content = div()
+            .id("popup-menu-scroll-content")
+            .w_full()
+            .flex()
+            .flex_col()
+            .gap(px(POPUP_MENU_ITEM_GAP_PX))
+            .when(self.scrollable, |content| {
+                content
+                    .max_h(px(scroll_viewport_height))
+                    .when(show_scrollbar, |content| {
+                        content.pr(px(POPUP_MENU_SCROLLBAR_WIDTH_PX))
+                    })
+                    .overflow_y_scroll()
+                    .track_scroll(&self.scroll_handle)
+            })
+            .children(
+                self.menu_items
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, item)| !(*index + 1 == item_count && item.is_separator()))
+                    .map(|(index, item)| self.render_item(index, item, has_left_icon, window, cx)),
+            );
         div()
             .id("popup-menu")
             .key_context(CONTEXT)
@@ -840,10 +897,9 @@ impl Render for PopupMenu {
             .min_w(rems(8.0))
             .when_some(self.min_width, |menu, width| menu.min_w(width))
             .max_w(self.max_width.unwrap_or(px(500.0)))
-            .p(px(4.0))
+            .p(px(POPUP_MENU_PADDING_PX))
             .flex()
             .flex_col()
-            .gap(px(2.0))
             .rounded(px(8.0))
             .border_1()
             .border_color(self.style.border)
@@ -852,6 +908,7 @@ impl Render for PopupMenu {
             .shadow_lg()
             .relative()
             .occlude()
+            .when(self.scrollable, |menu| menu.max_h(max_height))
             .child(
                 canvas(
                     move |bounds, _, cx| {
@@ -862,19 +919,34 @@ impl Render for PopupMenu {
                 .absolute()
                 .size_full(),
             )
-            .when(self.scrollable, |menu| {
-                menu.max_h(max_height)
-                    .overflow_y_scroll()
-                    .track_scroll(&self.scroll_handle)
+            .child(content)
+            .when(show_scrollbar, |menu| {
+                menu.child(
+                    div()
+                        .absolute()
+                        .top(px(POPUP_MENU_PADDING_PX))
+                        .right_0()
+                        .w(px(POPUP_MENU_SCROLLBAR_WIDTH_PX))
+                        .h(px(scroll_viewport_height))
+                        .child(InteractiveScrollbar::for_scroll_handle(
+                            ScrollbarAxis::Vertical,
+                            self.scroll_handle.clone(),
+                            scroll_viewport_height,
+                            estimated_content_height,
+                            InteractiveScrollbarStyle::notion(
+                                hsla_to_rgb(self.style.muted_foreground),
+                                hsla_to_rgb(self.style.foreground),
+                            ),
+                        )),
+                )
             })
-            .children(
-                self.menu_items
-                    .iter()
-                    .enumerate()
-                    .filter(|(index, item)| !(*index + 1 == item_count && item.is_separator()))
-                    .map(|(index, item)| self.render_item(index, item, has_left_icon, window, cx)),
-            )
     }
+}
+
+fn hsla_to_rgb(color: Hsla) -> u32 {
+    let color = Rgba::from(color);
+    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u32;
+    (channel(color.r) << 16) | (channel(color.g) << 8) | channel(color.b)
 }
 
 #[cfg(test)]
@@ -949,6 +1021,25 @@ mod tests {
     fn popup_menu_font_scale_matches_editor_menu_rows() {
         assert_eq!(POPUP_MENU_ITEM_FONT_SIZE_PX, 14.0);
         assert_eq!(POPUP_MENU_LABEL_FONT_SIZE_PX, 11.0);
+    }
+
+    #[gpui::test]
+    fn rich_secondary_menu_reports_overflow_for_a_primary_sized_viewport(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let menu = cx.new(|cx| {
+            let mut menu = PopupMenu::new(cx).rich_rows(true).scrollable(true);
+            for index in 0..12 {
+                menu = menu.item(PopupMenuItem::new(format!("Item {index}")));
+            }
+            menu
+        });
+
+        menu.read_with(cx, |menu, _| {
+            const PRIMARY_SIZED_SCROLL_VIEWPORT_PX: f32 = 418.0;
+            assert!(menu.scrollable);
+            assert!(menu.estimated_content_height_px() > PRIMARY_SIZED_SCROLL_VIEWPORT_PX);
+        });
     }
 
     #[test]

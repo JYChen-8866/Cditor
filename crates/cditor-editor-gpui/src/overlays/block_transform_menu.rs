@@ -7,14 +7,13 @@ use gpui::prelude::FluentBuilder;
 use gpui::{App, Entity, IntoElement, ParentElement, Styled, Window, div, px};
 
 use crate::editor_view::CditorV2View;
-use crate::menu_metrics::{PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
+use crate::menu_metrics::{PRIMARY_MENU_HEIGHT_PX, PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
 use crate::overlays::callout_menu::CALLOUT_MENU_ITEMS;
 use crate::presentation::block_registry::{
     TransformBlockPresentation, block_presentation_registry,
 };
 
 pub const BLOCK_TRANSFORM_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
-const BLOCK_TRANSFORM_MENU_HEIGHT_PX: f32 = 588.0;
 const BLOCK_TRANSFORM_MENU_GAP_PX: f32 = 6.0;
 const PRIMARY_TOOLBAR_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 const PRIMARY_TOOLBAR_CONTENT_LEFT_PX: f32 = 8.0;
@@ -122,7 +121,7 @@ pub fn block_transform_menu_opens_left(toolbar_x: f32, viewport_width: f32) -> b
 }
 
 pub fn block_transform_menu_top_offset(toolbar_y: f32, viewport_height: f32) -> f32 {
-    let max_top = (viewport_height - BLOCK_TRANSFORM_MENU_HEIGHT_PX - 10.0).max(10.0);
+    let max_top = (viewport_height - PRIMARY_MENU_HEIGHT_PX - 10.0).max(10.0);
     let clamped_top = toolbar_y.clamp(10.0, max_top);
     clamped_top - toolbar_y - 8.0
 }
@@ -143,7 +142,9 @@ pub fn build_block_transform_popup_menu(
             .rich_rows(true)
             .check_side(PopupMenuCheckSide::Right)
             .min_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX))
-            .max_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX));
+            .max_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX))
+            .max_h(px(PRIMARY_MENU_HEIGHT_PX))
+            .scrollable(true);
 
         for action in BlockTransformAction::all() {
             let enabled = availability.contains(action);
@@ -349,7 +350,8 @@ mod tests {
     #[test]
     fn transform_submenu_clamps_inside_the_vertical_viewport() {
         assert_eq!(block_transform_menu_top_offset(10.0, 600.0), -8.0);
-        assert_eq!(block_transform_menu_top_offset(320.0, 600.0), -318.0);
+        assert_eq!(block_transform_menu_top_offset(320.0, 600.0), -164.0);
+        assert_eq!(PRIMARY_MENU_HEIGHT_PX, 426.0);
     }
 
     #[test]
