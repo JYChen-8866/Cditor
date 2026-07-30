@@ -18,9 +18,10 @@ fn gutter_format_controls_use_the_provided_svg_assets() {
         assert!(std::str::from_utf8(source).unwrap().starts_with("<svg"));
     }
     assert!(format_icon_source(InlineFormatAction::Strike).is_none());
-    assert_eq!(FORMAT_ICON_SIZE_PX, 18.0);
+    assert_eq!(FORMAT_ICON_SIZE_PX, 24.0);
     assert_eq!(GUTTER_FORMAT_ROW_PADDING_PX, 8.0);
     assert_eq!(FORMAT_BUTTON_SIZE_PX, 30.0);
+    assert_eq!(TOOLBAR_GROUP_LABEL_HEIGHT_PX, 26.0);
     assert_eq!(POPUP_MENU_ITEM_FONT_SIZE_PX, 14.0);
     assert_eq!(POPUP_MENU_LABEL_FONT_SIZE_PX, 11.0);
 }
@@ -100,7 +101,7 @@ fn gutter_toolbar_opens_left_and_aligns_with_the_gutter_top() {
 fn gutter_toolbar_stays_inside_the_viewport_when_left_or_bottom_space_is_tight() {
     assert_eq!(
         gutter_floating_toolbar_position(180.0, 700.0, 1_000.0, 800.0),
-        (10.0, 406.0),
+        (10.0, 376.0),
     );
     assert_eq!(
         gutter_floating_toolbar_position(320.0, 2.0, 1_200.0, 800.0),

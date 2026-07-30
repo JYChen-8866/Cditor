@@ -25,15 +25,16 @@ use super::color_menu::{ActiveColor, ColorMenuAction, PaletteColor, render_color
 pub(crate) const TOOLBAR_WIDTH_PX: f32 = 194.0;
 pub(crate) const GUTTER_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 const TOOLBAR_HEIGHT_PX: f32 = 324.0;
-const GUTTER_MENU_HEIGHT_PX: f32 = 384.0;
+const GUTTER_MENU_HEIGHT_PX: f32 = 414.0;
 const VIEWPORT_MARGIN_PX: f32 = 10.0;
 const TOOLBAR_ANCHOR_GAP_PX: f32 = 8.0;
 const AI_ACTIONS_VIEWPORT_HEIGHT_PX: f32 = 110.0;
 const AI_ACTION_ROW_HEIGHT_PX: f32 = 25.0;
 const AI_ACTION_COUNT: usize = 6;
-const FORMAT_ICON_SIZE_PX: f32 = 18.0;
+const FORMAT_ICON_SIZE_PX: f32 = 24.0;
 const GUTTER_FORMAT_ROW_PADDING_PX: f32 = 8.0;
 const FORMAT_BUTTON_SIZE_PX: f32 = 30.0;
+const TOOLBAR_GROUP_LABEL_HEIGHT_PX: f32 = 26.0;
 
 const ICON_COLOR: &[u8] = include_bytes!("../../../../assets/icons/color.svg");
 const ICON_BOLD: &[u8] = include_bytes!("../../../../assets/icons/bold.svg");
@@ -332,6 +333,9 @@ fn render_gutter_popup_content(
         .flex()
         .flex_col()
         .gap(px(4.0))
+        .child(toolbar_group_label("文字样式", theme))
+        .child(render_inline_format_row(state, theme, view.clone(), true))
+        .child(toolbar_divider(theme))
         .child(render_block_format_header(
             state,
             theme,
@@ -348,15 +352,8 @@ fn render_gutter_popup_content(
                 true,
             ))
         })
-        .child(render_inline_format_row(state, theme, view.clone(), true))
         .child(toolbar_divider(theme))
-        .child(
-            div()
-                .text_size(px(POPUP_MENU_LABEL_FONT_SIZE_PX))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(theme.muted))
-                .child("AI"),
-        )
+        .child(toolbar_group_label("AI", theme))
         .child(render_ai_actions(
             theme,
             view.clone(),
@@ -994,6 +991,19 @@ fn toolbar_divider(theme: GuiTheme) -> AnyElement {
         .h(px(1.0))
         .w_full()
         .bg(rgb(theme.border))
+        .into_any_element()
+}
+
+fn toolbar_group_label(label: &'static str, theme: GuiTheme) -> AnyElement {
+    div()
+        .h(px(TOOLBAR_GROUP_LABEL_HEIGHT_PX))
+        .px(px(8.0))
+        .flex()
+        .items_center()
+        .text_size(px(POPUP_MENU_LABEL_FONT_SIZE_PX))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(rgb(theme.muted))
+        .child(label)
         .into_any_element()
 }
 
