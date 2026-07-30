@@ -44,10 +44,12 @@ impl CditorV2View {
             .and_then(|session| session.focused_text_block_context().ok().flatten())
         else {
             self.overlay.slash_menu = None;
+            self.clear_slash_popup_menus();
             return;
         };
         let Some(caret) = context.caret else {
             self.overlay.slash_menu = None;
+            self.clear_slash_popup_menus();
             return;
         };
         let block_id = context.block_id;
@@ -55,6 +57,7 @@ impl CditorV2View {
         let Some((trigger_start, query)) = crate::overlays::slash_query_before_caret(&text, caret)
         else {
             self.overlay.slash_menu = None;
+            self.clear_slash_popup_menus();
             return;
         };
         let (x, y) = self.slash_menu_anchor(block_id, caret);
@@ -69,6 +72,8 @@ impl CditorV2View {
                 .selected_index
                 .min(next.visible_items().len().saturating_sub(1));
             next.scroll_start = previous.scroll_start;
+            next.callout_submenu_open = previous.callout_submenu_open
+                && next.selected_item().is_some_and(|item| item.is_callout());
         }
         self.overlay.slash_menu = Some(next);
         cx.notify();
@@ -152,10 +157,15 @@ impl CditorV2View {
         let Some(menu) = self.overlay.slash_menu.as_mut() else {
             return false;
         };
-        if index >= menu.visible_items().len() || menu.selected_index == index {
+        let items = menu.visible_items();
+        if index >= items.len() {
+            return false;
+        }
+        if menu.selected_index == index {
             return false;
         }
         menu.selected_index = index;
+        menu.callout_submenu_open = false;
         cx.notify();
         true
     }
@@ -163,6 +173,7 @@ impl CditorV2View {
     pub(crate) fn cancel_slash_menu(&mut self, cx: &mut Context<Self>) -> bool {
         let had_menu = self.overlay.slash_menu.take().is_some();
         if had_menu {
+            self.clear_slash_popup_menus();
             cx.notify();
         }
         had_menu
@@ -176,6 +187,13 @@ impl CditorV2View {
     ) -> bool {
         if self.status.readonly {
             return false;
+        }
+        if item.is_callout() {
+            let mut menu = menu;
+            menu.callout_submenu_open = true;
+            self.overlay.slash_menu = Some(menu);
+            cx.notify();
+            return true;
         }
         if item.command == Some(SlashMenuCommand::AskAi) {
             let command = self.ready_session().and_then(|session| {
@@ -194,6 +212,7 @@ impl CditorV2View {
                 )
             });
             self.overlay.slash_menu = None;
+            self.clear_slash_popup_menus();
             if !changed {
                 return false;
             }
@@ -204,7 +223,30 @@ impl CditorV2View {
                 cx,
             );
         }
-        let kind = item.kind;
+        self.apply_slash_menu_kind(menu, item.kind, cx)
+    }
+
+    pub(crate) fn apply_slash_callout_variant_from_gui(
+        &mut self,
+        variant: cditor_core::rich_text::CalloutVariant,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(menu) = self.overlay.slash_menu.clone() else {
+            return false;
+        };
+        self.apply_slash_menu_kind(
+            menu,
+            cditor_core::rich_text::RichBlockKind::Callout { variant },
+            cx,
+        )
+    }
+
+    fn apply_slash_menu_kind(
+        &mut self,
+        menu: SlashMenuState,
+        kind: cditor_core::rich_text::RichBlockKind,
+        cx: &mut Context<Self>,
+    ) -> bool {
         #[cfg(feature = "whiteboard")]
         let opens_whiteboard = matches!(kind, cditor_core::rich_text::RichBlockKind::Whiteboard);
         let caret = self
@@ -229,6 +271,7 @@ impl CditorV2View {
         match result {
             Ok(outcome) => {
                 self.overlay.slash_menu = None;
+                self.clear_slash_popup_menus();
                 #[cfg(feature = "whiteboard")]
                 if outcome.status == CommandOutcomeStatus::Applied && opens_whiteboard {
                     self.open_whiteboard_editor_from_gui(menu.block_id, cx);
@@ -239,10 +282,18 @@ impl CditorV2View {
             Err(error) => {
                 self.status.save_status = EditorSaveStatus::Failed(error.to_string());
                 self.overlay.slash_menu = None;
+                self.clear_slash_popup_menus();
                 cx.notify();
                 false
             }
         }
+    }
+
+    fn clear_slash_popup_menus(&mut self) {
+        self.overlay.slash_popup_menu = None;
+        self.overlay.slash_popup_menu_dismiss_subscription = None;
+        self.overlay.slash_callout_popup_menu = None;
+        self.overlay.slash_callout_popup_menu_dismiss_subscription = None;
     }
 
     pub(super) fn slash_menu_anchor(&self, block_id: BlockId, caret: usize) -> (f32, f32) {

@@ -10,7 +10,7 @@ use crate::overlays::{
     ActiveColor, BlockTransformAction, BlockTransformAvailability, ColorMenuAction,
     FloatingToolbarState, InlineFormatAction, PaletteColor, block_transform_menu_opens_left,
     block_transform_menu_top_offset, color_menu_geometry, floating_toolbar_position,
-    gutter_floating_toolbar_position,
+    gutter_color_menu_geometry, gutter_floating_toolbar_position,
 };
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayload, InlineColorTarget, InlineMark, InlineSpan};
@@ -62,7 +62,7 @@ pub(crate) fn formatting_toolbar_state(
             viewport.width,
             viewport.height,
         );
-        let color_geometry = color_menu_geometry(x, y, viewport.width, viewport.height);
+        let color_geometry = gutter_color_menu_geometry(x, y, viewport.width, viewport.height);
         let (bold, italic, underline, strike, code, text_color, background_color, block_transform) =
             context
                 .gutter
@@ -150,6 +150,14 @@ pub(crate) fn formatting_toolbar_state(
                         .is_some_and(|gutter| gutter.convertible_kinds.contains(&action.kind()))
             }),
         );
+        let callout_variant = context
+            .gutter
+            .as_ref()
+            .and_then(|gutter| gutter.payload.as_ref())
+            .and_then(|payload| match payload.kind {
+                cditor_core::rich_text::RichBlockKind::Callout { variant } => Some(variant),
+                _ => None,
+            });
         let rich_text_actions_enabled = context
             .gutter
             .as_ref()
@@ -175,6 +183,7 @@ pub(crate) fn formatting_toolbar_state(
             strike,
             code,
             block_transform,
+            callout_variant,
             block_transform_availability,
             transform_menu_opens_left: block_transform_menu_opens_left(x, viewport.width),
             transform_menu_top_offset: block_transform_menu_top_offset(y, viewport.height),
@@ -219,6 +228,7 @@ pub(crate) fn formatting_toolbar_state(
             strike: false,
             code: false,
             block_transform: None,
+            callout_variant: None,
             block_transform_availability: BlockTransformAvailability::default(),
             transform_menu_opens_left: false,
             transform_menu_top_offset: 0.0,
@@ -267,6 +277,7 @@ pub(crate) fn formatting_toolbar_state(
         strike: selected_spans_have_mark(spans, range.clone(), InlineFormatAction::Strike),
         code: selected_spans_have_mark(spans, range.clone(), InlineFormatAction::Code),
         block_transform: None,
+        callout_variant: None,
         block_transform_availability: BlockTransformAvailability::default(),
         transform_menu_opens_left: false,
         transform_menu_top_offset: 0.0,

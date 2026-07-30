@@ -1,19 +1,24 @@
-use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis, SvgIcon};
+use cditor_component::{
+    InteractiveScrollbar, InteractiveScrollbarStyle, PopupMenu, PopupMenuIcon, PopupMenuItem,
+    PopupMenuStyle, ScrollbarAxis, SvgIcon,
+};
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::RichBlockKind;
+use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled,
     deferred, div, px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
-use crate::menu_metrics::EditorViewport;
+use crate::menu_metrics::{EditorViewport, PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
+use crate::overlays::callout_menu::CALLOUT_MENU_ITEMS;
 use crate::presentation::block_registry::block_presentation_registry;
 use crate::theme::GuiTheme;
 
 pub const SLASH_MENU_VISIBLE_ITEMS: usize = 8;
 const SLASH_MENU_ROW_HEIGHT_PX: f32 = 48.0;
-const SLASH_MENU_WIDTH_PX: f32 = 320.0;
+const SLASH_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 const SLASH_MENU_GROUP_HEIGHT_PX: f32 = 28.0;
 const SLASH_MENU_PANEL_PADDING_PX: f32 = 4.0;
 const SLASH_MENU_ICON_SIZE_PX: f32 = 36.0;
@@ -22,6 +27,7 @@ const SLASH_MENU_ANCHOR_GAP_PX: f32 = 4.0;
 const SLASH_MENU_SVG_ICON_SIZE_PX: f32 = 20.0;
 
 const ICON_AI: &[u8] = include_bytes!("../../../../assets/icons/inline-ai.svg");
+const ICON_TEXT: &[u8] = include_bytes!("../../../../assets/icons/text.svg");
 const ICON_HEADING_1: &[u8] = include_bytes!("../../../../assets/icons/heading-1.svg");
 const ICON_HEADING_2: &[u8] = include_bytes!("../../../../assets/icons/heading-2.svg");
 const ICON_HEADING_3: &[u8] = include_bytes!("../../../../assets/icons/heading-3.svg");
@@ -29,11 +35,14 @@ const ICON_TODO: &[u8] = include_bytes!("../../../../assets/icons/todo.svg");
 const ICON_BULLETED_LIST: &[u8] = include_bytes!("../../../../assets/icons/bulleted-list.svg");
 const ICON_NUMBER_LIST: &[u8] = include_bytes!("../../../../assets/icons/number-list.svg");
 const ICON_QUOTE: &[u8] = include_bytes!("../../../../assets/icons/quote.svg");
+const ICON_CALLOUT: &[u8] = include_bytes!("../../../../assets/icons/callout.svg");
 const ICON_CODE: &[u8] = include_bytes!("../../../../assets/icons/code.svg");
 const ICON_MATH: &[u8] = include_bytes!("../../../../assets/icons/math.svg");
 const ICON_MERMAID: &[u8] = include_bytes!("../../../../assets/icons/mermaid.svg");
 const ICON_TABLE: &[u8] = include_bytes!("../../../../assets/icons/table.svg");
 const ICON_WHITEBOARD: &[u8] = include_bytes!("../../../../assets/icons/whiteboard.svg");
+const ICON_DIVIDER: &[u8] = include_bytes!("../../../../assets/icons/divider.svg");
+const ICON_SUBMENU_ARROW: &[u8] = include_bytes!("../../../../assets/icons/jiantou.svg");
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlashMenuState {
@@ -44,6 +53,7 @@ pub struct SlashMenuState {
     pub scroll_start: usize,
     pub x: f32,
     pub y: f32,
+    pub callout_submenu_open: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,6 +81,7 @@ impl SlashMenuState {
             scroll_start: 0,
             x,
             y,
+            callout_submenu_open: false,
         }
     }
 
@@ -94,6 +105,7 @@ impl SlashMenuState {
         }
         let current = self.selected_index.min(len - 1) as isize;
         self.selected_index = (current + delta).rem_euclid(len as isize) as usize;
+        self.callout_submenu_open = false;
         self.keep_selected_visible(len);
         true
     }
@@ -120,6 +132,7 @@ impl SlashMenuState {
         } else if self.selected_index >= self.scroll_start + SLASH_MENU_VISIBLE_ITEMS {
             self.selected_index = self.scroll_start + SLASH_MENU_VISIBLE_ITEMS - 1;
         }
+        self.callout_submenu_open = false;
         true
     }
 
@@ -147,6 +160,7 @@ pub fn slash_menu_items() -> Vec<SlashMenuItem> {
         block_presentation_registry()
             .slash_presentations()
             .into_iter()
+            .filter(|presentation| slash_menu_supports_kind(&presentation.kind))
             .map(|presentation| SlashMenuItem {
                 icon: presentation.icon,
                 label: presentation.label,
@@ -159,11 +173,33 @@ pub fn slash_menu_items() -> Vec<SlashMenuItem> {
     items
 }
 
+fn slash_menu_supports_kind(kind: &RichBlockKind) -> bool {
+    !matches!(
+        kind,
+        RichBlockKind::Toggle
+            | RichBlockKind::Html
+            | RichBlockKind::Separator
+            | RichBlockKind::FootnoteDefinition
+            | RichBlockKind::Comment
+            | RichBlockKind::RawMarkdown
+    )
+}
+
 fn slash_item_matches(item: &SlashMenuItem, query: &str) -> bool {
     let query = query.trim().to_lowercase();
     query.is_empty()
         || item.label.to_lowercase().contains(&query)
         || item.keywords.iter().any(|keyword| keyword.contains(&query))
+        || (item.is_callout()
+            && CALLOUT_MENU_ITEMS
+                .iter()
+                .any(|variant| variant.label[1..].to_lowercase().contains(&query)))
+}
+
+impl SlashMenuItem {
+    pub fn is_callout(&self) -> bool {
+        self.command.is_none() && matches!(self.kind, RichBlockKind::Callout { .. })
+    }
 }
 
 pub fn slash_query_before_caret(text: &str, caret: usize) -> Option<(usize, String)> {
@@ -190,43 +226,128 @@ fn floor_char_boundary(text: &str, offset: usize) -> usize {
     offset
 }
 
+pub fn build_slash_callout_popup_menu(
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    action_context: gpui::FocusHandle,
+) -> Entity<PopupMenu> {
+    let style = slash_popup_menu_style(theme);
+    PopupMenu::build(window, cx, move |menu, _window, _cx| {
+        CALLOUT_MENU_ITEMS.iter().fold(
+            menu.style(style)
+                .action_context(action_context)
+                .min_w(px(SECONDARY_MENU_WIDTH_PX))
+                .max_w(px(SECONDARY_MENU_WIDTH_PX)),
+            |menu, item| {
+                let item_view = view.clone();
+                let variant = item.variant;
+                menu.item(
+                    PopupMenuItem::new(item.label)
+                        .icon(PopupMenuIcon::new(move |_, _| {
+                            SvgIcon::new(item.icon_key, item.icon)
+                                .color(style.foreground)
+                                .size(px(16.0))
+                        }))
+                        .on_click(move |_, _, cx| {
+                            item_view.update(cx, |view, cx| {
+                                view.apply_slash_callout_variant_from_gui(variant, cx);
+                            });
+                        }),
+                )
+            },
+        )
+    })
+}
+
+pub fn slash_popup_menu_style(theme: GuiTheme) -> PopupMenuStyle {
+    PopupMenuStyle {
+        background: rgb(theme.panel).into(),
+        foreground: rgb(theme.text).into(),
+        muted_foreground: rgb(theme.muted).into(),
+        border: rgb(theme.border).into(),
+        selected_background: rgb(theme.hover_surface).into(),
+        selected_foreground: rgb(theme.text).into(),
+        radius: px(4.0),
+    }
+}
+
+pub fn build_slash_popup_menu(
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+    theme: GuiTheme,
+    action_context: gpui::FocusHandle,
+) -> Entity<PopupMenu> {
+    PopupMenu::build(window, cx, move |menu, _window, _cx| {
+        menu.style(slash_popup_menu_style(theme))
+            .action_context(action_context)
+            .min_w(px(SLASH_MENU_WIDTH_PX))
+            .max_w(px(SLASH_MENU_WIDTH_PX))
+    })
+}
+
+pub fn update_slash_popup_menu(
+    menu: &mut PopupMenu,
+    state: SlashMenuState,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    viewport: EditorViewport,
+    callout_popup_menu: Option<Entity<PopupMenu>>,
+) {
+    menu.set_style(slash_popup_menu_style(theme));
+    menu.replace_items([PopupMenuItem::element(move |_window, _cx| {
+        render_slash_popup_content(
+            &state,
+            theme,
+            view.clone(),
+            viewport,
+            callout_popup_menu.clone(),
+        )
+    })]);
+}
+
 pub(crate) fn render_slash_menu(
+    state: &SlashMenuState,
+    menu: Entity<PopupMenu>,
+    viewport: EditorViewport,
+) -> AnyElement {
+    let height = slash_menu_panel_height(state.visible_items().len());
+    let (x, y) =
+        slash_menu_panel_position(state.x, state.y, height, viewport.width, viewport.height);
+    deferred(
+        div()
+            .absolute()
+            .left(px(x))
+            .top(px(y))
+            .w(px(SLASH_MENU_WIDTH_PX))
+            .child(menu),
+    )
+    .with_priority(120)
+    .into_any_element()
+}
+
+fn render_slash_popup_content(
     state: &SlashMenuState,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     viewport: EditorViewport,
+    callout_popup_menu: Option<Entity<PopupMenu>>,
 ) -> AnyElement {
     let items = state.visible_items();
     let total_items = items.len();
     let height = slash_menu_panel_height(total_items);
-    let (x, y) =
+    let (x, _y) =
         slash_menu_panel_position(state.x, state.y, height, viewport.width, viewport.height);
     let mut panel = div()
-        .absolute()
-        .left(px(x))
-        .top(px(y))
-        .w(px(SLASH_MENU_WIDTH_PX))
-        .h(px(height))
+        .relative()
+        .w_full()
+        .h(px(height - SLASH_MENU_PANEL_PADDING_PX * 2.0))
         .flex()
         .flex_col()
         .p(px(SLASH_MENU_PANEL_PADDING_PX))
-        .rounded(px(6.0))
-        .border_1()
-        .border_color(rgb(theme.border))
-        .bg(rgb(theme.panel))
-        .shadow_lg()
-        .occlude()
-        .overflow_hidden()
         .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
             cx.stop_propagation()
-        })
-        .on_mouse_down_out({
-            let view = view.clone();
-            move |_event, _window, cx| {
-                view.update(cx, |view, cx| {
-                    view.cancel_slash_menu(cx);
-                });
-            }
         })
         .on_scroll_wheel({
             let view = view.clone();
@@ -280,7 +401,26 @@ pub(crate) fn render_slash_menu(
             ));
         }
     }
-    deferred(panel).with_priority(120).into_any_element()
+    if let Some(callout_menu) = callout_popup_menu {
+        let row_offset = state.selected_index.saturating_sub(state.scroll_start) as f32
+            * SLASH_MENU_ROW_HEIGHT_PX;
+        let opens_left = x + SLASH_MENU_WIDTH_PX + 4.0 + SECONDARY_MENU_WIDTH_PX
+            > viewport.width - SLASH_MENU_VIEWPORT_MARGIN_PX;
+        panel = panel.child(
+            div()
+                .absolute()
+                .top(px(SLASH_MENU_PANEL_PADDING_PX
+                    + SLASH_MENU_GROUP_HEIGHT_PX
+                    + row_offset))
+                .left(px(if opens_left {
+                    -SECONDARY_MENU_WIDTH_PX - 4.0
+                } else {
+                    SLASH_MENU_WIDTH_PX + 4.0
+                }))
+                .child(callout_menu),
+        );
+    }
+    panel.into_any_element()
 }
 
 fn slash_menu_panel_height(total_items: usize) -> f32 {
@@ -377,6 +517,7 @@ fn render_slash_menu_row(
         theme.panel
     };
     let icon = render_slash_menu_item_icon(&item, theme);
+    let has_submenu = item.is_callout();
     div()
         .flex()
         .flex_none()
@@ -433,6 +574,13 @@ fn render_slash_menu_row(
                         .child(item.description),
                 ),
         )
+        .when(has_submenu, |row| {
+            row.child(
+                SvgIcon::new("slash-callout-submenu-arrow", ICON_SUBMENU_ARROW)
+                    .color(rgb(theme.muted))
+                    .size(px(16.0)),
+            )
+        })
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             view.update(cx, |view, cx| {
                 view.apply_slash_menu_index_from_gui(index, cx);
@@ -458,6 +606,7 @@ fn slash_menu_svg_icon(item: &SlashMenuItem) -> Option<(&'static str, &'static [
         return Some(("slash-menu-ai", ICON_AI));
     }
     match &item.kind {
+        RichBlockKind::Paragraph => Some(("slash-menu-text", ICON_TEXT)),
         RichBlockKind::Heading { level: 1 } => Some(("slash-menu-heading-1", ICON_HEADING_1)),
         RichBlockKind::Heading { level: 2 } => Some(("slash-menu-heading-2", ICON_HEADING_2)),
         RichBlockKind::Heading { level: 3 } => Some(("slash-menu-heading-3", ICON_HEADING_3)),
@@ -465,11 +614,13 @@ fn slash_menu_svg_icon(item: &SlashMenuItem) -> Option<(&'static str, &'static [
         RichBlockKind::BulletedList => Some(("slash-menu-bulleted-list", ICON_BULLETED_LIST)),
         RichBlockKind::NumberedList => Some(("slash-menu-number-list", ICON_NUMBER_LIST)),
         RichBlockKind::Quote => Some(("slash-menu-quote", ICON_QUOTE)),
+        RichBlockKind::Callout { .. } => Some(("slash-menu-callout", ICON_CALLOUT)),
         RichBlockKind::Code { .. } => Some(("slash-menu-code", ICON_CODE)),
         RichBlockKind::Math => Some(("slash-menu-math", ICON_MATH)),
         RichBlockKind::Mermaid => Some(("slash-menu-mermaid", ICON_MERMAID)),
         RichBlockKind::Table => Some(("slash-menu-table", ICON_TABLE)),
         RichBlockKind::Whiteboard => Some(("slash-menu-whiteboard", ICON_WHITEBOARD)),
+        RichBlockKind::Divider => Some(("slash-menu-divider", ICON_DIVIDER)),
         _ => None,
     }
 }
@@ -491,6 +642,7 @@ mod tests {
         let items = slash_menu_items();
         for label in [
             "Ask AI",
+            "Text",
             "Heading 1",
             "Heading 2",
             "Heading 3",
@@ -498,18 +650,24 @@ mod tests {
             "Bulleted list",
             "Numbered list",
             "Quote",
+            "Callout",
             "Code",
             "Math",
             "Mermaid",
             "Table",
             "Whiteboard",
+            "Divider",
         ] {
             let item = items.iter().find(|item| item.label == label).unwrap();
             let (_, source) = slash_menu_svg_icon(item).expect("provided SVG is mapped");
             assert!(std::str::from_utf8(source).unwrap().starts_with("<svg"));
         }
-        let text = items.iter().find(|item| item.label == "Text").unwrap();
-        assert!(slash_menu_svg_icon(text).is_none());
+        assert!(items.iter().all(|item| slash_menu_svg_icon(item).is_some()));
+        assert!(
+            std::str::from_utf8(ICON_SUBMENU_ARROW)
+                .unwrap()
+                .starts_with("<svg")
+        );
     }
 
     #[test]
@@ -542,10 +700,10 @@ mod tests {
     #[test]
     fn slash_menu_contains_supported_block_kinds() {
         let items = slash_menu_items();
-        assert_eq!(items.len(), 22, "Ask AI plus 21 registry block entries");
+        assert_eq!(items.len(), 16, "Ask AI plus 15 supported block entries");
         assert_eq!(items[0].command, Some(SlashMenuCommand::AskAi));
         assert_eq!(items[1].kind, RichBlockKind::Paragraph);
-        assert_eq!(items[21].kind, RichBlockKind::RawMarkdown);
+        assert_eq!(items[15].kind, RichBlockKind::Divider);
         assert!(
             items
                 .iter()
@@ -567,6 +725,64 @@ mod tests {
                 .iter()
                 .all(|item| !item.icon.is_empty() && !item.description.is_empty())
         );
+    }
+
+    #[test]
+    fn slash_menu_hides_incomplete_block_syntaxes() {
+        let items = slash_menu_items();
+        for unsupported in [
+            RichBlockKind::Toggle,
+            RichBlockKind::Html,
+            RichBlockKind::Separator,
+            RichBlockKind::FootnoteDefinition,
+            RichBlockKind::Comment,
+            RichBlockKind::RawMarkdown,
+        ] {
+            assert!(!slash_menu_supports_kind(&unsupported));
+            assert!(items.iter().all(|item| item.kind != unsupported));
+        }
+        for query in [
+            "toggle",
+            "html",
+            "separator",
+            "footnote",
+            "comment",
+            "markdown",
+        ] {
+            assert!(
+                items.iter().all(|item| !slash_item_matches(item, query)),
+                "unsupported query {query} must not resolve to a slash item"
+            );
+        }
+    }
+
+    #[test]
+    fn callout_variant_queries_resolve_to_the_callout_parent_item() {
+        let callout = slash_menu_items()
+            .into_iter()
+            .find(SlashMenuItem::is_callout)
+            .expect("callout slash item");
+        for query in ["note", "tip", "important", "warning", "caution"] {
+            assert!(slash_item_matches(&callout, query), "missing query {query}");
+        }
+    }
+
+    #[test]
+    fn keyboard_selection_does_not_open_callout_until_it_is_confirmed() {
+        let mut state = SlashMenuState::new(1, 0, String::new(), 0.0, 0.0);
+        let callout_index = state
+            .visible_items()
+            .iter()
+            .position(SlashMenuItem::is_callout)
+            .expect("callout slash item");
+        state.selected_index = callout_index - 1;
+
+        assert!(state.move_selection(1));
+        assert_eq!(state.selected_index, callout_index);
+        assert!(!state.callout_submenu_open);
+
+        assert!(state.move_selection(1));
+        assert!(!state.callout_submenu_open);
     }
 
     #[test]

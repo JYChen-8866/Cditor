@@ -8,7 +8,7 @@ use gpui::{
 
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::editor_view::CditorV2View;
-use crate::menu_metrics::SECONDARY_MENU_WIDTH_PX;
+use crate::menu_metrics::{PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
 use crate::theme::GuiTheme;
 
 pub const COLOR_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
@@ -16,7 +16,9 @@ pub const COLOR_MENU_DESIRED_HEIGHT_PX: f32 = 520.0;
 const COLOR_MENU_MIN_HEIGHT_PX: f32 = 180.0;
 const COLOR_MENU_GAP_PX: f32 = 6.0;
 const PRIMARY_TOOLBAR_WIDTH_PX: f32 = 194.0;
+const GUTTER_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 const PRIMARY_TOOLBAR_CONTENT_LEFT_PX: f32 = 8.0;
+#[cfg(test)]
 const COLOR_MENU_RIGHT_OFFSET_PX: f32 =
     PRIMARY_TOOLBAR_WIDTH_PX - PRIMARY_TOOLBAR_CONTENT_LEFT_PX + COLOR_MENU_GAP_PX;
 const COLOR_MENU_LEFT_OFFSET_PX: f32 =
@@ -190,8 +192,42 @@ pub fn color_menu_geometry(
     viewport_width: f32,
     viewport_height: f32,
 ) -> ColorMenuGeometry {
-    let opens_left = toolbar_x + PRIMARY_TOOLBAR_WIDTH_PX + COLOR_MENU_GAP_PX + COLOR_MENU_WIDTH_PX
-        > viewport_width - 10.0;
+    color_menu_geometry_for_width(
+        toolbar_x,
+        toolbar_y,
+        viewport_width,
+        viewport_height,
+        PRIMARY_TOOLBAR_WIDTH_PX,
+        COLOR_TRIGGER_TOP_IN_TOOLBAR_PX,
+    )
+}
+
+pub fn gutter_color_menu_geometry(
+    toolbar_x: f32,
+    toolbar_y: f32,
+    viewport_width: f32,
+    viewport_height: f32,
+) -> ColorMenuGeometry {
+    color_menu_geometry_for_width(
+        toolbar_x,
+        toolbar_y,
+        viewport_width,
+        viewport_height,
+        GUTTER_MENU_WIDTH_PX,
+        60.0,
+    )
+}
+
+fn color_menu_geometry_for_width(
+    toolbar_x: f32,
+    toolbar_y: f32,
+    viewport_width: f32,
+    viewport_height: f32,
+    toolbar_width: f32,
+    trigger_top: f32,
+) -> ColorMenuGeometry {
+    let opens_left =
+        toolbar_x + toolbar_width + COLOR_MENU_GAP_PX + COLOR_MENU_WIDTH_PX > viewport_width - 10.0;
     let available_height = (viewport_height - 20.0).max(1.0);
     let height = COLOR_MENU_DESIRED_HEIGHT_PX
         .min(available_height)
@@ -200,7 +236,7 @@ pub fn color_menu_geometry(
     let clamped_top = toolbar_y.clamp(10.0, max_top);
     ColorMenuGeometry {
         opens_left,
-        top_offset: clamped_top - toolbar_y - COLOR_TRIGGER_TOP_IN_TOOLBAR_PX,
+        top_offset: clamped_top - toolbar_y - trigger_top,
         height,
     }
 }
@@ -288,6 +324,11 @@ pub fn render_color_menu(
                 })),
         );
 
+    let primary_width = if state.show_delete {
+        GUTTER_MENU_WIDTH_PX
+    } else {
+        PRIMARY_TOOLBAR_WIDTH_PX
+    };
     div()
         .id("floating-toolbar-color-menu")
         .absolute()
@@ -296,7 +337,9 @@ pub fn render_color_menu(
             menu.left(px(COLOR_MENU_LEFT_OFFSET_PX))
         })
         .when(!state.color_menu_opens_left, |menu| {
-            menu.left(px(COLOR_MENU_RIGHT_OFFSET_PX))
+            menu.left(px(
+                primary_width - PRIMARY_TOOLBAR_CONTENT_LEFT_PX + COLOR_MENU_GAP_PX
+            ))
         })
         .w(px(COLOR_MENU_WIDTH_PX))
         .h(px(state.color_menu_height))
@@ -541,6 +584,15 @@ mod tests {
         assert!(!small.opens_left);
         assert_eq!(small.height, 280.0);
         assert_eq!(small.top_offset, -40.0);
+    }
+
+    #[test]
+    fn gutter_submenu_uses_the_wide_primary_menu_for_side_selection() {
+        let text_toolbar = color_menu_geometry(100.0, 100.0, 700.0, 600.0);
+        let gutter_menu = gutter_color_menu_geometry(100.0, 100.0, 700.0, 600.0);
+
+        assert!(!text_toolbar.opens_left);
+        assert!(gutter_menu.opens_left);
     }
 
     #[test]

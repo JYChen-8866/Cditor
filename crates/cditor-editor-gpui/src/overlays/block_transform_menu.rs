@@ -1,28 +1,41 @@
-use gpui::prelude::FluentBuilder;
-use gpui::{
-    AnyElement, Entity, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    Styled, div, px, rgb,
+use cditor_component::{
+    PopupMenu, PopupMenuCheckSide, PopupMenuIcon, PopupMenuItem, PopupMenuStyle, SvgIcon,
 };
+use cditor_core::ids::BlockId;
+use cditor_core::rich_text::{CalloutVariant, RichBlockKind};
+use gpui::prelude::FluentBuilder;
+use gpui::{App, Entity, IntoElement, ParentElement, Styled, Window, div, px};
 
 use crate::editor_view::CditorV2View;
-use crate::menu_metrics::SECONDARY_MENU_WIDTH_PX;
+use crate::menu_metrics::{PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
+use crate::overlays::callout_menu::CALLOUT_MENU_ITEMS;
 use crate::presentation::block_registry::{
     TransformBlockPresentation, block_presentation_registry,
 };
-use crate::theme::GuiTheme;
-use cditor_core::ids::BlockId;
-use cditor_core::rich_text::RichBlockKind;
 
 pub const BLOCK_TRANSFORM_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
 const BLOCK_TRANSFORM_MENU_HEIGHT_PX: f32 = 372.0;
 const BLOCK_TRANSFORM_MENU_GAP_PX: f32 = 6.0;
-const PRIMARY_TOOLBAR_WIDTH_PX: f32 = 194.0;
+const PRIMARY_TOOLBAR_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 const PRIMARY_TOOLBAR_CONTENT_LEFT_PX: f32 = 8.0;
 const BLOCK_TRANSFORM_MENU_RIGHT_OFFSET_PX: f32 =
     PRIMARY_TOOLBAR_WIDTH_PX - PRIMARY_TOOLBAR_CONTENT_LEFT_PX + BLOCK_TRANSFORM_MENU_GAP_PX;
 const BLOCK_TRANSFORM_MENU_LEFT_OFFSET_PX: f32 = -(BLOCK_TRANSFORM_MENU_WIDTH_PX
     + PRIMARY_TOOLBAR_CONTENT_LEFT_PX
     + BLOCK_TRANSFORM_MENU_GAP_PX);
+
+const ICON_TEXT: &[u8] = include_bytes!("../../../../assets/icons/text.svg");
+const ICON_HEADING_1: &[u8] = include_bytes!("../../../../assets/icons/heading-1.svg");
+const ICON_HEADING_2: &[u8] = include_bytes!("../../../../assets/icons/heading-2.svg");
+const ICON_HEADING_3: &[u8] = include_bytes!("../../../../assets/icons/heading-3.svg");
+const ICON_BULLETED_LIST: &[u8] = include_bytes!("../../../../assets/icons/bulleted-list.svg");
+const ICON_NUMBER_LIST: &[u8] = include_bytes!("../../../../assets/icons/number-list.svg");
+const ICON_TODO: &[u8] = include_bytes!("../../../../assets/icons/todo.svg");
+const ICON_QUOTE: &[u8] = include_bytes!("../../../../assets/icons/quote.svg");
+const ICON_CALLOUT: &[u8] = include_bytes!("../../../../assets/icons/callout.svg");
+const ICON_CODE: &[u8] = include_bytes!("../../../../assets/icons/code.svg");
+const ICON_MATH: &[u8] = include_bytes!("../../../../assets/icons/math.svg");
+const ICON_MERMAID: &[u8] = include_bytes!("../../../../assets/icons/mermaid.svg");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockTransformAction(u16);
@@ -49,12 +62,14 @@ impl BlockTransformAction {
     pub const TEXT: Self = Self(1);
     #[cfg(test)]
     pub const HEADING_1: Self = Self(2);
+    #[cfg(test)]
     pub const CODE_BLOCK: Self = Self(9);
 
     pub fn all() -> Vec<Self> {
         block_presentation_registry()
             .transform_presentations()
             .into_iter()
+            .filter(|presentation| !matches!(presentation.kind, RichBlockKind::Toggle))
             .map(|presentation| Self(presentation.kind_tag))
             .collect()
     }
@@ -73,10 +88,6 @@ impl BlockTransformAction {
         block_presentation_registry()
             .transform_by_tag(self.0)
             .expect("transform action must reference registered metadata")
-    }
-
-    fn icon(self) -> &'static str {
-        self.metadata().icon
     }
 
     fn label(self) -> &'static str {
@@ -98,88 +109,130 @@ pub fn block_transform_menu_top_offset(toolbar_y: f32, viewport_height: f32) -> 
     clamped_top - toolbar_y - 8.0
 }
 
-pub fn render_block_transform_menu(
-    theme: GuiTheme,
+pub fn build_block_transform_popup_menu(
+    window: &mut Window,
+    cx: &mut App,
+    style: PopupMenuStyle,
     view: Entity<CditorV2View>,
     block_id: BlockId,
     current: Option<BlockTransformAction>,
+    current_callout: Option<CalloutVariant>,
     availability: BlockTransformAvailability,
+) -> Entity<PopupMenu> {
+    PopupMenu::build(window, cx, move |menu, window, cx| {
+        let mut menu = menu
+            .style(style)
+            .check_side(PopupMenuCheckSide::Right)
+            .min_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX))
+            .max_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX));
+
+        for action in BlockTransformAction::all() {
+            let enabled = availability.contains(action);
+            let icon = popup_icon_for_action(action, style);
+            if matches!(action.kind(), RichBlockKind::Callout { .. }) {
+                let submenu_view = view.clone();
+                menu = menu.submenu_with_icon_and_disabled(
+                    Some(icon),
+                    action.label(),
+                    !enabled,
+                    window,
+                    cx,
+                    move |submenu, _window, _cx| {
+                        CALLOUT_MENU_ITEMS.iter().fold(
+                            submenu
+                                .style(style)
+                                .check_side(PopupMenuCheckSide::Right)
+                                .min_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX))
+                                .max_w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX)),
+                            |submenu, item| {
+                                let item_view = submenu_view.clone();
+                                let variant = item.variant;
+                                submenu.item(
+                                    PopupMenuItem::new(item.label)
+                                        .icon(popup_icon(item.icon_key, item.icon, style))
+                                        .checked(current_callout == Some(variant))
+                                        .disabled(!enabled)
+                                        .on_click(move |_, _, cx| {
+                                            item_view.update(cx, |view, cx| {
+                                                view.transform_block_kind_from_toolbar(
+                                                    block_id,
+                                                    RichBlockKind::Callout { variant },
+                                                    cx,
+                                                );
+                                            });
+                                        }),
+                                )
+                            },
+                        )
+                    },
+                );
+                continue;
+            }
+
+            let row_view = view.clone();
+            menu = menu.item(
+                PopupMenuItem::new(action.label())
+                    .icon(icon)
+                    .checked(current == Some(action))
+                    .disabled(!enabled)
+                    .on_click(move |_, _, cx| {
+                        row_view.update(cx, |view, cx| {
+                            view.transform_block_from_toolbar(block_id, action, cx);
+                        });
+                    }),
+            );
+        }
+        menu
+    })
+}
+
+pub fn render_block_transform_menu(
+    menu: Entity<PopupMenu>,
     opens_left: bool,
     top_offset: f32,
-) -> AnyElement {
-    let menu = div()
-        .id(("block-transform-menu", block_id))
+) -> gpui::AnyElement {
+    div()
         .absolute()
         .top(px(top_offset))
-        .when(opens_left, |menu| {
-            menu.left(px(BLOCK_TRANSFORM_MENU_LEFT_OFFSET_PX))
+        .when(opens_left, |container| {
+            container.left(px(BLOCK_TRANSFORM_MENU_LEFT_OFFSET_PX))
         })
-        .when(!opens_left, |menu| {
-            menu.left(px(BLOCK_TRANSFORM_MENU_RIGHT_OFFSET_PX))
+        .when(!opens_left, |container| {
+            container.left(px(BLOCK_TRANSFORM_MENU_RIGHT_OFFSET_PX))
         })
-        .w(px(BLOCK_TRANSFORM_MENU_WIDTH_PX))
-        .h(px(BLOCK_TRANSFORM_MENU_HEIGHT_PX))
-        .p(px(6.0))
-        .flex()
-        .flex_col()
-        .rounded(px(8.0))
-        .border_1()
-        .border_color(rgb(theme.border))
-        .bg(rgb(theme.panel))
-        .shadow_lg()
-        .occlude()
-        .overflow_hidden()
-        .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
-            cx.stop_propagation();
-        })
-        .children(BlockTransformAction::all().into_iter().map(|action| {
-            let active = current == Some(action);
-            let enabled = availability.contains(action);
-            let row_view = view.clone();
-            div()
-                .id(("block-transform-action", transform_action_index(action)))
-                .h(px(27.0))
-                .w_full()
-                .px(px(7.0))
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .rounded(px(4.0))
-                .bg(rgb(if active {
-                    theme.action_background
-                } else {
-                    theme.panel
-                }))
-                .text_color(rgb(if enabled { theme.text } else { theme.muted }))
-                .when(!enabled, |row| row.opacity(0.45))
-                .when(enabled, |row| {
-                    row.cursor_pointer()
-                        .hover(|style| style.bg(rgb(theme.hover_surface)))
-                        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-                            row_view.update(cx, |view, cx| {
-                                view.transform_block_from_toolbar(block_id, action, cx);
-                            });
-                            cx.stop_propagation();
-                        })
-                })
-                .child(
-                    div()
-                        .w(px(26.0))
-                        .text_size(px(if action == BlockTransformAction::CODE_BLOCK {
-                            10.0
-                        } else {
-                            12.0
-                        }))
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(action.icon()),
-                )
-                .child(div().flex_1().text_size(px(13.0)).child(action.label()))
-                .when(active, |row| {
-                    row.child(div().text_size(px(13.0)).child("✓"))
-                })
-                .into_any_element()
-        }));
-    menu.into_any_element()
+        .child(menu)
+        .into_any_element()
+}
+
+fn popup_icon_for_action(action: BlockTransformAction, style: PopupMenuStyle) -> PopupMenuIcon {
+    let (key, bytes) = transform_icon_source(&action.kind());
+    popup_icon(key, bytes, style)
+}
+
+fn popup_icon(key: &'static str, bytes: &'static [u8], style: PopupMenuStyle) -> PopupMenuIcon {
+    PopupMenuIcon::new(move |_, _| {
+        SvgIcon::new(key, bytes)
+            .color(style.foreground)
+            .size(px(16.0))
+    })
+}
+
+fn transform_icon_source(kind: &RichBlockKind) -> (&'static str, &'static [u8]) {
+    match kind {
+        RichBlockKind::Paragraph => ("block-transform-text", ICON_TEXT),
+        RichBlockKind::Heading { level: 1 } => ("block-transform-heading-1", ICON_HEADING_1),
+        RichBlockKind::Heading { level: 2 } => ("block-transform-heading-2", ICON_HEADING_2),
+        RichBlockKind::Heading { .. } => ("block-transform-heading-3", ICON_HEADING_3),
+        RichBlockKind::BulletedList => ("block-transform-bulleted-list", ICON_BULLETED_LIST),
+        RichBlockKind::NumberedList => ("block-transform-number-list", ICON_NUMBER_LIST),
+        RichBlockKind::Todo { .. } => ("block-transform-todo", ICON_TODO),
+        RichBlockKind::Quote => ("block-transform-quote", ICON_QUOTE),
+        RichBlockKind::Callout { .. } => ("block-transform-callout", ICON_CALLOUT),
+        RichBlockKind::Code { .. } => ("block-transform-code", ICON_CODE),
+        RichBlockKind::Math => ("block-transform-math", ICON_MATH),
+        RichBlockKind::Mermaid => ("block-transform-mermaid", ICON_MERMAID),
+        _ => ("block-transform-text", ICON_TEXT),
+    }
 }
 
 fn transform_action_index(action: BlockTransformAction) -> usize {
@@ -193,9 +246,14 @@ mod tests {
     #[test]
     fn transform_actions_roundtrip_supported_block_kinds() {
         let actions = BlockTransformAction::all();
-        assert_eq!(actions.len(), 13);
+        assert_eq!(actions.len(), 12);
         assert_eq!(actions[0], BlockTransformAction::TEXT);
-        assert_eq!(actions[12].kind(), RichBlockKind::Mermaid);
+        assert_eq!(actions[11].kind(), RichBlockKind::Mermaid);
+        assert!(
+            actions
+                .iter()
+                .all(|action| !matches!(action.kind(), RichBlockKind::Toggle))
+        );
         for action in actions {
             assert_eq!(
                 BlockTransformAction::from_kind(&action.kind()),
@@ -205,12 +263,44 @@ mod tests {
     }
 
     #[test]
+    fn every_transform_action_uses_an_embedded_svg() {
+        for action in BlockTransformAction::all() {
+            let (key, bytes) = transform_icon_source(&action.kind());
+            assert!(key.starts_with("block-transform-"));
+            assert!(bytes.starts_with(b"<svg"));
+        }
+    }
+
+    #[test]
+    fn callout_submenu_contains_the_five_standard_markers() {
+        assert_eq!(
+            CALLOUT_MENU_ITEMS
+                .iter()
+                .map(|item| item.label)
+                .collect::<Vec<_>>(),
+            vec!["!NOTE", "!TIP", "!IMPORTANT", "!WARNING", "!CAUTION"]
+        );
+        assert_eq!(
+            CALLOUT_MENU_ITEMS
+                .iter()
+                .map(|item| item.variant)
+                .collect::<Vec<_>>(),
+            vec![
+                CalloutVariant::Note,
+                CalloutVariant::Tip,
+                CalloutVariant::Important,
+                CalloutVariant::Warning,
+                CalloutVariant::Caution,
+            ]
+        );
+    }
+
+    #[test]
     fn transform_availability_tracks_each_action_independently() {
         let availability = BlockTransformAvailability::from_enabled([
             BlockTransformAction::TEXT,
             BlockTransformAction::CODE_BLOCK,
         ]);
-
         assert!(availability.contains(BlockTransformAction::TEXT));
         assert!(availability.contains(BlockTransformAction::CODE_BLOCK));
         assert!(!availability.contains(BlockTransformAction::HEADING_1));

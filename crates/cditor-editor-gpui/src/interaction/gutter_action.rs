@@ -19,7 +19,13 @@ fn apply_gutter_toolbar_transition(
         | GutterToolbarTransition::DragReleased
         | GutterToolbarTransition::Dismissed => None,
     };
+    if overlay.gutter_toolbar_block_id.is_none() {
+        overlay.gutter_popup_menu = None;
+        overlay.gutter_popup_menu_dismiss_subscription = None;
+    }
     overlay.block_transform_menu_open = false;
+    overlay.block_transform_popup_menu = None;
+    overlay.block_transform_popup_menu_dismiss_subscription = None;
     overlay.color_menu_open = false;
     overlay.color_menu_hover_generation = overlay.color_menu_hover_generation.wrapping_add(1);
 }

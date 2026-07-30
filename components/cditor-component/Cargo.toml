@@ -15,3 +15,6 @@ font-kit = ["gpui/font-kit"]
 [dependencies]
 gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false }
 web-time = "1.1"
+
+[dev-dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["test-support"] }

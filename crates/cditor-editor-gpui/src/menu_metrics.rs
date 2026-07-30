@@ -1,10 +1,8 @@
 use gpui::{Bounds, Pixels, Size, point, px};
 
-/// Shared width for secondary menus opened from a primary toolbar or menu.
-///
-/// Keeping this compact reduces edge collisions while preserving enough room
-/// for an icon or color swatch, a Chinese label, and an active check mark.
-pub(crate) const SECONDARY_MENU_WIDTH_PX: f32 = 160.0;
+/// Shared width for editor popup menus at every nesting level.
+pub(crate) const PRIMARY_MENU_WIDTH_PX: f32 = 320.0;
+pub(crate) const SECONDARY_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 
 /// The Cditor root viewport expressed in host-window coordinates.
 ///
@@ -135,6 +133,12 @@ pub(crate) fn secondary_menu_geometry(
 mod tests {
     use super::*;
     use gpui::size;
+
+    #[test]
+    fn primary_and_secondary_editor_menus_share_one_width() {
+        assert_eq!(PRIMARY_MENU_WIDTH_PX, 320.0);
+        assert_eq!(SECONDARY_MENU_WIDTH_PX, PRIMARY_MENU_WIDTH_PX);
+    }
 
     #[test]
     fn editor_viewport_converts_host_window_coordinates_to_editor_local() {

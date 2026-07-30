@@ -1,5 +1,5 @@
 use gpui::{
-    Context, InteractiveElement, IntoElement, MouseButton, ParentElement, Render,
+    Context, DismissEvent, InteractiveElement, IntoElement, MouseButton, ParentElement, Render,
     StatefulInteractiveElement, Styled, Window, div, rgb,
 };
 
@@ -25,8 +25,10 @@ use crate::menu_metrics::EditorViewport;
 #[cfg(feature = "whiteboard")]
 use crate::overlays::render_whiteboard_editor;
 use crate::overlays::{
-    render_ai_preview_overlay, render_ai_prompt, render_floating_toolbar, render_slash_menu,
-    render_toast,
+    GUTTER_MENU_WIDTH_PX, build_block_transform_popup_menu, build_slash_callout_popup_menu,
+    build_slash_popup_menu, gutter_popup_menu_style, render_ai_preview_overlay, render_ai_prompt,
+    render_floating_toolbar, render_gutter_popup_menu, render_slash_menu, render_toast,
+    update_gutter_popup_menu, update_slash_popup_menu,
 };
 use crate::persistence::{EditorLoadStateLabel, render_load_state};
 use crate::platform::EDITOR_UI_FONT_FAMILY;
@@ -649,25 +651,170 @@ impl Render for CditorV2View {
             }
         }
         if let Some(toolbar) = formatting_toolbar {
-            root = root.child(render_floating_toolbar(
-                toolbar,
-                theme,
-                view,
-                self.overlay
-                    .ai_prompt
-                    .as_ref()
-                    .filter(|_| embedded_ai_prompt),
-                self.focus.ai_prompt.clone(),
-                &self.overlay.color_menu_scroll_handle,
-                &self.overlay.ai_actions_scroll_handle,
-            ));
+            if toolbar.show_delete {
+                let block_transform_popup_menu = if toolbar.block_transform_menu_open {
+                    if let Some(menu) = self.overlay.block_transform_popup_menu.clone() {
+                        Some(menu)
+                    } else {
+                        let menu = build_block_transform_popup_menu(
+                            window,
+                            cx,
+                            gutter_popup_menu_style(theme),
+                            view.clone(),
+                            toolbar.block_id.expect("gutter toolbar has a block target"),
+                            toolbar.block_transform,
+                            toolbar.callout_variant,
+                            toolbar.block_transform_availability,
+                        );
+                        let subscription = cx.subscribe(
+                            &menu,
+                            |view: &mut CditorV2View, _, _: &DismissEvent, cx| {
+                                view.overlay.block_transform_menu_open = false;
+                                view.overlay.block_transform_popup_menu = None;
+                                view.overlay.block_transform_popup_menu_dismiss_subscription = None;
+                                cx.notify();
+                            },
+                        );
+                        let menu_focus = menu.read(cx).menu_focus_handle();
+                        menu_focus.focus(window, cx);
+                        self.overlay.block_transform_popup_menu = Some(menu.clone());
+                        self.overlay.block_transform_popup_menu_dismiss_subscription =
+                            Some(subscription);
+                        Some(menu)
+                    }
+                } else {
+                    self.overlay.block_transform_popup_menu = None;
+                    self.overlay.block_transform_popup_menu_dismiss_subscription = None;
+                    None
+                };
+                let menu = if let Some(menu) = self.overlay.gutter_popup_menu.clone() {
+                    menu
+                } else {
+                    let menu = cditor_component::PopupMenu::build(window, cx, |menu, _, _| {
+                        menu.style(gutter_popup_menu_style(theme))
+                            .action_context(self.focus.editor.clone())
+                            .min_w(gpui::px(GUTTER_MENU_WIDTH_PX))
+                            .max_w(gpui::px(GUTTER_MENU_WIDTH_PX))
+                    });
+                    let subscription =
+                        cx.subscribe(&menu, |view: &mut CditorV2View, _, _: &DismissEvent, cx| {
+                            view.clear_gutter_action();
+                            cx.notify();
+                        });
+                    let menu_focus = menu.read(cx).menu_focus_handle();
+                    menu_focus.focus(window, cx);
+                    self.overlay.gutter_popup_menu = Some(menu.clone());
+                    self.overlay.gutter_popup_menu_dismiss_subscription = Some(subscription);
+                    menu
+                };
+                menu.update(cx, |menu, _| {
+                    update_gutter_popup_menu(
+                        menu,
+                        toolbar,
+                        theme,
+                        view.clone(),
+                        self.overlay
+                            .ai_prompt
+                            .as_ref()
+                            .filter(|_| embedded_ai_prompt)
+                            .cloned(),
+                        self.focus.ai_prompt.clone(),
+                        self.overlay.color_menu_scroll_handle.clone(),
+                        self.overlay.ai_actions_scroll_handle.clone(),
+                        block_transform_popup_menu,
+                    );
+                });
+                root = root.child(render_gutter_popup_menu(toolbar, menu));
+            } else {
+                root = root.child(render_floating_toolbar(
+                    toolbar,
+                    theme,
+                    view,
+                    self.overlay
+                        .ai_prompt
+                        .as_ref()
+                        .filter(|_| embedded_ai_prompt),
+                    self.focus.ai_prompt.clone(),
+                    &self.overlay.color_menu_scroll_handle,
+                    &self.overlay.ai_actions_scroll_handle,
+                ));
+            }
+        } else if self.overlay.gutter_toolbar_block_id.is_none() {
+            self.overlay.gutter_popup_menu = None;
+            self.overlay.gutter_popup_menu_dismiss_subscription = None;
         }
         root = root.children(self.render_status_overlays(theme, cx.entity()));
         if let Some(preview_overlay) = render_image_preview_overlay(window, cx) {
             root = root.child(preview_overlay);
         }
-        if let Some(menu) = self.overlay.slash_menu.as_ref() {
-            root = root.child(render_slash_menu(menu, theme, cx.entity(), editor_viewport));
+        let slash_state = self.overlay.slash_menu.clone();
+        let slash_callout_popup_menu = if slash_state
+            .as_ref()
+            .is_some_and(|menu| menu.callout_submenu_open)
+        {
+            if let Some(menu) = self.overlay.slash_callout_popup_menu.clone() {
+                Some(menu)
+            } else {
+                let slash_view = cx.entity();
+                let menu = build_slash_callout_popup_menu(
+                    window,
+                    cx,
+                    theme,
+                    slash_view,
+                    self.focus.editor.clone(),
+                );
+                let subscription =
+                    cx.subscribe(&menu, |view: &mut CditorV2View, _, _: &DismissEvent, cx| {
+                        if let Some(slash_menu) = view.overlay.slash_menu.as_mut() {
+                            slash_menu.callout_submenu_open = false;
+                        }
+                        view.overlay.slash_callout_popup_menu = None;
+                        view.overlay.slash_callout_popup_menu_dismiss_subscription = None;
+                        cx.notify();
+                    });
+                let menu_focus = menu.read(cx).menu_focus_handle();
+                menu_focus.focus(window, cx);
+                self.overlay.slash_callout_popup_menu = Some(menu.clone());
+                self.overlay.slash_callout_popup_menu_dismiss_subscription = Some(subscription);
+                Some(menu)
+            }
+        } else {
+            self.overlay.slash_callout_popup_menu = None;
+            self.overlay.slash_callout_popup_menu_dismiss_subscription = None;
+            None
+        };
+        if let Some(slash_state) = slash_state {
+            let slash_popup_menu = if let Some(menu) = self.overlay.slash_popup_menu.clone() {
+                menu
+            } else {
+                let menu = build_slash_popup_menu(window, cx, theme, self.focus.editor.clone());
+                let subscription =
+                    cx.subscribe(&menu, |view: &mut CditorV2View, _, _: &DismissEvent, cx| {
+                        view.cancel_slash_menu(cx);
+                    });
+                self.overlay.slash_popup_menu = Some(menu.clone());
+                self.overlay.slash_popup_menu_dismiss_subscription = Some(subscription);
+                menu
+            };
+            let slash_view = cx.entity();
+            slash_popup_menu.update(cx, |menu, _| {
+                update_slash_popup_menu(
+                    menu,
+                    slash_state.clone(),
+                    theme,
+                    slash_view,
+                    editor_viewport,
+                    slash_callout_popup_menu,
+                );
+            });
+            root = root.child(render_slash_menu(
+                &slash_state,
+                slash_popup_menu,
+                editor_viewport,
+            ));
+        } else {
+            self.overlay.slash_popup_menu = None;
+            self.overlay.slash_popup_menu_dismiss_subscription = None;
         }
         if !embedded_ai_prompt && let Some(prompt) = self.overlay.ai_prompt.as_ref() {
             root = root.child(render_ai_prompt(

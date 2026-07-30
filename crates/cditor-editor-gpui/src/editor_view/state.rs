@@ -4,7 +4,9 @@ use std::{
 };
 
 use cditor_session::EditorSessionHandle;
-use gpui::{AppContext, Context, Entity, FocusHandle};
+use gpui::{AppContext, Context, Entity, FocusHandle, Subscription};
+
+use cditor_component::PopupMenu;
 
 use cditor_core::block::GutterBlockDragState;
 use cditor_core::ids::BlockId;
@@ -83,9 +85,17 @@ pub(crate) struct OverlayUiState {
     pub(crate) code_copy_feedback_block_id: Option<BlockId>,
     pub(crate) code_copy_feedback_generation: u64,
     pub(crate) slash_menu: Option<SlashMenuState>,
+    pub(crate) slash_popup_menu: Option<Entity<PopupMenu>>,
+    pub(crate) slash_popup_menu_dismiss_subscription: Option<Subscription>,
+    pub(crate) slash_callout_popup_menu: Option<Entity<PopupMenu>>,
+    pub(crate) slash_callout_popup_menu_dismiss_subscription: Option<Subscription>,
     pub(crate) toast: Option<GuiToast>,
     pub(crate) table_menu_ui: crate::features::table::menu::TableMenuUiState,
     pub(crate) gutter_toolbar_block_id: Option<BlockId>,
+    pub(crate) gutter_popup_menu: Option<Entity<PopupMenu>>,
+    pub(crate) gutter_popup_menu_dismiss_subscription: Option<Subscription>,
+    pub(crate) block_transform_popup_menu: Option<Entity<PopupMenu>>,
+    pub(crate) block_transform_popup_menu_dismiss_subscription: Option<Subscription>,
     pub(crate) selection_toolbar_delay: SelectionToolbarDelay,
     pub(crate) block_transform_menu_open: bool,
     pub(crate) color_menu_open: bool,
@@ -108,9 +118,13 @@ impl OverlayUiState {
         }
         if self.block_transform_menu_open {
             self.block_transform_menu_open = false;
+            self.block_transform_popup_menu = None;
+            self.block_transform_popup_menu_dismiss_subscription = None;
             return true;
         }
         if self.gutter_toolbar_block_id.take().is_some() {
+            self.gutter_popup_menu = None;
+            self.gutter_popup_menu_dismiss_subscription = None;
             self.selection_toolbar_delay = SelectionToolbarDelay::default();
             return true;
         }

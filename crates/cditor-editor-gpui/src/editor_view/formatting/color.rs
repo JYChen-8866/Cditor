@@ -90,6 +90,8 @@ impl CditorV2View {
         }
         self.overlay.color_menu_open = true;
         self.overlay.block_transform_menu_open = false;
+        self.overlay.block_transform_popup_menu = None;
+        self.overlay.block_transform_popup_menu_dismiss_subscription = None;
         self.overlay
             .color_menu_scroll_handle
             .set_offset(gpui::point(gpui::px(0.0), gpui::px(0.0)));

@@ -1,5 +1,6 @@
 pub(crate) mod ai_inline;
 pub(crate) mod block_transform_menu;
+pub(crate) mod callout_menu;
 pub(crate) mod color_menu;
 pub(crate) mod floating_toolbar;
 pub(crate) mod selection_overlay;
@@ -14,17 +15,23 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 pub(crate) use ai_inline::{render_ai_preview_overlay, render_ai_prompt};
 pub(crate) use block_transform_menu::{
     BlockTransformAction, BlockTransformAvailability, block_transform_menu_opens_left,
-    block_transform_menu_top_offset,
+    block_transform_menu_top_offset, build_block_transform_popup_menu,
 };
-pub(crate) use color_menu::{ActiveColor, ColorMenuAction, PaletteColor, color_menu_geometry};
+pub(crate) use color_menu::{
+    ActiveColor, ColorMenuAction, PaletteColor, color_menu_geometry, gutter_color_menu_geometry,
+};
 pub(crate) use floating_toolbar::{
-    FloatingToolbarState, InlineFormatAction, floating_toolbar_position,
-    gutter_floating_toolbar_position, render_floating_toolbar,
+    FloatingToolbarState, GUTTER_MENU_WIDTH_PX, InlineFormatAction, floating_toolbar_position,
+    gutter_floating_toolbar_position, gutter_popup_menu_style, render_floating_toolbar,
+    render_gutter_popup_menu, update_gutter_popup_menu,
 };
 use selection_overlay::{render_selection_overlay, selection_overlay_fragments};
-pub(crate) use slash_menu::render_slash_menu;
 pub(crate) use slash_menu::{
     SlashMenuCommand, SlashMenuItem, SlashMenuState, slash_query_before_caret,
+};
+pub(crate) use slash_menu::{
+    build_slash_callout_popup_menu, build_slash_popup_menu, render_slash_menu,
+    update_slash_popup_menu,
 };
 pub(crate) use toast::{GuiToast, render_toast, show_toast};
 #[cfg(feature = "whiteboard")]

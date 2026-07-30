@@ -1,5 +1,30 @@
 use super::*;
 
+#[test]
+fn gutter_format_controls_use_the_provided_svg_assets() {
+    assert!(std::str::from_utf8(ICON_COLOR).unwrap().starts_with("<svg"));
+    assert!(
+        std::str::from_utf8(ICON_SUBMENU_ARROW)
+            .unwrap()
+            .starts_with("<svg")
+    );
+    for action in [
+        InlineFormatAction::Bold,
+        InlineFormatAction::Italic,
+        InlineFormatAction::Underline,
+        InlineFormatAction::Code,
+    ] {
+        let (_, source) = format_icon_source(action).expect("provided formatting SVG is mapped");
+        assert!(std::str::from_utf8(source).unwrap().starts_with("<svg"));
+    }
+    assert!(format_icon_source(InlineFormatAction::Strike).is_none());
+    assert_eq!(FORMAT_ICON_SIZE_PX, 18.0);
+    assert_eq!(GUTTER_FORMAT_ROW_PADDING_PX, 8.0);
+    assert_eq!(FORMAT_BUTTON_SIZE_PX, 30.0);
+    assert_eq!(POPUP_MENU_ITEM_FONT_SIZE_PX, 14.0);
+    assert_eq!(POPUP_MENU_LABEL_FONT_SIZE_PX, 11.0);
+}
+
 fn toolbar_state() -> FloatingToolbarState {
     FloatingToolbarState {
         x: 0.0,
@@ -19,6 +44,7 @@ fn toolbar_state() -> FloatingToolbarState {
         strike: false,
         code: false,
         block_transform: None,
+        callout_variant: None,
         block_transform_availability: BlockTransformAvailability::default(),
         transform_menu_opens_left: false,
         transform_menu_top_offset: 0.0,
@@ -65,8 +91,8 @@ fn left_aligned_toolbar_uses_anchor_left_and_clamps_to_viewport() {
 fn gutter_toolbar_opens_left_and_aligns_with_the_gutter_top() {
     let (x, y) = gutter_floating_toolbar_position(320.0, 140.0, 1_200.0, 800.0);
 
-    assert_eq!(x, 118.0);
-    assert_eq!(x + TOOLBAR_WIDTH_PX + TOOLBAR_ANCHOR_GAP_PX, 320.0);
+    assert_eq!(x, 10.0);
+    assert!(x + GUTTER_MENU_WIDTH_PX >= 320.0);
     assert_eq!(y, 140.0);
 }
 
@@ -74,11 +100,11 @@ fn gutter_toolbar_opens_left_and_aligns_with_the_gutter_top() {
 fn gutter_toolbar_stays_inside_the_viewport_when_left_or_bottom_space_is_tight() {
     assert_eq!(
         gutter_floating_toolbar_position(180.0, 700.0, 1_000.0, 800.0),
-        (10.0, 466.0),
+        (10.0, 406.0),
     );
     assert_eq!(
         gutter_floating_toolbar_position(320.0, 2.0, 1_200.0, 800.0),
-        (118.0, 10.0),
+        (10.0, 10.0),
     );
 }
 

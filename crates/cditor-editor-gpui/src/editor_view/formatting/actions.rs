@@ -82,6 +82,15 @@ impl CditorV2View {
         action: BlockTransformAction,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
+        self.transform_block_kind_from_toolbar(block_id, action.kind(), cx)
+    }
+
+    pub(crate) fn transform_block_kind_from_toolbar(
+        &mut self,
+        block_id: BlockId,
+        kind: cditor_core::rich_text::RichBlockKind,
+        cx: &mut gpui::Context<Self>,
+    ) -> bool {
         if self.status.readonly {
             return false;
         }
@@ -114,7 +123,7 @@ impl CditorV2View {
             return false;
         }
         match self.dispatch_command(
-            CditorCommand::TransformBlock(BlockTransform::Kind(action.kind())),
+            CditorCommand::TransformBlock(BlockTransform::Kind(kind)),
             CommandSource::Toolbar,
             cx,
         ) {
