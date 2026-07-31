@@ -20,7 +20,7 @@ mod scroll;
 mod skeleton;
 pub(crate) mod surfaces;
 mod text;
-mod theme;
+pub mod theme;
 
 pub use component_sdk::{CditorComponent, CditorHandle, CditorViewContract, CditorViewFactory};
 pub use editor_view::{CditorV2View, CditorViewState, EditorReadonlyReason};

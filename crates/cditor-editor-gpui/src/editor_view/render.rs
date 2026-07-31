@@ -34,7 +34,7 @@ use crate::persistence::{EditorLoadStateLabel, render_load_state};
 use crate::platform::EDITOR_UI_FONT_FAMILY;
 use crate::scroll::HeightCorrectionPriority;
 use crate::surfaces::table_cell::projected_table_cells_from_projection;
-use crate::theme::GuiTheme;
+use crate::theme::active_theme;
 use cditor_runtime::AiRequestPresentation;
 use cditor_session::RenderFrameRequest;
 
@@ -56,7 +56,7 @@ impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let frame_started = web_time::Instant::now();
         self.run_main_thread_applies(frame_started, cx);
-        let theme = GuiTheme::light();
+        let theme = active_theme(cx);
         let focus = self.focus.editor.clone();
         if self.overlay.ai_prompt.is_some() {
             if !self.focus.ai_prompt.is_focused(window) {
