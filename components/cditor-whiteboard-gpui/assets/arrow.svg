@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Arrow icon -->
+  <g fill="none" stroke="white" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Line -->
+    <line x1="96" y1="416" x2="416" y2="96"/>
+    <!-- Arrowhead -->
+    <path d="M416 96 L320 96 M416 96 L416 192" fill="none"/>
+  </g>
+</svg>

@@ -55,7 +55,7 @@ actions!(
 pub fn bind_cditor_keys(cx: &mut App) {
     cditor_component::menu::init(cx);
     #[cfg(feature = "whiteboard")]
-    cditor_whiteboard_drafft::bind_drafft_keys(cx);
+    cditor_whiteboard_gpui::bind_drafft_keys(cx);
     let context = Some(CDITOR_KEY_CONTEXT);
     let bindings = vec![
         KeyBinding::new("enter", Newline, context),

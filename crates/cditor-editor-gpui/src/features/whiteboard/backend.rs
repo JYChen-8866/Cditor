@@ -3,12 +3,12 @@ use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorComm
 use gpui::{AnyElement, AppContext, Context, Entity, IntoElement};
 
 use crate::editor_view::CditorV2View;
-use cditor_whiteboard_drafft::DrafftChromeMode;
+use cditor_whiteboard_gpui::DrafftChromeMode;
 
 #[derive(Clone)]
 pub(crate) enum WhiteboardBackendEntity {
     Legacy(Entity<cditor_whiteboard::WhiteboardView>),
-    Drafft(Entity<cditor_whiteboard_drafft::DrafftBoardView>),
+    Drafft(Entity<cditor_whiteboard_gpui::DrafftBoardView>),
 }
 
 impl WhiteboardBackendEntity {
@@ -51,10 +51,10 @@ pub(crate) fn try_create_drafft_board(
     cx: &mut Context<CditorV2View>,
 ) -> Result<WhiteboardBackendEntity, String> {
     register_fonts(cx)?;
-    cditor_whiteboard_drafft::parse_document_json(scene_json)?;
+    cditor_whiteboard_gpui::parse_document_json(scene_json)?;
     let scene_json = scene_json.to_owned();
     let entity = cx.new(|board_cx| {
-        let mut board = cditor_whiteboard_drafft::DrafftBoardView::from_document_json(
+        let mut board = cditor_whiteboard_gpui::DrafftBoardView::from_document_json(
             &scene_json,
             read_only,
             board_cx,
@@ -123,7 +123,7 @@ fn register_fonts(cx: &mut Context<CditorV2View>) -> Result<(), String> {
     REGISTERED
         .get_or_init(|| {
             cx.text_system()
-                .add_fonts(cditor_whiteboard_drafft::bundled_fonts())
+                .add_fonts(cditor_whiteboard_gpui::bundled_fonts())
                 .map_err(|error| error.to_string())
         })
         .clone()

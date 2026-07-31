@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use cditor_whiteboard::{Scene, WhiteboardView};
-use cditor_whiteboard_drafft::DrafftChromeMode;
+use cditor_whiteboard_gpui::DrafftChromeMode;
 use gpui::{AppContext, Context};
 
 use crate::editor_view::CditorV2View;

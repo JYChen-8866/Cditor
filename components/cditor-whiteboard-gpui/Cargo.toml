@@ -1,0 +1,59 @@
+[package]
+name = "cditor-whiteboard-gpui"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "GPL-3.0-or-later"
+description = "GPUI-native whiteboard — unified core model + rendering adapter."
+
+[features]
+default = []
+drafft-vello = []  # reserved for future Vello integration
+
+[dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+kurbo = { version = "0.12", features = ["serde"] }
+parley = { version = "=0.11.0", features = ["complex-scripts", "system"] }
+peniko = "0.5"
+roughr = "0.12"
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+base64 = "0.22"
+pathfinding = "4"
+log = "0.4"
+loro = "1"
+thiserror = "2"
+winit = "0.30"
+winit_input_helper = "0.17"
+rex = { git = "https://github.com/KenyC/ReX", rev = "aeccdba38f3fa54195c469319b65c423e17a77ae", features = ["ttfparser-fontparser"] }
+ttf-parser = "0.25"
+tiny-skia = "0.11"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dirs = "5"
+tungstenite = { version = "0.24", features = ["native-tls"] }
+url = "2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Storage", "WebSocket", "BinaryType", "MessageEvent", "CloseEvent", "ErrorEvent"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-time = "1"
+rexie = "0.6"
+serde-wasm-bindgen = "0.6"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+memmap2 = "0.9"
+
+[dev-dependencies]
+tempfile = "3"
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", features = ["test-support"] }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", features = ["font-kit"] }
+
+[[example]]
+name = "gpui_board"
+path = "examples/gpui_board.rs"

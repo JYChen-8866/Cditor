@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Freehand / Pen icon - wavy line -->
+  <path d="M64 384 Q128 192 192 320 Q256 448 320 256 Q384 64 448 192"
+        fill="none" stroke="white" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
