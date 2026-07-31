@@ -1,4 +1,4 @@
-//! Code-block language, copy, and theme controls.
+//! Code-block language and copy controls.
 
 use crate::editor_view::CditorV2View;
 use crate::input::{
@@ -9,14 +9,9 @@ use crate::theme::GuiTheme;
 use cditor_component::{Combobox, ComboboxItem, ComboboxPlacement, ComboboxStyle, SvgIcon};
 use cditor_core::ids::BlockId;
 use gpui::InteractiveElement;
-use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Entity, FocusHandle, IntoElement, MouseButton, ParentElement, Styled, div, px, rgb,
 };
-
-mod theme_menu;
-
-use theme_menu::{render_code_theme_button, render_code_theme_popup};
 
 pub const V1_CODE_TOOLBAR_TOP_PX: f32 = 3.0;
 pub const V1_CODE_TOOLBAR_LEFT_PX: f32 = 6.0;
@@ -36,8 +31,6 @@ pub const V1_CODE_LANGUAGE_POPUP_GAP_PX: f32 = 6.0;
 pub const V1_CODE_LANGUAGE_POPUP_MAX_HEIGHT_PX: f32 = 300.0;
 pub const V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX: f32 = 32.0;
 pub const V1_CODE_COPY_ICON_SIZE_PX: f32 = 16.0;
-pub const V1_CODE_THEME_POPUP_WIDTH_PX: f32 = 220.0;
-pub const V1_CODE_THEME_ROW_HEIGHT_PX: f32 = 34.0;
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub fn render_code_toolbar(
@@ -45,8 +38,8 @@ pub fn render_code_toolbar(
     theme: GuiTheme,
     language: Option<&str>,
     language_edit: Option<&CodeLanguageEditState>,
-    code_theme_menu_open: bool,
-    code_highlight_theme: &'static str,
+    _code_theme_menu_open: bool,
+    _code_highlight_theme: &'static str,
     view: Entity<CditorV2View>,
     code_language_focus: FocusHandle,
 ) -> AnyElement {
@@ -80,28 +73,8 @@ pub fn render_code_toolbar(
                     view.clone(),
                     code_language_focus,
                 ))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(V1_CODE_TOOLBAR_GAP_PX))
-                        .child(render_copy_button(theme, block_id, view.clone()))
-                        .child(render_code_theme_button(
-                            theme,
-                            block_id,
-                            code_highlight_theme,
-                            code_theme_menu_open,
-                            view.clone(),
-                        )),
-                ),
+                .child(render_copy_button(theme, block_id, view.clone())),
         )
-        .when(code_theme_menu_open, |this| {
-            this.child(render_code_theme_popup(
-                theme,
-                code_highlight_theme,
-                view.clone(),
-            ))
-        })
         .into_any_element()
 }
 
@@ -368,8 +341,6 @@ mod tests {
         assert_eq!(V1_CODE_LANGUAGE_POPUP_MAX_HEIGHT_PX, 300.0);
         assert_eq!(V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX, 32.0);
         assert_eq!(V1_CODE_COPY_ICON_SIZE_PX, 16.0);
-        assert_eq!(V1_CODE_THEME_POPUP_WIDTH_PX, 220.0);
-        assert_eq!(V1_CODE_THEME_ROW_HEIGHT_PX, 34.0);
     }
 
     #[test]
@@ -417,10 +388,10 @@ mod tests {
     }
 
     #[test]
-    fn unknown_code_theme_falls_back_to_default_catppuccin_latte() {
+    fn unknown_code_theme_falls_back_to_github_light() {
         assert_eq!(
             crate::features::code::highlight::code_theme_item("missing").id,
-            crate::features::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME
+            "github_light"
         );
     }
 }

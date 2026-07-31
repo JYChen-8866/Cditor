@@ -11,7 +11,7 @@ use cditor_component::PopupMenu;
 use cditor_core::block::GutterBlockDragState;
 use cditor_core::ids::BlockId;
 
-use crate::features::code::highlight::DEFAULT_CODE_HIGHLIGHT_THEME;
+use crate::features::code::highlight::{DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT, code_theme_for_mode};
 use crate::input::BlockDragSelectionController;
 use crate::input::{AiPromptState, CodeLanguageEditState};
 use crate::interaction::geometry::{
@@ -60,7 +60,7 @@ impl Default for FeatureUiState {
         Self {
             ai_provider: default_ai_provider(),
             ai_enabled: true,
-            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME,
+            code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT,
             #[cfg(feature = "whiteboard")]
             whiteboard_editor: None,
         }
@@ -68,6 +68,11 @@ impl Default for FeatureUiState {
 }
 
 impl FeatureUiState {
+    /// Update code theme based on global theme mode
+    pub(crate) fn sync_code_theme_with_global(&mut self, is_dark: bool) {
+        self.code_highlight_theme = code_theme_for_mode(is_dark);
+    }
+
     pub(crate) fn reset_session(&mut self) {
         #[cfg(feature = "whiteboard")]
         {

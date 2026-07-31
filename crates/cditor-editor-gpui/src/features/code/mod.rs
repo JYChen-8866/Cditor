@@ -20,7 +20,6 @@ use gpui::{
 mod actions;
 pub(crate) mod highlight;
 mod language_actions;
-mod theme_actions;
 mod toolbar;
 
 use highlight::code_theme_item;

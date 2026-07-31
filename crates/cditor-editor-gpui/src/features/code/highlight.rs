@@ -46,7 +46,8 @@ use crate::app::worker_admission::WorkerPermit;
 use crate::editor_view::CditorV2View;
 use crate::text::input::RichTextLayoutSpans;
 
-pub(crate) const DEFAULT_CODE_HIGHLIGHT_THEME: &str = "catppuccin_latte";
+pub(crate) const DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT: &str = "github_light";
+pub(crate) const DEFAULT_CODE_HIGHLIGHT_THEME_DARK: &str = "github_dark";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CodeThemeItem {
@@ -57,7 +58,7 @@ pub(crate) struct CodeThemeItem {
     pub preview: [u32; 4],
 }
 
-pub(crate) const CODE_THEME_ITEMS: [CodeThemeItem; 8] = [
+pub(crate) const CODE_THEME_ITEMS: [CodeThemeItem; 2] = [
     CodeThemeItem {
         id: "github_light",
         label: "GitHub Light",
@@ -72,48 +73,6 @@ pub(crate) const CODE_THEME_ITEMS: [CodeThemeItem; 8] = [
         foreground: 0xe6edf3,
         preview: [0xff7b72, 0x79c0ff, 0xa5d6ff, 0x8b949e],
     },
-    CodeThemeItem {
-        id: "dracula",
-        label: "Dracula",
-        background: 0x282a36,
-        foreground: 0xf8f8f2,
-        preview: [0xff79c6, 0xbd93f9, 0xf1fa8c, 0x6272a4],
-    },
-    CodeThemeItem {
-        id: "catppuccin_latte",
-        label: "Catppuccin Latte",
-        background: 0xeff1f5,
-        foreground: 0x4c4f69,
-        preview: [0x8839ef, 0x1e66f5, 0x40a02b, 0x9ca0b0],
-    },
-    CodeThemeItem {
-        id: "catppuccin_mocha",
-        label: "Catppuccin Mocha",
-        background: 0x1e1e2e,
-        foreground: 0xcdd6f4,
-        preview: [0xcba6f7, 0x89b4fa, 0xa6e3a1, 0x6c7086],
-    },
-    CodeThemeItem {
-        id: "gruvbox_light",
-        label: "Gruvbox Light",
-        background: 0xfbf1c7,
-        foreground: 0x3c3836,
-        preview: [0x9d0006, 0x076678, 0x79740e, 0x928374],
-    },
-    CodeThemeItem {
-        id: "gruvbox_dark",
-        label: "Gruvbox Dark",
-        background: 0x282828,
-        foreground: 0xebdbb2,
-        preview: [0xfb4934, 0x83a598, 0xb8bb26, 0x928374],
-    },
-    CodeThemeItem {
-        id: "kanagawa_wave",
-        label: "Kanagawa Wave",
-        background: 0x1f1f28,
-        foreground: 0xdcd7ba,
-        preview: [0x957fb8, 0x7e9cd8, 0x98bb6c, 0x727169],
-    },
 ];
 
 pub(crate) fn code_theme_item(theme_name: &str) -> CodeThemeItem {
@@ -121,13 +80,16 @@ pub(crate) fn code_theme_item(theme_name: &str) -> CodeThemeItem {
         .iter()
         .copied()
         .find(|item| item.id == theme_name)
-        .or_else(|| {
-            CODE_THEME_ITEMS
-                .iter()
-                .copied()
-                .find(|item| item.id == DEFAULT_CODE_HIGHLIGHT_THEME)
-        })
-        .expect("default code highlight theme is in the menu")
+        .unwrap_or(CODE_THEME_ITEMS[0])
+}
+
+/// Get code theme based on global theme mode (light/dark)
+pub(crate) fn code_theme_for_mode(is_dark: bool) -> &'static str {
+    if is_dark {
+        DEFAULT_CODE_HIGHLIGHT_THEME_DARK
+    } else {
+        DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT
+    }
 }
 
 type HighlightResult = Result<RichTextLayoutSpans, Arc<str>>;
@@ -543,7 +505,7 @@ mod tests {
             CodeHighlightEntry {
                 content_version: source.content_version,
                 language: Language::Rust,
-                theme_name: DEFAULT_CODE_HIGHLIGHT_THEME,
+                theme_name: DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT,
                 source,
                 fallback: None,
                 result,
@@ -628,7 +590,7 @@ mod tests {
     #[test]
     fn default_rust_theme_produces_distinct_text_layout_foreground_runs() {
         let source = "fn main() {\n    let answer = 42;\n}";
-        let spans = highlight_source(source, Language::Rust, DEFAULT_CODE_HIGHLIGHT_THEME)
+        let spans = highlight_source(source, Language::Rust, DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT)
             .expect("default Rust highlighting succeeds");
         let style_runs = cditor_text::text_style_runs(
             &spans,
@@ -636,7 +598,7 @@ mod tests {
                 language: Some("rust".to_owned()),
             },
             cditor_text::TextTheme::default(),
-            code_theme_item(DEFAULT_CODE_HIGHLIGHT_THEME).foreground,
+            code_theme_item(DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT).foreground,
             &cditor_text::TextStyleConfig::default(),
             crate::platform::EDITOR_MONO_FONT_FAMILY,
         );
@@ -679,16 +641,25 @@ mod tests {
     }
 
     #[test]
-    fn bundled_theme_menu_items_resolve_in_lumis() {
+    fn bundled_theme_menu_items_have_valid_ids() {
         assert!(
             CODE_THEME_ITEMS
                 .iter()
-                .all(|item| themes::get(item.id).is_ok())
+                .any(|item| item.id == DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT)
         );
         assert!(
             CODE_THEME_ITEMS
                 .iter()
-                .any(|item| item.id == DEFAULT_CODE_HIGHLIGHT_THEME)
+                .any(|item| item.id == DEFAULT_CODE_HIGHLIGHT_THEME_DARK)
+        );
+    }
+
+    #[test]
+    fn bundled_themes_resolve_in_lumis() {
+        assert!(
+            CODE_THEME_ITEMS
+                .iter()
+                .all(|item| themes::get(item.id).is_ok())
         );
     }
 }

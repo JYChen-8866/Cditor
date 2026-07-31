@@ -6,18 +6,30 @@ pub use cditor_theme::GuiTheme;
 /// When Aurin toggles dark mode, it updates this global,
 /// and the editor render function reads it to pick light/dark colors.
 #[derive(Debug, Clone)]
-pub struct EditorTheme(pub GuiTheme);
+pub struct EditorTheme {
+    pub theme: GuiTheme,
+    pub is_dark: bool,
+}
 
 impl gpui::Global for EditorTheme {}
 
 impl Default for EditorTheme {
     fn default() -> Self {
-        Self(GuiTheme::light())
+        Self {
+            theme: GuiTheme::light(),
+            is_dark: false,
+        }
     }
 }
 
 pub fn active_theme(cx: &gpui::App) -> GuiTheme {
     cx.try_global::<EditorTheme>()
-        .map(|t| t.0)
+        .map(|t| t.theme)
         .unwrap_or_else(GuiTheme::light)
+}
+
+pub fn is_dark_mode(cx: &gpui::App) -> bool {
+    cx.try_global::<EditorTheme>()
+        .map(|t| t.is_dark)
+        .unwrap_or(false)
 }
