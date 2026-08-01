@@ -486,3 +486,51 @@ fn relocate_ttf(ttf: &[u8], base_offset: usize) -> Vec<u8> {
 fn align_four(value: usize) -> usize {
     (value + 3) & !3
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn apple_color_emoji_glyph_rasterizes_through_color_bitmap_sources() {
+    // The editor routes color glyph runs (emoji) through the exact raster
+    // atlas because GPUI's macOS font resolution skips Apple Color Emoji
+    // (it has no 'm' glyph). This guards the swash color-bitmap path that
+    // the routed runs depend on.
+    const APPLE_COLOR_EMOJI: &str = "/System/Library/Fonts/Apple Color Emoji.ttc";
+    if !std::path::Path::new(APPLE_COLOR_EMOJI).exists() {
+        return;
+    }
+    let data = std::fs::read(APPLE_COLOR_EMOJI).unwrap();
+    let instance = FontInstanceKey::new(
+        FontFaceKey::new(83, data.len(), 0),
+        Vec::new(),
+        FontSynthesisKey::new(Vec::new(), false, None),
+    );
+    let key = ExactRasterKey {
+        font: instance.clone(),
+        // U+1F600 grinning face resolves to this glyph id on current macOS.
+        glyph_id: 2096,
+        device_font_size_bits: 64.0f32.to_bits(),
+        subpixel_x: 0,
+        subpixel_y: 0,
+        foreground: 0x37352f,
+        color: true,
+        policy_version: EXACT_RASTER_POLICY_VERSION,
+    };
+    let value = rasterize_uncached(
+        &key,
+        RasterFontSource {
+            data: &data,
+            blob_id: 83,
+            face_index: 0,
+            instance: &instance,
+        },
+        &mut ScaleContext::new(),
+    )
+    .expect("Apple Color Emoji glyph should rasterize through its color bitmap");
+
+    let bytes = cache_value_bytes(&value);
+    assert!(!bytes.is_empty(), "emoji raster must not be empty");
+    assert!(
+        bytes.chunks_exact(4).any(|pixel| pixel[3] > 0),
+        "emoji raster must contain visible pixels"
+    );
+}

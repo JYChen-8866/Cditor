@@ -61,6 +61,12 @@ impl TextPaintReport {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GpuiFontBridgeStatus {
     ExactCandidate,
+    /// The run contains color glyphs (e.g. emoji). GPUI's macOS font loader
+    /// refuses families that lack an 'm' glyph (Apple Color Emoji has none),
+    /// so resolving the family through GPUI falls back to a non-emoji font and
+    /// the glyph is painted from the wrong face. Route these runs through the
+    /// exact raster atlas instead, which rasters the parley font data directly.
+    ColorGlyphRasterRequired,
     CollectionFaceUnsupported,
     VariableInstanceUnsupported,
     SynthesisUnsupported,
@@ -131,6 +137,15 @@ pub(crate) fn paint_text_layout(
             run.font.instance_key().synthesis().any(),
             gpui_face_available,
         );
+        // Color glyphs (emoji, symbol fonts) must paint through the exact
+        // raster atlas: GPUI's macOS font resolution skips emoji fonts that
+        // have no 'm' glyph and would paint the emoji glyph id from a
+        // fallback family (e.g. Helvetica), which renders nothing or garbage.
+        let bridge_status = if run.glyphs.iter().any(|glyph| glyph.color) {
+            GpuiFontBridgeStatus::ColorGlyphRasterRequired
+        } else {
+            bridge_status
+        };
         if bridge_status == GpuiFontBridgeStatus::ExactCandidate {
             report.exact_candidate_runs += 1;
         } else {
@@ -172,10 +187,13 @@ pub(crate) fn paint_text_layout(
 }
 
 fn glyph_paint_path(bridge_status: GpuiFontBridgeStatus) -> GlyphPaintPath {
-    if bridge_status == GpuiFontBridgeStatus::ExactCandidate {
-        GlyphPaintPath::GpuiGlyphAtlas
-    } else {
-        GlyphPaintPath::ExactRasterImageAtlas
+    match bridge_status {
+        GpuiFontBridgeStatus::ExactCandidate => GlyphPaintPath::GpuiGlyphAtlas,
+        GpuiFontBridgeStatus::ColorGlyphRasterRequired
+        | GpuiFontBridgeStatus::CollectionFaceUnsupported
+        | GpuiFontBridgeStatus::VariableInstanceUnsupported
+        | GpuiFontBridgeStatus::SynthesisUnsupported
+        | GpuiFontBridgeStatus::FamilyResolutionUnverified => GlyphPaintPath::ExactRasterImageAtlas,
     }
 }
 
@@ -545,6 +563,7 @@ mod tests {
             GlyphPaintPath::GpuiGlyphAtlas
         );
         for status in [
+            GpuiFontBridgeStatus::ColorGlyphRasterRequired,
             GpuiFontBridgeStatus::CollectionFaceUnsupported,
             GpuiFontBridgeStatus::VariableInstanceUnsupported,
             GpuiFontBridgeStatus::SynthesisUnsupported,
