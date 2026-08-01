@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use crate::shapes::ShapeId;
+use crate::theme::{WhiteboardChrome, chrome};
 use gpui::{
     AnyElement, Context, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
     StatefulInteractiveElement, Styled, canvas, div, prelude::FluentBuilder, px, rgb,
@@ -156,6 +157,7 @@ impl DrafftBoardView {
     }
 
     pub(super) fn render_math_editor(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let Some(edit) = &self.math_edit else {
             return div().into_any_element();
         };
@@ -184,8 +186,8 @@ impl DrafftBoardView {
                     .gap(px(14.0))
                     .rounded(px(8.0))
                     .border_1()
-                    .border_color(rgb(0xd8dce3))
-                    .bg(rgb(0xffffff))
+                    .border_color(rgb(c.border))
+                    .bg(rgb(c.bg))
                     .shadow_lg()
                     .child(div().text_size(px(15.0)).child("Edit equation"))
                     .child(
@@ -199,8 +201,8 @@ impl DrafftBoardView {
                             .overflow_hidden()
                             .rounded(px(6.0))
                             .border_1()
-                            .border_color(rgb(0x3b82f6))
-                            .bg(rgb(0xffffff))
+                            .border_color(rgb(c.accent))
+                            .bg(rgb(c.bg))
                             .font_family(UI_FONT_FAMILY)
                             .text_size(px(14.0))
                             .child(
@@ -213,10 +215,10 @@ impl DrafftBoardView {
                             )
                             .child(prefix)
                             .when(collapsed, |input| {
-                                input.child(div().w(px(2.0)).h(px(19.0)).bg(rgb(0x2563eb)))
+                                input.child(div().w(px(2.0)).h(px(19.0)).bg(rgb(c.accent)))
                             })
                             .when(!collapsed, |input| {
-                                input.child(div().bg(rgb(0x3b82f6).opacity(0.2)).child(selected))
+                                input.child(div().bg(rgb(c.accent).opacity(0.2)).child(selected))
                             })
                             .child(suffix),
                     )
@@ -225,10 +227,10 @@ impl DrafftBoardView {
                             .flex()
                             .justify_end()
                             .gap(px(8.0))
-                            .child(modal_button("Cancel", false).on_click(
+                            .child(modal_button("Cancel", false, c).on_click(
                                 cx.listener(|view, _, _, cx| view.cancel_math_editor(cx)),
                             ))
-                            .child(modal_button("Apply", true).on_click(
+                            .child(modal_button("Apply", true, c).on_click(
                                 cx.listener(|view, _, _, cx| view.apply_math_editor(cx)),
                             )),
                     ),
@@ -237,7 +239,11 @@ impl DrafftBoardView {
     }
 }
 
-fn modal_button(label: &'static str, primary: bool) -> gpui::Stateful<gpui::Div> {
+fn modal_button(
+    label: &'static str,
+    primary: bool,
+    c: WhiteboardChrome,
+) -> gpui::Stateful<gpui::Div> {
     div()
         .id(("drafft-math-modal", usize::from(primary)))
         .h(px(32.0))
@@ -248,26 +254,26 @@ fn modal_button(label: &'static str, primary: bool) -> gpui::Stateful<gpui::Div>
         .rounded(px(6.0))
         .border_1()
         .border_color(if primary {
-            rgb(0x2563eb)
+            rgb(c.accent)
         } else {
-            rgb(0xd8dce3)
+            rgb(c.border)
         })
         .bg(if primary {
-            rgb(0x2563eb)
+            rgb(c.accent)
         } else {
-            rgb(0xffffff)
+            rgb(c.bg)
         })
         .text_color(if primary {
-            rgb(0xffffff)
+            rgb(c.bg)
         } else {
-            rgb(0x34373c)
+            rgb(c.text)
         })
         .cursor_pointer()
         .hover(move |style| {
             style.bg(if primary {
-                rgb(0x1d4ed8)
+                rgb(c.accent)
             } else {
-                rgb(0xf3f4f6)
+                rgb(c.hover)
             })
         })
         .child(label)

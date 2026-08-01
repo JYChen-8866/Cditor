@@ -4,7 +4,7 @@ use gpui::{
 };
 use kurbo::{Point as KurboPoint, Size as KurboSize};
 
-use crate::theme::chrome;
+use crate::theme::{WhiteboardChrome, chrome};
 
 use super::{
     DrafftBoardView,
@@ -12,7 +12,6 @@ use super::{
 };
 use crate::paint::GridStyle;
 
-const ICON_COLOR: u32 = 0x334155;
 const ZOOM_FACTOR: f64 = 1.2;
 
 #[derive(Clone, Copy)]
@@ -152,8 +151,9 @@ impl DrafftBoardView {
         action: BottomAction,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let button = icon_button(id, false, !enabled)
-            .child(svg_icon(icon_key, icon_bytes, rgb(ICON_COLOR).into(), 16.0))
+        let c = chrome(cx);
+        let button = icon_button(id, false, !enabled, c)
+            .child(svg_icon(icon_key, icon_bytes, rgb(c.text).into(), 16.0))
             .tooltip(move |_window, cx| cx.new(|_| ToolTip::new(tooltip)).into());
         if enabled {
             button
@@ -177,8 +177,9 @@ impl DrafftBoardView {
         action: BottomAction,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        icon_button(id, selected, false)
-            .child(svg_icon(icon_key, icon_bytes, rgb(ICON_COLOR).into(), 16.0))
+        let c = chrome(cx);
+        icon_button(id, selected, false, c)
+            .child(svg_icon(icon_key, icon_bytes, rgb(c.text).into(), 16.0))
             .tooltip(move |_window, cx| cx.new(|_| ToolTip::new(tooltip)).into())
             .on_click(cx.listener(move |view, _, _, cx| {
                 view.apply_bottom_action(action);
@@ -195,9 +196,10 @@ impl DrafftBoardView {
         action: BottomAction,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        icon_button(id, false, false)
+        let c = chrome(cx);
+        icon_button(id, false, false, c)
             .text_size(px(16.0))
-            .text_color(rgb(ICON_COLOR))
+            .text_color(rgb(c.text))
             .child(text)
             .tooltip(move |_window, cx| cx.new(|_| ToolTip::new(tooltip)).into())
             .on_click(cx.listener(move |view, _, _, cx| {
@@ -218,7 +220,7 @@ impl DrafftBoardView {
             .justify_center()
             .rounded(px(5.0))
             .text_size(px(12.0))
-            .text_color(rgb(ICON_COLOR))
+            .text_color(rgb(c.text))
             .cursor_pointer()
             .hover(|style| style.bg(rgb(c.hover)))
             .child(format!("{}%", self.board.zoom_percent()))
@@ -231,9 +233,10 @@ impl DrafftBoardView {
     }
 
     fn grid_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let tooltip = grid_tooltip(self.grid_style);
-        icon_button("bottom-grid", self.grid_style != GridStyle::None, false)
-            .child(grid_icon(self.grid_style))
+        icon_button("bottom-grid", self.grid_style != GridStyle::None, false, c)
+            .child(grid_icon(self.grid_style, c))
             .tooltip(move |_window, cx| cx.new(|_| ToolTip::new(tooltip)).into())
             .on_click(cx.listener(|view, _, _, cx| {
                 view.apply_bottom_action(BottomAction::ToggleGrid);
@@ -285,7 +288,7 @@ fn grid_tooltip(style: GridStyle) -> &'static str {
     }
 }
 
-fn grid_icon(style: GridStyle) -> AnyElement {
+fn grid_icon(style: GridStyle, c: WhiteboardChrome) -> AnyElement {
     canvas(
         |_, _, _| {},
         move |bounds, _, window, _| {
@@ -352,7 +355,7 @@ fn grid_icon(style: GridStyle) -> AnyElement {
                 }
             }
             if let Ok(path) = path.build() {
-                window.paint_path(path, rgb(ICON_COLOR));
+                window.paint_path(path, rgb(c.text));
             }
         },
     )

@@ -1,4 +1,5 @@
 use crate::shapes::{SerializableColor, ShapeStyle};
+use crate::theme::{WhiteboardChrome, chrome};
 use gpui::{
     AnyElement, AppContext, Context, Hsla, InteractiveElement, IntoElement, ParentElement, Rgba,
     StatefulInteractiveElement, Styled, div, prelude::FluentBuilder, px, rgb,
@@ -33,6 +34,7 @@ const FILL_COLORS: [(u32, &str); 6] = [
 
 impl DrafftBoardView {
     pub(super) fn render_properties(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let c = chrome(cx);
         let style = self.visible_style();
         let stroke_color = style.stroke_color;
         let fill_color = style.fill_color;
@@ -52,18 +54,19 @@ impl DrafftBoardView {
             .gap(px(12.0))
             .rounded(px(8.0))
             .border_1()
-            .border_color(rgb(0xdcdcdc))
-            .bg(rgb(0xfafafc))
+            .border_color(rgb(c.border))
+            .bg(rgb(c.bg))
             .shadow_sm()
             .occlude()
             .child(self.stroke_section(stroke_color, cx))
-            .child(panel_separator())
+            .child(panel_separator(c.border))
             .child(self.fill_section(fill_color, cx))
-            .child(panel_separator())
+            .child(panel_separator(c.border))
             .child(self.stroke_width_section(stroke_width, cx))
     }
 
     fn stroke_section(&self, current: SerializableColor, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let swatches = STROKE_COLORS
             .into_iter()
             .enumerate()
@@ -75,7 +78,7 @@ impl DrafftBoardView {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .child(section_label("Stroke"))
+            .child(section_label("Stroke", c.text_muted))
             .child(
                 div()
                     .h(px(20.0))
@@ -83,7 +86,7 @@ impl DrafftBoardView {
                     .items_center()
                     .gap(px(2.0))
                     .children(swatches)
-                    .child(swatch_separator())
+                    .child(swatch_separator(c.border))
                     .child(self.stroke_picker.clone()),
             )
             .into_any_element()
@@ -94,6 +97,7 @@ impl DrafftBoardView {
         current: Option<SerializableColor>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let c = chrome(cx);
         let swatches = FILL_COLORS
             .into_iter()
             .enumerate()
@@ -105,7 +109,7 @@ impl DrafftBoardView {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .child(section_label("Fill"))
+            .child(section_label("Fill", c.text_muted))
             .child(
                 div()
                     .h(px(20.0))
@@ -114,13 +118,14 @@ impl DrafftBoardView {
                     .gap(px(2.0))
                     .child(self.no_fill_swatch(current.is_none(), cx))
                     .children(swatches)
-                    .child(swatch_separator())
+                    .child(swatch_separator(c.border))
                     .child(self.fill_picker.clone()),
             )
             .into_any_element()
     }
 
     fn stroke_width_section(&self, current: f64, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let buttons = STROKE_WIDTHS
             .into_iter()
             .enumerate()
@@ -136,14 +141,14 @@ impl DrafftBoardView {
                     .rounded(px(4.0))
                     .border_1()
                     .border_color(if selected {
-                        rgb(0x3b82f6)
+                        rgb(c.accent)
                     } else {
-                        rgb(0xd2d2d2)
+                        rgb(c.border)
                     })
                     .bg(if selected {
-                        rgb(0x3b82f6)
+                        rgb(c.accent)
                     } else {
-                        rgb(0xfafafa)
+                        rgb(c.bg_strong)
                     })
                     .tooltip(move |_window, cx| {
                         cx.new(|_| super::components::tooltip::ToolTip::new(name))
@@ -159,9 +164,9 @@ impl DrafftBoardView {
                             .h(px(width as f32))
                             .rounded(px((width / 2.0) as f32))
                             .bg(if selected {
-                                rgb(0xffffff)
+                                rgb(c.bg)
                             } else {
-                                rgb(0x505050)
+                                rgb(c.text)
                             }),
                     )
             });
@@ -169,7 +174,7 @@ impl DrafftBoardView {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .child(section_label("Stroke width"))
+            .child(section_label("Stroke width", c.text_muted))
             .child(div().h(px(20.0)).flex().gap(px(2.0)).children(buttons))
             .into_any_element()
     }
@@ -182,7 +187,8 @@ impl DrafftBoardView {
         selected: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        color_swatch(("stroke-swatch", index), hex, name, selected)
+        let c = chrome(cx);
+        color_swatch(("stroke-swatch", index), hex, name, selected, c)
             .on_click(cx.listener(move |view, _, _, cx| {
                 view.board.set_stroke_color(serializable_rgb(hex));
                 view.sync_style_controls(cx);
@@ -199,7 +205,8 @@ impl DrafftBoardView {
         selected: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        color_swatch(("fill-swatch", index), hex, name, selected)
+        let c = chrome(cx);
+        color_swatch(("fill-swatch", index), hex, name, selected, c)
             .on_click(cx.listener(move |view, _, _, cx| {
                 view.board.set_fill_color(Some(serializable_rgb(hex)));
                 view.sync_style_controls(cx);
@@ -209,17 +216,18 @@ impl DrafftBoardView {
     }
 
     fn no_fill_swatch(&self, selected: bool, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         div()
             .id("fill-none")
             .relative()
             .size(px(20.0))
             .rounded(px(10.0))
             .border_1()
-            .border_color(rgb(0xd2d2d2))
-            .bg(rgb(0xffffff))
+            .border_color(rgb(c.border))
+            .bg(rgb(c.bg))
             .cursor_pointer()
-            .when(selected, |swatch| {
-                swatch.child(selection_ring(rgb(0x1e1e1e).into()))
+        .when(selected, |swatch| {
+                swatch.child(selection_ring(rgb(c.text).into()))
             })
             .child(
                 div()
@@ -228,7 +236,7 @@ impl DrafftBoardView {
                     .top(px(9.0))
                     .w(px(16.0))
                     .h(px(1.0))
-                    .bg(rgb(0xef4444)),
+                    .bg(rgb(c.danger)),
             )
             .on_click(cx.listener(|view, _, _, cx| {
                 view.board.set_fill_color(None);
@@ -266,6 +274,7 @@ fn color_swatch(
     hex: u32,
     name: &'static str,
     selected: bool,
+    c: WhiteboardChrome,
 ) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
@@ -279,7 +288,7 @@ fn color_swatch(
                 .into()
         })
         .when(selected, |swatch| {
-            swatch.child(selection_ring(rgb(0x1e1e1e).into()))
+            swatch.child(selection_ring(rgb(c.text).into()))
         })
 }
 
@@ -294,20 +303,20 @@ fn selection_ring(color: Hsla) -> impl IntoElement {
         .border_color(color)
 }
 
-fn section_label(text: &'static str) -> impl IntoElement {
+fn section_label(text: &'static str, color: u32) -> impl IntoElement {
     div()
         .h(px(12.0))
         .text_size(px(10.0))
-        .text_color(rgb(0x787878))
+        .text_color(rgb(color))
         .child(text)
 }
 
-fn panel_separator() -> impl IntoElement {
-    div().w(px(1.0)).h(px(32.0)).bg(rgb(0xdcdcdc))
+fn panel_separator(color: u32) -> impl IntoElement {
+    div().w(px(1.0)).h(px(32.0)).bg(rgb(color))
 }
 
-fn swatch_separator() -> impl IntoElement {
-    div().mx(px(4.0)).w(px(1.0)).h(px(14.0)).bg(rgb(0xd2d2d2))
+fn swatch_separator(color: u32) -> impl IntoElement {
+    div().mx(px(4.0)).w(px(1.0)).h(px(14.0)).bg(rgb(color))
 }
 
 fn serializable_rgb(hex: u32) -> SerializableColor {

@@ -19,6 +19,15 @@ pub struct DocumentInfo {
     pub readonly: bool,
 }
 
+/// Plain-text statistics for the currently loaded document content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextStatistics {
+    /// Number of whitespace-separated words in the document's plain text.
+    pub word_count: usize,
+    /// Number of lines in the document's plain text.
+    pub line_count: usize,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentSnapshot {
     pub schema_version: u32,

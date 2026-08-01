@@ -72,8 +72,8 @@ mod undo_redo;
 mod whiteboard;
 
 pub use ai::{
-    AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot, AiSessionStatus,
-    AiStreamApplyResult, RuntimeAiTarget,
+    AgentBlockOutline, AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionSnapshot,
+    AiSessionStatus, AiStreamApplyResult, RuntimeAiTarget,
 };
 pub use ai_session_port::{AiSessionOutcome, AiSessionRequest};
 pub use cditor_viewport::window::WindowMemoryPressure;

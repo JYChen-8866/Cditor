@@ -655,3 +655,141 @@ fn gutter_drag_drop_target_uses_midpoints_and_skips_source_subtree() {
 
 #[path = "cditor_v2_view_tests/gutter_parent.rs"]
 mod gutter_parent;
+
+#[gpui::test]
+fn table_cell_ime_composition_reaches_runtime_preview_and_commits(cx: &mut gpui::TestAppContext) {
+    use gpui::{AppContext as _, EntityInputHandler, ParentElement as _, Styled as _};
+
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![cditor_core::rich_text::BlockPayloadRecord {
+            block_id: 1,
+            content_version: 1,
+            kind: cditor_core::rich_text::RichBlockKind::Table,
+            payload: cditor_core::rich_text::BlockPayload::Table(
+                cditor_core::rich_text::TablePayload {
+                    rows: vec![cditor_core::rich_text::TableRowPayload {
+                        cells: vec![cditor_core::rich_text::TableCellPayload::plain("abcd")],
+                        height: Default::default(),
+                    }],
+                    columns: Vec::new(),
+                    header_rows: 0,
+                    header_cols: 0,
+                    header_style: Default::default(),
+                },
+            ),
+        }],
+        720.0,
+    );
+    crate::test_support::focus_table_cell_at_offset(&mut runtime, 1, 0, 0, 2);
+    let session = cditor_session::EditorSession::new(runtime, false).into_handle();
+
+    struct Host {
+        editor: gpui::Entity<CditorV2View>,
+    }
+    impl gpui::Render for Host {
+        fn render(
+            &mut self,
+            _: &mut gpui::Window,
+            _: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
+            gpui::div().size_full().child(self.editor.clone())
+        }
+    }
+
+    let (host, cx) = cx.add_window_view(|_, cx| {
+        let editor = cx.new(|cx| {
+            let mut editor = CditorV2View::loading("", false, cx);
+            editor.apply_loaded_session(session.clone());
+            editor
+        });
+        Host { editor }
+    });
+
+    // First paint registers the focused table cell as the platform input
+    // target (self.input.target becomes TableCell { block: 1, row: 0, col: 0 }).
+    cx.update(|window, cx| {
+        let _ = window.draw(cx);
+    });
+
+    // Drive the IME composition callback exactly like gpui_macos does.
+    cx.update(|window, cx| {
+        let editor = host.read(cx).editor.clone();
+        editor.update(cx, |view, cx| {
+            view.replace_and_mark_text_in_range(Some(2..2), "ni", Some(2..4), window, cx);
+        });
+    });
+
+    let context = session.input_context().unwrap();
+    assert_eq!(
+        context
+            .focused_text
+            .as_ref()
+            .map(|focused| focused.text.as_str()),
+        Some("abnicd")
+    );
+    assert_eq!(context.marked_range, Some(2..4));
+    assert_eq!(
+        context.target,
+        Some(cditor_runtime::InputTarget::TableCell {
+            block_id: 1,
+            row: 0,
+            col: 0,
+        })
+    );
+
+    let interaction = session.table_interaction(Some(1)).unwrap();
+    let cell = interaction.focused_cell.unwrap();
+    assert_eq!(cell.marked_range, Some(2..4));
+    assert_eq!(cell.offset, 4);
+
+    // The rendered table projection must show the composition preview text in
+    // the focused cell (this is what the user sees as the temporary letters).
+    let projection = session
+        .projection(cditor_editor_protocol::projection::ProjectionRequest {
+            viewport_revision: 0,
+            include_diagnostics: false,
+        })
+        .unwrap();
+    let table_block = projection
+        .blocks
+        .iter()
+        .find(|block| block.block_id == 1)
+        .expect("table block projected");
+    let table = table_block.table_view.as_ref().expect("table view");
+    let focused_cell_spans = table
+        .visible_cells
+        .iter()
+        .find(|cell| cell.position == cditor_runtime::TableCellPosition { row: 0, col: 0 })
+        .expect("focused cell projected");
+    let rendered_text: String = focused_cell_spans
+        .spans
+        .iter()
+        .map(|span| span.text.as_str())
+        .collect();
+    assert_eq!(rendered_text, "abnicd");
+
+    // Commit the composition through the same adapter callback.
+    cx.update(|window, cx| {
+        let editor = host.read(cx).editor.clone();
+        editor.update(cx, |view, cx| view.unmark_text(window, cx));
+    });
+
+    let context = session.input_context().unwrap();
+    assert!(context.composition.is_none());
+    assert_eq!(
+        context
+            .focused_text
+            .as_ref()
+            .map(|focused| focused.text.as_str()),
+        Some("abnicd")
+    );
+    let cell = session
+        .table_interaction(Some(1))
+        .unwrap()
+        .focused_cell
+        .unwrap();
+    assert_eq!((cell.block_id, cell.row, cell.col), (1, 0, 0));
+    assert_eq!(cell.marked_range, None);
+    assert_eq!(cell.offset, 4);
+}

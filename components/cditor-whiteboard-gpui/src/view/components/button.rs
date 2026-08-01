@@ -1,3 +1,5 @@
+use crate::theme::WhiteboardChrome;
+
 use gpui::{
     CursorStyle, Div, ElementId, InteractiveElement, Stateful, Styled, div, prelude::FluentBuilder,
     px, rgb,
@@ -7,6 +9,7 @@ pub(in crate::view) fn icon_button(
     id: impl Into<ElementId>,
     selected: bool,
     disabled: bool,
+    c: WhiteboardChrome,
 ) -> Stateful<Div> {
     div()
         .id(id)
@@ -20,14 +23,18 @@ pub(in crate::view) fn icon_button(
         } else {
             CursorStyle::PointingHand
         })
-        .when(selected, |button| button.bg(rgb(0xe7eefc)))
+        .when(selected, |button| button.bg(rgb(c.active)))
         .when(!selected && !disabled, |button| {
-            button.hover(|style| style.bg(rgb(0xf1f5f9)))
+            button.hover(|style| style.bg(rgb(c.hover)))
         })
         .when(disabled, |button| button.opacity(0.32))
 }
 
-pub(in crate::view) fn tool_button(id: impl Into<ElementId>, selected: bool) -> Stateful<Div> {
+pub(in crate::view) fn tool_button(
+    id: impl Into<ElementId>,
+    selected: bool,
+    c: WhiteboardChrome,
+) -> Stateful<Div> {
     div()
         .id(id)
         .size(px(32.0))
@@ -36,8 +43,8 @@ pub(in crate::view) fn tool_button(id: impl Into<ElementId>, selected: bool) -> 
         .justify_center()
         .rounded(px(6.0))
         .cursor(CursorStyle::PointingHand)
-        .when(selected, |button| button.bg(rgb(0x3b82f6)))
+        .when(selected, |button| button.bg(rgb(c.accent)))
         .when(!selected, |button| {
-            button.hover(|style| style.bg(rgb(0xebebeb)))
+            button.hover(|style| style.bg(rgb(c.hover)))
         })
 }

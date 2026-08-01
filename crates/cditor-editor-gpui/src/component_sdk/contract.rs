@@ -6,9 +6,10 @@ use cditor_sdk::command::{CditorCommand, CommandOutcome, CommandState};
 use cditor_sdk::diagnostics::CditorDiagnostics;
 use cditor_sdk::document::{
     CloseGuard, DocumentInfo, DocumentSelection, RecoveryExport, SaveReport, SaveStatus,
-    ScrollAlignment,
+    ScrollAlignment, TextStatistics,
 };
 use cditor_sdk::{Cditor, CditorError};
+use cditor_session::{AgentEditOutcome, AgentEditRequest, AgentOutline, AgentOutlineRequest};
 
 use super::CditorComponent;
 
@@ -29,6 +30,7 @@ pub trait CditorViewContract: Sized + 'static {
     fn sdk_undo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError>;
     fn sdk_redo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError>;
     fn sdk_document_info(&self) -> Option<DocumentInfo>;
+    fn sdk_text_statistics(&self) -> Option<TextStatistics>;
     fn sdk_is_dirty(&self) -> bool;
     fn sdk_save_status(&self) -> SaveStatus;
     fn sdk_close_guard(&self) -> CloseGuard;
@@ -55,6 +57,12 @@ pub trait CditorViewContract: Sized + 'static {
         cx: &mut Context<Self>,
     ) -> Result<CommandOutcome, CditorError>;
     fn sdk_command_state(&self, command: &CditorCommand) -> CommandState;
+    fn sdk_agent_outline(&self, request: AgentOutlineRequest) -> Result<AgentOutline, CditorError>;
+    fn sdk_agent_edit(
+        &mut self,
+        request: AgentEditRequest,
+        cx: &mut Context<Self>,
+    ) -> Result<AgentEditOutcome, CditorError>;
 }
 
 /// Factory boundary implemented by the application composition crate.

@@ -58,6 +58,26 @@ impl Render for CditorV2View {
         self.run_main_thread_applies(frame_started, cx);
         let theme = active_theme(cx);
 
+        // Keep the Drafft whiteboard (canvas + chrome) in sync with the editor
+        // theme. This must run before the whiteboard early-return below; the
+        // board renders during this same pass and reads this global.
+        #[cfg(feature = "whiteboard")]
+        cditor_whiteboard_gpui::WhiteboardTheme::set(
+            cx,
+            cditor_whiteboard_gpui::WhiteboardTheme {
+                page: theme.page,
+                text: theme.text,
+                muted: theme.muted,
+                border: theme.border,
+                panel: theme.panel,
+                hover: theme.hover_surface,
+                accent: theme.action_accent,
+                ink: theme.text,
+                grid: theme.border,
+                danger: theme.danger,
+            },
+        );
+
         // Sync code theme with global theme
         self.features.sync_code_theme_with_global(is_dark_mode(cx));
 
@@ -457,22 +477,6 @@ impl Render for CditorV2View {
                     theme,
                     &self.scheduling.workers,
                     cx,
-                );
-                #[cfg(feature = "whiteboard")]
-                cditor_whiteboard_gpui::WhiteboardTheme::set(
-                    cx,
-                    cditor_whiteboard_gpui::WhiteboardTheme {
-                        page: theme.page,
-                        text: theme.text,
-                        muted: theme.muted,
-                        border: theme.strong_border,
-                        panel: theme.panel,
-                        hover: theme.hover_surface,
-                        accent: theme.action_accent,
-                        ink: theme.text,
-                        grid: theme.border,
-                        danger: theme.danger,
-                    },
                 );
                 let deferred_whiteboard_entities = {
                     let scheduler = &mut self.scheduling.main_thread;

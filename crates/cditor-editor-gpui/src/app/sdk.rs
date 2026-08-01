@@ -11,9 +11,11 @@ use cditor_sdk::diagnostics::CditorDiagnostics;
 use cditor_sdk::document::{
     Affinity, CloseGuard, DocumentInfo, DocumentPosition, DocumentSelection, RecoveryExport,
     SaveFailure, SaveFailureKind, SaveReport, SaveStatus, ScrollAlignment, TextOffset,
+    TextStatistics,
 };
 use cditor_sdk::event::CditorEvent;
 use cditor_sdk::{CditorError, command::CommandState};
+use cditor_session::{AgentEditOutcome, AgentEditRequest, AgentOutline, AgentOutlineRequest};
 
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
@@ -64,6 +66,10 @@ impl CditorViewContract for CditorV2View {
 
     fn sdk_document_info(&self) -> Option<DocumentInfo> {
         CditorV2View::sdk_document_info(self)
+    }
+
+    fn sdk_text_statistics(&self) -> Option<TextStatistics> {
+        CditorV2View::sdk_text_statistics(self)
     }
 
     fn sdk_is_dirty(&self) -> bool {
@@ -130,9 +136,47 @@ impl CditorViewContract for CditorV2View {
     fn sdk_command_state(&self, command: &CditorCommand) -> CommandState {
         CditorV2View::sdk_command_state(self, command)
     }
+
+    fn sdk_agent_outline(&self, request: AgentOutlineRequest) -> Result<AgentOutline, CditorError> {
+        CditorV2View::sdk_agent_outline(self, request)
+    }
+
+    fn sdk_agent_edit(
+        &mut self,
+        request: AgentEditRequest,
+        cx: &mut Context<Self>,
+    ) -> Result<AgentEditOutcome, CditorError> {
+        CditorV2View::sdk_agent_edit(self, request, cx)
+    }
 }
 
 impl CditorV2View {
+    pub fn sdk_agent_outline(
+        &self,
+        request: AgentOutlineRequest,
+    ) -> Result<AgentOutline, CditorError> {
+        self.ready_session()
+            .ok_or(CditorError::NotReady)?
+            .agent_outline(request)
+            .map_err(|error| CditorError::Internal(error.to_string()))
+    }
+
+    pub fn sdk_agent_edit(
+        &mut self,
+        request: AgentEditRequest,
+        cx: &mut Context<Self>,
+    ) -> Result<AgentEditOutcome, CditorError> {
+        let outcome = self
+            .ready_session()
+            .ok_or(CditorError::NotReady)?
+            .agent_edit(request)
+            .map_err(|error| CditorError::Internal(error.to_string()))?;
+        if outcome.changed {
+            self.mark_dirty_with_origin(ChangeOrigin::Ai, cx);
+        }
+        Ok(outcome)
+    }
+
     pub fn apply_remote_transaction(
         &mut self,
         transaction: &EditTransaction,
@@ -283,6 +327,14 @@ impl CditorV2View {
             revision: snapshot.revision,
             block_count: snapshot.block_count,
             readonly: snapshot.readonly,
+        })
+    }
+
+    pub fn sdk_text_statistics(&self) -> Option<TextStatistics> {
+        let (word_count, line_count) = self.ready_session()?.text_statistics().ok()?;
+        Some(TextStatistics {
+            word_count,
+            line_count,
         })
     }
 

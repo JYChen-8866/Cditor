@@ -32,7 +32,7 @@ impl DrafftBoardView {
         let active = self.board.tool();
         let buttons = TOOLS.into_iter().map(|tool| {
             let selected = tool == active;
-            tool_button(("drafft-tool", tool_index(tool)), selected)
+            tool_button(("drafft-tool", tool_index(tool)), selected, c)
                 .child(tool_icon(
                     tool,
                     if selected {

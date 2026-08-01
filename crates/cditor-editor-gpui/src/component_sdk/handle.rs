@@ -9,6 +9,7 @@ use cditor_sdk::document::{
     CloseGuard, DocumentInfo, DocumentSelection, RecoveryExport, SaveReport, SaveStatus,
     ScrollAlignment,
 };
+use cditor_session::{AgentEditOutcome, AgentEditRequest, AgentOutline, AgentOutlineRequest};
 
 use super::CditorViewContract;
 
@@ -206,6 +207,26 @@ impl<V: CditorViewContract> CditorHandle<V> {
         self.entity
             .read_with(cx, |view, _| view.sdk_command_state(command))
             .unwrap_or(CommandState::DISABLED)
+    }
+
+    pub fn agent_outline(
+        &self,
+        request: AgentOutlineRequest,
+        cx: &App,
+    ) -> Result<AgentOutline, CditorError> {
+        self.entity
+            .read_with(cx, |view, _| view.sdk_agent_outline(request))
+            .map_err(|_| CditorError::ComponentDropped)?
+    }
+
+    pub fn agent_edit(
+        &self,
+        request: AgentEditRequest,
+        cx: &mut App,
+    ) -> Result<AgentEditOutcome, CditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_agent_edit(request, cx))
+            .map_err(|_| CditorError::ComponentDropped)?
     }
 
     fn require_component(&self) -> Result<(), CditorError> {

@@ -494,7 +494,7 @@ impl DrafftBoardView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let c = chrome(cx);
-        icon_button(id, false, false)
+        icon_button(id, false, false, c)
             .child(svg_icon(icon_key, icon_bytes, rgb(c.text).into(), 16.0))
             .tooltip(move |_window, cx| cx.new(|_| ToolTip::new(tooltip)).into())
             .on_click(cx.listener(move |view, _, _, cx| {

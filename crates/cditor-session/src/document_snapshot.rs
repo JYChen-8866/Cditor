@@ -156,6 +156,26 @@ impl EditorSessionHandle {
         ))
     }
 
+    /// Word and line counts computed over the currently loaded payload window.
+    pub fn text_statistics(&self) -> Result<(usize, usize), ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        let mut word_count = 0usize;
+        let mut line_count = 0usize;
+        for record in session.runtime.loaded_payload_records_snapshot() {
+            let text = record.plain_text();
+            line_count += text.bytes().filter(|byte| *byte == b'\n').count()
+                + usize::from(!text.is_empty());
+            word_count += text.split_whitespace().count();
+        }
+        Ok((word_count, line_count))
+    }
+
     pub fn selected_text(&self) -> Result<Option<String>, ProtocolError> {
         let session = self.inner.try_borrow().map_err(|_| {
             ProtocolError::new(

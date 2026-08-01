@@ -360,6 +360,40 @@ impl DocumentRuntime {
         payload
     }
 
+    /// Apply the active composition preview to the focused table cell so the
+    /// rendered `table_view` (which the table renderer uses for cell text)
+    /// shows the IME composition preview instead of the committed cell text.
+    pub(super) fn table_payload_with_composition_preview(
+        &self,
+        block_id: BlockId,
+        mut table: TablePayloadSnapshot,
+    ) -> TablePayloadSnapshot {
+        if !self
+            .active_composition()
+            .is_some_and(|composition| composition.block_id == block_id)
+        {
+            return table;
+        }
+        let Some(focused) = self
+            .selection
+            .focused_table_cell
+            .filter(|cell| cell.block_id == block_id)
+        else {
+            return table;
+        };
+        let Some(preview_text) = self.composition_preview_text() else {
+            return table;
+        };
+        if let Some(cell) = table
+            .rows
+            .get_mut(focused.row)
+            .and_then(|row| row.cells.get_mut(focused.col))
+        {
+            cell.spans = vec![cditor_core::rich_text::InlineSpan::plain(preview_text)];
+        }
+        table
+    }
+
     fn composition_base_text(&self, block_id: BlockId) -> Option<String> {
         let target = self.input_session_target()?;
         (target.block_id() == block_id)

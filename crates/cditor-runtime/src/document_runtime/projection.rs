@@ -359,7 +359,8 @@ impl DocumentRuntime {
                             TablePayloadSnapshot::from_record(record.clone())
                         }
                         _ => None,
-                    });
+                    })
+                    .map(|table| self.table_payload_with_composition_preview(*block_id, table));
                 let table_view = table_payload.map(|table| {
                     table::table_view_state_from_payload(
                         table,

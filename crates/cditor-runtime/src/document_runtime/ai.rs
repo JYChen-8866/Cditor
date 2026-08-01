@@ -24,6 +24,18 @@ pub enum AiRequestPresentation {
     AssistantPanel,
 }
 
+/// Lightweight block projection for AI document tools.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentBlockOutline {
+    pub block_id: BlockId,
+    pub parent_id: Option<BlockId>,
+    pub kind: RichBlockKind,
+    pub text: String,
+    pub content_version: u64,
+    pub depth: u16,
+    pub has_children: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AiSessionStatus {
     Streaming,
@@ -741,15 +753,59 @@ impl DocumentRuntime {
         )
     }
 
+    /// Preorder block outline for agent context, capped at `max_blocks`.
+    pub fn agent_document_outline(&self, max_blocks: usize) -> Vec<AgentBlockOutline> {
+        let records = self.index_records();
+        let mut child_counts: std::collections::HashMap<BlockId, usize> =
+            std::collections::HashMap::new();
+        for record in &records {
+            if let Some(parent_id) = record.parent_id {
+                *child_counts.entry(parent_id).or_default() += 1;
+            }
+        }
+        records
+            .into_iter()
+            .take(max_blocks)
+            .map(|record| {
+                let payload = self.document.payload_window.get(record.id);
+                let text = self
+                    .document
+                    .text_models
+                    .get(&record.id)
+                    .map(|tm| tm.text().to_string())
+                    .or_else(|| {
+                        payload
+                            .map(|payload| payload.plain_text())
+                            .filter(|text| !text.is_empty())
+                    })
+                    .unwrap_or_default();
+                AgentBlockOutline {
+                    block_id: record.id,
+                    parent_id: record.parent_id,
+                    kind: payload
+                        .map(|payload| payload.kind.clone())
+                        .unwrap_or_else(|| {
+                            cditor_core::rich_text::rich_block_kind_from_tag(record.kind_tag)
+                        }),
+                    text,
+                    content_version: payload.map(|payload| payload.content_version).unwrap_or(0),
+                    depth: record.depth,
+                    has_children: child_counts.get(&record.id).copied().unwrap_or(0) > 0,
+                }
+            })
+            .collect()
+    }
+
     /// Set block text for agent writes (replaces all spans with plain text).
     pub fn agent_set_block_text(&mut self, block_id: BlockId, text: &str) -> Result<(), String> {
         let kind = self
             .block_kind(block_id)
             .ok_or_else(|| format!("block {block_id} not found"))?
             .clone();
-        self.apply_local_block_payload_transaction(
+        self.apply_local_block_payload_transaction_with_origin(
             block_id,
-            EditTransactionKind::BlockStructureChange,
+            EditTransactionKind::AiApply,
+            cditor_core::edit::ChangeOrigin::Ai,
             kind,
             BlockPayload::RichText {
                 spans: vec![InlineSpan::plain(text)],
@@ -757,6 +813,142 @@ impl DocumentRuntime {
         )?;
         self.focus_block_at_offset(block_id, 0)?;
         Ok(())
+    }
+
+    /// Insert a heading block after `after_block_id` (agent). Returns new block id.
+    pub fn agent_insert_heading_after(
+        &mut self,
+        after_block_id: BlockId,
+        level: u8,
+        text: &str,
+    ) -> Result<BlockId, String> {
+        let current_index = self
+            .document
+            .index
+            .index_of(after_block_id)
+            .ok_or_else(|| format!("block {after_block_id} is missing from index"))?;
+        let new_block_id = self
+            .document
+            .index
+            .block_ids
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        let parent_id = self.document.index.parent_ids[current_index];
+        let depth = self.document.index.depths[current_index];
+        let insert_at = self.subtree_end(current_index);
+        let kind = RichBlockKind::Heading {
+            level: level.clamp(1, 6),
+        };
+        let mut payload = BlockPayloadRecord::rich_text(new_block_id, kind.clone(), text);
+        payload.content_version = 0;
+        let record = BlockIndexRecord::new(
+            new_block_id,
+            parent_id,
+            depth,
+            kind_tag_for_rich_block_kind(&kind),
+            0,
+        )
+        .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(
+            new_block_id,
+            estimate_payload_height(&payload, insert_at),
+        ));
+
+        self.apply_local_insert_blocks_transaction(LocalInsertBlocksTransaction {
+            index: insert_at,
+            blocks: vec![record],
+            payloads: vec![payload],
+            kind: EditTransactionKind::AiApply,
+            origin: cditor_core::edit::ChangeOrigin::Ai,
+            before_selection: self.document_selection_snapshot(),
+            after_selection: Some(DocumentSelection::caret(TextPosition {
+                block_id: new_block_id,
+                offset: text.len(),
+                affinity: TextAffinity::Downstream,
+            })),
+        })?;
+        self.focus_block_at_offset(new_block_id, 0)?;
+        Ok(new_block_id)
+    }
+
+    /// Insert a block with an explicit payload after `after_block_id` (agent).
+    ///
+    /// Used for code blocks and other non-rich-text kinds; the transaction is
+    /// always marked `ChangeOrigin::Ai` so undo/persistence treat it as AI.
+    pub fn agent_insert_block_payload_after(
+        &mut self,
+        after_block_id: BlockId,
+        kind: RichBlockKind,
+        payload: BlockPayload,
+    ) -> Result<BlockId, String> {
+        let current_index = self
+            .document
+            .index
+            .index_of(after_block_id)
+            .ok_or_else(|| format!("block {after_block_id} is missing from index"))?;
+        let new_block_id = self
+            .document
+            .index
+            .block_ids
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        let parent_id = self.document.index.parent_ids[current_index];
+        let depth = self.document.index.depths[current_index];
+        let insert_at = self.subtree_end(current_index);
+        let payload = BlockPayloadRecord {
+            block_id: new_block_id,
+            content_version: 0,
+            kind: kind.clone(),
+            payload,
+        };
+        let record = BlockIndexRecord::new(
+            new_block_id,
+            parent_id,
+            depth,
+            kind_tag_for_rich_block_kind(&kind),
+            0,
+        )
+        .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(
+            new_block_id,
+            estimate_payload_height(&payload, insert_at),
+        ));
+
+        self.apply_local_insert_blocks_transaction(LocalInsertBlocksTransaction {
+            index: insert_at,
+            blocks: vec![record],
+            payloads: vec![payload],
+            kind: EditTransactionKind::AiApply,
+            origin: cditor_core::edit::ChangeOrigin::Ai,
+            before_selection: self.document_selection_snapshot(),
+            after_selection: None,
+        })?;
+        self.focus_block_at_offset(new_block_id, 0)?;
+        Ok(new_block_id)
+    }
+
+    /// Insert a code block after `after_block_id` (agent). Returns new block id.
+    pub fn agent_insert_code_block_after(
+        &mut self,
+        after_block_id: BlockId,
+        language: Option<&str>,
+        text: &str,
+    ) -> Result<BlockId, String> {
+        let language = language.map(str::to_owned);
+        self.agent_insert_block_payload_after(
+            after_block_id,
+            RichBlockKind::Code {
+                language: language.clone(),
+            },
+            BlockPayload::Code {
+                language,
+                text: text.to_owned(),
+            },
+        )
     }
 
     /// Insert a block with content after target (agent). Returns new block id.

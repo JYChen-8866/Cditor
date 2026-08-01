@@ -20,14 +20,15 @@ pub use content::payload_cache::{
 };
 pub use content::payload_window::PayloadWindow;
 pub use document_runtime::{
-    AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionOutcome, AiSessionRequest,
-    AiSessionSnapshot, AiSessionStatus, AiStreamApplyResult, CompositionFocusTransition,
-    DocumentRuntime, DocumentTextSelectionFragment, ImportApplicationReport, RealtimeInput,
-    RealtimeInputError, RealtimeInputOutcome, RealtimeInputRequest, RichTextDelta,
-    RichTextSelectionSnapshot, RuntimeAiTarget, SelectionMaterializationApplyDecision,
-    SelectionMaterializationRequest, TableClipboardSnapshot, TextSurface, TextSurfaceCapabilities,
-    TextSurfaceEditResult, TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot,
-    TextSurfaceSnapshotIdentity, TransactionApplyError,
+    AgentBlockOutline, AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionOutcome,
+    AiSessionRequest, AiSessionSnapshot, AiSessionStatus, AiStreamApplyResult,
+    CompositionFocusTransition, DocumentRuntime, DocumentTextSelectionFragment,
+    ImportApplicationReport, RealtimeInput, RealtimeInputError, RealtimeInputOutcome,
+    RealtimeInputRequest, RichTextDelta, RichTextSelectionSnapshot, RuntimeAiTarget,
+    SelectionMaterializationApplyDecision, SelectionMaterializationRequest,
+    TableClipboardSnapshot, TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult,
+    TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot, TextSurfaceSnapshotIdentity,
+    TransactionApplyError,
 };
 pub use editing::composition::{
     CompositionCancelResult, CompositionCommitResult, CompositionController, CompositionError,
