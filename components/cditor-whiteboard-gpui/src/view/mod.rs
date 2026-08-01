@@ -27,15 +27,16 @@ use gpui::{
 };
 use kurbo::{Point as KurboPoint, Size as KurboSize, Vec2};
 
+use crate::selection::{Corner, HandleKind};
+use crate::tools::ToolKind;
+use crate::{Camera, canvas::CanvasDocument};
 use crate::{
     DrafftBoard,
+    WhiteboardTheme,
     font::UI_FONT_FAMILY,
     model_host::{HoverTarget, PointerOutcome},
     paint,
 };
-use crate::selection::{Corner, HandleKind};
-use crate::tools::ToolKind;
-use crate::{Camera, canvas::CanvasDocument};
 
 use self::components::color_picker::{ColorPicker, ColorPickerEvent};
 use self::components::slider::{SliderEvent, SliderState};
@@ -87,6 +88,7 @@ pub struct DrafftBoardView {
     tabs: Vec<BoardTab>,
     active_tab: usize,
     grid_style: paint::GridStyle,
+    last_theme_ink: Option<crate::shapes::SerializableColor>,
     stroke_picker: Entity<ColorPicker>,
     fill_picker: Entity<ColorPicker>,
     opacity_slider: Entity<SliderState>,
@@ -219,6 +221,7 @@ impl DrafftBoardView {
             tabs: vec![initial_tab],
             active_tab: 0,
             grid_style: paint::GridStyle::default(),
+            last_theme_ink: None,
             stroke_picker,
             fill_picker,
             opacity_slider,
@@ -453,6 +456,28 @@ impl DrafftBoardView {
 
 impl Render for DrafftBoardView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = WhiteboardTheme::get(cx);
+        // Keep the default tool ink legible on the themed canvas. The board's
+        // tool style defaults to black, which disappears on a dark canvas.
+        let ink = crate::shapes::SerializableColor::new(
+            ((theme.ink >> 16) & 0xff) as u8,
+            ((theme.ink >> 8) & 0xff) as u8,
+            (theme.ink & 0xff) as u8,
+            255,
+        );
+        if self.last_theme_ink != Some(ink) {
+            let apply = {
+                let current = self.board.canvas.tool_manager.current_style.stroke_color;
+                let previous = self.last_theme_ink;
+                let is_default = current == crate::shapes::SerializableColor::black();
+                let unchanged = previous.is_none_or(|prev| current == prev);
+                is_default || unchanged
+            };
+            if apply {
+                self.last_theme_ink = Some(ink);
+                self.board.canvas.tool_manager.current_style.stroke_color = ink;
+            }
+        }
         if (self.text_edit.is_some() || self.math_edit.is_some()) && !self.focus.is_focused(window)
         {
             window.focus(&self.focus, cx);
@@ -486,6 +511,7 @@ impl Render for DrafftBoardView {
             viewport_size,
             self.board.selection_rect(),
             self.grid_style,
+            theme.grid,
             &mut self.text_outline_engine.borrow_mut(),
             &mut self.image_paint_engine.borrow_mut(),
         );
@@ -535,8 +561,8 @@ impl Render for DrafftBoardView {
             .overflow_hidden()
             .cursor(self.cursor)
             .font_family(UI_FONT_FAMILY)
-            .text_color(gpui::rgb(0x3c3c3c))
-            .bg(gpui::rgb(0xffffff))
+            .text_color(gpui::rgb(theme.text))
+            .bg(gpui::rgb(theme.page))
             .child(board_surface)
             .child(
                 div()

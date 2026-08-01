@@ -214,6 +214,8 @@ mod tests {
         DocumentRuntimeColdStartData {
             document_id: 9,
             document_title: "Loaded".to_owned(),
+            page_cover: None,
+            page_icon: None,
             structure_version: 3,
             records,
             block_attrs: vec![(1, BlockAttrs::default())],

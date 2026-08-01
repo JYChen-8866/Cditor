@@ -5,6 +5,7 @@ use crate::editor_view::CditorV2View;
 use crate::persistence::{
     EditorSaveStatus, PersistenceBarrierKind, PersistencePipelineError, schedule_storage_autosave,
 };
+use cditor_core::edit::{ChangeOrigin, EditTransaction};
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcome, CommandSource};
 use cditor_sdk::diagnostics::CditorDiagnostics;
 use cditor_sdk::document::{
@@ -132,6 +133,33 @@ impl CditorViewContract for CditorV2View {
 }
 
 impl CditorV2View {
+    pub fn apply_remote_transaction(
+        &mut self,
+        transaction: &EditTransaction,
+        cx: &mut Context<Self>,
+    ) -> Result<cditor_session::RemoteTransactionSnapshot, CditorError> {
+        let applied = self
+            .ready_session()
+            .ok_or(CditorError::NotReady)?
+            .apply_remote_transaction(transaction)
+            .map_err(|error| CditorError::Internal(error.to_string()))?;
+        let was_dirty = self.status.dirty;
+        self.status.dirty = true;
+        self.status.save_status = EditorSaveStatus::DirtyMemory;
+        if let Some(session) = self.ready_session() {
+            let _ = session.mark_persistence_dirty();
+        }
+        cx.emit(CditorEvent::ContentChanged {
+            revision: applied.revision,
+            origin: ChangeOrigin::Remote,
+        });
+        if !was_dirty {
+            cx.emit(CditorEvent::DirtyChanged { dirty: true });
+        }
+        cx.notify();
+        Ok(applied)
+    }
+
     pub fn sdk_configure_ai(
         &mut self,
         provider: Option<std::sync::Arc<dyn cditor_ai::AiProvider>>,
@@ -207,7 +235,8 @@ impl CditorV2View {
     }
 
     pub fn sdk_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.focus.editor.is_focused(window) {
+        let was_focused = self.focus.editor.is_focused(window);
+        if !was_focused {
             window.focus(&self.focus.editor, cx);
         }
     }
@@ -249,6 +278,8 @@ impl CditorV2View {
         Some(DocumentInfo {
             document_id: snapshot.document_id,
             title: snapshot.title,
+            title_from_heading: snapshot.title_from_heading,
+            icon: snapshot.icon.clone(),
             revision: snapshot.revision,
             block_count: snapshot.block_count,
             readonly: snapshot.readonly,
@@ -625,6 +656,55 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[gpui::test]
+    fn sdk_document_info_exposes_title_and_icon_changes(cx: &mut TestAppContext) {
+        let view = cx.new(|cx| {
+            CditorV2View::from_runtime_with_options(
+                cditor_runtime::DocumentRuntime::from_payloads(
+                    1,
+                    vec![cditor_core::rich_text::BlockPayloadRecord::rich_text(
+                        1,
+                        cditor_core::rich_text::RichBlockKind::Heading { level: 1 },
+                        "My Doc",
+                    )],
+                    720.0,
+                ),
+                false,
+                false,
+                cx,
+            )
+        });
+
+        view.update(cx, |view, _| {
+            let info = view.sdk_document_info().unwrap();
+            assert_eq!(info.title.as_deref(), Some("My Doc"));
+            assert_eq!(info.icon, None);
+            assert!(info.title_from_heading);
+        });
+
+        view.update(cx, |view, cx| {
+            view.dispatch_command(
+                cditor_editor_protocol::command::EditorCommand::SetPageIconEmoji {
+                    emoji: Some("😀".to_owned()),
+                },
+                cditor_editor_protocol::command::CommandSource::Toolbar,
+                cx,
+            )
+            .unwrap();
+        });
+
+        view.update(cx, |view, _| {
+            let info = view.sdk_document_info().unwrap();
+            assert_eq!(
+                info.icon,
+                Some(cditor_core::rich_text::PageIcon::Emoji {
+                    emoji: "😀".to_owned()
+                })
+            );
+            assert_eq!(info.title.as_deref(), Some("My Doc"));
+        });
     }
 
     #[test]

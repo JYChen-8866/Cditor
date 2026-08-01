@@ -1139,6 +1139,7 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "reqwest",
+ "serde_json",
  "tokio",
 ]
 
@@ -1167,6 +1168,7 @@ dependencies = [
  "image",
  "lumis",
  "mermaid_render",
+ "rfd",
  "serde",
  "serde_json",
  "swash",

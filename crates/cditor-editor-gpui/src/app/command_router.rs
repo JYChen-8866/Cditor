@@ -245,6 +245,9 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::DeleteSelection
             | CditorCommand::ApplyClipboardData { .. }
             | CditorCommand::InsertImageAsset { .. }
+            | CditorCommand::SetPageCover { .. }
+            | CditorCommand::SetPageIconEmoji { .. }
+            | CditorCommand::SetPageIconAsset { .. }
             | CditorCommand::ToggleBold
             | CditorCommand::ToggleItalic
             | CditorCommand::ToggleUnderline

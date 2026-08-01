@@ -24,11 +24,30 @@ pub struct LayoutViewportSnapshot {
     pub viewport_height: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BlockLayoutContextSnapshot {
+    pub content_version: Option<u64>,
+    pub effective_height: f64,
+    pub estimated_height: f64,
+}
+
 pub fn project_layout_viewport(runtime: &DocumentRuntime) -> LayoutViewportSnapshot {
     LayoutViewportSnapshot {
         global_scroll_top: runtime.global_scroll_top(),
         viewport_height: runtime.viewport_height(),
     }
+}
+
+pub fn project_block_layout_context(
+    runtime: &DocumentRuntime,
+    block_id: BlockId,
+) -> Option<BlockLayoutContextSnapshot> {
+    let layout = runtime.block_layout_meta(block_id)?;
+    Some(BlockLayoutContextSnapshot {
+        content_version: runtime.block_content_version(block_id),
+        effective_height: layout.effective_height(),
+        estimated_height: layout.estimated_height,
+    })
 }
 
 pub fn project_measured_block_height(
@@ -176,6 +195,20 @@ impl EditorSessionHandle {
             .retryable()
         })?;
         Ok(project_layout_viewport(&session.runtime))
+    }
+
+    pub fn block_layout_context(
+        &self,
+        block_id: BlockId,
+    ) -> Result<Option<BlockLayoutContextSnapshot>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(project_block_layout_context(&session.runtime, block_id))
     }
 
     pub fn queue_measured_block_height(
@@ -392,6 +425,32 @@ mod tests {
                 .unwrap()
                 .changed
         );
+    }
+
+    #[test]
+    fn block_layout_context_reports_effective_height_after_measured_update() {
+        let runtime = DocumentRuntime::large_mixed_demo();
+        let block_id = runtime.visible_block_ids()[0];
+        let content_version = runtime
+            .block_payload_record(block_id)
+            .unwrap()
+            .content_version;
+        let handle = EditorSession::new(runtime, false).into_handle();
+
+        let before = handle.block_layout_context(block_id).unwrap().unwrap();
+        assert_eq!(before.content_version, Some(content_version));
+        assert_eq!(before.effective_height, before.estimated_height);
+
+        assert!(
+            handle
+                .apply_measured_block_height(block_id, content_version, 240.0)
+                .unwrap()
+        );
+
+        let after = handle.block_layout_context(block_id).unwrap().unwrap();
+        assert_eq!(after.effective_height, 240.0);
+        assert_eq!(after.estimated_height, before.estimated_height);
+        assert!(handle.block_layout_context(999_999).unwrap().is_none());
     }
 
     #[test]

@@ -45,6 +45,7 @@ swash = "0.2.9"
 unicode-segmentation = "1.12"
 web-time = "1.1"
 image = "0.25.10"
+rfd = "0.15"
 lumis = { version = "0.12.0", default-features = false, optional = true, features = [
     "lang-bash", "lang-c", "lang-cpp", "lang-csharp", "lang-css",
     "lang-go", "lang-html",

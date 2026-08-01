@@ -51,6 +51,7 @@ pub(crate) fn export_png(
         Size::new(f64::from(width), f64::from(height)),
         None,
         GridStyle::None,
+        0,
         text_engine,
         image_engine,
     );

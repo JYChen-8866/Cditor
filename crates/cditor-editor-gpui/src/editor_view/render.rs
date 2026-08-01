@@ -3,7 +3,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div, rgb,
 };
 
-use crate::document::{DocumentBlockActionProjection, DocumentEditorView};
+use crate::document::{DocumentBlockActionProjection, DocumentEditorView, PageDecorationSnapshot};
 use crate::editor_view::{
     CditorV2View, CditorViewState, floating_toolbar_passes_selection_delay,
     formatting_toolbar_context, formatting_toolbar_state,
@@ -115,6 +115,12 @@ impl Render for CditorV2View {
             .track_scroll(&self.interaction.editor_viewport_handle)
             .key_context(CDITOR_KEY_CONTEXT)
             .track_focus(&self.focus.editor)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|view, _event, _window, _cx| {
+                    view.overlay.page_icon_menu_open = false;
+                }),
+            )
             .on_action(cx.listener(|view, _: &Newline, _window, cx| {
                 view.handle_bound_input_action(BoundInputAction::Newline, cx)
             }))
@@ -379,6 +385,20 @@ impl Render for CditorV2View {
             .and_then(|session| session.payload_storage_request().ok().flatten());
         let mut pending_payload_window_range = None;
         let mut pending_payload_prefetch_range = None;
+        let document_snapshot = self
+            .ready_session()
+            .and_then(|session| session.document_snapshot().ok());
+        let page_decorations = PageDecorationSnapshot {
+            cover: document_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.cover.clone()),
+            icon: document_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.icon.clone()),
+            revision: document_snapshot
+                .as_ref()
+                .map_or(0, |snapshot| snapshot.revision),
+        };
         let document_layout = self.document_layout_metrics(editor_viewport.width);
 
         match &mut self.state {
@@ -437,6 +457,22 @@ impl Render for CditorV2View {
                     theme,
                     &self.scheduling.workers,
                     cx,
+                );
+                #[cfg(feature = "whiteboard")]
+                cditor_whiteboard_gpui::WhiteboardTheme::set(
+                    cx,
+                    cditor_whiteboard_gpui::WhiteboardTheme {
+                        page: theme.page,
+                        text: theme.text,
+                        muted: theme.muted,
+                        border: theme.strong_border,
+                        panel: theme.panel,
+                        hover: theme.hover_surface,
+                        accent: theme.action_accent,
+                        ink: theme.text,
+                        grid: theme.border,
+                        danger: theme.danger,
+                    },
                 );
                 let deferred_whiteboard_entities = {
                     let scheduler = &mut self.scheduling.main_thread;
@@ -502,6 +538,8 @@ impl Render for CditorV2View {
                 root = root
                     .child(document_editor.render(
                         &projection,
+                        &page_decorations,
+                        self.page_chrome_extras.clone(),
                         view.clone(),
                         &image_caption_states,
                         &self.scheduling.workers,
@@ -529,10 +567,14 @@ impl Render for CditorV2View {
                         &internal_scroll.table_scroll_snapshots,
                         &internal_scroll.code_scroll_handles,
                         &internal_scroll.code_caret_reveal_after_line_break,
+                        &self.overlay.collapsed_code_blocks,
                         &self.cache.code_highlights,
                         &self.cache.mermaid_renders,
                         &mermaid_source_blocks,
                         &self.cache.whiteboard_thumbnails,
+                        self.overlay.page_icon_menu_open,
+                        self.overlay.page_icon_menu_custom_tab,
+                        self.overlay.page_icon_menu_scroll_handle.clone(),
                         cx,
                     ))
                     .child(render_scrollbar(

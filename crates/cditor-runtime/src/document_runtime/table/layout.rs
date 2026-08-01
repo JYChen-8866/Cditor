@@ -1,8 +1,7 @@
 use cditor_core::layout::{
     BODY_BLOCK_CONTENT_WIDTH_PX, COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX,
     NOTION_TABLE_CELL_LINE_HEIGHT_PX, NOTION_TABLE_CELL_PADDING_Y_PX,
-    NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX, STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX,
-    TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX,
+    NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX, TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX,
 };
 use cditor_core::rich_text::{InlineSpan, TableCellMerge, TablePayload, TableTrackSize};
 
@@ -123,9 +122,7 @@ pub(in crate::document_runtime) fn table_layout_from_input(
 }
 
 pub(in crate::document_runtime) fn table_payload_projected_height_px(table: &TablePayload) -> f32 {
-    table_layout_from_payload(table)
-        .height_px
-        .min(STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX as f32)
+    table_layout_from_payload(table).height_px
         + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32
         + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX as f32
 }
@@ -319,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn projected_table_height_caps_only_the_internal_content_viewport() {
+    fn projected_table_height_grows_with_table_rows() {
         let mut table = TablePayload {
             rows: (0..20)
                 .map(|_| TableRowPayload {
@@ -333,7 +330,7 @@ mod tests {
 
         assert_eq!(
             table_payload_projected_height_px(&table),
-            STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX as f32
+            20.0 * DEFAULT_TABLE_ROW_HEIGHT_PX
                 + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32
                 + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX as f32
         );

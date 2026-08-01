@@ -256,10 +256,7 @@ pub(crate) fn projected_block_rects_from_projection(
                 text_origin_y_in_block_px: text_geometry.origin_y_px,
                 text_width_px: text_geometry.width_px,
                 text_align: Some(block.attrs.text_align),
-                has_internal_text_scroll: matches!(
-                    block.kind,
-                    cditor_core::rich_text::RichBlockKind::Code { .. }
-                ),
+                has_internal_text_scroll: false,
                 supports_children: cditor_core::block::supports_list_children(&block.kind),
             };
             top += height;
@@ -295,7 +292,7 @@ mod viewport_origin_tests {
     use super::*;
 
     #[test]
-    fn document_viewport_origin_includes_host_offset_and_centering_without_a_top_gap() {
+    fn document_viewport_origin_includes_host_offset_centering_and_page_header_space() {
         let viewport = EditorViewport::from_measurement(
             Bounds::new(point(px(240.0), px(80.0)), size(px(1_440.0), px(900.0))),
             size(px(1_440.0), px(900.0)),
@@ -303,7 +300,7 @@ mod viewport_origin_tests {
 
         assert_eq!(
             DocumentViewportOrigin::from_layout(viewport, DocumentLayoutMetrics::default()),
-            DocumentViewportOrigin { x: 312.0, y: 80.0 }
+            DocumentViewportOrigin { x: 312.0, y: 176.0 }
         );
     }
 
@@ -319,7 +316,7 @@ mod viewport_origin_tests {
                 viewport,
                 DocumentLayoutMetrics::for_viewport(700.0)
             ),
-            DocumentViewportOrigin { x: 12.0, y: 20.0 }
+            DocumentViewportOrigin { x: 12.0, y: 68.0 }
         );
     }
 

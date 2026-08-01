@@ -4,7 +4,6 @@ use crate::rich_text::{BlockPayload, RichBlockKind, plain_text_from_spans};
 pub const DEFAULT_LAYOUT_WIDTH_PX: f64 = super::BODY_BLOCK_CONTENT_WIDTH_PX;
 pub const COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX: f64 = 16.0;
 pub const TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX: f64 = 14.0;
-pub const STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX: f64 = 320.0;
 pub const NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
     .document
     .table
@@ -54,18 +53,12 @@ pub const V1_CODE_SURFACE_GAP_PX: f64 = 1.0;
 pub const V1_CODE_FRAME_BORDER_WIDTH_PX: f64 = 1.0;
 pub const V1_CODE_CONTENT_PADDING_TOP_PX: f64 = 14.0;
 pub const V1_CODE_CONTENT_PADDING_BOTTOM_PX: f64 = 16.0;
-pub const V1_CODE_SCROLL_END_SPACER_PX: f64 = 24.0;
 pub const V1_CODE_BASE_HEIGHT_PX: f64 = V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX
     + V1_CODE_SURFACE_GAP_PX
     + V1_CODE_FRAME_BORDER_WIDTH_PX * 2.0
     + V1_CODE_CONTENT_PADDING_TOP_PX
     + V1_CODE_CONTENT_PADDING_BOTTOM_PX;
 pub const V1_CODE_INNER_MIN_HEIGHT_PX: f64 = V1_CODE_BASE_HEIGHT_PX + V1_CODE_TEXT_LINE_HEIGHT_PX;
-pub const V1_CODE_OUTER_MAX_HEIGHT_PX: f64 = BLOCK_SHELL_PADDING_Y_PX * 2.0
-    + V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX
-    + V1_CODE_SURFACE_GAP_PX
-    + V1_CODE_FRAME_BORDER_WIDTH_PX * 2.0
-    + STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX;
 pub const IMAGE_BLOCK_ESTIMATED_HEIGHT_PX: f64 = 260.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -239,14 +232,11 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
             NOTION_BODY_LINE_HEIGHT_PX,
             9.0,
         )),
-        RichBlockKind::Code { .. } => BlockHeightRule::TextLike(
-            text_metrics(
-                text_block_chrome_metrics_for_kind(kind),
-                V1_CODE_TEXT_LINE_HEIGHT_PX,
-                8.0,
-            )
-            .with_max_height(V1_CODE_OUTER_MAX_HEIGHT_PX),
-        ),
+        RichBlockKind::Code { .. } => BlockHeightRule::TextLike(text_metrics(
+            text_block_chrome_metrics_for_kind(kind),
+            V1_CODE_TEXT_LINE_HEIGHT_PX,
+            8.0,
+        )),
         RichBlockKind::Math => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
             24.0,
@@ -439,10 +429,7 @@ pub fn estimate_code_block_height_v1(
         estimate_wrapped_line_count(text, width_px, metrics.avg_char_width_px).max(1) as f64;
     let inner_height = (V1_CODE_BASE_HEIGHT_PX + line_count * V1_CODE_TEXT_LINE_HEIGHT_PX)
         .max(V1_CODE_INNER_MIN_HEIGHT_PX);
-    let mut height = BLOCK_SHELL_PADDING_Y_PX * 2.0 + inner_height;
-    if let Some(max_height) = metrics.max_height {
-        height = height.min(max_height).max(code_block_v1_outer_min_height());
-    }
+    let height = BLOCK_SHELL_PADDING_Y_PX * 2.0 + inner_height;
     HeightEstimate::new(height, metrics.confidence, V1_CODE_TEXT_LINE_HEIGHT_PX)
 }
 
@@ -505,8 +492,7 @@ fn estimate_table_height(payload: &BlockPayload) -> HeightEstimate {
         BlockPayload::Table(table) => table.rows.len().max(1),
         _ => 3,
     };
-    let height = (rows as f64 * NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX)
-        .min(STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX)
+    let height = rows as f64 * NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX
         + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX
         + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;
     HeightEstimate::new(height, HeightConfidence::Predictive, 72.0)
@@ -652,13 +638,13 @@ mod tests {
     }
 
     #[test]
-    fn structured_block_content_heights_stop_at_the_shared_viewport_cap() {
+    fn code_and_table_heights_grow_with_content() {
         let code = estimate_text_payload_height(
             &RichBlockKind::Code { language: None },
             &"line\n".repeat(100),
             DEFAULT_LAYOUT_WIDTH_PX,
         );
-        assert_eq!(code.height, V1_CODE_OUTER_MAX_HEIGHT_PX);
+        assert!(code.height > 320.0);
 
         let table = BlockPayload::Table(crate::rich_text::TablePayload {
             rows: (0..100)
@@ -672,10 +658,11 @@ mod tests {
         let table = estimate_block_height(&RichBlockKind::Table, &table, DEFAULT_LAYOUT_WIDTH_PX);
         assert_eq!(
             table.height,
-            STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX
+            100.0 * NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX
                 + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX
                 + TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX
         );
+        assert!(table.height > 320.0);
     }
 
     #[test]

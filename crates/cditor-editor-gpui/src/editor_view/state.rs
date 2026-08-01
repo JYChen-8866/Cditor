@@ -89,6 +89,8 @@ pub(crate) struct OverlayUiState {
     pub(crate) code_theme_menu_block_id: Option<BlockId>,
     pub(crate) code_copy_feedback_block_id: Option<BlockId>,
     pub(crate) code_copy_feedback_generation: u64,
+    pub(crate) collapsed_code_blocks: HashSet<BlockId>,
+    pub(crate) collapsed_code_block_heights: HashMap<BlockId, f64>,
     pub(crate) slash_menu: Option<SlashMenuState>,
     pub(crate) slash_popup_menu: Option<Entity<PopupMenu>>,
     pub(crate) slash_popup_menu_dismiss_subscription: Option<Subscription>,
@@ -108,6 +110,9 @@ pub(crate) struct OverlayUiState {
     pub(crate) color_menu_scroll_handle: gpui::ScrollHandle,
     pub(crate) ai_actions_scroll_handle: gpui::ScrollHandle,
     pub(crate) last_color_action: Option<crate::overlays::ColorMenuAction>,
+    pub(crate) page_icon_menu_open: bool,
+    pub(crate) page_icon_menu_custom_tab: bool,
+    pub(crate) page_icon_menu_scroll_handle: gpui::ScrollHandle,
 }
 
 impl OverlayUiState {
@@ -637,6 +642,8 @@ mod tests {
     fn overlay_reset_discards_document_bound_transient_state() {
         let mut overlay = OverlayUiState {
             code_theme_menu_block_id: Some(7),
+            collapsed_code_blocks: std::iter::once(7).collect(),
+            collapsed_code_block_heights: HashMap::from([(7, 386.0)]),
             gutter_toolbar_block_id: Some(8),
             block_transform_menu_open: true,
             color_menu_open: true,
@@ -650,6 +657,8 @@ mod tests {
         overlay.reset();
 
         assert!(overlay.code_theme_menu_block_id.is_none());
+        assert!(overlay.collapsed_code_blocks.is_empty());
+        assert!(overlay.collapsed_code_block_heights.is_empty());
         assert!(overlay.gutter_toolbar_block_id.is_none());
         assert!(!overlay.block_transform_menu_open);
         assert!(!overlay.color_menu_open);

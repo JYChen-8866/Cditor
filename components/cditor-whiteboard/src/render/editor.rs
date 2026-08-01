@@ -13,7 +13,7 @@ impl Render for WhiteboardView {
             accent,
             selection,
             swatches,
-        } = (self.style)();
+        } = (self.style)(cx);
         let cam = self.scene.camera;
         let zoom = cam.zoom.max(MIN_ZOOM);
         let bounds_cell = self.bounds.clone();

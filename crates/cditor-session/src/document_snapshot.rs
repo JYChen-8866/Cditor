@@ -1,7 +1,7 @@
 use cditor_core::{
     edit::DocumentSelection,
     ids::BlockId,
-    rich_text::{BlockAttrs, RichBlockKind},
+    rich_text::{BlockAttrs, PageCover, PageIcon, RichBlockKind},
 };
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
 use cditor_runtime::DocumentRuntime;
@@ -13,6 +13,9 @@ use crate::EditorSessionHandle;
 pub struct SessionDocumentSnapshot {
     pub document_id: u64,
     pub title: Option<String>,
+    pub title_from_heading: bool,
+    pub cover: Option<PageCover>,
+    pub icon: Option<PageIcon>,
     pub revision: u64,
     pub block_count: usize,
     pub readonly: bool,
@@ -41,6 +44,9 @@ pub fn project_document_snapshot(
     SessionDocumentSnapshot {
         document_id: runtime.document_id(),
         title: runtime.document_title().map(ToOwned::to_owned),
+        title_from_heading: runtime.auto_document_title().is_some(),
+        cover: runtime.page_cover().cloned(),
+        icon: runtime.page_icon().cloned(),
         revision: runtime.revision(),
         block_count: runtime.document_block_count(),
         readonly,

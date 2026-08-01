@@ -3,7 +3,7 @@ use std::ops::Range;
 use gpui::{Bounds, Pixels};
 
 use crate::block::chrome::block_gutter_top_px;
-use crate::document::{DEFAULT_DOCUMENT_TOP_INSET_PX, DocumentLayoutMetrics};
+use crate::document::DocumentLayoutMetrics;
 use crate::interaction::geometry::ProjectedBlockRect;
 use crate::menu_metrics::EditorViewport;
 use crate::overlays::{
@@ -54,7 +54,7 @@ pub(crate) fn formatting_toolbar_state(
         let page_left = ((viewport.width - document_layout.page_width_px) / 2.0).max(0.0);
         let gutter_left = page_left + rect.gutter_left_px;
         let gutter_top = (rect.document_top - context.global_scroll_top) as f32
-            + DEFAULT_DOCUMENT_TOP_INSET_PX
+            + document_layout.top_inset_px
             + block_gutter_top_px();
         let (x, y) = gutter_floating_toolbar_position(
             gutter_left,

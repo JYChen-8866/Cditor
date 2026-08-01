@@ -8,7 +8,6 @@ use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::features::whiteboard::WhiteboardBackendEntity;
 use crate::features::whiteboard::whiteboard_style_fn;
 use crate::overlays::WhiteboardEditorSession;
-use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 
@@ -42,7 +41,7 @@ impl CditorV2View {
             cx.notify();
             return true;
         }
-        let style = whiteboard_style_fn(GuiTheme::light());
+        let style = whiteboard_style_fn();
         let host = cx.entity().downgrade();
         let board = cx.new(|board_cx| {
             let scene = Scene::from_json(&scene_json);

@@ -3,6 +3,7 @@ use crate::document::{BLOCK_FLAG_FOLDED, BLOCK_FLAG_HAS_STRUCTURAL_CHILDREN, BLO
 use crate::ids::{BlockId, DocumentId};
 use crate::layout::BlockLayoutMeta;
 use crate::version::StructureVersion;
+use serde::{Deserialize, Serialize};
 
 use super::{
     BlockAttrs, BlockPayload, BlockPayloadRecord, CalloutVariant, FilePayload, ImagePayload,
@@ -70,7 +71,7 @@ impl RichTextDocument {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentMetadata {
     pub title: Option<String>,
     pub created_at: Option<String>,
@@ -80,7 +81,8 @@ pub struct DocumentMetadata {
     pub icon: Option<PageIcon>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum PageCover {
     External {
         url: String,
@@ -92,7 +94,7 @@ pub enum PageCover {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoverPositionY(u16);
 
 impl CoverPositionY {
@@ -107,13 +109,14 @@ impl CoverPositionY {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum PageIcon {
     Emoji { emoji: String },
     Asset { asset: AssetRef },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssetRef {
     pub source: String,
     pub media_type: Option<String>,
@@ -417,6 +420,32 @@ mod tests {
         );
         assert_eq!(payloads[1].plain_text(), "fn main() {}");
         assert!(matches!(payloads[1].kind, RichBlockKind::Code { .. }));
+    }
+
+    #[test]
+    fn page_decorations_roundtrip_through_stable_json() {
+        let metadata = DocumentMetadata {
+            cover: Some(PageCover::Asset {
+                asset: AssetRef::local("/tmp/cover.png"),
+                position_y: CoverPositionY::from_ratio(0.25),
+            }),
+            icon: Some(PageIcon::Emoji {
+                emoji: "📄".to_owned(),
+            }),
+            ..DocumentMetadata::default()
+        };
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        let decoded: DocumentMetadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(decoded, metadata);
+        assert_eq!(
+            decoded.cover.as_ref().map(|cover| match cover {
+                PageCover::Asset { position_y, .. } | PageCover::External { position_y, .. } =>
+                    position_y.ratio(),
+            }),
+            Some(0.25)
+        );
     }
 
     #[test]

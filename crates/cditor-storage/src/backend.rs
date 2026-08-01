@@ -64,6 +64,8 @@ pub struct EmergencyLogAppendOutcome {
 pub struct StorageDocumentMetadata {
     pub document_id: DocumentId,
     pub title: String,
+    pub icon_json: Option<String>,
+    pub cover_json: Option<String>,
     pub structure_version: u64,
     pub content_version: u64,
     pub layout_version: u64,
@@ -127,6 +129,8 @@ pub struct LoadedPayloadBatch {
 #[derive(Debug, Clone)]
 pub struct StorageSaveBatch {
     pub document_id: DocumentId,
+    pub icon_json: Option<String>,
+    pub cover_json: Option<String>,
     pub layout_key: Option<LayoutCacheKey>,
     pub payloads: Vec<BlockPayloadRecord>,
     pub index_records: Vec<BlockIndexRecord>,

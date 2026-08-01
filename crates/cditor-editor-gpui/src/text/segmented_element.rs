@@ -20,7 +20,6 @@ use crate::{
     input::platform_adapter::handle_registered_platform_input,
     text::{
         background::text_selection_background,
-        caret_reveal::reveal_caret_in_scroll_handle,
         element::metrics::{line_height_for, measured_wrap_width, text_layout_options},
         layout_adapter::{paint_text_layout, text_background_quads},
         platform::RichTextPlatformLayout,
@@ -160,7 +159,6 @@ impl Element for SegmentedRichTextElement {
                 let width = Some(f32::from(wrap_width));
                 let (viewport_top, viewport_height) = viewport.visible_range();
                 let mut layout = segmented.borrow_mut();
-                let scroll_anchor = layout.anchor_at(viewport_top);
                 layout.set_width(width);
                 let overscan = viewport_height * OVERSCAN_VIEWPORTS;
                 let visible = layout.visible_segments(viewport_top, viewport_height);
@@ -233,11 +231,6 @@ impl Element for SegmentedRichTextElement {
                     layout.measure_segments(index..index + 1, &mut build_segment);
                 }
                 layout.retain_segment_snapshots(&segment_indices);
-                if let Some(restored_top) = layout.y_for_anchor(scroll_anchor)
-                    && (restored_top - viewport_top).abs() > 0.5
-                {
-                    viewport.restore_internal_top(restored_top);
-                }
                 let fragments = segment_indices
                     .into_iter()
                     .filter_map(|index| {
@@ -268,7 +261,7 @@ impl Element for SegmentedRichTextElement {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
         let request = request_layout.borrow_mut().take();
@@ -293,11 +286,6 @@ impl Element for SegmentedRichTextElement {
                 )
             })
         });
-        if let (Some(caret_bounds), Some(scroll_handle)) =
-            (caret_bounds, self.viewport.internal_scroll_handle())
-        {
-            reveal_caret_in_scroll_handle(scroll_handle, caret_bounds, window);
-        }
         let caret_visible = self.input_handler.focused
             && self.input_handler.view.read(cx).caret_blink_visible(cx)
             && self.marked_range.is_none();

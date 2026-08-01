@@ -16,7 +16,6 @@ use super::{
 use crate::DrafftBoard;
 
 const GRID_SIZE: f64 = 20.0;
-const GRID_COLOR: u32 = 0xc8c8c864;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum GridStyle {
@@ -80,6 +79,7 @@ pub(crate) struct PaintCommand {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct PaintPlan {
     pub commands: Vec<PaintCommand>,
+    grid_color: u32,
 }
 
 impl PaintPlan {
@@ -88,10 +88,12 @@ impl PaintPlan {
         viewport_size: Size,
         selection_rect: Option<Rect>,
         grid_style: GridStyle,
+        grid_color: u32,
         text_engine: &mut TextOutlineEngine,
         image_engine: &mut ImagePaintEngine,
     ) -> Self {
         let mut plan = Self::default();
+        plan.grid_color = grid_color;
         let camera = canvas.camera.transform();
         let visible = visible_world_bounds(canvas, viewport_size);
         plan.push_grid(visible, camera, canvas.camera.zoom, grid_style);
@@ -217,11 +219,11 @@ impl PaintPlan {
             GridStyle::None => {}
         }
         if style == GridStyle::Dots {
-            self.push_fill(transform * grid, GRID_COLOR);
+            self.push_fill(transform * grid, self.grid_color);
         } else {
             self.commands.push(PaintCommand {
                 path: transform * grid,
-                color: GRID_COLOR,
+                color: self.grid_color,
                 kind: PaintKind::Stroke {
                     width: (0.5 * zoom).clamp(0.5, 1.0) as f32,
                     dash: None,
@@ -532,6 +534,7 @@ mod tests {
             Size::new(800.0, 600.0),
             None,
             GridStyle::Lines,
+            0xc8c8c8,
             &mut text_engine,
             &mut image_engine,
         );
@@ -561,6 +564,7 @@ mod tests {
                 viewport,
                 None,
                 GridStyle::Lines,
+                0xc8c8c8,
                 &mut text_engine,
                 &mut image_engine,
             )
@@ -574,6 +578,7 @@ mod tests {
                 viewport,
                 None,
                 GridStyle::Lines,
+                0xc8c8c8,
                 &mut text_engine,
                 &mut image_engine,
             )

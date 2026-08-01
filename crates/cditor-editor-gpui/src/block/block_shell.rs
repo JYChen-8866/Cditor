@@ -59,6 +59,7 @@ pub fn block_shell(
     content: AnyElement,
     hovered: bool,
     action: BlockActionState,
+    collapsed_code_block: bool,
     on_mouse_down: impl Fn(&gpui::MouseDownEvent, &mut gpui::Window, &mut App) + 'static,
     on_mouse_move: Option<BlockMouseMoveHandler>,
     on_gutter_add: Option<GutterAddHandler>,
@@ -78,6 +79,8 @@ pub fn block_shell(
     );
     let shell_border = border_for_action(theme.surface, theme, action);
     let content_border = border_for_action(chrome.content_border, theme, action);
+    let content_min_height_px =
+        content_min_height_px(collapsed_code_block, chrome.content_min_height_px);
     trace_render(
         block.block_id,
         &block.attrs,
@@ -126,13 +129,17 @@ pub fn block_shell(
                                 on_fold_toggle,
                                 block.focused,
                                 chrome.content_min_height_px,
+                                hovered,
+                                heading_level(&block.kind),
                             ))
                             .child(
                                 div()
                                     .relative()
                                     .min_w(px(0.0))
                                     .w_full()
-                                    .min_h(px(chrome.content_min_height_px))
+                                    .when_some(content_min_height_px, |this, height| {
+                                        this.min_h(px(height))
+                                    })
                                     .rounded(px(chrome.content_radius_px))
                                     .bg(rgb(content_background))
                                     .when(chrome.content_border_width_px > 0.0, |this| {
@@ -175,6 +182,13 @@ fn gutter_control_top_px(kind: &RichBlockKind, first_line_height_px: f32) -> f32
         ((first_line_height_px - 28.0) / 2.0).max(0.0)
     } else {
         0.0
+    }
+}
+
+fn heading_level(kind: &RichBlockKind) -> Option<u8> {
+    match kind {
+        RichBlockKind::Heading { level } => Some(*level),
+        _ => None,
     }
 }
 
@@ -237,6 +251,14 @@ fn render_quote_bar(color: u32) -> AnyElement {
         .into_any_element()
 }
 
+fn content_min_height_px(collapsed_code_block: bool, chrome_min_height_px: f32) -> Option<f32> {
+    if collapsed_code_block {
+        None
+    } else {
+        Some(chrome_min_height_px)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use cditor_runtime::DocumentRuntime;
@@ -276,6 +298,28 @@ mod tests {
         assert_eq!(
             gutter_control_top_px(&RichBlockKind::Code { language: None }, 93.0),
             0.0
+        );
+    }
+
+    #[test]
+    fn heading_level_is_only_extracted_from_heading_kinds() {
+        assert_eq!(heading_level(&RichBlockKind::Heading { level: 1 }), Some(1));
+        assert_eq!(heading_level(&RichBlockKind::Heading { level: 2 }), Some(2));
+        assert_eq!(heading_level(&RichBlockKind::Heading { level: 3 }), Some(3));
+        assert_eq!(heading_level(&RichBlockKind::Paragraph), None);
+        assert_eq!(heading_level(&RichBlockKind::Code { language: None }), None);
+    }
+
+    #[test]
+    fn collapsed_code_block_releases_the_shell_min_height() {
+        assert_eq!(content_min_height_px(true, 93.0), None);
+        assert_eq!(content_min_height_px(false, 93.0), Some(93.0));
+        assert_eq!(
+            content_min_height_px(
+                false,
+                cditor_core::layout::V1_CODE_INNER_MIN_HEIGHT_PX as f32
+            ),
+            Some(93.0)
         );
     }
 

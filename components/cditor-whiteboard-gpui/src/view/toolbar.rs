@@ -4,6 +4,8 @@ use gpui::{
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
+use crate::theme::chrome;
+
 use super::{
     DrafftBoardView,
     components::{button::tool_button, icon::svg_icon, tooltip::ToolTip},
@@ -26,6 +28,7 @@ const TOOLS: [ToolKind; 12] = [
 
 impl DrafftBoardView {
     pub(super) fn render_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let c = chrome(cx);
         let active = self.board.tool();
         let buttons = TOOLS.into_iter().map(|tool| {
             let selected = tool == active;
@@ -33,9 +36,9 @@ impl DrafftBoardView {
                 .child(tool_icon(
                     tool,
                     if selected {
-                        rgb(0xffffff).into()
+                        rgb(c.on_accent).into()
                     } else {
-                        rgb(0x505050).into()
+                        rgb(c.text).into()
                     },
                 ))
                 .tooltip(move |_window, cx| cx.new(|_| ToolTip::new(tool_label(tool))).into())
@@ -63,8 +66,8 @@ impl DrafftBoardView {
             .gap(px(2.0))
             .rounded(px(8.0))
             .border_1()
-            .border_color(rgb(0xd7dce2))
-            .bg(rgb(0xffffff))
+            .border_color(rgb(c.border))
+            .bg(rgb(c.bg))
             .shadow_sm()
             .occlude()
             .children(buttons)
@@ -75,63 +78,51 @@ fn tool_icon(tool: ToolKind, color: Hsla) -> AnyElement {
     let (key, bytes) = match tool {
         ToolKind::Pan => (
             "drafft-icon-pan",
-            include_bytes!("../../assets/pan.svg")
-                .as_slice(),
+            include_bytes!("../../assets/pan.svg").as_slice(),
         ),
         ToolKind::Select => (
             "drafft-icon-select",
-            include_bytes!("../../assets/select.svg")
-                .as_slice(),
+            include_bytes!("../../assets/select.svg").as_slice(),
         ),
         ToolKind::Freehand => (
             "drafft-icon-freehand",
-            include_bytes!("../../assets/freehand.svg")
-                .as_slice(),
+            include_bytes!("../../assets/freehand.svg").as_slice(),
         ),
         ToolKind::Rectangle => (
             "drafft-icon-rectangle",
-            include_bytes!("../../assets/rectangle.svg")
-                .as_slice(),
+            include_bytes!("../../assets/rectangle.svg").as_slice(),
         ),
         ToolKind::Ellipse => (
             "drafft-icon-ellipse",
-            include_bytes!("../../assets/ellipse.svg")
-                .as_slice(),
+            include_bytes!("../../assets/ellipse.svg").as_slice(),
         ),
         ToolKind::Line => (
             "drafft-icon-line",
-            include_bytes!("../../assets/line.svg")
-                .as_slice(),
+            include_bytes!("../../assets/line.svg").as_slice(),
         ),
         ToolKind::Arrow => (
             "drafft-icon-arrow",
-            include_bytes!("../../assets/arrow.svg")
-                .as_slice(),
+            include_bytes!("../../assets/arrow.svg").as_slice(),
         ),
         ToolKind::Highlighter => (
             "drafft-icon-highlighter",
-            include_bytes!("../../assets/highlighter.svg")
-                .as_slice(),
+            include_bytes!("../../assets/highlighter.svg").as_slice(),
         ),
         ToolKind::Eraser => (
             "drafft-icon-eraser",
-            include_bytes!("../../assets/eraser.svg")
-                .as_slice(),
+            include_bytes!("../../assets/eraser.svg").as_slice(),
         ),
         ToolKind::Text => (
             "drafft-icon-text",
-            include_bytes!("../../assets/text.svg")
-                .as_slice(),
+            include_bytes!("../../assets/text.svg").as_slice(),
         ),
         ToolKind::Math => (
             "drafft-icon-math",
-            include_bytes!("../../assets/math.svg")
-                .as_slice(),
+            include_bytes!("../../assets/math.svg").as_slice(),
         ),
         ToolKind::LaserPointer => (
             "drafft-icon-laser",
-            include_bytes!("../../assets/laser.svg")
-                .as_slice(),
+            include_bytes!("../../assets/laser.svg").as_slice(),
         ),
     };
     svg_icon(key, bytes, color, 17.0)

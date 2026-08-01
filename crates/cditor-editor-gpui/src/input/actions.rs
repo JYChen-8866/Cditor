@@ -47,17 +47,13 @@ actions!(
     ]
 );
 
-/// Install the editor keymap once during application initialization.
-///
-/// `secondary` is GPUI's cross-platform primary editing modifier: Command on
-/// macOS and Control on Windows/Linux. This mirrors Zed's action/keymap path
-/// and deliberately leaves native key translation to GPUI.
-pub fn bind_cditor_keys(cx: &mut App) {
-    cditor_component::menu::init(cx);
-    #[cfg(feature = "whiteboard")]
-    cditor_whiteboard_gpui::bind_drafft_keys(cx);
+/// The editor's default key bindings, without installing them. Host
+/// applications that re-apply a custom keymap (for example comet's
+/// `apply_keymap`, which clears every binding first) can register these so
+/// the editor keymap survives re-application.
+pub fn cditor_key_bindings() -> Vec<KeyBinding> {
     let context = Some(CDITOR_KEY_CONTEXT);
-    let bindings = vec![
+    let mut bindings = vec![
         KeyBinding::new("enter", Newline, context),
         KeyBinding::new("shift-enter", SoftLineBreak, context),
         KeyBinding::new("secondary-enter", NewlineBelow, context),
@@ -91,9 +87,8 @@ pub fn bind_cditor_keys(cx: &mut App) {
         KeyBinding::new("secondary-e", ToggleInlineCode, context),
         KeyBinding::new("secondary-d", Duplicate, context),
     ];
-    cx.bind_keys(bindings);
     #[cfg(not(target_os = "macos"))]
-    cx.bind_keys([
+    bindings.extend([
         // Zed's default Windows editing aliases.
         KeyBinding::new("secondary-y", Redo, context),
         KeyBinding::new("shift-delete", Cut, context),
@@ -109,7 +104,7 @@ pub fn bind_cditor_keys(cx: &mut App) {
         KeyBinding::new("ctrl-shift-end", SelectToDocumentEnd, context),
     ]);
     #[cfg(target_os = "macos")]
-    cx.bind_keys([
+    bindings.extend([
         // Native macOS/Emacs navigation aliases used by Zed.
         KeyBinding::new("ctrl-h", Backspace, context),
         KeyBinding::new("ctrl-d", Delete, context),
@@ -132,6 +127,19 @@ pub fn bind_cditor_keys(cx: &mut App) {
         KeyBinding::new("secondary-shift-up", SelectToDocumentStart, context),
         KeyBinding::new("secondary-shift-down", SelectToDocumentEnd, context),
     ]);
+    bindings
+}
+
+/// Install the editor keymap once during application initialization.
+///
+/// `secondary` is GPUI's cross-platform primary editing modifier: Command on
+/// macOS and Control on Windows/Linux. This mirrors Zed's action/keymap path
+/// and deliberately leaves native key translation to GPUI.
+pub fn bind_cditor_keys(cx: &mut App) {
+    cditor_component::menu::init(cx);
+    #[cfg(feature = "whiteboard")]
+    cditor_whiteboard_gpui::bind_drafft_keys(cx);
+    cx.bind_keys(cditor_key_bindings());
 }
 
 #[cfg(test)]

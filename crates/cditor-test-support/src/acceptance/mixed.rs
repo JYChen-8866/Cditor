@@ -71,6 +71,8 @@ pub fn run_mixed_acceptance(
         DocumentRuntimeColdStartData {
             document_id: fixture.document_id,
             document_title: "100k mixed acceptance".to_owned(),
+            page_cover: None,
+            page_icon: None,
             structure_version: 1,
             records: fixture.records.clone(),
             block_attrs: Vec::new(),

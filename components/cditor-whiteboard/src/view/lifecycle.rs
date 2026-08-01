@@ -334,7 +334,7 @@ impl WhiteboardView {
         let style_fn = self.style.clone();
         let text = text.into();
         move |_window, cx| {
-            let s = style_fn();
+            let s = style_fn(cx);
             let text = text.clone();
             cx.new(move |_| Tip {
                 text,

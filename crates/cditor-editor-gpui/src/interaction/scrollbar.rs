@@ -1,8 +1,5 @@
 use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
-use gpui::{
-    AnyElement, Context, ElementId, Entity, IntoElement, ParentElement, ScrollHandle, Styled, div,
-    px, rgb,
-};
+use gpui::{AnyElement, Context, Entity, IntoElement, ParentElement, Styled, div, px};
 
 use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::scroll::ScrollbarVisualState;
@@ -14,12 +11,6 @@ const INTERNAL_SCROLLBAR_WIDTH_PX: f32 = 5.0;
 const INTERNAL_SCROLLBAR_TRACK_WIDTH_PX: f32 = 12.0;
 const INTERNAL_SCROLLBAR_VERTICAL_INSET_PX: f32 = 3.0;
 const INTERNAL_SCROLLBAR_MIN_THUMB_HEIGHT_PX: f32 = 28.0;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct InternalScrollbarTrackStyle {
-    pub(crate) background: u32,
-    pub(crate) separator: u32,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct GuiScrollbarDrag;
@@ -65,43 +56,6 @@ pub(crate) fn render_scrollbar(
         .w(px(INTERNAL_SCROLLBAR_TRACK_WIDTH_PX))
         .h(px(page_scrollbar_track_height(viewport_height_px)))
         .child(scrollbar)
-        .into_any_element()
-}
-
-pub(crate) fn render_internal_vertical_scrollbar(
-    scrollbar_id: ElementId,
-    scroll_handle: &ScrollHandle,
-    viewport_height_px: f32,
-    estimated_content_height_px: f32,
-    theme: GuiTheme,
-    track_style: InternalScrollbarTrackStyle,
-) -> AnyElement {
-    let max_offset_y = f32::from(scroll_handle.max_offset().y)
-        .max((estimated_content_height_px - viewport_height_px).max(0.0));
-    if max_offset_y <= 0.5 || viewport_height_px <= 0.5 {
-        return div().into_any_element();
-    }
-
-    let scrollbar_style = shared_vertical_scrollbar_style(theme);
-
-    div()
-        .relative()
-        .w(px(INTERNAL_SCROLLBAR_TRACK_WIDTH_PX))
-        .h(px(viewport_height_px))
-        .flex_none()
-        .border_l(px(1.0))
-        .border_color(rgb(track_style.separator))
-        .bg(rgb(track_style.background))
-        .child(
-            InteractiveScrollbar::for_scroll_handle(
-                ScrollbarAxis::Vertical,
-                scroll_handle.clone(),
-                viewport_height_px,
-                estimated_content_height_px,
-                scrollbar_style,
-            )
-            .id(scrollbar_id),
-        )
         .into_any_element()
 }
 
@@ -222,17 +176,5 @@ mod tests {
         const {
             assert!(INTERNAL_SCROLLBAR_TRACK_WIDTH_PX > INTERNAL_SCROLLBAR_WIDTH_PX);
         }
-    }
-
-    #[test]
-    fn internal_scrollbar_track_style_keeps_surface_and_separator_semantic() {
-        let style = InternalScrollbarTrackStyle {
-            background: 0xffffff,
-            separator: 0xe9e9e7,
-        };
-
-        assert_eq!(style.background, 0xffffff);
-        assert_eq!(style.separator, 0xe9e9e7);
-        assert_ne!(style.background, style.separator);
     }
 }

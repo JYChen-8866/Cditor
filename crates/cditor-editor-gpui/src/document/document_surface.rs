@@ -90,8 +90,10 @@ impl DocumentSurface {
     pub fn render(
         self,
         theme: GuiTheme,
+        page_chrome: Option<AnyElement>,
         block_elements: Vec<AnyElement>,
         overlay: Option<AnyElement>,
+        page_icon_menu: Option<AnyElement>,
         on_placeholder_retry: Option<PlaceholderRetryHandler>,
     ) -> AnyElement {
         let viewport_offset = (self.scroll_top - self.before_window_height).max(0.0);
@@ -127,12 +129,14 @@ impl DocumentSurface {
             (None, _, _) => (None, None),
         };
         div()
+            .relative()
             .flex_1()
             .flex()
             .flex_col()
             .overflow_hidden()
             .bg(rgb(theme.page))
             .pt(px(self.top_inset_px))
+            .when_some(page_chrome, |this, chrome| this.child(chrome))
             .child(
                 div()
                     .relative()
@@ -171,6 +175,16 @@ impl DocumentSurface {
                             .when_some(stable_failure_banner, |this, banner| this.child(banner)),
                     ),
             )
+            .when_some(page_icon_menu, |this, menu| {
+                this.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .top(px(-(self.scroll_top as f32)))
+                        .child(menu),
+                )
+            })
             .into_any_element()
     }
 }
@@ -186,7 +200,7 @@ mod tests {
         assert_eq!(surface.page_width_px, 1296.0);
         assert_eq!(surface.content_width_px, 1296.0);
         assert_eq!(surface.min_height_px, 640.0);
-        assert_eq!(surface.top_inset_px, 0.0);
+        assert_eq!(surface.top_inset_px, 96.0);
         assert_eq!(surface.before_window_height, 10.0);
         assert_eq!(surface.placeholder_window_height, None);
         assert_eq!(surface.after_window_height, 20.0);
@@ -213,5 +227,6 @@ mod tests {
         );
         assert_eq!(narrow_surface.page_width_px, 700.0);
         assert_eq!(narrow_surface.content_width_px, 700.0);
+        assert_eq!(narrow_surface.top_inset_px, 48.0);
     }
 }

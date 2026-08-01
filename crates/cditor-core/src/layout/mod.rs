@@ -17,16 +17,15 @@ pub use block_editor_model::{
 };
 pub use block_layout::BlockLayoutMeta;
 pub use block_metrics::{
-    BlockHeightRule, COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX, DEFAULT_LAYOUT_WIDTH_PX,
-    IMAGE_BLOCK_ESTIMATED_HEIGHT_PX, NOTION_TABLE_CELL_LINE_HEIGHT_PX,
+    BLOCK_SHELL_PADDING_Y_PX, BlockHeightRule, COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX,
+    DEFAULT_LAYOUT_WIDTH_PX, IMAGE_BLOCK_ESTIMATED_HEIGHT_PX, NOTION_TABLE_CELL_LINE_HEIGHT_PX,
     NOTION_TABLE_CELL_PADDING_Y_PX, NOTION_TABLE_DEFAULT_ROW_HEIGHT_PX,
-    STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX, TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX,
-    TextLikeMetrics, V1_CODE_CONTENT_PADDING_BOTTOM_PX, V1_CODE_CONTENT_PADDING_TOP_PX,
-    V1_CODE_FRAME_BORDER_WIDTH_PX, V1_CODE_INNER_MIN_HEIGHT_PX, V1_CODE_OUTER_MAX_HEIGHT_PX,
-    V1_CODE_SCROLL_END_SPACER_PX, V1_CODE_SURFACE_GAP_PX, V1_CODE_TEXT_LINE_HEIGHT_PX,
-    V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX, estimate_block_height, estimate_kind_fallback_height,
-    estimate_rich_spans_height, estimate_text_payload_height, estimate_wrapped_line_count,
-    normalize_text_inner_measured_height, text_line_height_for_kind,
+    TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX, TextLikeMetrics,
+    V1_CODE_CONTENT_PADDING_BOTTOM_PX, V1_CODE_CONTENT_PADDING_TOP_PX,
+    V1_CODE_FRAME_BORDER_WIDTH_PX, V1_CODE_INNER_MIN_HEIGHT_PX, V1_CODE_SURFACE_GAP_PX,
+    V1_CODE_TEXT_LINE_HEIGHT_PX, V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX, estimate_block_height,
+    estimate_kind_fallback_height, estimate_rich_spans_height, estimate_text_payload_height,
+    estimate_wrapped_line_count, normalize_text_inner_measured_height, text_line_height_for_kind,
 };
 pub use block_provider::{
     BlockLayoutProvider, CodeBlockLayoutProvider, ImageLayoutProvider, ParagraphLayoutProvider,

@@ -66,17 +66,18 @@ mod tests {
             DocumentLayoutMetrics::for_viewport(1200.0),
         );
         assert_eq!(f32::from(anchor.left()), 42.0);
-        assert_eq!(f32::from(anchor.top()), 320.0);
-        assert_eq!(f32::from(anchor.bottom()), 368.0);
+        assert_eq!(f32::from(anchor.top()), 416.0);
+        assert_eq!(f32::from(anchor.bottom()), 464.0);
     }
 
     #[test]
     fn ai_panel_anchor_accounts_for_a_visible_readonly_notice() {
-        let document_layout = DocumentLayoutMetrics::for_viewport(1200.0).with_top_inset_px(32.0);
+        let document_layout =
+            DocumentLayoutMetrics::for_viewport(1200.0).with_additional_top_inset_px(32.0);
         let anchor =
             ai_preview_block_anchor(920.0, 48.0, 42.0, 760.0, 1200.0, 600.0, document_layout);
 
-        assert_eq!(f32::from(anchor.top()), 352.0);
-        assert_eq!(f32::from(anchor.bottom()), 400.0);
+        assert_eq!(f32::from(anchor.top()), 448.0);
+        assert_eq!(f32::from(anchor.bottom()), 496.0);
     }
 }

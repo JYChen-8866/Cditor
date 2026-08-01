@@ -331,6 +331,16 @@ fn code_language(language: Option<&str>) -> Option<Language> {
 }
 
 #[cfg(feature = "code-highlight")]
+pub(crate) fn code_language_supported(language: Option<&str>) -> bool {
+    code_language(language).is_some()
+}
+
+#[cfg(not(feature = "code-highlight"))]
+pub(crate) fn code_language_supported(_language: Option<&str>) -> bool {
+    false
+}
+
+#[cfg(feature = "code-highlight")]
 fn highlight_source(
     source: &str,
     language: Language,
@@ -528,28 +538,17 @@ mod tests {
             "rust",
             "typescript",
             "javascript",
-            "tsx",
             "jsx",
             "python",
             "go",
-            "java",
-            "kotlin",
             "swift",
             "c",
             "cpp",
             "csharp",
             "html",
-            "css",
-            "scss",
             "json",
             "yaml",
-            "toml",
-            "markdown",
             "sql",
-            "shell",
-            "bash",
-            "zsh",
-            "dockerfile",
             "diff",
         ];
         assert!(
@@ -557,6 +556,21 @@ mod tests {
                 .into_iter()
                 .all(|label| code_language(Some(label)).is_some())
         );
+        for unsupported in [
+            "tsx",
+            "java",
+            "kotlin",
+            "css",
+            "scss",
+            "toml",
+            "markdown",
+            "shell",
+            "bash",
+            "zsh",
+            "dockerfile",
+        ] {
+            assert_eq!(code_language(Some(unsupported)), None);
+        }
         assert_eq!(code_language(Some("plain text")), None);
         assert_eq!(code_language(Some("unknown-language")), None);
     }

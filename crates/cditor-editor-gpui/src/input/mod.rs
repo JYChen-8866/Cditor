@@ -12,7 +12,7 @@ pub mod single_line;
 mod table_cell_navigation;
 pub(crate) mod trace;
 
-pub use actions::bind_cditor_keys;
+pub use actions::{bind_cditor_keys, cditor_key_bindings};
 pub use ai_prompt::{AiPromptEditAction, AiPromptKeyResult, AiPromptState, apply_ai_prompt_action};
 #[allow(
     unused_imports,

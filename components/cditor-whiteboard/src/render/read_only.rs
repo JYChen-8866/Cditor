@@ -7,7 +7,7 @@ impl WhiteboardView {
             ink,
             panel,
             ..
-        } = (self.style)();
+        } = (self.style)(cx);
         let camera = self.scene.camera;
         let bounds_cell = self.bounds.clone();
         let render_viewport = self.render_viewport(Some(window.viewport_size()));

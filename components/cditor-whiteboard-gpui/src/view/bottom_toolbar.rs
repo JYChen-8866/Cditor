@@ -4,6 +4,8 @@ use gpui::{
 };
 use kurbo::{Point as KurboPoint, Size as KurboSize};
 
+use crate::theme::chrome;
+
 use super::{
     DrafftBoardView,
     components::{button::icon_button, icon::svg_icon, tooltip::ToolTip},
@@ -30,6 +32,7 @@ enum BottomAction {
 
 impl DrafftBoardView {
     pub(super) fn render_bottom_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let c = chrome(cx);
         div()
             .absolute()
             .left(px(12.0))
@@ -41,8 +44,8 @@ impl DrafftBoardView {
             .gap(px(2.0))
             .rounded(px(8.0))
             .border_1()
-            .border_color(rgb(0xd7dce2))
-            .bg(rgb(0xfafafc))
+            .border_color(rgb(c.border))
+            .bg(rgb(c.bg))
             .shadow_sm()
             .occlude()
             .child(self.bottom_svg_button(
@@ -63,9 +66,9 @@ impl DrafftBoardView {
                 BottomAction::Redo,
                 cx,
             ))
-            .child(separator())
+            .child(separator(c.border))
             .child(self.grid_button(cx))
-            .child(separator())
+            .child(separator(c.border))
             .child(self.text_button(
                 "bottom-zoom-out",
                 "−",
@@ -97,7 +100,7 @@ impl DrafftBoardView {
                 BottomAction::Fit,
                 cx,
             ))
-            .child(separator())
+            .child(separator(c.border))
             .child(self.bottom_toggle_button(
                 "bottom-grid-snap",
                 "drafft-icon-grid-snap",
@@ -114,9 +117,7 @@ impl DrafftBoardView {
             .child(self.bottom_toggle_button(
                 "bottom-smart-snap",
                 "drafft-icon-smart-snap",
-                include_bytes!(
-                    "../../assets/snap-shapes.svg"
-                ),
+                include_bytes!("../../assets/snap-shapes.svg"),
                 if self.board.smart_snap_enabled() {
                     "Smart Guides: On"
                 } else {
@@ -207,6 +208,7 @@ impl DrafftBoardView {
     }
 
     fn zoom_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         div()
             .id("bottom-zoom-reset")
             .w(px(48.0))
@@ -218,7 +220,7 @@ impl DrafftBoardView {
             .text_size(px(12.0))
             .text_color(rgb(ICON_COLOR))
             .cursor_pointer()
-            .hover(|style| style.bg(rgb(0xf1f5f9)))
+            .hover(|style| style.bg(rgb(c.hover)))
             .child(format!("{}%", self.board.zoom_percent()))
             .tooltip(|_window, cx| cx.new(|_| ToolTip::new("Reset to 100%")).into())
             .on_click(cx.listener(|view, _, _, cx| {
@@ -269,8 +271,8 @@ impl DrafftBoardView {
     }
 }
 
-fn separator() -> impl IntoElement {
-    div().mx(px(5.0)).w(px(1.0)).h(px(22.0)).bg(rgb(0xe2e8f0))
+fn separator(color: u32) -> impl IntoElement {
+    div().mx(px(5.0)).w(px(1.0)).h(px(22.0)).bg(rgb(color))
 }
 
 fn grid_tooltip(style: GridStyle) -> &'static str {

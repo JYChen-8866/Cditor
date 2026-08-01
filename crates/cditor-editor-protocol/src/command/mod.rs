@@ -352,6 +352,8 @@ pub mod builtin {
     pub const EDIT_PASTE: &str = "edit.paste";
     pub const EDIT_DELETE_SELECTION: &str = "edit.delete_selection";
     pub const EDIT_APPLY_CLIPBOARD_DATA: &str = "edit.apply_clipboard_data";
+    pub const DOCUMENT_SET_COVER: &str = "document.set_cover";
+    pub const DOCUMENT_SET_ICON: &str = "document.set_icon";
     pub const TEXT_INSERT: &str = "text.insert";
     pub const TEXT_REPLACE: &str = "text.replace";
     pub const TEXT_DELETE_BACKWARD: &str = "text.delete_backward";

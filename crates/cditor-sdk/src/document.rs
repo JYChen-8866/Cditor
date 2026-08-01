@@ -2,7 +2,7 @@ use std::{ops::Range, time::Duration};
 
 use cditor_core::{
     ids::{BlockId, DocumentId},
-    rich_text::{BlockAttrs, BlockPayload, RichBlockKind},
+    rich_text::{BlockAttrs, BlockPayload, PageIcon, RichBlockKind},
 };
 pub use cditor_editor_protocol::command::BlockInput;
 
@@ -12,6 +12,8 @@ pub const CURRENT_DOCUMENT_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 pub struct DocumentInfo {
     pub document_id: DocumentId,
     pub title: Option<String>,
+    pub title_from_heading: bool,
+    pub icon: Option<PageIcon>,
     pub revision: u64,
     pub block_count: usize,
     pub readonly: bool,

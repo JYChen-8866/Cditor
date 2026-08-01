@@ -298,6 +298,12 @@ impl RasterImageElement {
         self.trace_identity = Some((block_id, content_version));
         self
     }
+
+    #[must_use]
+    pub fn with_cover_position_y(mut self, position_y: f32) -> Self {
+        self.cover_position_y = Some(position_y.clamp(0.0, 1.0));
+        self
+    }
 }
 
 fn positioned_cover_bounds(

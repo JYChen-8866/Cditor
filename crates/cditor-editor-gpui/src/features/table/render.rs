@@ -1,20 +1,14 @@
 use std::ops::Range;
 
-use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, ScrollHandle,
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
-use crate::interaction::scrollbar::{
-    InternalScrollbarTrackStyle, render_internal_vertical_scrollbar,
-};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
-use cditor_core::layout::{
-    STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX, TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX,
-};
+use cditor_core::layout::TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX;
 use cditor_core::rich_text::{TableCellAlign, plain_text_from_spans};
 use cditor_runtime::{TableCellPosition, TableCellSpansSnapshot, TableViewState};
 
@@ -52,7 +46,6 @@ pub(crate) fn render_table_block(
     let table_view = table_view_with_resize_preview(block_id, table_view, table_resize_preview);
     let table_view = table_view.as_ref();
     let viewport_height_px = table_content_viewport_height_px(table_view.height_px);
-    let vertical_overflow = table_view.height_px > viewport_height_px + 0.5;
     if table_view.visible_cells.is_empty() {
         trace_table(
             "render.empty",
@@ -177,33 +170,14 @@ pub(crate) fn render_table_block(
         viewport = viewport.track_scroll(handle);
     }
     let viewport = viewport.child(table_content);
-    let vertical_scrollbar = vertical_overflow
-        .then_some(table_scroll_handle.as_ref())
-        .flatten()
-        .map(|handle| {
-            render_internal_vertical_scrollbar(
-                ("table-vertical-scrollbar", block_id).into(),
-                handle,
-                viewport_height_px,
-                table_view.height_px,
-                theme,
-                InternalScrollbarTrackStyle {
-                    background: table_surface_background(theme),
-                    separator: table_border_color(theme),
-                },
-            )
-        });
     let viewport_frame = div()
         .relative()
         .w_full()
         .h(px(viewport_height_px))
         .flex()
         .bg(rgb(table_surface_background(theme)))
-        .when(vertical_overflow, |frame| {
-            frame.on_scroll_wheel(|_event, _window, cx| cx.stop_propagation())
-        })
         .child(viewport)
-        .children(vertical_scrollbar);
+        .into_any_element();
 
     // The custom horizontal scrollbar is rendered by the editor overlay layer.
     // This wrapper only reserves chrome height so following blocks are laid out
@@ -218,7 +192,7 @@ pub(crate) fn render_table_block(
 }
 
 pub(crate) fn table_content_viewport_height_px(content_height_px: f32) -> f32 {
-    content_height_px.min(STRUCTURED_BLOCK_CONTENT_VIEWPORT_MAX_HEIGHT_PX as f32)
+    content_height_px
 }
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
@@ -288,8 +262,8 @@ mod viewport_tests {
     use super::table_content_viewport_height_px;
 
     #[test]
-    fn table_content_viewport_keeps_short_tables_and_caps_tall_tables() {
+    fn table_content_viewport_matches_full_table_height() {
         assert_eq!(table_content_viewport_height_px(144.0), 144.0);
-        assert_eq!(table_content_viewport_height_px(720.0), 320.0);
+        assert_eq!(table_content_viewport_height_px(720.0), 720.0);
     }
 }

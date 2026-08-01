@@ -35,6 +35,8 @@ fn framework_free_sdk_surface_compiles_for_external_consumers() {
     let info = DocumentInfo {
         document_id: 42,
         title: Some("SDK".to_owned()),
+        title_from_heading: true,
+        icon: None,
         revision: 7,
         block_count: 3,
         readonly: false,

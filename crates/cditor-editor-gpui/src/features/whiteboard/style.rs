@@ -3,10 +3,10 @@ use std::rc::Rc;
 use cditor_whiteboard::{WhiteboardStyle, WhiteboardStyleFn};
 use gpui::{Hsla, rgb};
 
-use crate::theme::GuiTheme;
+use crate::theme::{GuiTheme, active_theme};
 
-pub(crate) fn whiteboard_style_fn(theme: GuiTheme) -> WhiteboardStyleFn {
-    Rc::new(move || whiteboard_style(theme))
+pub(crate) fn whiteboard_style_fn() -> WhiteboardStyleFn {
+    Rc::new(|app| whiteboard_style(active_theme(app)))
 }
 
 fn whiteboard_style(theme: GuiTheme) -> WhiteboardStyle {

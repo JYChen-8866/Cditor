@@ -353,6 +353,10 @@ pub fn code_language_items() -> Vec<CodeLanguageItem> {
         CodeLanguageItem::labeled("diff", "Diff"),
     ]
     .into_iter()
+    .filter(|item| {
+        item.value == "plain text"
+            || crate::features::code::highlight::code_language_supported(Some(&item.value))
+    })
     .collect()
 }
 
@@ -395,6 +399,25 @@ mod tests {
         assert_eq!(state.caret_offset, 0);
         assert_eq!(state.selected_item().unwrap().value, "typescript");
         assert_eq!(state.matching_items().len(), code_language_items().len());
+    }
+
+    #[test]
+    fn code_language_items_exclude_unhighlightable_languages() {
+        let items = code_language_items();
+        let values = items
+            .iter()
+            .map(|item| item.value.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(values.contains(&"plain text"));
+        assert!(values.contains(&"rust"));
+        assert!(values.contains(&"jsx"));
+        assert!(values.contains(&"json"));
+        assert!(values.contains(&"sql"));
+        assert!(!values.contains(&"java"));
+        assert!(!values.contains(&"css"));
+        assert!(!values.contains(&"shell"));
+        assert!(!values.contains(&"toml"));
     }
 
     #[test]

@@ -10,6 +10,8 @@ pub enum DocumentRuntimeIndexSource {
 pub struct DocumentRuntimeColdStartData {
     pub document_id: DocumentId,
     pub document_title: String,
+    pub page_cover: Option<PageCover>,
+    pub page_icon: Option<PageIcon>,
     pub structure_version: u64,
     pub records: Vec<BlockIndexRecord>,
     pub block_attrs: Vec<(BlockId, BlockAttrs)>,
@@ -139,6 +141,8 @@ impl DocumentRuntime {
 
         let payloads_loaded = data.initial_payloads.len();
         let document_title = data.document_title;
+        let page_cover = data.page_cover;
+        let page_icon = data.page_icon;
         let index_source = data.index_source;
         let layout_cache_hits = data.layout_cache_hits;
         let mut runtime = Self::from_index_records_with_window(
@@ -149,8 +153,11 @@ impl DocumentRuntime {
             viewport_height,
             0..window_end,
         );
-        runtime.document.document_title = Some(document_title.clone());
+        runtime.document.metadata.title = Some(document_title.clone());
+        runtime.document.metadata.cover = page_cover;
+        runtime.document.metadata.icon = page_icon;
         runtime.document.block_attrs = data.block_attrs.into_iter().collect();
+        runtime.sync_auto_document_title();
         let total_blocks = runtime.document.index.total_count();
 
         Ok((
@@ -226,6 +233,8 @@ mod tests {
             DocumentRuntimeColdStartData {
                 document_id: 9,
                 document_title: "Loaded".to_owned(),
+                page_cover: None,
+                page_icon: None,
                 structure_version: 3,
                 records: records(3),
                 block_attrs: vec![(1, BlockAttrs::default())],
@@ -258,6 +267,8 @@ mod tests {
             DocumentRuntimeColdStartData {
                 document_id: 9,
                 document_title: "Broken".to_owned(),
+                page_cover: None,
+                page_icon: None,
                 structure_version: 1,
                 records: records(2),
                 block_attrs: Vec::new(),
@@ -287,6 +298,8 @@ mod tests {
             DocumentRuntimeColdStartData {
                 document_id: 9,
                 document_title: "Broken".to_owned(),
+                page_cover: None,
+                page_icon: None,
                 structure_version: 1,
                 records: duplicate_records,
                 block_attrs: Vec::new(),
@@ -304,6 +317,8 @@ mod tests {
             DocumentRuntimeColdStartData {
                 document_id: 9,
                 document_title: "Broken".to_owned(),
+                page_cover: None,
+                page_icon: None,
                 structure_version: 1,
                 records: records(1),
                 block_attrs: vec![(2, BlockAttrs::default())],
@@ -330,6 +345,8 @@ mod tests {
             DocumentRuntimeColdStartData {
                 document_id: 9,
                 document_title: "Broken".to_owned(),
+                page_cover: None,
+                page_icon: None,
                 structure_version: 1,
                 records: records(1),
                 block_attrs: Vec::new(),

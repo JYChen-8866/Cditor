@@ -291,7 +291,7 @@ pub struct WhiteboardStyle {
 
 /// A `() -> WhiteboardStyle` the host supplies; called each paint so the board
 /// tracks theme changes without the host pushing updates.
-pub type WhiteboardStyleFn = Rc<dyn Fn() -> WhiteboardStyle>;
+pub type WhiteboardStyleFn = Rc<dyn Fn(&gpui::App) -> WhiteboardStyle>;
 
 /// Called when the board changes (an element committed/moved/deleted, the camera
 /// moved), with the serialized scene JSON, so the host can persist it.

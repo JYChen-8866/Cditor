@@ -94,6 +94,12 @@ pub fn project_persistence_save_capture(
         structure_version,
         batch: StorageSaveBatch {
             document_id: runtime.document_id(),
+            icon_json: runtime
+                .page_icon()
+                .and_then(|icon| serde_json::to_string(icon).ok()),
+            cover_json: runtime
+                .page_cover()
+                .and_then(|cover| serde_json::to_string(cover).ok()),
             layout_key: request.layout_key,
             payloads,
             index_records,
@@ -180,7 +186,7 @@ impl EditorSessionHandle {
 
 #[cfg(test)]
 mod tests {
-    use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
+    use cditor_core::rich_text::{BlockPayloadRecord, PageCover, PageIcon, RichBlockKind};
     use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 
     use super::*;
@@ -242,6 +248,49 @@ mod tests {
         assert_eq!(capture.batch.payloads.len(), 3);
         assert!(capture.includes_structure());
         assert_eq!(runtime.pending_structure_transaction_count(), 0);
+    }
+
+    #[test]
+    fn capture_serializes_page_decorations_with_the_document_batch() {
+        let mut runtime = DocumentRuntime::empty();
+        runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::SetPageCover {
+                    source: Some("/tmp/cover.png".to_owned()),
+                    position_y_milli: 375,
+                },
+                CommandSource::Toolbar,
+            ))
+            .unwrap();
+        runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::SetPageIconEmoji {
+                    emoji: Some("💡".to_owned()),
+                },
+                CommandSource::Toolbar,
+            ))
+            .unwrap();
+
+        let capture = project_persistence_save_capture(
+            &mut runtime,
+            PersistenceCaptureRequest {
+                last_saved_structure_version: None,
+                layout_key: None,
+            },
+        )
+        .unwrap();
+
+        let cover: PageCover =
+            serde_json::from_str(capture.batch.cover_json.as_deref().unwrap()).unwrap();
+        let icon: PageIcon =
+            serde_json::from_str(capture.batch.icon_json.as_deref().unwrap()).unwrap();
+        assert!(matches!(cover, PageCover::Asset { .. }));
+        assert_eq!(
+            icon,
+            PageIcon::Emoji {
+                emoji: "💡".to_owned()
+            }
+        );
     }
 
     #[test]

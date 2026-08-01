@@ -7,10 +7,12 @@ use gpui::{
 
 use super::DrafftBoardView;
 use crate::paint;
+use crate::theme::chrome;
 use crate::{parse_document, parse_library};
 
 impl DrafftBoardView {
     pub(super) fn render_file_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let trigger = div()
             .id("drafft-file-menu-trigger")
             .absolute()
@@ -25,13 +27,13 @@ impl DrafftBoardView {
             .gap(px(3.0))
             .rounded(px(6.0))
             .bg(if self.file_menu_open {
-                rgb(0x3b82f6)
+                rgb(c.accent)
             } else {
-                rgb(0xffffff)
+                rgb(c.bg)
             })
             .border_1()
-            .border_color(rgb(0xd7dce2))
-            .hover(|style| style.bg(rgb(0xebeff4)))
+            .border_color(rgb(c.border))
+            .hover(|style| style.bg(rgb(c.hover)))
             .on_click(cx.listener(|view, _, _, cx| {
                 view.file_menu_open = !view.file_menu_open;
                 view.shortcuts_open = false;
@@ -39,9 +41,9 @@ impl DrafftBoardView {
             }))
             .children((0..3).map(|_| {
                 div().w(px(14.0)).h(px(1.5)).bg(if self.file_menu_open {
-                    rgb(0xffffff)
+                    rgb(c.on_accent)
                 } else {
-                    rgb(0x505050)
+                    rgb(c.text)
                 })
             }));
 
@@ -63,11 +65,11 @@ impl DrafftBoardView {
                     .flex()
                     .items_center()
                     .rounded(px(4.0))
-                    .bg(rgb(0xffffff))
+                    .bg(rgb(c.bg))
                     .border_1()
-                    .border_color(rgb(0xd7dce2))
+                    .border_color(rgb(c.border))
                     .text_size(px(11.0))
-                    .text_color(rgb(0x64748b))
+                    .text_color(rgb(c.text_muted))
                     .child(status.clone()),
             );
         }
@@ -75,6 +77,7 @@ impl DrafftBoardView {
     }
 
     fn file_menu_panel(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         div()
             .absolute()
             .left(px(12.0))
@@ -86,8 +89,8 @@ impl DrafftBoardView {
             .gap(px(2.0))
             .rounded(px(8.0))
             .border_1()
-            .border_color(rgb(0xd7dce2))
-            .bg(rgb(0xffffff))
+            .border_color(rgb(c.border))
+            .bg(rgb(c.bg))
             .shadow_sm()
             .occlude()
             .child(self.menu_item("Save", "Cmd+S", cx, |view, cx| {
@@ -96,7 +99,7 @@ impl DrafftBoardView {
             .child(self.menu_item("Save As...", "", cx, |view, cx| {
                 view.save_document(true, cx)
             }))
-            .child(separator())
+            .child(separator(c.border))
             .child(self.menu_item("Open...", "Cmd+O", cx, |view, cx| view.open_document(cx)))
             .child(
                 self.menu_item("Open Excalidraw Library...", "", cx, |view, cx| {
@@ -112,7 +115,7 @@ impl DrafftBoardView {
                     view.load_path(path.clone(), cx)
                 })
             }))
-            .child(separator())
+            .child(separator(c.border))
             .child(
                 self.menu_item("Import Mermaid from Clipboard", "", cx, |view, cx| {
                     view.import_mermaid_clipboard(cx)
@@ -123,7 +126,7 @@ impl DrafftBoardView {
                 view.file_menu_open = false;
                 cx.notify();
             }))
-            .child(separator())
+            .child(separator(c.border))
             .child(self.menu_item("Export PNG...", "Cmd+E", cx, |view, cx| {
                 view.export_png(false, cx)
             }))
@@ -140,7 +143,7 @@ impl DrafftBoardView {
                     .items_center()
                     .justify_between()
                     .text_size(px(11.0))
-                    .text_color(rgb(0x64748b))
+                    .text_color(rgb(c.text_muted))
                     .child("Export scale")
                     .child(div().flex().gap(px(3.0)).children([1u8, 2, 3].map(|scale| {
                         div()
@@ -152,14 +155,14 @@ impl DrafftBoardView {
                             .justify_center()
                             .rounded(px(4.0))
                             .bg(if self.export_scale == scale {
-                                rgb(0x3b82f6)
+                                rgb(c.accent)
                             } else {
-                                rgb(0xf1f5f9)
+                                rgb(c.hover)
                             })
                             .text_color(if self.export_scale == scale {
-                                rgb(0xffffff)
+                                rgb(c.bg)
                             } else {
-                                rgb(0x475569)
+                                rgb(c.text)
                             })
                             .child(format!("{scale}x"))
                             .on_click(cx.listener(move |view, _, _, cx| {
@@ -168,7 +171,7 @@ impl DrafftBoardView {
                             }))
                     }))),
             )
-            .child(separator())
+            .child(separator(c.border))
             .child(self.menu_item("Keyboard Shortcuts", "?", cx, |view, cx| {
                 view.shortcuts_open = true;
                 view.file_menu_open = false;
@@ -184,6 +187,7 @@ impl DrafftBoardView {
         cx: &mut Context<Self>,
         action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
     ) -> AnyElement {
+        let c = chrome(cx);
         let label = label.into();
         div()
             .id(label.to_string())
@@ -194,13 +198,13 @@ impl DrafftBoardView {
             .justify_between()
             .rounded(px(4.0))
             .text_size(px(12.0))
-            .text_color(rgb(0x334155))
-            .hover(|style| style.bg(rgb(0xf1f5f9)))
+            .text_color(rgb(c.text))
+            .hover(|style| style.bg(rgb(c.hover)))
             .child(label)
             .child(
                 div()
                     .text_size(px(10.0))
-                    .text_color(rgb(0x94a3b8))
+                    .text_color(rgb(c.text_muted))
                     .child(shortcut),
             )
             .on_click(cx.listener(move |view, _, _, cx| action(view, cx)))
@@ -208,6 +212,7 @@ impl DrafftBoardView {
     }
 
     fn shortcuts_panel(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         const SHORTCUTS: [(&str, &str); 11] = [
             ("Cmd+C / X / V", "Copy, cut, paste"),
             ("Cmd+D", "Duplicate selection"),
@@ -234,8 +239,8 @@ impl DrafftBoardView {
             .gap(px(8.0))
             .rounded(px(8.0))
             .border_1()
-            .border_color(rgb(0xcbd5e1))
-            .bg(rgb(0xffffff))
+            .border_color(rgb(c.border))
+            .bg(rgb(c.bg))
             .shadow_lg()
             .occlude()
             .child(
@@ -248,7 +253,7 @@ impl DrafftBoardView {
                             .id("close-shortcuts")
                             .px(px(6.0))
                             .rounded(px(4.0))
-                            .hover(|style| style.bg(rgb(0xf1f5f9)))
+                            .hover(|style| style.bg(rgb(c.hover)))
                             .child("x")
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.shortcuts_open = false;
@@ -262,7 +267,7 @@ impl DrafftBoardView {
                     .justify_between()
                     .text_size(px(12.0))
                     .child(keys)
-                    .child(div().text_color(rgb(0x64748b)).child(description))
+                    .child(div().text_color(rgb(c.text_muted)).child(description))
             }))
             .into_any_element()
     }
@@ -466,10 +471,10 @@ impl DrafftBoardView {
     }
 }
 
-fn separator() -> AnyElement {
+fn separator(color: u32) -> AnyElement {
     div()
         .my(px(3.0))
         .h(px(1.0))
-        .bg(rgb(0xe2e8f0))
+        .bg(rgb(color))
         .into_any_element()
 }

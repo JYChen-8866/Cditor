@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
+    AnyElement, AnyView, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
     ParentElement, ScrollHandle, Styled, div, prelude::FluentBuilder, px,
 };
 
@@ -11,7 +11,7 @@ use crate::block::{
 };
 use crate::document::{
     DocumentBlockGeometry, DocumentLayoutMetrics, DocumentSurface, DocumentTextGeometry,
-    DocumentTextViewport,
+    DocumentTextViewport, PageDecorationSnapshot, render_page_chrome,
 };
 use crate::editor_view::CditorV2View;
 use crate::editor_view::TableScrollSnapshot;
@@ -105,6 +105,8 @@ impl DocumentEditorView {
     pub(crate) fn render(
         &self,
         projection: &EditorViewProjection,
+        page_decorations: &PageDecorationSnapshot,
+        page_chrome_extras: Option<AnyView>,
         view: Entity<CditorV2View>,
         image_caption_states: &HashMap<BlockId, TextSurfaceRenderState>,
         workers: &EditorWorkerAdmission,
@@ -132,10 +134,14 @@ impl DocumentEditorView {
         table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
         code_scroll_handles: &HashMap<BlockId, ScrollHandle>,
         code_caret_reveal_after_line_break: &std::collections::HashSet<BlockId>,
+        collapsed_code_blocks: &std::collections::HashSet<BlockId>,
         code_highlights: &CodeHighlightCache,
         mermaid_renders: &MermaidRenderCache,
         mermaid_source_blocks: &std::collections::HashSet<BlockId>,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
+        page_icon_menu_open: bool,
+        page_icon_menu_custom_tab: bool,
+        page_icon_menu_scroll_handle: ScrollHandle,
         cx: &mut App,
     ) -> AnyElement {
         let block_view = BlockView::new(self.theme);
@@ -349,6 +355,7 @@ impl DocumentEditorView {
                                 .map(|snapshot| snapshot.handle.clone()),
                             code_scroll_handles.get(&block.block_id).cloned(),
                             code_caret_reveal_after_line_break.contains(&block.block_id),
+                            collapsed_code_blocks,
                             code_highlights,
                             mermaid_renders,
                             mermaid_source_blocks.contains(&block.block_id),
@@ -410,10 +417,28 @@ impl DocumentEditorView {
         );
         surface.placeholder_window_error = projection.placeholder_window_error.clone();
         surface.placeholder_window_failure = projection.placeholder_window_failure.clone();
+        let (page_chrome, page_icon_menu) = render_page_chrome(
+            page_decorations,
+            editor_viewport_width_px,
+            editor_viewport_height_px,
+            document_layout,
+            projection.scroll.global_scroll_top,
+            readonly,
+            page_chrome_extras,
+            self.theme,
+            workers,
+            view.clone(),
+            page_icon_menu_open,
+            page_icon_menu_custom_tab,
+            page_icon_menu_scroll_handle,
+            cx,
+        );
         surface.render(
             self.theme,
+            Some(page_chrome),
             block_elements,
             Some(overlay),
+            page_icon_menu,
             on_placeholder_retry,
         )
     }
@@ -544,8 +569,8 @@ mod tests {
 
         assert_eq!(viewport.left, 0.0);
         assert_eq!(viewport.right, 1_200.0);
-        assert_eq!(viewport.top, 0.0);
-        assert_eq!(viewport.bottom, 800.0);
+        assert_eq!(viewport.top, -96.0);
+        assert_eq!(viewport.bottom, 704.0);
     }
 
     #[test]
@@ -560,8 +585,8 @@ mod tests {
 
         assert_eq!(viewport.left, 0.0);
         assert_eq!(viewport.right, 700.0);
-        assert_eq!(viewport.top, 240.0);
-        assert_eq!(viewport.bottom, 740.0);
+        assert_eq!(viewport.top, 192.0);
+        assert_eq!(viewport.bottom, 692.0);
     }
 
     #[test]
@@ -574,16 +599,17 @@ mod tests {
             DocumentLayoutMetrics::for_viewport(700.0),
         );
 
-        assert_eq!(viewport.top, 240.0);
-        assert_eq!(viewport.bottom, 740.0);
+        assert_eq!(viewport.top, 192.0);
+        assert_eq!(viewport.bottom, 692.0);
     }
 
     #[test]
     fn menu_viewport_accounts_for_a_visible_readonly_notice() {
-        let document_layout = DocumentLayoutMetrics::for_viewport(1_200.0).with_top_inset_px(32.0);
+        let document_layout =
+            DocumentLayoutMetrics::for_viewport(1_200.0).with_additional_top_inset_px(32.0);
         let viewport = document_overlay_menu_viewport(1_200.0, 800.0, 0.0, 0.0, document_layout);
 
-        assert_eq!(viewport.top, -32.0);
-        assert_eq!(viewport.bottom, 768.0);
+        assert_eq!(viewport.top, -128.0);
+        assert_eq!(viewport.bottom, 672.0);
     }
 }

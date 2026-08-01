@@ -24,7 +24,7 @@ impl BoardEmbedView {
 
 impl Render for BoardEmbedView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let st = (self.style)();
+        let st = (self.style)(cx);
         let ink = st.ink;
         let panel = st.panel_strong;
         let grid = st.grid;
@@ -91,7 +91,7 @@ impl Render for BoardThumbnailView {
             ink,
             panel,
             ..
-        } = (self.style)();
+        } = (self.style)(_cx);
         let cam = self.snapshot.spec.camera;
         let layers = build_thumbnail_layers(
             &self.snapshot.scene,

@@ -5,10 +5,13 @@ use gpui::{
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
+use crate::theme::chrome;
+
 use super::{BoardTab, DrafftBoardView};
 
 impl DrafftBoardView {
     pub(super) fn render_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         div()
             .absolute()
             .top(px(12.0))
@@ -25,8 +28,8 @@ impl DrafftBoardView {
                     .gap(px(2.0))
                     .rounded(px(7.0))
                     .border_1()
-                    .border_color(rgb(0xd7dce2))
-                    .bg(rgb(0xffffff))
+                    .border_color(rgb(c.border))
+                    .bg(rgb(c.bg))
                     .shadow_sm()
                     .children(self.tabs.iter().enumerate().map(|(index, tab)| {
                         let selected = index == self.active_tab;
@@ -40,17 +43,17 @@ impl DrafftBoardView {
                             .gap(px(6.0))
                             .rounded(px(4.0))
                             .bg(if selected {
-                                rgb(0xe8f1ff)
+                                rgb(c.active)
                             } else {
-                                rgb(0xffffff)
+                                rgb(c.bg)
                             })
                             .text_size(px(11.0))
                             .text_color(if selected {
-                                rgb(0x2563eb)
+                                rgb(c.accent)
                             } else {
-                                rgb(0x475569)
+                                rgb(c.text_muted)
                             })
-                            .hover(|style| style.bg(rgb(0xf1f5f9)))
+                            .hover(|style| style.bg(rgb(c.hover)))
                             .child(tab.name.clone())
                             .when(self.tabs.len() > 1, |tab_element| {
                                 tab_element.child(
@@ -62,7 +65,7 @@ impl DrafftBoardView {
                                         .items_center()
                                         .justify_center()
                                         .rounded(px(3.0))
-                                        .hover(|style| style.bg(rgb(0xdbeafe)))
+                                        .hover(|style| style.bg(rgb(c.active)))
                                         .child("x")
                                         .on_click(cx.listener(move |view, _, _, cx| {
                                             cx.stop_propagation();

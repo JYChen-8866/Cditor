@@ -204,6 +204,8 @@ mod tests {
             DocumentRuntimeColdStartData {
                 document_id: 1,
                 document_title: "payload scheduling race".to_owned(),
+                page_cover: None,
+                page_icon: None,
                 structure_version: 1,
                 records,
                 block_attrs: Vec::new(),

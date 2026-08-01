@@ -94,6 +94,7 @@ impl ComboboxItem {
 /// dependencies on its input, searchable-list, icon and theme subsystems.
 pub struct Combobox {
     label: String,
+    trigger_icon: Option<AnyElement>,
     open: bool,
     placement: ComboboxPlacement,
     style: ComboboxStyle,
@@ -121,6 +122,7 @@ impl Combobox {
     ) -> Self {
         Self {
             label: label.into(),
+            trigger_icon: None,
             open,
             placement: ComboboxPlacement::Below,
             style,
@@ -174,15 +176,21 @@ impl Combobox {
         self
     }
 
+    pub fn trigger_icon(mut self, icon: impl IntoElement) -> Self {
+        self.trigger_icon = Some(icon.into_any_element());
+        self
+    }
+
     pub fn empty_label(mut self, label: impl Into<String>) -> Self {
         self.empty_label = label.into();
         self
     }
 
-    fn render_trigger(&self) -> AnyElement {
+    fn render_trigger(&mut self) -> AnyElement {
         let style = self.style;
         let open = self.open;
         let on_toggle = self.on_toggle.clone();
+        let trigger_icon = self.trigger_icon.take();
         div()
             .h(style.trigger_height)
             .min_w(style.trigger_min_width)
@@ -216,12 +224,22 @@ impl Combobox {
                     .overflow_hidden()
                     .child(
                         div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
                             .min_w(px(0.0))
                             .flex_shrink_1()
                             .overflow_hidden()
-                            .text_ellipsis()
-                            .whitespace_nowrap()
-                            .child(self.label.clone()),
+                            .when_some(trigger_icon, |content, icon| content.child(icon))
+                            .child(
+                                div()
+                                    .min_w(px(0.0))
+                                    .flex_shrink_1()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .whitespace_nowrap()
+                                    .child(self.label.clone()),
+                            ),
                     )
                     .child(
                         SvgIcon::new("combobox-chevron-down", CHEVRON)
@@ -333,7 +351,7 @@ impl Combobox {
 impl IntoElement for Combobox {
     type Element = AnyElement;
 
-    fn into_element(self) -> Self::Element {
+    fn into_element(mut self) -> Self::Element {
         let open = self.open;
         let on_dismiss = self.on_dismiss.clone();
         let trigger = self.render_trigger();

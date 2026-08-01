@@ -92,7 +92,7 @@ impl WhiteboardThumbnailCache {
                 block_id,
                 cx,
             )
-            .unwrap_or_else(|_| legacy_entity(scene_json, theme, cx));
+            .unwrap_or_else(|_| legacy_entity(scene_json, cx));
             self.entries.insert(
                 block_id,
                 WhiteboardThumbnailEntry {
@@ -149,13 +149,9 @@ impl WhiteboardThumbnailCache {
     }
 }
 
-fn legacy_entity(
-    scene_json: &str,
-    theme: GuiTheme,
-    cx: &mut Context<CditorV2View>,
-) -> WhiteboardBackendEntity {
+fn legacy_entity(scene_json: &str, cx: &mut Context<CditorV2View>) -> WhiteboardBackendEntity {
     let scene = Scene::from_json(scene_json);
-    let style = whiteboard_style_fn(theme);
+    let style = whiteboard_style_fn();
     WhiteboardBackendEntity::Legacy(
         cx.new(|board_cx| WhiteboardView::new_read_only(scene, style, board_cx)),
     )

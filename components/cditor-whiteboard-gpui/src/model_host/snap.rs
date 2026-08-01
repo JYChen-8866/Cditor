@@ -51,9 +51,7 @@ impl DrafftBoard {
         self.snap_result
     }
 
-    pub(crate) fn angle_snap_result(
-        &self,
-    ) -> Option<(Point, crate::snap::AngleSnapResult)> {
+    pub(crate) fn angle_snap_result(&self) -> Option<(Point, crate::snap::AngleSnapResult)> {
         Some((self.snap_line_start?, self.angle_snap_result?))
     }
 

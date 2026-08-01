@@ -24,6 +24,7 @@ pub mod widget;
 pub mod font;
 pub mod model_host;
 pub mod paint;
+pub mod theme;
 pub mod view;
 
 // --- Core re-exports ---
@@ -48,6 +49,7 @@ pub use widget::{EditingKind, Handle, HandleKind, HandleShape, WidgetManager, Wi
 pub use font::{CANVAS_FONT_FAMILY, UI_FONT_FAMILY, bundled_fonts, cjk_fallback_fonts};
 pub use model_host::document::{parse_document, parse_document_json, parse_library};
 pub use model_host::{DrafftBoard, PointerOutcome};
+pub use theme::WhiteboardTheme;
 pub use view::{
     DrafftBoardView, DrafftChromeMode, FocusRequestFn, SceneChangeFn, bind_drafft_keys,
 };

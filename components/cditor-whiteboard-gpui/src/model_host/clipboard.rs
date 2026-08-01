@@ -36,9 +36,7 @@ impl DrafftBoard {
         let shapes = serde_json::from_str::<Vec<Shape>>(text)
             .ok()
             .map(regenerate_shape_ids)
-            .or_else(|| {
-                crate::canvas::CanvasDocument::shapes_from_excalidraw_clipboard(text)
-            })
+            .or_else(|| crate::canvas::CanvasDocument::shapes_from_excalidraw_clipboard(text))
             .or_else(|| crate::shapes_from_mermaid(text));
         let Some(shapes) = shapes else {
             return false;

@@ -9,7 +9,7 @@ use crate::block::block_shell::{BlockActionState, block_shell};
 use crate::document::DocumentTextViewport;
 use crate::editor_view::CditorV2View;
 use crate::features::code::highlight::CodeHighlightCache;
-use crate::features::code::{estimated_code_content_height_px, render_code_block};
+use crate::features::code::render_code_block;
 use crate::features::mermaid::{MermaidRenderCache, render_mermaid_block};
 use crate::features::table::{
     TableAxisSelection, TableCellRangeSelection, TableCellSelection, TableReorderPreview,
@@ -64,6 +64,7 @@ impl BlockView {
         table_scroll_handle: Option<ScrollHandle>,
         code_scroll_handle: Option<ScrollHandle>,
         code_caret_reveal_after_line_break: bool,
+        collapsed_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
         code_highlights: &CodeHighlightCache,
         mermaid_renders: &MermaidRenderCache,
         mermaid_show_source: bool,
@@ -96,6 +97,7 @@ impl BlockView {
             table_scroll_handle,
             code_scroll_handle,
             code_caret_reveal_after_line_break,
+            collapsed_code_blocks,
             code_highlights,
             mermaid_renders,
             mermaid_show_source,
@@ -121,6 +123,8 @@ impl BlockView {
                 },
             ) as crate::block::prefix::TodoToggleHandler
         });
+        let collapsed_code_block = matches!(block.kind, RichBlockKind::Code { .. })
+            && collapsed_code_blocks.contains(&block.block_id);
         let on_fold_toggle = matches!(
             block.chrome.prefix,
             cditor_core::block::BlockPrefixSnapshot::Heading { .. }
@@ -143,6 +147,7 @@ impl BlockView {
             content,
             hovered,
             action,
+            collapsed_code_block,
             move |event, window, cx| {
                 focus_block_from_mouse(&focus_view, block_id, event, window, cx);
                 cx.stop_propagation();
@@ -191,6 +196,7 @@ fn render_kind_content(
     table_scroll_handle: Option<ScrollHandle>,
     code_scroll_handle: Option<ScrollHandle>,
     code_caret_reveal_after_line_break: bool,
+    collapsed_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
     code_highlights: &CodeHighlightCache,
     mermaid_renders: &MermaidRenderCache,
     mermaid_show_source: bool,
@@ -230,12 +236,7 @@ fn render_kind_content(
         RichBlockKind::Quote => content,
         RichBlockKind::Code { ref language } => {
             let language_edit = code_language_edit.filter(|edit| edit.block_id == block.block_id);
-            let estimated_content_height_px = match &block.payload {
-                cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
-                    estimated_code_content_height_px(&payload.plain_text())
-                }
-                _ => estimated_code_content_height_px(""),
-            };
+            let code_collapsed = collapsed_code_blocks.contains(&block.block_id);
             render_code_block(
                 block.block_id,
                 content,
@@ -245,10 +246,9 @@ fn render_kind_content(
                 code_theme_menu_open,
                 code_highlight_theme,
                 action.action_active,
-                estimated_content_height_px,
-                code_scroll_handle,
                 view.clone(),
                 code_language_focus,
+                code_collapsed,
             )
         }
         RichBlockKind::Todo { .. } | RichBlockKind::BulletedList | RichBlockKind::NumberedList => {

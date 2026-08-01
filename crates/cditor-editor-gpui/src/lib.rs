@@ -23,9 +23,10 @@ mod text;
 pub mod theme;
 
 pub use component_sdk::{CditorComponent, CditorHandle, CditorViewContract, CditorViewFactory};
+pub use document::page_chrome::custom_page_icon_asset;
 pub use editor_view::{CditorV2View, CditorViewState, EditorReadonlyReason};
 pub use image_loader::{RemoteImageDataSource, configure_remote_image_data_source};
-pub use input::bind_cditor_keys;
+pub use input::{bind_cditor_keys, cditor_key_bindings};
 pub use persistence::{EditorLoadStateLabel, EditorSaveStatus};
 
 #[cfg(test)]

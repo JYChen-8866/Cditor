@@ -523,6 +523,8 @@ mod tests {
             session: DocumentPersistence::new(storage, 1),
             batch: StorageSaveBatch {
                 document_id: 1,
+                icon_json: None,
+                cover_json: None,
                 layout_key: None,
                 payloads: Vec::new(),
                 index_records: Vec::new(),

@@ -336,6 +336,16 @@ fn cold_start_data(loaded: LoadedDocument) -> DocumentRuntimeColdStartData {
     DocumentRuntimeColdStartData {
         document_id: loaded.metadata.document_id,
         document_title: loaded.metadata.title,
+        page_cover: loaded
+            .metadata
+            .cover_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok()),
+        page_icon: loaded
+            .metadata
+            .icon_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok()),
         structure_version: loaded.metadata.structure_version,
         records: loaded.records,
         block_attrs: loaded.block_attrs,

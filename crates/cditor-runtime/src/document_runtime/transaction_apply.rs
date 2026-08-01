@@ -410,9 +410,7 @@ impl DocumentRuntime {
             self.layout.dirty = true;
             self.note_content_changed();
         }
-        if !transaction.ops.is_empty()
-            && !matches!(origin, ChangeOrigin::Remote | ChangeOrigin::Migration)
-        {
+        if !transaction.ops.is_empty() && !matches!(origin, ChangeOrigin::Migration) {
             let mut persistent = transaction.clone();
             persistent.origin = origin;
             self.transactions.pending.push(persistent);

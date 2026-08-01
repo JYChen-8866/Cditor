@@ -124,6 +124,8 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(EDIT_PASTE, Args::None, Document),
         definition(EDIT_DELETE_SELECTION, Args::None, Document),
         definition(EDIT_APPLY_CLIPBOARD_DATA, Args::ClipboardData, Document),
+        definition(DOCUMENT_SET_COVER, Args::Extension, Document),
+        definition(DOCUMENT_SET_ICON, Args::Extension, Document),
         definition(TEXT_INSERT, Args::Text, Document),
         definition(TEXT_REPLACE, Args::ReplaceText, Document),
         definition(TEXT_DELETE_BACKWARD, Args::None, Document),

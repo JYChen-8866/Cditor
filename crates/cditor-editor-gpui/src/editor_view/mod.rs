@@ -1,3 +1,5 @@
+use gpui::{AnyView, Context};
+
 use crate::cache::RenderCacheState;
 
 pub(crate) mod ai;
@@ -40,6 +42,36 @@ pub struct CditorV2View {
     pub(crate) interaction: InteractionUiState,
     pub(crate) cache: RenderCacheState,
     pub(crate) scheduling: EditorSchedulingState,
+    pub(crate) page_chrome_extras: Option<AnyView>,
+}
+
+impl CditorV2View {
+    /// Returns the focus handle tracked by the editor root element.
+    ///
+    /// Hosts (for example a dock shell) can return this handle from their
+    /// panel's `Focusable::focus_handle` so that activating the panel focuses
+    /// the actual editor surface. Without this, keybindings such as Enter are
+    /// dispatched through the shell's inert focus handle and never reach the
+    /// editor.
+    pub fn editor_focus_handle(&self) -> gpui::FocusHandle {
+        self.focus.editor.clone()
+    }
+
+    /// Embeds a host-owned view in the page chrome action row.
+    ///
+    /// The extra view is rendered on the same line as the page icon and cover
+    /// actions so hosts can surface decorations such as document tags.
+    pub fn set_page_chrome_extra(&mut self, view: AnyView, cx: &mut Context<Self>) {
+        self.page_chrome_extras = Some(view);
+        cx.notify();
+    }
+
+    /// Removes the host-owned page chrome view, if any.
+    pub fn clear_page_chrome_extra(&mut self, cx: &mut Context<Self>) {
+        if self.page_chrome_extras.take().is_some() {
+            cx.notify();
+        }
+    }
 }
 
 #[cfg(test)]

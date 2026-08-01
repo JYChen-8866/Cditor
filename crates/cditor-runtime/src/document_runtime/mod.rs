@@ -155,11 +155,12 @@ use cditor_core::layout::{
 };
 use cditor_core::rich_text::TableCellAlign;
 use cditor_core::rich_text::{
-    BlockAttrs, BlockPayload, BlockPayloadRecord, BlockPayloadView, ImagePayload,
-    InlineColorTarget, InlineMark, InlineSpan, RichBlockKind, RichBlockRecord, RichTextDocument,
-    TableCellMerge, TableRange, TableTrackSize, block_kind_shortcut_with_marker_len,
-    code_fence_shortcut, kind_tag_for_rich_block_kind, markdown_inline_shortcut_spans,
-    parse_callout_marker, plain_text_from_spans, rich_block_kind_from_tag,
+    AssetRef, BlockAttrs, BlockPayload, BlockPayloadRecord, BlockPayloadView, CoverPositionY,
+    DocumentMetadata, ImagePayload, InlineColorTarget, InlineMark, InlineSpan, PageCover, PageIcon,
+    RichBlockKind, RichBlockRecord, RichTextDocument, TableCellMerge, TableRange, TableTrackSize,
+    block_kind_shortcut_with_marker_len, code_fence_shortcut, kind_tag_for_rich_block_kind,
+    markdown_inline_shortcut_spans, parse_callout_marker, plain_text_from_spans,
+    rich_block_kind_from_tag,
 };
 use cditor_viewport::debug_overlay::DebugOverlaySnapshot;
 use cditor_viewport::scroll::{

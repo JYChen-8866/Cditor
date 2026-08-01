@@ -7,6 +7,8 @@ use gpui::{
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
+use crate::theme::chrome;
+
 use super::{
     DrafftBoardView,
     components::{
@@ -56,6 +58,7 @@ enum PanelAction {
 
 impl DrafftBoardView {
     pub(super) fn render_right_panel(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         if self.board.selected().is_empty() && !is_property_drawing_tool(self.board.tool()) {
             return div().into_any_element();
         }
@@ -94,8 +97,8 @@ impl DrafftBoardView {
             .gap(px(8.0))
             .rounded(px(8.0))
             .border_1()
-            .border_color(rgb(0xdcdcdc))
-            .bg(rgb(0xfafafc))
+            .border_color(rgb(c.border))
+            .bg(rgb(c.bg))
             .shadow_sm()
             .occlude()
             .child(
@@ -103,7 +106,7 @@ impl DrafftBoardView {
                     .h(px(18.0))
                     .text_size(px(14.0))
                     .font_weight(FontWeight::BOLD)
-                    .text_color(rgb(0x3c3c3c))
+                    .text_color(rgb(c.text))
                     .child("Properties"),
             );
 
@@ -145,6 +148,7 @@ impl DrafftBoardView {
     }
 
     fn font_size_section(&self, current: f64, math: bool, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let element_key = if math {
             "math-font-size"
         } else {
@@ -152,6 +156,7 @@ impl DrafftBoardView {
         };
         section(
             "Font Size",
+            c.text_muted,
             FONT_SIZES
                 .into_iter()
                 .enumerate()
@@ -171,9 +176,11 @@ impl DrafftBoardView {
     }
 
     fn corner_section(&self, current: f64, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let off = current < 1.0;
         section(
             "Rounded Corners",
+            c.text_muted,
             [
                 segment("corner-off", "Off", off)
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -192,8 +199,10 @@ impl DrafftBoardView {
     }
 
     fn sloppiness_section(&self, current: Sloppiness, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         section(
             "Sloppiness",
+            c.text_muted,
             SLOPPINESS
                 .into_iter()
                 .enumerate()
@@ -209,8 +218,10 @@ impl DrafftBoardView {
     }
 
     fn fill_pattern_section(&self, current: FillPattern, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         section(
             "Fill Pattern",
+            c.text_muted,
             FILL_PATTERNS
                 .into_iter()
                 .enumerate()
@@ -226,9 +237,11 @@ impl DrafftBoardView {
     }
 
     fn path_section(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let current = self.board.path_style();
         section(
             "Path",
+            c.text_muted,
             PATH_STYLES
                 .into_iter()
                 .enumerate()
@@ -244,9 +257,11 @@ impl DrafftBoardView {
     }
 
     fn stroke_style_section(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let current = self.board.stroke_style();
         section(
             "Stroke",
+            c.text_muted,
             STROKE_STYLES
                 .into_iter()
                 .enumerate()
@@ -262,9 +277,11 @@ impl DrafftBoardView {
     }
 
     fn freehand_style_section(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let calligraphy = self.board.calligraphy_mode();
         section(
             "Style",
+            c.text_muted,
             [
                 segment("freehand-normal", "Normal", !calligraphy)
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -287,9 +304,11 @@ impl DrafftBoardView {
     }
 
     fn pressure_section(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let pressure = self.board.pressure_simulation();
         section(
             "Pressure",
+            c.text_muted,
             [
                 segment("pressure-uniform", "Uniform", !pressure)
                     .on_click(cx.listener(|view, _, _, cx| {
@@ -312,15 +331,15 @@ impl DrafftBoardView {
     }
 
     fn layer_section(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         icon_section(
             "Layer",
+            c.text_muted,
             [
                 self.panel_icon_button(
                     "layer-back",
                     "layer-back",
-                    include_bytes!(
-                        "../../assets/layer-back.svg"
-                    ),
+                    include_bytes!("../../assets/layer-back.svg"),
                     "Send to Back",
                     PanelAction::SendToBack,
                     cx,
@@ -328,9 +347,7 @@ impl DrafftBoardView {
                 self.panel_icon_button(
                     "layer-backward",
                     "layer-backward",
-                    include_bytes!(
-                        "../../assets/layer-backward.svg"
-                    ),
+                    include_bytes!("../../assets/layer-backward.svg"),
                     "Send Backward",
                     PanelAction::SendBackward,
                     cx,
@@ -338,9 +355,7 @@ impl DrafftBoardView {
                 self.panel_icon_button(
                     "layer-forward",
                     "layer-forward",
-                    include_bytes!(
-                        "../../assets/layer-forward.svg"
-                    ),
+                    include_bytes!("../../assets/layer-forward.svg"),
                     "Bring Forward",
                     PanelAction::BringForward,
                     cx,
@@ -348,9 +363,7 @@ impl DrafftBoardView {
                 self.panel_icon_button(
                     "layer-front",
                     "layer-front",
-                    include_bytes!(
-                        "../../assets/layer-front.svg"
-                    ),
+                    include_bytes!("../../assets/layer-front.svg"),
                     "Bring to Front",
                     PanelAction::BringToFront,
                     cx,
@@ -360,15 +373,15 @@ impl DrafftBoardView {
     }
 
     fn transform_section(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         icon_section(
             "Transform",
+            c.text_muted,
             [
                 self.panel_icon_button(
                     "flip-h",
                     "flip-h",
-                    include_bytes!(
-                        "../../assets/flip-h.svg"
-                    ),
+                    include_bytes!("../../assets/flip-h.svg"),
                     "Flip Horizontal",
                     PanelAction::FlipHorizontal,
                     cx,
@@ -376,9 +389,7 @@ impl DrafftBoardView {
                 self.panel_icon_button(
                     "flip-v",
                     "flip-v",
-                    include_bytes!(
-                        "../../assets/flip-v.svg"
-                    ),
+                    include_bytes!("../../assets/flip-v.svg"),
                     "Flip Vertical",
                     PanelAction::FlipVertical,
                     cx,
@@ -387,14 +398,15 @@ impl DrafftBoardView {
         )
     }
 
-    fn opacity_section(&self, opacity: f64, _cx: &mut Context<Self>) -> AnyElement {
+    fn opacity_section(&self, opacity: f64, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let control = Slider::new(&self.opacity_slider);
 
         div()
             .flex()
             .flex_col()
             .gap(px(4.0))
-            .child(section_label("Opacity"))
+            .child(section_label("Opacity", c.text_muted))
             .child(
                 div()
                     .h(px(24.0))
@@ -406,7 +418,7 @@ impl DrafftBoardView {
                         div()
                             .w(px(34.0))
                             .text_size(px(11.0))
-                            .text_color(rgb(0x646464))
+                            .text_color(rgb(c.text_muted))
                             .child(format!("{}%", (opacity * 100.0).round() as i32)),
                     ),
             )
@@ -414,15 +426,15 @@ impl DrafftBoardView {
     }
 
     fn alignment_section(&self, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         icon_section(
             "Align",
+            c.text_muted,
             [
                 self.panel_icon_button(
                     "align-left",
                     "align-left",
-                    include_bytes!(
-                        "../../assets/align-left.svg"
-                    ),
+                    include_bytes!("../../assets/align-left.svg"),
                     "Align Left",
                     PanelAction::AlignLeft,
                     cx,
@@ -430,9 +442,7 @@ impl DrafftBoardView {
                 self.panel_icon_button(
                     "align-center-v",
                     "align-center-v",
-                    include_bytes!(
-                        "../../assets/align-center-v.svg"
-                    ),
+                    include_bytes!("../../assets/align-center-v.svg"),
                     "Align Center (Vertical)",
                     PanelAction::AlignCenterVertical,
                     cx,
@@ -440,9 +450,7 @@ impl DrafftBoardView {
                 self.panel_icon_button(
                     "align-right",
                     "align-right",
-                    include_bytes!(
-                        "../../assets/align-right.svg"
-                    ),
+                    include_bytes!("../../assets/align-right.svg"),
                     "Align Right",
                     PanelAction::AlignRight,
                     cx,
@@ -450,9 +458,7 @@ impl DrafftBoardView {
                 self.panel_icon_button(
                     "align-top",
                     "align-top",
-                    include_bytes!(
-                        "../../assets/align-top.svg"
-                    ),
+                    include_bytes!("../../assets/align-top.svg"),
                     "Align Top",
                     PanelAction::AlignTop,
                     cx,
@@ -460,9 +466,7 @@ impl DrafftBoardView {
                 self.panel_icon_button(
                     "align-center-h",
                     "align-center-h",
-                    include_bytes!(
-                        "../../assets/align-center-h.svg"
-                    ),
+                    include_bytes!("../../assets/align-center-h.svg"),
                     "Align Center (Horizontal)",
                     PanelAction::AlignCenterHorizontal,
                     cx,
@@ -470,9 +474,7 @@ impl DrafftBoardView {
                 self.panel_icon_button(
                     "align-bottom",
                     "align-bottom",
-                    include_bytes!(
-                        "../../assets/align-bottom.svg"
-                    ),
+                    include_bytes!("../../assets/align-bottom.svg"),
                     "Align Bottom",
                     PanelAction::AlignBottom,
                     cx,
@@ -491,8 +493,9 @@ impl DrafftBoardView {
         action: PanelAction,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let c = chrome(cx);
         icon_button(id, false, false)
-            .child(svg_icon(icon_key, icon_bytes, rgb(0x334155).into(), 16.0))
+            .child(svg_icon(icon_key, icon_bytes, rgb(c.text).into(), 16.0))
             .tooltip(move |_window, cx| cx.new(|_| ToolTip::new(tooltip)).into())
             .on_click(cx.listener(move |view, _, _, cx| {
                 view.apply_panel_action(action);
@@ -589,25 +592,25 @@ impl DrafftBoardView {
     }
 }
 
-fn section(title: &'static str, buttons: impl IntoIterator<Item = AnyElement>) -> AnyElement {
+fn section(title: &'static str, color: u32, buttons: impl IntoIterator<Item = AnyElement>) -> AnyElement {
     div()
         .flex()
         .flex_col()
         .gap(px(4.0))
-        .child(section_label(title))
+        .child(section_label(title, color))
         .child(div().h(px(24.0)).flex().gap(px(4.0)).children(buttons))
         .into_any_element()
 }
 
-fn icon_section(title: &'static str, buttons: impl IntoIterator<Item = AnyElement>) -> AnyElement {
-    section(title, buttons)
+fn icon_section(title: &'static str, color: u32, buttons: impl IntoIterator<Item = AnyElement>) -> AnyElement {
+    section(title, color, buttons)
 }
 
-fn section_label(title: &'static str) -> AnyElement {
+fn section_label(title: &'static str, color: u32) -> AnyElement {
     div()
         .h(px(14.0))
         .text_size(px(11.0))
-        .text_color(rgb(0x646464))
+        .text_color(rgb(color))
         .child(title)
         .into_any_element()
 }

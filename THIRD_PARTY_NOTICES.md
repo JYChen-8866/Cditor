@@ -61,6 +61,17 @@ The whiteboard toolbar and shape controls include icons from Lucide.
 Source and binary distributions that contain the whiteboard must retain the
 corresponding font and icon license files listed above.
 
+## programming-languages-logos
+
+The editor bundles programming language logos from
+`programming-languages-logos@0.0.3`.
+
+- Project: <https://github.com/abranhe/programming-languages-logos>
+- Bundled assets: `assets/icons/*.svg` copied from the package's
+  `src/<language>/<language>.svg`
+- License: MIT
+- License text: `assets/icons/programming-languages-logos-LICENSE`
+
 ## Google Fonts COLRv1 test font
 
 Cditor's exact-raster test suite bundles a generated COLRv1 font for

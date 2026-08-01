@@ -9,8 +9,19 @@ use crate::theme::GuiTheme;
 
 impl CditorV2View {
     pub(crate) fn document_layout_metrics(&self, viewport_width_px: f32) -> DocumentLayoutMetrics {
-        let top_inset_px = document_top_inset_px(self.status.readonly_reason.is_some());
-        DocumentLayoutMetrics::for_viewport(viewport_width_px).with_top_inset_px(top_inset_px)
+        let decorations = self
+            .ready_session()
+            .and_then(|session| session.document_snapshot().ok());
+        document_layout_metrics_for_status(
+            viewport_width_px,
+            decorations
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.cover.is_some()),
+            decorations
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.icon.is_some()),
+            self.status.readonly_reason.is_some(),
+        )
     }
 
     pub(super) fn render_status_overlays(
@@ -29,12 +40,20 @@ impl CditorV2View {
     }
 }
 
-const fn document_top_inset_px(readonly_notice_visible: bool) -> f32 {
-    if readonly_notice_visible {
+fn document_layout_metrics_for_status(
+    viewport_width_px: f32,
+    has_cover: bool,
+    has_icon: bool,
+    readonly_notice_visible: bool,
+) -> DocumentLayoutMetrics {
+    let notice_height_px = if readonly_notice_visible {
         READONLY_NOTICE_HEIGHT_PX
     } else {
         0.0
-    }
+    };
+    DocumentLayoutMetrics::for_viewport(viewport_width_px)
+        .with_page_decorations(has_cover, has_icon)
+        .with_additional_top_inset_px(notice_height_px)
 }
 
 #[cfg(test)]
@@ -42,8 +61,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn document_top_inset_exists_only_while_the_readonly_notice_is_visible() {
-        assert_eq!(document_top_inset_px(false), 0.0);
-        assert_eq!(document_top_inset_px(true), READONLY_NOTICE_HEIGHT_PX);
+    fn readonly_notice_adds_to_the_document_header_space() {
+        let editable = document_layout_metrics_for_status(1_200.0, false, false, false);
+        let readonly = document_layout_metrics_for_status(1_200.0, false, false, true);
+
+        assert_eq!(editable.top_inset_px, 96.0);
+        assert_eq!(
+            readonly.top_inset_px,
+            editable.top_inset_px + READONLY_NOTICE_HEIGHT_PX
+        );
+    }
+
+    #[test]
+    fn readonly_notice_adds_after_page_decorations() {
+        let decorated = document_layout_metrics_for_status(1_200.0, true, true, false);
+        let readonly = document_layout_metrics_for_status(1_200.0, true, true, true);
+
+        assert_eq!(decorated.top_inset_px, 300.0);
+        assert_eq!(readonly.top_inset_px, 300.0 + READONLY_NOTICE_HEIGHT_PX);
     }
 }

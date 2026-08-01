@@ -229,7 +229,11 @@ fn angle_indicator_arc(
             center.x + outer_r * a.cos(),
             center.y - outer_r * a.sin(),
         ));
-        let tick_color = if is_major { color } else { color & 0x00ffffff | 0x66000000 };
+        let tick_color = if is_major {
+            color
+        } else {
+            color & 0x00ffffff | 0x66000000
+        };
         commands.push(PaintCommand {
             path: camera * tick,
             color: tick_color,

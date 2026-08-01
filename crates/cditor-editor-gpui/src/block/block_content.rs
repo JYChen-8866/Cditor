@@ -144,19 +144,10 @@ pub(crate) fn render_block_content(
                 } else {
                     theme
                 };
-                let segmented_viewport = if matches!(
-                    block.kind,
-                    cditor_core::rich_text::RichBlockKind::Code { .. }
-                ) {
-                    code_scroll_handle
-                        .clone()
-                        .map(SegmentedTextViewport::internal_scroll)
-                } else {
-                    Some(SegmentedTextViewport::document(
-                        text_viewport.local_top_px,
-                        text_viewport.height_px,
-                    ))
-                };
+                let segmented_viewport = Some(SegmentedTextViewport::document(
+                    text_viewport.local_top_px,
+                    text_viewport.height_px,
+                ));
                 if cditor_text::requires_segmentation(text_len)
                     && let Some(segmented_viewport) = segmented_viewport
                 {

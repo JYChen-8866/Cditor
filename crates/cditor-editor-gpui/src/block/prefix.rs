@@ -6,6 +6,7 @@ use gpui::{
 
 use crate::block::chrome::{BLOCK_PREFIX_WIDTH_PX, CALLOUT_PREFIX_WIDTH_PX};
 use crate::theme::GuiTheme;
+use cditor_component::SvgIcon;
 use cditor_core::block::BlockPrefixSnapshot;
 use cditor_core::rich_text::CalloutVariant;
 
@@ -22,6 +23,7 @@ const NOTION_FOLD_HOVER_RADIUS_PX: f32 = 3.0;
 const NOTION_BULLET_OUTER_SIZE_PX: f32 = 5.0;
 const NOTION_BULLET_CANVAS_SIZE_PX: f32 = NOTION_BULLET_OUTER_SIZE_PX;
 const NOTION_BULLET_STROKE_WIDTH_PX: f32 = 1.25;
+const NOTION_HEADING_LABEL_SIZE_PX: f32 = 16.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BulletMarkerShape {
@@ -76,6 +78,8 @@ pub fn render_block_prefix(
     on_fold_toggle: Option<FoldToggleHandler>,
     focused: bool,
     block_line_height_px: f32,
+    hovered: bool,
+    heading_level: Option<u8>,
 ) -> AnyElement {
     match prefix {
         BlockPrefixSnapshot::None => div()
@@ -96,7 +100,28 @@ pub fn render_block_prefix(
             .w(px(marker_lane_width_px))
             .flex_shrink_0()
             .into_any_element(),
-        BlockPrefixSnapshot::Heading { collapsed } | BlockPrefixSnapshot::Toggle { collapsed } => {
+        BlockPrefixSnapshot::Heading { collapsed } => {
+            let on_fold_toggle = if hovered { on_fold_toggle } else { None };
+            div()
+                .w(px(BLOCK_PREFIX_WIDTH_PX))
+                .h(px(fold_prefix_line_height_px(prefix, block_line_height_px)))
+                .flex_shrink_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_color(rgb(theme.text))
+                .when(editable && hovered, |this| this.cursor_pointer())
+                .when_some(on_fold_toggle, |this, handler| {
+                    this.on_mouse_down(MouseButton::Left, handler)
+                })
+                .child(if hovered {
+                    render_fold_indicator(*collapsed, true, theme)
+                } else {
+                    render_heading_label(heading_level, theme)
+                })
+                .into_any_element()
+        }
+        BlockPrefixSnapshot::Toggle { collapsed } => {
             let control_visible = fold_control_visible(prefix, focused);
             let on_fold_toggle = if control_visible {
                 on_fold_toggle
@@ -119,6 +144,33 @@ pub fn render_block_prefix(
                 .into_any_element()
         }
     }
+}
+
+fn heading_label_source(level: Option<u8>) -> (&'static str, &'static [u8]) {
+    const HEADING_1: &[u8] = include_bytes!("../../../../assets/icons/heading-1.svg");
+    const HEADING_2: &[u8] = include_bytes!("../../../../assets/icons/heading-2.svg");
+    const HEADING_3: &[u8] = include_bytes!("../../../../assets/icons/heading-3.svg");
+    match level {
+        Some(1) => ("heading-label-1", HEADING_1),
+        Some(2) => ("heading-label-2", HEADING_2),
+        Some(3) => ("heading-label-3", HEADING_3),
+        _ => ("heading-label-1", HEADING_1),
+    }
+}
+
+fn render_heading_label(level: Option<u8>, theme: GuiTheme) -> AnyElement {
+    let (key, bytes) = heading_label_source(level);
+    div()
+        .size(px(NOTION_FOLD_HOVER_SIZE_PX))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            SvgIcon::new(key, bytes)
+                .color(rgb(theme.muted))
+                .size(px(NOTION_HEADING_LABEL_SIZE_PX)),
+        )
+        .into_any_element()
 }
 
 fn render_bullet_marker(depth: usize, theme: GuiTheme) -> AnyElement {
@@ -375,6 +427,7 @@ mod tests {
         assert_eq!(NOTION_FOLD_ICON_SIZE_PX, 10.0);
         assert_eq!(NOTION_FOLD_ICON_STROKE_PX, 1.5);
         assert_eq!(NOTION_FOLD_HOVER_RADIUS_PX, 3.0);
+        assert_eq!(NOTION_HEADING_LABEL_SIZE_PX, 16.0);
         assert_eq!(NOTION_BULLET_CANVAS_SIZE_PX, 5.0);
     }
 
@@ -414,11 +467,9 @@ mod tests {
     }
 
     #[test]
-    fn heading_fold_control_is_persistent_while_toggle_follows_focus() {
-        let heading = BlockPrefixSnapshot::Heading { collapsed: false };
+    fn toggle_fold_control_follows_collapsed_state_and_focus() {
         let toggle = BlockPrefixSnapshot::Toggle { collapsed: false };
 
-        assert!(fold_control_visible(&heading, false));
         assert!(!fold_control_visible(&toggle, false));
         assert!(fold_control_visible(&toggle, true));
         assert!(fold_control_visible(
@@ -426,6 +477,24 @@ mod tests {
             false
         ));
         assert!(!fold_control_visible(&BlockPrefixSnapshot::None, true));
+    }
+
+    #[test]
+    fn heading_label_source_maps_levels_with_a_first_level_fallback() {
+        let (key1, bytes1) = heading_label_source(Some(1));
+        let (key2, bytes2) = heading_label_source(Some(2));
+        let (key3, bytes3) = heading_label_source(Some(3));
+        let (fallback_key, fallback_bytes) = heading_label_source(None);
+
+        assert_eq!(key1, "heading-label-1");
+        assert_eq!(key2, "heading-label-2");
+        assert_eq!(key3, "heading-label-3");
+        assert_eq!(fallback_key, key1);
+        assert!(bytes1.starts_with(b"<svg"));
+        assert!(bytes2.starts_with(b"<svg"));
+        assert!(bytes3.starts_with(b"<svg"));
+        assert!(fallback_bytes == bytes1);
+        assert_eq!(heading_label_source(Some(4)).0, key1);
     }
 
     #[test]

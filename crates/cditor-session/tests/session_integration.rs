@@ -28,6 +28,8 @@ fn cold_start_request(readonly: bool) -> SessionColdStartRequest {
         data: DocumentRuntimeColdStartData {
             document_id: 91,
             document_title: "Headless integration".to_owned(),
+            page_cover: None,
+            page_icon: None,
             structure_version: 1,
             records: vec![BlockIndexRecord::new(
                 1,

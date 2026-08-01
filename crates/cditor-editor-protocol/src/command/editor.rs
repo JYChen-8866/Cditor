@@ -71,6 +71,19 @@ pub enum EditorCommand {
     InsertImageAsset {
         payload: cditor_core::rich_text::ImagePayload,
     },
+    #[doc(hidden)]
+    SetPageCover {
+        source: Option<String>,
+        position_y_milli: u16,
+    },
+    #[doc(hidden)]
+    SetPageIconEmoji {
+        emoji: Option<String>,
+    },
+    #[doc(hidden)]
+    SetPageIconAsset {
+        source: Option<String>,
+    },
     DeleteSelection,
     ToggleBold,
     ToggleItalic,
@@ -284,6 +297,9 @@ impl EditorCommand {
             Self::PasteClipboard => "edit.paste",
             Self::ApplyClipboardData { .. } => builtin::EDIT_APPLY_CLIPBOARD_DATA,
             Self::InsertImageAsset { .. } => builtin::ASSET_INSERT_IMAGE_PAYLOAD,
+            Self::SetPageCover { .. } => builtin::DOCUMENT_SET_COVER,
+            Self::SetPageIconEmoji { .. } => builtin::DOCUMENT_SET_ICON,
+            Self::SetPageIconAsset { .. } => builtin::DOCUMENT_SET_ICON,
             Self::DeleteSelection => "edit.delete_selection",
             Self::ToggleBold => "format.toggle_bold",
             Self::ToggleItalic => "format.toggle_italic",
@@ -363,6 +379,24 @@ impl EditorCommand {
             },
             Self::InsertImageAsset { payload } => CommandArgs::ImageAsset {
                 payload: payload.clone(),
+            },
+            Self::SetPageCover {
+                source,
+                position_y_milli,
+            } => CommandArgs::Extension {
+                schema: "cditor.page_cover.v1".to_owned(),
+                payload: serde_json::json!({
+                    "source": source,
+                    "position_y_milli": position_y_milli,
+                }),
+            },
+            Self::SetPageIconEmoji { emoji } => CommandArgs::Extension {
+                schema: "cditor.page_icon.v1".to_owned(),
+                payload: serde_json::json!({ "emoji": emoji }),
+            },
+            Self::SetPageIconAsset { source } => CommandArgs::Extension {
+                schema: "cditor.page_icon_asset.v1".to_owned(),
+                payload: serde_json::json!({ "source": source }),
             },
             Self::ToggleBold => CommandArgs::InlineMark(InlineMark::Bold),
             Self::ToggleItalic => CommandArgs::InlineMark(InlineMark::Italic),

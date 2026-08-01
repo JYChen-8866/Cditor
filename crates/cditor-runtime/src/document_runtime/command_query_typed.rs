@@ -39,6 +39,9 @@ impl DocumentRuntime {
             EditorCommand::PasteClipboard
             | EditorCommand::ApplyClipboardData { .. }
             | EditorCommand::InsertImageAsset { .. } => self.focused_block_id().is_some(),
+            EditorCommand::SetPageCover { .. }
+            | EditorCommand::SetPageIconEmoji { .. }
+            | EditorCommand::SetPageIconAsset { .. } => true,
             EditorCommand::ToggleBold
             | EditorCommand::ToggleItalic
             | EditorCommand::ToggleUnderline

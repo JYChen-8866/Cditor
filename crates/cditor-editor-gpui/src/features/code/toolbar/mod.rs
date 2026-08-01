@@ -9,6 +9,7 @@ use crate::theme::GuiTheme;
 use cditor_component::{Combobox, ComboboxItem, ComboboxPlacement, ComboboxStyle, SvgIcon};
 use cditor_core::ids::BlockId;
 use gpui::InteractiveElement;
+use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, Entity, FocusHandle, IntoElement, MouseButton, ParentElement, Styled, div, px, rgb,
 };
@@ -31,6 +32,7 @@ pub const V1_CODE_LANGUAGE_POPUP_GAP_PX: f32 = 6.0;
 pub const V1_CODE_LANGUAGE_POPUP_MAX_HEIGHT_PX: f32 = 300.0;
 pub const V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX: f32 = 32.0;
 pub const V1_CODE_COPY_ICON_SIZE_PX: f32 = 16.0;
+pub const V1_CODE_LANGUAGE_ICON_SIZE_PX: f32 = 14.0;
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub fn render_code_toolbar(
@@ -73,9 +75,65 @@ pub fn render_code_toolbar(
                     view.clone(),
                     code_language_focus,
                 ))
-                .child(render_copy_button(theme, block_id, view.clone())),
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(V1_CODE_TOOLBAR_GAP_PX))
+                        .child(render_collapse_button(theme, block_id, view.clone()))
+                        .child(render_copy_button(theme, block_id, view.clone())),
+                ),
         )
         .into_any_element()
+}
+
+fn render_collapse_button(
+    theme: GuiTheme,
+    block_id: BlockId,
+    view: Entity<CditorV2View>,
+) -> AnyElement {
+    div()
+        .w(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
+        .h(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX))
+        .text_color(rgb(theme.code_toolbar_icon))
+        .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
+        .child(render_collapse_icon(theme, block_id, view.clone()))
+        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+            view.update(cx, |view, cx| {
+                super::actions::toggle_code_block_collapsed_from_gui(view, block_id, cx);
+            });
+            cx.stop_propagation();
+        })
+        .into_any_element()
+}
+
+fn render_collapse_icon(
+    theme: GuiTheme,
+    block_id: BlockId,
+    view: Entity<CditorV2View>,
+) -> AnyElement {
+    const CHEVRON_UP: &[u8] = include_bytes!("../../../../../../assets/icons/chevron-up.svg");
+    const CHEVRON_DOWN: &[u8] = include_bytes!("../../../../../../assets/icons/chevron-down.svg");
+
+    SvgIcon::dynamic(move |cx| {
+        if view
+            .read(cx)
+            .overlay
+            .collapsed_code_blocks
+            .contains(&block_id)
+        {
+            ("code-toolbar-expand", CHEVRON_DOWN)
+        } else {
+            ("code-toolbar-collapse", CHEVRON_UP)
+        }
+    })
+    .color(rgb(theme.code_toolbar_icon))
+    .size(px(V1_CODE_COPY_ICON_SIZE_PX))
+    .into_any_element()
 }
 
 fn render_language_editor(
@@ -109,6 +167,7 @@ fn render_language_editor(
         .as_deref()
         .unwrap_or("plain text")
         .to_owned();
+    let language_icon = render_language_icon(language);
     let items = suggestions
         .into_iter()
         .enumerate()
@@ -158,6 +217,7 @@ fn render_language_editor(
         },
     )
     .placement(placement)
+    .when_some(language_icon, |combobox, icon| combobox.trigger_icon(icon))
     .search(render_language_search_input(
         theme,
         draft,
@@ -183,6 +243,93 @@ fn render_language_editor(
     )
     .popup_right_offset(px(0.0))
     .into_any_element()
+}
+
+fn render_language_icon(language: Option<&str>) -> Option<SvgIcon> {
+    let (key, bytes) = language_icon_source(language?)?;
+    Some(
+        SvgIcon::new(key, bytes)
+            .colored()
+            .size(px(V1_CODE_LANGUAGE_ICON_SIZE_PX)),
+    )
+}
+
+fn language_icon_source(language: &str) -> Option<(&'static str, &'static [u8])> {
+    Some(match language.to_ascii_lowercase().as_str() {
+        "c" => (
+            "language-icon-c",
+            include_bytes!("../../../../../../assets/icons/c.svg").as_slice(),
+        ),
+        "rust" | "rs" => (
+            "language-icon-rust",
+            include_bytes!("../../../../../../assets/icons/rust.svg").as_slice(),
+        ),
+        "typescript" | "ts" => (
+            "language-icon-typescript",
+            include_bytes!("../../../../../../assets/icons/typescript.svg").as_slice(),
+        ),
+        "javascript" | "js" | "jsx" => (
+            "language-icon-javascript",
+            include_bytes!("../../../../../../assets/icons/javascript.svg").as_slice(),
+        ),
+        "python" | "py" => (
+            "language-icon-python",
+            include_bytes!("../../../../../../assets/icons/python.svg").as_slice(),
+        ),
+        "go" | "golang" => (
+            "language-icon-go",
+            include_bytes!("../../../../../../assets/icons/go.svg").as_slice(),
+        ),
+        "cpp" | "c++" => (
+            "language-icon-cpp",
+            include_bytes!("../../../../../../assets/icons/cpp.svg").as_slice(),
+        ),
+        "csharp" | "c#" | "cs" => (
+            "language-icon-csharp",
+            include_bytes!("../../../../../../assets/icons/csharp.svg").as_slice(),
+        ),
+        "css" => (
+            "language-icon-css",
+            include_bytes!("../../../../../../assets/icons/css.svg").as_slice(),
+        ),
+        "haskell" => (
+            "language-icon-haskell",
+            include_bytes!("../../../../../../assets/icons/haskell.svg").as_slice(),
+        ),
+        "html" | "htm" => (
+            "language-icon-html",
+            include_bytes!("../../../../../../assets/icons/html.svg").as_slice(),
+        ),
+        "java" => (
+            "language-icon-java",
+            include_bytes!("../../../../../../assets/icons/java.svg").as_slice(),
+        ),
+        "kotlin" => (
+            "language-icon-kotlin",
+            include_bytes!("../../../../../../assets/icons/kotlin.svg").as_slice(),
+        ),
+        "lua" => (
+            "language-icon-lua",
+            include_bytes!("../../../../../../assets/icons/lua.svg").as_slice(),
+        ),
+        "php" => (
+            "language-icon-php",
+            include_bytes!("../../../../../../assets/icons/php.svg").as_slice(),
+        ),
+        "r" => (
+            "language-icon-r",
+            include_bytes!("../../../../../../assets/icons/r.svg").as_slice(),
+        ),
+        "ruby" => (
+            "language-icon-ruby",
+            include_bytes!("../../../../../../assets/icons/ruby.svg").as_slice(),
+        ),
+        "swift" => (
+            "language-icon-swift",
+            include_bytes!("../../../../../../assets/icons/swift.svg").as_slice(),
+        ),
+        _ => return None,
+    })
 }
 
 fn code_language_combobox_style(theme: GuiTheme) -> ComboboxStyle {
@@ -393,5 +540,17 @@ mod tests {
             crate::features::code::highlight::code_theme_item("missing").id,
             "github_light"
         );
+    }
+
+    #[test]
+    fn language_icon_source_maps_available_logos_case_insensitively() {
+        assert!(language_icon_source("TypeScript").is_some());
+        assert!(language_icon_source("cpp").is_some());
+        assert!(language_icon_source("PYTHON").is_some());
+        assert!(language_icon_source("rust").is_some());
+        assert!(language_icon_source("rs").is_some());
+        assert!(language_icon_source("jsx").is_some());
+        assert!(language_icon_source("json").is_none());
+        assert!(language_icon_source("plain text").is_none());
     }
 }

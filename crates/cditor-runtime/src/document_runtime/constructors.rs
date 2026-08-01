@@ -85,6 +85,7 @@ impl DocumentRuntime {
     }
 
     pub fn from_rich_text_document(document: RichTextDocument, viewport_height: f64) -> Self {
+        let metadata = document.metadata.clone();
         let block_attrs = document
             .blocks
             .iter()
@@ -99,6 +100,8 @@ impl DocumentRuntime {
             viewport_height,
         );
         runtime.document.block_attrs = block_attrs;
+        runtime.document.metadata = metadata;
+        runtime.sync_auto_document_title();
         runtime
     }
 
@@ -237,10 +240,10 @@ impl DocumentRuntime {
             payload_window.insert_loaded(payload);
         }
 
-        Self {
+        let mut runtime = Self {
             document_id,
             document: DocumentState {
-                document_title: None,
+                metadata: DocumentMetadata::default(),
                 revision: structure_version,
                 index,
                 visible_index,
@@ -281,7 +284,9 @@ impl DocumentRuntime {
             next_ai_request_id: 1,
             history: HistoryState::default(),
             transactions: TransactionState::default(),
-        }
+        };
+        runtime.sync_auto_document_title();
+        runtime
     }
 }
 

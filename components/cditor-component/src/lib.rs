@@ -7,6 +7,7 @@ pub mod progress_circle;
 pub mod scrollable_mask;
 pub mod scrollbar;
 pub mod svg_icon;
+pub mod tag;
 
 pub use combobox::{Combobox, ComboboxItem, ComboboxPlacement, ComboboxStyle};
 pub use input::{Input, InputStyle};
@@ -18,3 +19,4 @@ pub use progress_circle::ProgressCircle;
 pub use scrollable_mask::ScrollableMask;
 pub use scrollbar::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis};
 pub use svg_icon::SvgIcon;
+pub use tag::{Tag, TagEffect, TagFlow, TagFlowAlign, TagPalette, TagSize, TagStyle, TagType};

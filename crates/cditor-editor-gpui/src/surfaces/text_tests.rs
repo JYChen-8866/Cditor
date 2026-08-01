@@ -191,6 +191,8 @@ fn cold_resident_block_first_body_selection_hits_and_activates_without_gutter(
         DocumentRuntimeColdStartData {
             document_id: 1,
             document_title: "Cold click".to_owned(),
+            page_cover: None,
+            page_icon: None,
             structure_version: 1,
             records,
             block_attrs: Vec::new(),
@@ -414,7 +416,7 @@ fn resize_rejects_old_wrap_width_before_block_hit(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn code_block_hit_applies_negative_fractional_internal_scroll(cx: &mut TestAppContext) {
+fn code_block_hit_ignores_stale_internal_scroll_handle(cx: &mut TestAppContext) {
     let text = (0..40)
         .map(|line| format!("line-{line:02}"))
         .collect::<Vec<_>>()
@@ -448,7 +450,7 @@ fn code_block_hit_applies_negative_fractional_internal_scroll(cx: &mut TestAppCo
             text_origin_y_in_block_px: 8.0,
             text_width_px: 480.0,
             text_align: Some(TextAlign::Start),
-            has_internal_text_scroll: true,
+            has_internal_text_scroll: false,
             ..ProjectedBlockRect::default()
         }];
         let handle = gpui::ScrollHandle::default();
@@ -460,6 +462,7 @@ fn code_block_hit_applies_negative_fractional_internal_scroll(cx: &mut TestAppCo
             .unwrap()
             .unwrap();
         let placement = view.projected_text_placement_for_block(1).unwrap();
+        assert_eq!(placement.window_origin_y_px, 168.0);
         let element = cold_text_element_for_block(session, 1, current, placement).unwrap();
         let caret = element.local_caret_rect_for_offset(target_offset);
         let click = point(

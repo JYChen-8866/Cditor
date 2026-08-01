@@ -6,7 +6,7 @@ use super::*;
 /// focused queries so document mutations continue to flow through commands.
 #[derive(Debug)]
 pub(super) struct DocumentState {
-    pub(super) document_title: Option<String>,
+    pub(super) metadata: DocumentMetadata,
     pub(super) revision: u64,
     pub(super) index: DocumentIndex,
     pub(super) visible_index: VisibleDocumentIndex,

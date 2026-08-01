@@ -71,6 +71,8 @@ pub async fn run_document_storage_contract(
     let outcome = storage
         .commit(StorageSaveBatch {
             document_id: config.document_id,
+            icon_json: None,
+            cover_json: None,
             layout_key: None,
             payloads: vec![payload],
             index_records: Vec::new(),
@@ -158,6 +160,8 @@ pub async fn seed_mixed_storage_document(
     storage
         .commit(StorageSaveBatch {
             document_id,
+            icon_json: None,
+            cover_json: None,
             layout_key: None,
             payloads,
             index_records: records,

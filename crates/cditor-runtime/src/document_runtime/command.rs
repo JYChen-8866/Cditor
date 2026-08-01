@@ -75,6 +75,49 @@ impl DocumentRuntime {
                     affected_blocks.extend([image, trailing]);
                     true
                 }
+                EditorCommand::SetPageCover {
+                    source,
+                    position_y_milli,
+                } => {
+                    let next = source
+                        .filter(|source| !source.trim().is_empty())
+                        .map(|source| PageCover::Asset {
+                            asset: AssetRef::local(source),
+                            position_y: CoverPositionY::from_ratio(
+                                f32::from(position_y_milli.min(1000)) / 1000.0,
+                            ),
+                        });
+                    if self.document.metadata.cover == next {
+                        false
+                    } else {
+                        self.document.metadata.cover = next;
+                        true
+                    }
+                }
+                EditorCommand::SetPageIconEmoji { emoji } => {
+                    let next = emoji
+                        .filter(|emoji| !emoji.trim().is_empty())
+                        .map(|emoji| PageIcon::Emoji { emoji });
+                    if self.document.metadata.icon == next {
+                        false
+                    } else {
+                        self.document.metadata.icon = next;
+                        true
+                    }
+                }
+                EditorCommand::SetPageIconAsset { source } => {
+                    let next = source
+                        .filter(|source| !source.trim().is_empty())
+                        .map(|source| PageIcon::Asset {
+                            asset: AssetRef::local(source),
+                        });
+                    if self.document.metadata.icon == next {
+                        false
+                    } else {
+                        self.document.metadata.icon = next;
+                        true
+                    }
+                }
                 EditorCommand::DeleteSelectedBlocks => self
                     .delete_selected_block_selection()
                     .map_err(apply_error)?,
@@ -466,6 +509,90 @@ mod tests {
         assert!(outcome.transaction_ids.is_empty());
         assert_eq!(runtime.revision(), before_revision);
         assert_eq!(runtime.selected_focused_text().as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn page_decoration_commands_mutate_metadata_and_revision_once() {
+        let mut runtime = DocumentRuntime::empty();
+        let before = runtime.revision();
+
+        let cover = runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::SetPageCover {
+                    source: Some("/tmp/cover.png".to_owned()),
+                    position_y_milli: 250,
+                },
+                CommandSource::Toolbar,
+            ))
+            .unwrap();
+        let icon = runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::SetPageIconEmoji {
+                    emoji: Some("📄".to_owned()),
+                },
+                CommandSource::Toolbar,
+            ))
+            .unwrap();
+
+        assert!(cover.changed());
+        assert!(icon.changed());
+        assert_eq!(runtime.revision(), before + 2);
+        assert!(matches!(
+            runtime.page_cover(),
+            Some(PageCover::Asset { .. })
+        ));
+        assert_eq!(
+            runtime.page_icon(),
+            Some(&PageIcon::Emoji {
+                emoji: "📄".to_owned()
+            })
+        );
+
+        let no_op = runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::SetPageIconEmoji {
+                    emoji: Some("📄".to_owned()),
+                },
+                CommandSource::Toolbar,
+            ))
+            .unwrap();
+        assert!(!no_op.changed());
+        assert_eq!(runtime.revision(), before + 2);
+    }
+
+    #[test]
+    fn page_icon_asset_command_sets_embedded_svg_icon() {
+        let mut runtime = DocumentRuntime::empty();
+        let before = runtime.revision();
+
+        let outcome = runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::SetPageIconAsset {
+                    source: Some("icons/theme.svg".to_owned()),
+                },
+                CommandSource::Toolbar,
+            ))
+            .unwrap();
+
+        assert!(outcome.changed());
+        assert_eq!(
+            runtime.page_icon(),
+            Some(&PageIcon::Asset {
+                asset: AssetRef::local("icons/theme.svg")
+            })
+        );
+        assert_eq!(runtime.revision(), before + 1);
+
+        let no_op = runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::SetPageIconAsset {
+                    source: Some("icons/theme.svg".to_owned()),
+                },
+                CommandSource::Toolbar,
+            ))
+            .unwrap();
+        assert!(!no_op.changed());
+        assert_eq!(runtime.revision(), before + 1);
     }
 
     #[test]

@@ -10,10 +10,8 @@ use rex::{
 
 use super::plan::{PaintCommand, PaintKind};
 
-const XITS_MATH: &[u8] =
-    include_bytes!("../../assets/rex-xits.otf");
-const GELPEN_REGULAR: &[u8] =
-    include_bytes!("../../assets/GelPen.ttf");
+const XITS_MATH: &[u8] = include_bytes!("../../assets/rex-xits.otf");
+const GELPEN_REGULAR: &[u8] = include_bytes!("../../assets/GelPen.ttf");
 
 pub(super) fn math_commands(math: &Math, parent_transform: Affine) -> Vec<PaintCommand> {
     let Ok(math_face) = ttf_parser::Face::parse(XITS_MATH, 0) else {

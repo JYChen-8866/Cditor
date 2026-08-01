@@ -63,6 +63,7 @@ impl CditorV2View {
             interaction: InteractionUiState::default(),
             cache: RenderCacheState::default(),
             scheduling: Default::default(),
+            page_chrome_extras: None,
         }
     }
 

@@ -56,6 +56,7 @@ impl DocumentRuntime {
             builtin::EDIT_APPLY_CLIPBOARD_DATA | builtin::ASSET_INSERT_IMAGE_PAYLOAD => {
                 self.focused_block_id().is_some()
             }
+            builtin::DOCUMENT_SET_COVER | builtin::DOCUMENT_SET_ICON => true,
             builtin::FORMAT_TOGGLE_MARK
             | builtin::FORMAT_TOGGLE_BOLD
             | builtin::FORMAT_TOGGLE_ITALIC

@@ -23,6 +23,16 @@ pub fn prepare_editor_session_from_rebuild_plan(
             data: DocumentRuntimeColdStartData {
                 document_id: state.metadata.document_id,
                 document_title: state.metadata.title,
+                page_cover: state
+                    .metadata
+                    .cover_json
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok()),
+                page_icon: state
+                    .metadata
+                    .icon_json
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok()),
                 structure_version: state.metadata.structure_version,
                 records: state.records,
                 block_attrs: state.block_attrs,
@@ -103,6 +113,8 @@ mod tests {
                     metadata: StorageDocumentMetadata {
                         document_id: 9,
                         title: "Recovered".to_owned(),
+                        icon_json: None,
+                        cover_json: None,
                         structure_version: 1,
                         content_version: 1,
                         layout_version: 0,
