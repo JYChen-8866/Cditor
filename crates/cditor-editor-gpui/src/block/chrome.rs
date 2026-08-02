@@ -1,7 +1,7 @@
 use crate::theme::GuiTheme;
 use cditor_core::layout::block_metrics::{
     NOTION_BODY_LINE_HEIGHT_PX, NOTION_HEADING_1_LINE_HEIGHT_PX, NOTION_HEADING_2_LINE_HEIGHT_PX,
-    NOTION_HEADING_3_LINE_HEIGHT_PX,
+    NOTION_HEADING_3_LINE_HEIGHT_PX, block_outer_padding_for_kind,
 };
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
@@ -10,7 +10,6 @@ pub const BLOCK_INDENT_STEP_PX: f32 = 24.0;
 pub const BLOCK_GUTTER_WIDTH_PX: f32 = 22.0;
 pub const BLOCK_GUTTER_HEIGHT_PX: f32 = 24.0;
 pub const BLOCK_SHELL_OUTER_PADDING_X_PX: f32 = 3.0;
-pub const BLOCK_SHELL_OUTER_PADDING_Y_PX: f32 = 4.0;
 pub const BLOCK_ROW_GAP_PX: f32 = 0.0;
 pub const BLOCK_SHELL_BORDER_WIDTH_PX: f32 = 1.0;
 pub const BLOCK_CONTENT_BORDER_WIDTH_PX: f32 = 1.0;
@@ -78,8 +77,8 @@ pub const fn block_content_left_px(indent_px: f32) -> f32 {
     BlockHorizontalGeometry::for_indent(indent_px).marker_lane_left_px
 }
 
-pub const fn block_gutter_top_px() -> f32 {
-    BLOCK_SHELL_BORDER_WIDTH_PX + BLOCK_SHELL_OUTER_PADDING_Y_PX
+pub const fn block_gutter_top_px(outer_padding_top_px: f32) -> f32 {
+    BLOCK_SHELL_BORDER_WIDTH_PX + outer_padding_top_px
 }
 pub const BLOCK_PREFIX_WIDTH_PX: f32 = 22.0;
 pub const CALLOUT_PREFIX_WIDTH_PX: f32 = 36.0;
@@ -92,6 +91,8 @@ pub struct BlockChromeStyle {
     pub gutter_height_px: f32,
     pub marker_lane_width_px: f32,
     pub content_prefix_width_px: f32,
+    pub outer_padding_top_px: f32,
+    pub outer_padding_bottom_px: f32,
     pub content_min_height_px: f32,
     pub content_padding_y_px: f32,
     pub content_padding_left_px: f32,
@@ -121,12 +122,16 @@ impl BlockChromeStyle {
             .as_deref()
             .and_then(parse_hex_color)
             .unwrap_or(kind_style.text);
+        let (outer_padding_top_px, outer_padding_bottom_px) =
+            block_outer_padding_for_kind(&block.kind);
         Self {
             indent_px: block.chrome.list_info.depth as f32 * BLOCK_INDENT_STEP_PX,
             gutter_width_px: BLOCK_GUTTER_WIDTH_PX,
             gutter_height_px: BLOCK_GUTTER_HEIGHT_PX,
             marker_lane_width_px: BLOCK_PREFIX_WIDTH_PX,
             content_prefix_width_px: block_content_prefix_width_px(block),
+            outer_padding_top_px: outer_padding_top_px as f32,
+            outer_padding_bottom_px: outer_padding_bottom_px as f32,
             content_min_height_px: kind_style.min_height_px,
             content_padding_y_px: kind_style.padding_y_px,
             content_padding_left_px: kind_style.padding_left_px,

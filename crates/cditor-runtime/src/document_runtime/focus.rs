@@ -11,7 +11,7 @@ pub type TableCellSelectionState = (
 );
 
 impl DocumentRuntime {
-    pub(crate) fn focus_block(&mut self, block_id: BlockId) {
+    pub fn focus_block(&mut self, block_id: BlockId) {
         if let Err(error) = self.try_focus_block(block_id) {
             trace_input(
                 "focus_block.rejected",

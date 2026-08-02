@@ -1,6 +1,4 @@
-use crate::block::chrome::{
-    BLOCK_SHELL_BORDER_WIDTH_PX, BLOCK_SHELL_OUTER_PADDING_Y_PX, BlockChromeStyle,
-};
+use crate::block::chrome::{BLOCK_SHELL_BORDER_WIDTH_PX, BlockChromeStyle};
 use crate::document::{DocumentBlockGeometry, DocumentLayoutMetrics};
 use crate::theme::GuiTheme;
 use cditor_runtime::ViewBlockSnapshot;
@@ -45,7 +43,7 @@ pub(crate) fn table_content_editor_origin(
         x_px: block_geometry.shell_left_px + horizontal.text_left_px,
         y_px: block_top_px
             + BLOCK_SHELL_BORDER_WIDTH_PX
-            + BLOCK_SHELL_OUTER_PADDING_Y_PX
+            + chrome.outer_padding_top_px
             + chrome.content_border_width_px
             + chrome.content_padding_y_px,
     }

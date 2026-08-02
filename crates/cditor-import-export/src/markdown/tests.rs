@@ -188,6 +188,26 @@ fn table_cells_support_escaped_pipe_like_v1() {
 }
 
 #[test]
+fn parse_gfm_table_builds_table_payload() {
+    let table = parse_gfm_table("| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |")
+        .expect("standalone table parses");
+    assert_eq!(table.header_rows, 1);
+    assert_eq!(table.rows.len(), 3);
+    assert_eq!(table.rows[0].cells.len(), 2);
+    assert_eq!(
+        cditor_core::rich_text::plain_text_from_spans(&table.rows[1].cells[0].spans),
+        "1"
+    );
+}
+
+#[test]
+fn parse_gfm_table_rejects_prose_and_single_lines() {
+    assert!(parse_gfm_table("just a paragraph").is_none());
+    assert!(parse_gfm_table("| one | line |").is_none());
+    assert!(parse_gfm_table("| A | B |\nparagraph after").is_none());
+}
+
+#[test]
 fn incremental_multiline_callout_is_supported() {
     let block = import_markdown_block_incremental(
         "> [!WARNING]\n> be careful",

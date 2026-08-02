@@ -1,7 +1,9 @@
 //! Agent bridge — connects AI document tools to the live editor runtime.
 
 use cditor_core::ids::BlockId;
+use cditor_core::rich_text::{BlockPayload, RichBlockKind};
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
+use cditor_import_export::markdown::parse_gfm_table;
 use cditor_runtime::{AgentBlockOutline, DocumentRuntime};
 
 use crate::EditorSessionHandle;
@@ -35,6 +37,22 @@ pub enum AgentEditOperation {
     InsertBlockAfter {
         after_block_id: BlockId,
         text: String,
+    },
+    InsertBlockAsFirstChild {
+        parent_id: BlockId,
+        text: String,
+    },
+    InsertBlockAsLastChild {
+        parent_id: BlockId,
+        text: String,
+    },
+    MoveBlockBefore {
+        block_id: BlockId,
+        previous_block_id: Option<BlockId>,
+    },
+    MoveBlockToParent {
+        block_id: BlockId,
+        parent_id: BlockId,
     },
     SetBlockText {
         block_id: BlockId,
@@ -118,9 +136,21 @@ pub fn project_agent_edit(
                 after_block_id,
                 text,
             } => {
-                let new_id = runtime
-                    .agent_insert_block_after(after_block_id, &text)
-                    .map_err(agent_apply_error)?;
+                // A GFM table inserted as plain text must become a real Table
+                // block instead of leaving raw `| ... |` markdown visible.
+                let new_id = if let Some(table) = parse_gfm_table(&text) {
+                    runtime
+                        .agent_insert_block_payload_after(
+                            after_block_id,
+                            RichBlockKind::Table,
+                            BlockPayload::Table(table),
+                        )
+                        .map_err(agent_apply_error)?
+                } else {
+                    runtime
+                        .agent_insert_block_after(after_block_id, &text)
+                        .map_err(agent_apply_error)?
+                };
                 new_block_ids.push(new_id);
                 changed = true;
             }
@@ -133,6 +163,35 @@ pub fn project_agent_edit(
                     .agent_insert_code_block_after(after_block_id, language.as_deref(), &text)
                     .map_err(agent_apply_error)?;
                 new_block_ids.push(new_id);
+                changed = true;
+            }
+            AgentEditOperation::InsertBlockAsFirstChild { parent_id, text } => {
+                let new_id = runtime
+                    .agent_insert_block_as_first_child(parent_id, &text)
+                    .map_err(agent_apply_error)?;
+                new_block_ids.push(new_id);
+                changed = true;
+            }
+            AgentEditOperation::InsertBlockAsLastChild { parent_id, text } => {
+                let new_id = runtime
+                    .agent_insert_block_as_last_child(parent_id, &text)
+                    .map_err(agent_apply_error)?;
+                new_block_ids.push(new_id);
+                changed = true;
+            }
+            AgentEditOperation::MoveBlockBefore {
+                block_id,
+                previous_block_id,
+            } => {
+                runtime
+                    .agent_move_block_before(block_id, previous_block_id)
+                    .map_err(agent_apply_error)?;
+                changed = true;
+            }
+            AgentEditOperation::MoveBlockToParent { block_id, parent_id } => {
+                runtime
+                    .agent_move_block_to_parent(block_id, parent_id)
+                    .map_err(agent_apply_error)?;
                 changed = true;
             }
             AgentEditOperation::SetBlockText { block_id, text } => {
@@ -292,6 +351,62 @@ mod tests {
     }
 
     #[test]
+    fn agent_edit_inserts_gfm_table_as_table_block() {
+        let handle = EditorSession::new(outline_runtime(), false).into_handle();
+        let before = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        let outcome = handle
+            .agent_edit(AgentEditRequest {
+                expected_structure_version: Some(before.structure_version),
+                operations: vec![AgentEditOperation::InsertBlockAfter {
+                    after_block_id: 3,
+                    text: "| A | B |\n|---|---|\n| 1 | 2 |".to_owned(),
+                }],
+            })
+            .unwrap();
+        assert_eq!(outcome.new_block_ids, vec![4]);
+
+        let after = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        let inserted = after
+            .blocks
+            .iter()
+            .find(|block| block.block_id == 4)
+            .expect("inserted table is visible in outline");
+        assert_eq!(inserted.kind, RichBlockKind::Table);
+    }
+
+    #[test]
+    fn agent_edit_keeps_non_table_text_as_paragraph() {
+        let handle = EditorSession::new(outline_runtime(), false).into_handle();
+        let before = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        handle
+            .agent_edit(AgentEditRequest {
+                expected_structure_version: Some(before.structure_version),
+                operations: vec![AgentEditOperation::InsertBlockAfter {
+                    after_block_id: 3,
+                    text: "plain paragraph".to_owned(),
+                }],
+            })
+            .unwrap();
+
+        let after = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        let inserted = after
+            .blocks
+            .iter()
+            .find(|block| block.block_id == 4)
+            .expect("inserted paragraph is visible in outline");
+        assert_eq!(inserted.kind, RichBlockKind::Paragraph);
+        assert_eq!(inserted.text, "plain paragraph");
+    }
+
+    #[test]
     fn agent_edit_rejects_stale_structure_version() {
         let handle = EditorSession::new(outline_runtime(), false).into_handle();
         let before = handle
@@ -333,5 +448,107 @@ mod tests {
             })
             .unwrap_err();
         assert_eq!(error.code, ProtocolErrorCode::Readonly);
+    }
+
+    #[test]
+    fn agent_edit_inserts_first_and_last_child() {
+        let handle = EditorSession::new(outline_runtime(), false).into_handle();
+        let before = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        handle
+            .agent_edit(AgentEditRequest {
+                expected_structure_version: Some(before.structure_version),
+                operations: vec![
+                    AgentEditOperation::InsertBlockAsFirstChild {
+                        parent_id: 3,
+                        text: "first child".to_owned(),
+                    },
+                    AgentEditOperation::InsertBlockAsLastChild {
+                        parent_id: 3,
+                        text: "last child".to_owned(),
+                    },
+                ],
+            })
+            .unwrap();
+
+        let after = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        let first = after
+            .blocks
+            .iter()
+            .find(|block| block.text == "first child")
+            .expect("first child exists");
+        let last = after
+            .blocks
+            .iter()
+            .find(|block| block.text == "last child")
+            .expect("last child exists");
+        assert_eq!(first.parent_id, Some(3));
+        assert_eq!(last.parent_id, Some(3));
+        assert!(
+            after
+                .blocks
+                .iter()
+                .position(|block| block.block_id == first.block_id)
+                < after
+                    .blocks
+                    .iter()
+                    .position(|block| block.block_id == last.block_id)
+        );
+    }
+
+    #[test]
+    fn agent_edit_moves_block_before_and_into_parent() {
+        let runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![
+                BlockPayloadRecord::rich_text(1, RichBlockKind::Quote, "quote"),
+                BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "a"),
+                BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "b"),
+            ],
+            720.0,
+        );
+        let handle = EditorSession::new(runtime, false).into_handle();
+        let before = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        handle
+            .agent_edit(AgentEditRequest {
+                expected_structure_version: Some(before.structure_version),
+                operations: vec![AgentEditOperation::MoveBlockBefore {
+                    block_id: 3,
+                    previous_block_id: Some(1),
+                }],
+            })
+            .unwrap();
+        let after = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        assert_eq!(after.blocks[0].block_id, 3);
+        assert_eq!(after.blocks[1].block_id, 1);
+
+        let before = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        handle
+            .agent_edit(AgentEditRequest {
+                expected_structure_version: Some(before.structure_version),
+                operations: vec![AgentEditOperation::MoveBlockToParent {
+                    block_id: 2,
+                    parent_id: 1,
+                }],
+            })
+            .unwrap();
+        let after = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        let moved = after
+            .blocks
+            .iter()
+            .find(|block| block.block_id == 2)
+            .expect("moved block exists");
+        assert_eq!(moved.parent_id, Some(1));
     }
 }

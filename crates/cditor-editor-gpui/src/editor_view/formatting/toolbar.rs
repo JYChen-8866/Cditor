@@ -55,7 +55,7 @@ pub(crate) fn formatting_toolbar_state(
         let gutter_left = page_left + rect.gutter_left_px;
         let gutter_top = (rect.document_top - context.global_scroll_top) as f32
             + document_layout.top_inset_px
-            + block_gutter_top_px();
+            + block_gutter_top_px(rect.outer_padding_top_px);
         let (x, y) = gutter_floating_toolbar_position(
             gutter_left,
             gutter_top,
@@ -475,6 +475,7 @@ mod tests {
             document_top: 0.0,
             document_bottom: 48.0,
             indent_px: 0.0,
+            outer_padding_top_px: 2.0,
             text_origin_x_in_block_px: 0.0,
             text_origin_y_in_block_px: 0.0,
             text_width_px: 500.0,

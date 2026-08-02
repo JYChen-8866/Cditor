@@ -32,6 +32,7 @@ pub(crate) struct ProjectedBlockRect {
     pub(crate) document_top: f64,
     pub(crate) document_bottom: f64,
     pub(crate) indent_px: f32,
+    pub(crate) outer_padding_top_px: f32,
     pub(crate) shell_left_px: f32,
     pub(crate) track_right_px: f32,
     pub(crate) gutter_left_px: f32,
@@ -237,10 +238,10 @@ pub(crate) fn projected_block_rects_from_projection(
         .iter()
         .map(|block| {
             let height = block.layout.effective_height();
+            let chrome = BlockChromeStyle::from_snapshot(block, GuiTheme::light());
             let text_geometry =
                 DocumentTextGeometry::for_block(block, GuiTheme::light(), document_layout);
-            let horizontal =
-                BlockChromeStyle::from_snapshot(block, GuiTheme::light()).horizontal_geometry();
+            let horizontal = chrome.horizontal_geometry();
             let block_geometry = DocumentBlockGeometry::for_block(block, document_layout);
             let rect = ProjectedBlockRect {
                 block_id: block.block_id,
@@ -249,6 +250,7 @@ pub(crate) fn projected_block_rects_from_projection(
                 document_top: top,
                 document_bottom: top + height,
                 indent_px: horizontal.indent_px,
+                outer_padding_top_px: chrome.outer_padding_top_px,
                 shell_left_px: block_geometry.shell_left_px,
                 track_right_px: block_geometry.track_right_px(),
                 gutter_left_px: block_geometry.shell_left_px + horizontal.gutter_left_px,

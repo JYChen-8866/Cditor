@@ -21,6 +21,7 @@ fn complex_block_gutter_menu_disables_unsupported_text_and_ai_actions() {
         document_top: 0.0,
         document_bottom: 160.0,
         indent_px: 0.0,
+        outer_padding_top_px: 2.0,
         text_origin_x_in_block_px: 0.0,
         text_origin_y_in_block_px: 0.0,
         text_width_px: 500.0,

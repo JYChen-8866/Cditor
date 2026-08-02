@@ -49,6 +49,21 @@ pub fn parse_markdown_document(
     commonmark::parse_document(&mut parser, markdown)
 }
 
+/// Parse a standalone GFM table (header row + separator row + optional data
+/// rows) into a [`TablePayload`]. Returns `None` when the text is not a table,
+/// so plain-text insertion keeps its existing behavior.
+#[must_use]
+pub fn parse_gfm_table(text: &str) -> Option<TablePayload> {
+    let lines = text.lines().collect::<Vec<_>>();
+    if lines.len() < 2 {
+        return None;
+    }
+    if !lines.iter().all(|line| is_table_candidate_line(line)) {
+        return None;
+    }
+    parse_table_region(&lines)
+}
+
 #[must_use]
 pub fn import_markdown_block_incremental(
     markdown: &str,

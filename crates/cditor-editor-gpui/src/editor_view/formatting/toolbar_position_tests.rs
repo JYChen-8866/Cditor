@@ -11,6 +11,7 @@ fn gutter_toolbar_opens_left_of_the_actual_gutter_and_aligns_its_top() {
         document_top: 220.0,
         document_bottom: 268.0,
         indent_px: 24.0,
+        outer_padding_top_px: 2.0,
         gutter_left_px: 28.0,
         text_origin_x_in_block_px: 0.0,
         text_origin_y_in_block_px: 0.0,
@@ -23,7 +24,9 @@ fn gutter_toolbar_opens_left_of_the_actual_gutter_and_aligns_its_top() {
     let page_left = (viewport.width - document_layout.page_width_px) / 2.0;
     let gutter_left = page_left + rect.gutter_left_px;
     let gutter_top =
-        (rect.document_top - 80.0) as f32 + document_layout.top_inset_px + block_gutter_top_px();
+        (rect.document_top - 80.0) as f32
+            + document_layout.top_inset_px
+            + block_gutter_top_px(rect.outer_padding_top_px);
 
     let mut context = formatting_toolbar_context(Some(&runtime), Some(1)).unwrap();
     context.global_scroll_top = 80.0;

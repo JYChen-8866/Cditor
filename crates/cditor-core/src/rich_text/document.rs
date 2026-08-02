@@ -156,7 +156,7 @@ pub struct RichBlockRecord {
 }
 
 impl RichBlockRecord {
-    pub const DEFAULT_TEXT_HEIGHT: f64 = 32.0;
+    pub const DEFAULT_TEXT_HEIGHT: f64 = 28.0;
     pub const DEFAULT_IMAGE_HEIGHT: f64 = 220.0;
     pub const DEFAULT_CODE_HEIGHT: f64 = 136.0;
     pub const DEFAULT_TABLE_HEIGHT: f64 = 120.0;

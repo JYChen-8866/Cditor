@@ -927,7 +927,13 @@ impl DocumentRuntime {
             before_selection: self.document_selection_snapshot(),
             after_selection: None,
         })?;
-        self.focus_block_at_offset(new_block_id, 0)?;
+        if self.document.text_models.contains_key(&new_block_id) {
+            self.focus_block_at_offset(new_block_id, 0)?;
+        } else {
+            // Non-text blocks (e.g. AI-inserted tables) have no caret offset;
+            // focus their chrome instead of failing the whole edit.
+            self.focus_block(new_block_id);
+        }
         Ok(new_block_id)
     }
 
@@ -961,6 +967,111 @@ impl DocumentRuntime {
         self.agent_set_block_text(new_id, text)?;
         self.focus_block_at_offset(new_id, 0)?;
         Ok(new_id)
+    }
+
+    /// Insert a paragraph as the first child of `parent_id` (agent). Mirrors
+    /// SiYuan's `prependInsert`.
+    pub fn agent_insert_block_as_first_child(
+        &mut self,
+        parent_id: BlockId,
+        text: &str,
+    ) -> Result<BlockId, String> {
+        let parent_index = self
+            .document
+            .index
+            .index_of(parent_id)
+            .ok_or_else(|| format!("block {parent_id} is missing from index"))?;
+        let new_block_id = self
+            .document
+            .index
+            .block_ids
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        let depth = self.document.index.depths[parent_index].saturating_add(1);
+        let insert_at = parent_index + 1;
+        let kind = RichBlockKind::Paragraph;
+        let mut payload = BlockPayloadRecord::rich_text(new_block_id, kind.clone(), text);
+        payload.content_version = 0;
+        let record = BlockIndexRecord::new(
+            new_block_id,
+            Some(parent_id),
+            depth,
+            kind_tag_for_rich_block_kind(&kind),
+            0,
+        )
+        .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(
+            new_block_id,
+            estimate_payload_height(&payload, insert_at),
+        ));
+
+        self.apply_local_insert_blocks_transaction(LocalInsertBlocksTransaction {
+            index: insert_at,
+            blocks: vec![record],
+            payloads: vec![payload],
+            kind: EditTransactionKind::AiApply,
+            origin: cditor_core::edit::ChangeOrigin::Ai,
+            before_selection: self.document_selection_snapshot(),
+            after_selection: Some(DocumentSelection::caret(TextPosition {
+                block_id: new_block_id,
+                offset: text.len(),
+                affinity: TextAffinity::Downstream,
+            })),
+        })?;
+        self.focus_block_at_offset(new_block_id, 0)?;
+        Ok(new_block_id)
+    }
+
+    /// Insert a paragraph as the last child of `parent_id` (agent). Mirrors
+    /// SiYuan's `appendInsert`.
+    pub fn agent_insert_block_as_last_child(
+        &mut self,
+        parent_id: BlockId,
+        text: &str,
+    ) -> Result<BlockId, String> {
+        let parent_index = self
+            .document
+            .index
+            .index_of(parent_id)
+            .ok_or_else(|| format!("block {parent_id} is missing from index"))?;
+        let subtree_end = self.subtree_end(parent_index);
+        let last_descendant_id = if subtree_end > parent_index + 1 {
+            self.document.index.block_ids[subtree_end - 1]
+        } else {
+            parent_id
+        };
+        if last_descendant_id == parent_id {
+            self.agent_insert_block_as_first_child(parent_id, text)
+        } else {
+            self.agent_insert_block_after(last_descendant_id, text)
+        }
+    }
+
+    /// Move one block (with its subtree) before `previous_block_id` (agent).
+    /// Mirrors SiYuan's `move` transaction.
+    pub fn agent_move_block_before(
+        &mut self,
+        block_id: BlockId,
+        previous_block_id: Option<BlockId>,
+    ) -> Result<bool, String> {
+        self.move_block_subtree_before(block_id, previous_block_id)
+    }
+
+    /// Move one block (with its subtree) to the end of `parent_id` (agent).
+    /// Mirrors SiYuan's parent-only `move` transaction.
+    pub fn agent_move_block_to_parent(
+        &mut self,
+        block_id: BlockId,
+        parent_id: BlockId,
+    ) -> Result<bool, String> {
+        let child_count = self
+            .index_records()
+            .iter()
+            .filter(|record| record.parent_id == Some(parent_id))
+            .count();
+        self.move_block_subtree_to_parent(block_id, Some(parent_id), child_count)
     }
 
     /// Delete blocks by id (agent). Returns deleted block ids.

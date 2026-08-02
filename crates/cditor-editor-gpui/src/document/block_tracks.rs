@@ -126,7 +126,9 @@ impl DocumentTextGeometry {
         };
         Self {
             origin_x_px: f64::from(block_geometry.shell_left_px + horizontal.text_left_px) + code_x,
-            origin_y_px: 4.0 + 1.0 + f64::from(chrome.content_padding_y_px) + code_y,
+            origin_y_px: f64::from(chrome.outer_padding_top_px + BLOCK_SHELL_BORDER_WIDTH_PX)
+                + f64::from(chrome.content_padding_y_px)
+                + code_y,
             width_px: (f64::from(block_geometry.shell_width_px - horizontal.text_left_px)
                 - f64::from(horizontal.content_right_inset_px)
                 - code_x * 2.0)

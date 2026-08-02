@@ -81,6 +81,8 @@ mod tests {
             document_top: top,
             document_bottom: bottom,
             indent_px: 0.0,
+
+            outer_padding_top_px: 2.0,
             shell_left_px: 100.0,
             track_right_px: 820.0,
             gutter_left_px: 104.0,

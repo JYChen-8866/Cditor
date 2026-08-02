@@ -252,6 +252,11 @@ impl EditorSessionHandle {
         Ok(())
     }
 
+    pub fn focus_block(&self, block_id: BlockId) -> Result<(), ProtocolError> {
+        self.try_session_mut()?.runtime.focus_block(block_id);
+        Ok(())
+    }
+
     pub fn dispatch(&self, envelope: CommandEnvelope) -> Result<CommandOutcome, ProtocolError> {
         self.try_session_mut()?.dispatch(envelope)
     }

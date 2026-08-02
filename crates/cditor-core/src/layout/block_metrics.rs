@@ -66,62 +66,93 @@ pub struct TextBlockChromeMetrics {
     pub content_min_height: f64,
     pub content_padding_y: f64,
     pub extra_inner_chrome_y: f64,
+    pub outer_padding_top: f64,
+    pub outer_padding_bottom: f64,
 }
 
 impl TextBlockChromeMetrics {
     pub const fn outer_chrome_y(self) -> f64 {
-        BLOCK_SHELL_PADDING_Y_PX * 2.0 + self.content_padding_y * 2.0 + self.extra_inner_chrome_y
+        self.outer_padding_top
+            + self.outer_padding_bottom
+            + self.content_padding_y * 2.0
+            + self.extra_inner_chrome_y
     }
 
     pub const fn outer_min_height(self) -> f64 {
-        BLOCK_SHELL_PADDING_Y_PX * 2.0 + self.content_min_height
+        self.outer_padding_top + self.outer_padding_bottom + self.content_min_height
+    }
+}
+
+/// Notion-style vertical spacing per block kind. Body-like blocks stay tight
+/// (2px each side), headings get progressively more breathing room above than
+/// below, and container blocks (callout/code/table/media) keep a stable 4px.
+pub fn block_outer_padding_for_kind(kind: &RichBlockKind) -> (f64, f64) {
+    match kind {
+        RichBlockKind::Heading { level: 1 } => (16.0, 8.0),
+        RichBlockKind::Heading { level: 2 } => (12.0, 6.0),
+        RichBlockKind::Heading { level: 3 } => (10.0, 5.0),
+        RichBlockKind::Heading { level: 4 } => (8.0, 4.0),
+        RichBlockKind::Heading { level: 5 } => (6.0, 3.0),
+        RichBlockKind::Heading { level: 6 } => (4.0, 3.0),
+        RichBlockKind::Paragraph
+        | RichBlockKind::Quote
+        | RichBlockKind::Todo { .. }
+        | RichBlockKind::BulletedList
+        | RichBlockKind::NumberedList
+        | RichBlockKind::Toggle
+        | RichBlockKind::FootnoteDefinition
+        | RichBlockKind::Html
+        | RichBlockKind::Comment => (2.0, 2.0),
+        _ => (4.0, 4.0),
     }
 }
 
 pub fn text_block_chrome_metrics_for_kind(kind: &RichBlockKind) -> TextBlockChromeMetrics {
-    match kind {
-        RichBlockKind::Heading { level: 1 } => TextBlockChromeMetrics {
-            content_min_height: NOTION_HEADING_1_LINE_HEIGHT_PX,
+    let (outer_padding_top, outer_padding_bottom) = block_outer_padding_for_kind(kind);
+    let heading_min = |level: u8| match level {
+        1 => NOTION_HEADING_1_LINE_HEIGHT_PX,
+        2 => NOTION_HEADING_2_LINE_HEIGHT_PX,
+        _ => NOTION_HEADING_3_LINE_HEIGHT_PX,
+    };
+    let metrics = match kind {
+        RichBlockKind::Heading { level } => TextBlockChromeMetrics {
+            content_min_height: heading_min(*level),
             content_padding_y: 0.0,
             extra_inner_chrome_y: 0.0,
-        },
-        RichBlockKind::Heading { level: 2 } => TextBlockChromeMetrics {
-            content_min_height: NOTION_HEADING_2_LINE_HEIGHT_PX,
-            content_padding_y: 0.0,
-            extra_inner_chrome_y: 0.0,
-        },
-        RichBlockKind::Heading { level: 3 } => TextBlockChromeMetrics {
-            content_min_height: NOTION_HEADING_3_LINE_HEIGHT_PX,
-            content_padding_y: 0.0,
-            extra_inner_chrome_y: 0.0,
-        },
-        RichBlockKind::Heading { .. } => TextBlockChromeMetrics {
-            content_min_height: NOTION_HEADING_3_LINE_HEIGHT_PX,
-            content_padding_y: 0.0,
-            extra_inner_chrome_y: 0.0,
+            outer_padding_top,
+            outer_padding_bottom,
         },
         RichBlockKind::Callout { .. } => TextBlockChromeMetrics {
             content_min_height: 48.0,
             content_padding_y: 14.0,
             extra_inner_chrome_y: 0.0,
+            outer_padding_top,
+            outer_padding_bottom,
         },
         RichBlockKind::Code { .. } => TextBlockChromeMetrics {
             // 外层 shell 只承载 gutter/prefix 行；内层 code component 自己绘制 V1 min_h(92)、toolbar 和 padding。
             content_min_height: V1_CODE_INNER_MIN_HEIGHT_PX,
             content_padding_y: 0.0,
             extra_inner_chrome_y: 0.0,
+            outer_padding_top,
+            outer_padding_bottom,
         },
         RichBlockKind::RawMarkdown => TextBlockChromeMetrics {
             content_min_height: NOTION_BODY_LINE_HEIGHT_PX,
             content_padding_y: 14.0,
             extra_inner_chrome_y: 0.0,
+            outer_padding_top,
+            outer_padding_bottom,
         },
         _ => TextBlockChromeMetrics {
             content_min_height: NOTION_BODY_LINE_HEIGHT_PX,
             content_padding_y: 0.0,
             extra_inner_chrome_y: 0.0,
+            outer_padding_top,
+            outer_padding_bottom,
         },
-    }
+    };
+    metrics
 }
 
 const fn text_metrics(
@@ -508,8 +539,8 @@ mod tests {
         let paragraph = text_block_chrome_metrics_for_kind(&RichBlockKind::Paragraph);
         assert_eq!(paragraph.content_min_height, 24.0);
         assert_eq!(paragraph.content_padding_y, 0.0);
-        assert_eq!(paragraph.outer_min_height(), 32.0);
-        assert_eq!(paragraph.outer_chrome_y(), 8.0);
+        assert_eq!(paragraph.outer_min_height(), 28.0);
+        assert_eq!(paragraph.outer_chrome_y(), 4.0);
 
         let callout = text_block_chrome_metrics_for_kind(&RichBlockKind::Callout {
             variant: crate::rich_text::CalloutVariant::Note,
@@ -543,7 +574,7 @@ mod tests {
             RichBlockKind::Quote,
         ] {
             let estimate = estimate_text_payload_height(&kind, "item", DEFAULT_LAYOUT_WIDTH_PX);
-            assert_eq!(estimate.height, 32.0);
+            assert_eq!(estimate.height, 28.0);
         }
     }
 
@@ -568,9 +599,9 @@ mod tests {
     fn multiline_list_todo_quote_callout_and_code_have_non_overlapping_outer_heights() {
         let three_lines = "a\nb\nc";
         let cases = [
-            (RichBlockKind::BulletedList, 80.0),
-            (RichBlockKind::Todo { checked: false }, 80.0),
-            (RichBlockKind::Quote, 80.0),
+            (RichBlockKind::BulletedList, 76.0),
+            (RichBlockKind::Todo { checked: false }, 76.0),
+            (RichBlockKind::Quote, 76.0),
             (
                 RichBlockKind::Callout {
                     variant: crate::rich_text::CalloutVariant::Warning,
@@ -670,7 +701,7 @@ mod tests {
         assert_eq!(text_line_height_for_kind(&RichBlockKind::Paragraph), 24.0);
         assert_eq!(
             normalize_text_inner_measured_height(&RichBlockKind::Paragraph, 24.0).height,
-            32.0
+            28.0
         );
         assert_eq!(
             text_line_height_for_kind(&RichBlockKind::Code { language: None }),
