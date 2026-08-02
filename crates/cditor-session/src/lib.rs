@@ -34,11 +34,11 @@ mod task_port;
 mod toolbar_snapshot;
 mod ui_snapshot;
 
-pub use ai_port::{AiContextSnapshot, project_ai_context, project_ai_session_request};
 pub use agent_bridge::{
     AgentEditOperation, AgentEditOutcome, AgentEditRequest, AgentOutline, AgentOutlineRequest,
     project_agent_edit, project_agent_outline,
 };
+pub use ai_port::{AiContextSnapshot, project_ai_context, project_ai_session_request};
 pub use clipboard_port::SessionClipboardSnapshot;
 pub use cold_start::{
     PreparedEditorSession, PreparedSessionColdStartResult, SessionColdStartRequest,

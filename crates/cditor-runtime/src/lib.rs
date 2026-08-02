@@ -25,10 +25,9 @@ pub use document_runtime::{
     CompositionFocusTransition, DocumentRuntime, DocumentTextSelectionFragment,
     ImportApplicationReport, RealtimeInput, RealtimeInputError, RealtimeInputOutcome,
     RealtimeInputRequest, RichTextDelta, RichTextSelectionSnapshot, RuntimeAiTarget,
-    SelectionMaterializationApplyDecision, SelectionMaterializationRequest,
-    TableClipboardSnapshot, TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult,
-    TextSurfaceRegistry, TextSurfaceRole, TextSurfaceSnapshot, TextSurfaceSnapshotIdentity,
-    TransactionApplyError,
+    SelectionMaterializationApplyDecision, SelectionMaterializationRequest, TableClipboardSnapshot,
+    TextSurface, TextSurfaceCapabilities, TextSurfaceEditResult, TextSurfaceRegistry,
+    TextSurfaceRole, TextSurfaceSnapshot, TextSurfaceSnapshotIdentity, TransactionApplyError,
 };
 pub use editing::composition::{
     CompositionCancelResult, CompositionCommitResult, CompositionController, CompositionError,

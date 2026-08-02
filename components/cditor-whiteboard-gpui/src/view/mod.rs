@@ -31,8 +31,7 @@ use crate::selection::{Corner, HandleKind};
 use crate::tools::ToolKind;
 use crate::{Camera, canvas::CanvasDocument};
 use crate::{
-    DrafftBoard,
-    WhiteboardTheme,
+    DrafftBoard, WhiteboardTheme,
     font::UI_FONT_FAMILY,
     model_host::{HoverTarget, PointerOutcome},
     paint,

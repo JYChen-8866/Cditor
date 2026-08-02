@@ -96,25 +96,22 @@ pub fn project_agent_edit(
     readonly: bool,
 ) -> Result<AgentEditOutcome, ProtocolError> {
     if readonly && !request.operations.is_empty() {
-        return Err(ProtocolError::new(
-            ProtocolErrorCode::Readonly,
-            "document is read-only",
-        )
-        .with_document(runtime.document_id()));
+        return Err(
+            ProtocolError::new(ProtocolErrorCode::Readonly, "document is read-only")
+                .with_document(runtime.document_id()),
+        );
     }
     if let Some(expected) = request.expected_structure_version
         && expected != runtime.structure_version()
     {
-        return Err(
-            ProtocolError::new(
-                ProtocolErrorCode::StalePrecondition,
-                format!(
-                    "expected structure version {expected}, current is {}",
-                    runtime.structure_version()
-                ),
-            )
-            .with_document(runtime.document_id()),
-        );
+        return Err(ProtocolError::new(
+            ProtocolErrorCode::StalePrecondition,
+            format!(
+                "expected structure version {expected}, current is {}",
+                runtime.structure_version()
+            ),
+        )
+        .with_document(runtime.document_id()));
     }
 
     let mut new_block_ids = Vec::new();
@@ -188,7 +185,10 @@ pub fn project_agent_edit(
                     .map_err(agent_apply_error)?;
                 changed = true;
             }
-            AgentEditOperation::MoveBlockToParent { block_id, parent_id } => {
+            AgentEditOperation::MoveBlockToParent {
+                block_id,
+                parent_id,
+            } => {
                 runtime
                     .agent_move_block_to_parent(block_id, parent_id)
                     .map_err(agent_apply_error)?;
@@ -227,7 +227,10 @@ impl EditorSessionHandle {
         &self,
         request: AgentOutlineRequest,
     ) -> Result<AgentOutline, ProtocolError> {
-        let session = self.inner.try_borrow().map_err(|_| crate::session::busy_error())?;
+        let session = self
+            .inner
+            .try_borrow()
+            .map_err(|_| crate::session::busy_error())?;
         Ok(project_agent_outline(&session.runtime, request))
     }
 
@@ -308,10 +311,7 @@ mod tests {
             .iter()
             .find(|block| block.block_id == 4)
             .expect("inserted heading is visible in outline");
-        assert!(matches!(
-            inserted.kind,
-            RichBlockKind::Heading { level: 2 }
-        ));
+        assert!(matches!(inserted.kind, RichBlockKind::Heading { level: 2 }));
         assert_eq!(inserted.text, "实现方案");
     }
 

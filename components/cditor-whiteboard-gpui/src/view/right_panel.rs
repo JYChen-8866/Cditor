@@ -592,7 +592,11 @@ impl DrafftBoardView {
     }
 }
 
-fn section(title: &'static str, color: u32, buttons: impl IntoIterator<Item = AnyElement>) -> AnyElement {
+fn section(
+    title: &'static str,
+    color: u32,
+    buttons: impl IntoIterator<Item = AnyElement>,
+) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -602,7 +606,11 @@ fn section(title: &'static str, color: u32, buttons: impl IntoIterator<Item = An
         .into_any_element()
 }
 
-fn icon_section(title: &'static str, color: u32, buttons: impl IntoIterator<Item = AnyElement>) -> AnyElement {
+fn icon_section(
+    title: &'static str,
+    color: u32,
+    buttons: impl IntoIterator<Item = AnyElement>,
+) -> AnyElement {
     section(title, color, buttons)
 }
 

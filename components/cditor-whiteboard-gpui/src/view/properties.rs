@@ -163,11 +163,7 @@ impl DrafftBoardView {
                             .w(px(16.0))
                             .h(px(width as f32))
                             .rounded(px((width / 2.0) as f32))
-                            .bg(if selected {
-                                rgb(c.bg)
-                            } else {
-                                rgb(c.text)
-                            }),
+                            .bg(if selected { rgb(c.bg) } else { rgb(c.text) }),
                     )
             });
         div()
@@ -226,7 +222,7 @@ impl DrafftBoardView {
             .border_color(rgb(c.border))
             .bg(rgb(c.bg))
             .cursor_pointer()
-        .when(selected, |swatch| {
+            .when(selected, |swatch| {
                 swatch.child(selection_ring(rgb(c.text).into()))
             })
             .child(

@@ -5,8 +5,7 @@ use gpui::{
 };
 
 use crate::block::chrome::{
-    BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX, BLOCK_SHELL_OUTER_PADDING_X_PX,
-    BlockChromeStyle,
+    BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX, BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
 };
 use crate::block::gutter::{GutterAddHandler, GutterMouseDownHandler, render_block_gutter};
 use crate::block::prefix::{

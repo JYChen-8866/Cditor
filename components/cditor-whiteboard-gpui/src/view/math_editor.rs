@@ -258,24 +258,10 @@ fn modal_button(
         } else {
             rgb(c.border)
         })
-        .bg(if primary {
-            rgb(c.accent)
-        } else {
-            rgb(c.bg)
-        })
-        .text_color(if primary {
-            rgb(c.bg)
-        } else {
-            rgb(c.text)
-        })
+        .bg(if primary { rgb(c.accent) } else { rgb(c.bg) })
+        .text_color(if primary { rgb(c.bg) } else { rgb(c.text) })
         .cursor_pointer()
-        .hover(move |style| {
-            style.bg(if primary {
-                rgb(c.accent)
-            } else {
-                rgb(c.hover)
-            })
-        })
+        .hover(move |style| style.bg(if primary { rgb(c.accent) } else { rgb(c.hover) }))
         .child(label)
 }
 

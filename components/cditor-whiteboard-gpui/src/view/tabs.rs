@@ -42,11 +42,7 @@ impl DrafftBoardView {
                             .items_center()
                             .gap(px(6.0))
                             .rounded(px(4.0))
-                            .bg(if selected {
-                                rgb(c.active)
-                            } else {
-                                rgb(c.bg)
-                            })
+                            .bg(if selected { rgb(c.active) } else { rgb(c.bg) })
                             .text_size(px(11.0))
                             .text_color(if selected {
                                 rgb(c.accent)

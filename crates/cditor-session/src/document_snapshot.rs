@@ -169,8 +169,8 @@ impl EditorSessionHandle {
         let mut line_count = 0usize;
         for record in session.runtime.loaded_payload_records_snapshot() {
             let text = record.plain_text();
-            line_count += text.bytes().filter(|byte| *byte == b'\n').count()
-                + usize::from(!text.is_empty());
+            line_count +=
+                text.bytes().filter(|byte| *byte == b'\n').count() + usize::from(!text.is_empty());
             word_count += text.split_whitespace().count();
         }
         Ok((word_count, line_count))
