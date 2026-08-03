@@ -5,8 +5,10 @@
 //! use the same vertical crop positioning semantics as V1.
 
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use gpui::{
     App, Bounds, Corners, DevicePixels, Element, ElementId, Entity, Global, GlobalElementId,
@@ -23,6 +25,45 @@ use crate::editor_view::CditorV2View;
 
 pub trait RemoteImageDataSource: Send + Sync + 'static {
     fn load(&self, url: &str) -> Result<Vec<u8>, String>;
+}
+
+const REMOTE_IMAGE_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const REMOTE_IMAGE_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+const REMOTE_IMAGE_MAX_BYTES: u64 = 32 * 1024 * 1024;
+
+struct BuiltinRemoteImageDataSource {
+    client: reqwest::blocking::Client,
+}
+
+impl BuiltinRemoteImageDataSource {
+    fn new() -> Result<Self, reqwest::Error> {
+        reqwest::blocking::Client::builder()
+            .connect_timeout(REMOTE_IMAGE_CONNECT_TIMEOUT)
+            .timeout(REMOTE_IMAGE_REQUEST_TIMEOUT)
+            .build()
+            .map(|client| Self { client })
+    }
+}
+
+impl RemoteImageDataSource for BuiltinRemoteImageDataSource {
+    fn load(&self, url: &str) -> Result<Vec<u8>, String> {
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|error| error.to_string())?;
+        let content_length = response.content_length();
+        read_remote_image_body(response, content_length)
+    }
+}
+
+fn builtin_remote_image_data_source() -> Option<&'static dyn RemoteImageDataSource> {
+    static SOURCE: OnceLock<Option<BuiltinRemoteImageDataSource>> = OnceLock::new();
+    SOURCE
+        .get_or_init(|| BuiltinRemoteImageDataSource::new().ok())
+        .as_ref()
+        .map(|source| source as &dyn RemoteImageDataSource)
 }
 
 struct RemoteImageDataSourceGlobal(Arc<dyn RemoteImageDataSource>);
@@ -120,6 +161,16 @@ impl ImageCache {
         }
     }
 
+    fn retry_failed(&mut self, src: &str) {
+        if self
+            .entries
+            .get(src)
+            .is_some_and(|entry| matches!(entry.state, ImageState::Failed))
+        {
+            self.entries.remove(src);
+        }
+    }
+
     fn trim(&mut self) {
         while self.entries.len() > self.max_entries || self.decoded_bytes > self.max_decoded_bytes {
             let candidate = self
@@ -146,6 +197,20 @@ fn image_cache() -> &'static Mutex<ImageCache> {
             IMAGE_CACHE_MAX_DECODED_BYTES,
         ))
     })
+}
+
+pub(crate) fn image_load_failed(src: &str) -> bool {
+    image_cache()
+        .lock()
+        .ok()
+        .and_then(|cache| cache.entries.get(src).map(|entry| entry.state.clone()))
+        .is_some_and(|state| matches!(state, ImageState::Failed))
+}
+
+pub(crate) fn retry_image_load(src: &str) {
+    if let Ok(mut cache) = image_cache().lock() {
+        cache.retry_failed(src);
+    }
 }
 
 /// Resolve a decoded image for `src`, kicking off an off-UI-thread load on first use.
@@ -236,10 +301,38 @@ fn fetch_image_bytes(
     remote_source: Option<&dyn RemoteImageDataSource>,
 ) -> Option<Vec<u8>> {
     if src.starts_with("http://") || src.starts_with("https://") {
-        remote_source?.load(src).ok()
+        fetch_remote_image_bytes(src, remote_source, builtin_remote_image_data_source())
     } else {
         std::fs::read(parse_local_path(src)).ok()
     }
+}
+
+fn fetch_remote_image_bytes(
+    src: &str,
+    configured_source: Option<&dyn RemoteImageDataSource>,
+    fallback_source: Option<&dyn RemoteImageDataSource>,
+) -> Option<Vec<u8>> {
+    configured_source
+        .or(fallback_source)
+        .and_then(|source| source.load(src).ok())
+}
+
+fn read_remote_image_body(
+    reader: impl Read,
+    content_length: Option<u64>,
+) -> Result<Vec<u8>, String> {
+    if content_length.is_some_and(|length| length > REMOTE_IMAGE_MAX_BYTES) {
+        return Err("remote image exceeds the 32 MiB limit".to_owned());
+    }
+    let mut bytes = Vec::new();
+    reader
+        .take(REMOTE_IMAGE_MAX_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > REMOTE_IMAGE_MAX_BYTES {
+        return Err("remote image exceeds the 32 MiB limit".to_owned());
+    }
+    Ok(bytes)
 }
 
 fn parse_local_path(src: &str) -> PathBuf {
@@ -427,6 +520,14 @@ mod tests {
         }
     }
 
+    struct TestFallbackSource;
+
+    impl RemoteImageDataSource for TestFallbackSource {
+        fn load(&self, _url: &str) -> Result<Vec<u8>, String> {
+            Ok(b"fallback".to_vec())
+        }
+    }
+
     #[test]
     fn local_path_parser_strips_file_scheme() {
         assert_eq!(
@@ -437,12 +538,33 @@ mod tests {
     }
 
     #[test]
-    fn remote_image_bytes_require_and_use_the_host_data_source() {
-        assert!(fetch_image_bytes("https://example.test/image.png", None).is_none());
+    fn configured_remote_source_overrides_the_builtin_fallback() {
         assert_eq!(
-            fetch_image_bytes("https://example.test/image.png", Some(&TestRemoteSource)),
+            fetch_remote_image_bytes(
+                "https://example.test/image.png",
+                Some(&TestRemoteSource),
+                Some(&TestFallbackSource),
+            ),
             Some(b"https://example.test/image.png".to_vec())
         );
+        assert_eq!(
+            fetch_remote_image_bytes(
+                "https://example.test/image.png",
+                None,
+                Some(&TestFallbackSource),
+            ),
+            Some(b"fallback".to_vec())
+        );
+        assert!(builtin_remote_image_data_source().is_some());
+    }
+
+    #[test]
+    fn remote_image_body_rejects_declared_oversize_payloads() {
+        let result = read_remote_image_body(
+            std::io::Cursor::new(Vec::<u8>::new()),
+            Some(REMOTE_IMAGE_MAX_BYTES + 1),
+        );
+        assert_eq!(result.unwrap_err(), "remote image exceeds the 32 MiB limit");
     }
 
     #[test]
@@ -523,6 +645,27 @@ mod tests {
         assert!(matches!(
             cache.lookup_or_start("deferred"),
             ImageCacheLookup::StartLoad
+        ));
+    }
+
+    #[test]
+    fn failed_image_cache_entry_can_be_retried_without_touching_ready_entries() {
+        let mut cache = ImageCache::new(2, 64);
+        let _ = cache.lookup_or_start("failed");
+        cache.finish("failed".to_owned(), ImageState::Failed);
+        let _ = cache.lookup_or_start("ready");
+        cache.finish("ready".to_owned(), ImageState::Ready(test_image(2, 2)));
+
+        cache.retry_failed("failed");
+        cache.retry_failed("ready");
+
+        assert!(matches!(
+            cache.lookup_or_start("failed"),
+            ImageCacheLookup::StartLoad
+        ));
+        assert!(matches!(
+            cache.lookup_or_start("ready"),
+            ImageCacheLookup::Existing(ImageState::Ready(_))
         ));
     }
 }

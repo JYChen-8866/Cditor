@@ -9,7 +9,9 @@ use gpui::{
 
 use crate::app::worker_admission::EditorWorkerAdmission;
 use crate::editor_view::CditorV2View;
-use crate::image_loader::{RasterImageElement, load_render_image};
+use crate::image_loader::{
+    RasterImageElement, image_load_failed, load_render_image, retry_image_load,
+};
 use crate::image_preview::open_image_preview;
 use crate::surfaces::{TextSurfaceInteractionGeometry, TextSurfaceRenderState};
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
@@ -460,6 +462,8 @@ pub(crate) fn image_block_measured_height(image_height_px: f32, has_caption: boo
 }
 
 fn render_image_placeholder(image: &ImagePayload, theme: GuiTheme) -> AnyElement {
+    let failed = image_load_failed(&image.source);
+    let retry_source = image.source.clone();
     div()
         .w_full()
         .h(px(IMAGE_PLACEHOLDER_HEIGHT_PX))
@@ -470,10 +474,20 @@ fn render_image_placeholder(image: &ImagePayload, theme: GuiTheme) -> AnyElement
         .justify_center()
         .text_size(px(12.0))
         .text_color(rgb(theme.muted))
+        .when(failed, |this| {
+            this.cursor_pointer()
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                    retry_image_load(&retry_source);
+                    cx.refresh_windows();
+                    cx.stop_propagation();
+                })
+        })
         .child(if image.source.is_empty() {
-            "Image".to_owned()
+            "Image"
+        } else if failed {
+            "Failed to load image - click to retry"
         } else {
-            "Loading image".to_owned()
+            "Loading image"
         })
         .into_any_element()
 }

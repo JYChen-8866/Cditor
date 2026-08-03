@@ -1168,6 +1168,7 @@ dependencies = [
  "image",
  "lumis",
  "mermaid_render",
+ "reqwest",
  "rfd",
  "serde",
  "serde_json",
