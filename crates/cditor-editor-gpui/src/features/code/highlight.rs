@@ -313,6 +313,7 @@ fn code_language(language: Option<&str>) -> Option<Language> {
     match normalized.as_str() {
         "" | "text" | "plain" | "plaintext" | "plain text" => None,
         "rust" | "rs" => Some(Language::Rust),
+        "bash" | "shell" | "zsh" => Some(Language::Bash),
         "typescript" | "ts" => Some(Language::TypeScript),
         "javascript" | "js" | "jsx" => Some(Language::JavaScript),
         "python" | "py" => Some(Language::Python),
@@ -322,10 +323,12 @@ fn code_language(language: Option<&str>) -> Option<Language> {
         "cpp" | "c++" => Some(Language::CPlusPlus),
         "csharp" | "c#" | "cs" => Some(Language::CSharp),
         "html" | "htm" => Some(Language::HTML),
+        "java" => Some(Language::Java),
         "json" => Some(Language::JSON),
         "yaml" | "yml" => Some(Language::YAML),
         "sql" => Some(Language::SQL),
         "diff" | "patch" => Some(Language::Diff),
+        "toml" => Some(Language::Toml),
         _ => None,
     }
 }
@@ -536,6 +539,9 @@ mod tests {
     fn editor_language_labels_map_to_lumis_languages() {
         let supported = [
             "rust",
+            "bash",
+            "shell",
+            "zsh",
             "typescript",
             "javascript",
             "jsx",
@@ -546,33 +552,40 @@ mod tests {
             "cpp",
             "csharp",
             "html",
+            "java",
             "json",
             "yaml",
             "sql",
             "diff",
+            "toml",
         ];
         assert!(
             supported
                 .into_iter()
                 .all(|label| code_language(Some(label)).is_some())
         );
-        for unsupported in [
-            "tsx",
-            "java",
-            "kotlin",
-            "css",
-            "scss",
-            "toml",
-            "markdown",
-            "shell",
-            "bash",
-            "zsh",
-            "dockerfile",
-        ] {
+        for unsupported in ["tsx", "kotlin", "css", "scss", "markdown", "dockerfile"] {
             assert_eq!(code_language(Some(unsupported)), None);
         }
         assert_eq!(code_language(Some("plain text")), None);
         assert_eq!(code_language(Some("unknown-language")), None);
+    }
+
+    #[test]
+    fn bash_and_toml_highlighting_preserve_source_and_color_tokens() {
+        for (language, source) in [
+            (Language::Bash, "#!/usr/bin/env bash\necho \"hello\""),
+            (Language::Toml, "[package]\nname = \"cditor\""),
+        ] {
+            let spans = highlight_source(source, language, DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT)
+                .expect("language highlighting succeeds");
+            assert_eq!(plain_text_from_spans(&spans), source);
+            assert!(spans.iter().any(|span| {
+                span.marks
+                    .iter()
+                    .any(|mark| matches!(mark, InlineMark::Color(_)))
+            }));
+        }
     }
 
     #[test]

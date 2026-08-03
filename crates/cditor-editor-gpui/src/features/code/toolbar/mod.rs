@@ -328,6 +328,30 @@ fn language_icon_source(language: &str) -> Option<(&'static str, &'static [u8])>
             "language-icon-swift",
             include_bytes!("../../../../../../assets/icons/swift.svg").as_slice(),
         ),
+        "json" => (
+            "language-icon-json",
+            include_bytes!("../../../../../../assets/icons/json.svg").as_slice(),
+        ),
+        "yaml" | "yml" => (
+            "language-icon-yaml",
+            include_bytes!("../../../../../../assets/icons/yaml.svg").as_slice(),
+        ),
+        "sql" => (
+            "language-icon-sql",
+            include_bytes!("../../../../../../assets/icons/sql.svg").as_slice(),
+        ),
+        "diff" | "patch" => (
+            "language-icon-diff",
+            include_bytes!("../../../../../../assets/icons/diff.svg").as_slice(),
+        ),
+        "bash" | "shell" | "zsh" => (
+            "language-icon-bash",
+            include_bytes!("../../../../../../assets/icons/bash.svg").as_slice(),
+        ),
+        "toml" => (
+            "language-icon-toml",
+            include_bytes!("../../../../../../assets/icons/toml.svg").as_slice(),
+        ),
         _ => return None,
     })
 }
@@ -550,7 +574,27 @@ mod tests {
         assert!(language_icon_source("rust").is_some());
         assert!(language_icon_source("rs").is_some());
         assert!(language_icon_source("jsx").is_some());
-        assert!(language_icon_source("json").is_none());
+        assert!(language_icon_source("json").is_some());
+        assert!(language_icon_source("yaml").is_some());
+        assert!(language_icon_source("sql").is_some());
+        assert!(language_icon_source("diff").is_some());
+        assert!(language_icon_source("java").is_some());
+        assert!(language_icon_source("bash").is_some());
+        assert!(language_icon_source("shell").is_some());
+        assert!(language_icon_source("zsh").is_some());
+        assert!(language_icon_source("toml").is_some());
         assert!(language_icon_source("plain text").is_none());
+    }
+
+    #[test]
+    fn every_selectable_highlight_language_has_an_icon() {
+        let missing = crate::input::code_language::code_language_items()
+            .into_iter()
+            .filter(|item| item.value != "plain text")
+            .filter(|item| language_icon_source(&item.value).is_none())
+            .map(|item| item.value)
+            .collect::<Vec<_>>();
+
+        assert!(missing.is_empty(), "languages without icons: {missing:?}");
     }
 }

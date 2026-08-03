@@ -573,6 +573,7 @@ impl Render for CditorV2View {
                         &internal_scroll.code_caret_reveal_after_line_break,
                         &self.overlay.collapsed_code_blocks,
                         &self.cache.code_highlights,
+                        &self.features.search_decorations,
                         &self.cache.mermaid_renders,
                         &mermaid_source_blocks,
                         &self.cache.whiteboard_thumbnails,

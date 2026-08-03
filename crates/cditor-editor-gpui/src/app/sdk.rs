@@ -10,8 +10,8 @@ use cditor_editor_protocol::command::{CditorCommand, CommandOutcome, CommandSour
 use cditor_sdk::diagnostics::CditorDiagnostics;
 use cditor_sdk::document::{
     Affinity, CloseGuard, DocumentInfo, DocumentPosition, DocumentSelection, RecoveryExport,
-    SaveFailure, SaveFailureKind, SaveReport, SaveStatus, ScrollAlignment, TextOffset,
-    TextStatistics,
+    SaveFailure, SaveFailureKind, SaveReport, SaveStatus, ScrollAlignment, SearchDecoration,
+    TextOffset, TextStatistics,
 };
 use cditor_sdk::event::CditorEvent;
 use cditor_sdk::{CditorError, command::CommandState};
@@ -125,6 +125,14 @@ impl CditorViewContract for CditorV2View {
         CditorV2View::sdk_scroll_to_block(self, block_id, alignment, cx)
     }
 
+    fn sdk_set_search_decorations(
+        &mut self,
+        decorations: Vec<SearchDecoration>,
+        cx: &mut Context<Self>,
+    ) {
+        CditorV2View::sdk_set_search_decorations(self, decorations, cx);
+    }
+
     fn sdk_execute_command(
         &mut self,
         command: CditorCommand,
@@ -151,6 +159,15 @@ impl CditorViewContract for CditorV2View {
 }
 
 impl CditorV2View {
+    pub fn sdk_set_search_decorations(
+        &mut self,
+        decorations: Vec<SearchDecoration>,
+        cx: &mut Context<Self>,
+    ) {
+        self.features.search_decorations.replace(decorations);
+        cx.notify();
+    }
+
     pub fn sdk_agent_outline(
         &self,
         request: AgentOutlineRequest,

@@ -145,6 +145,14 @@ pub struct DocumentSelection {
     pub head: DocumentPosition,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchDecoration {
+    pub block_id: BlockId,
+    pub content_version: u64,
+    pub byte_range: Range<usize>,
+    pub current: bool,
+}
+
 impl DocumentSelection {
     pub const fn caret(position: DocumentPosition) -> Self {
         Self {

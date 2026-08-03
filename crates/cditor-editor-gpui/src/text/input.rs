@@ -127,6 +127,21 @@ impl RichTextLayoutSpans {
         }
     }
 
+    pub fn is_char_boundary(&self, byte_offset: usize) -> bool {
+        if byte_offset > self.text_len() {
+            return false;
+        }
+        let mut consumed = 0usize;
+        for span in self.iter() {
+            let end = consumed.saturating_add(span.text.len());
+            if byte_offset <= end {
+                return span.text.is_char_boundary(byte_offset - consumed);
+            }
+            consumed = end;
+        }
+        byte_offset == consumed
+    }
+
     pub fn is_empty(&self) -> bool {
         self.text_len() == 0
     }

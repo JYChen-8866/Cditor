@@ -7,7 +7,7 @@ use cditor_sdk::command::{CditorCommand, CommandOutcome, CommandState};
 use cditor_sdk::diagnostics::CditorDiagnostics;
 use cditor_sdk::document::{
     CloseGuard, DocumentInfo, DocumentSelection, RecoveryExport, SaveReport, SaveStatus,
-    ScrollAlignment,
+    ScrollAlignment, SearchDecoration,
 };
 use cditor_session::{AgentEditOutcome, AgentEditRequest, AgentOutline, AgentOutlineRequest};
 
@@ -191,6 +191,23 @@ impl<V: CditorViewContract> CditorHandle<V> {
             })
             .map_err(|_| CditorError::ComponentDropped)??;
         Ok(())
+    }
+
+    pub fn set_search_decorations(
+        &self,
+        decorations: Vec<SearchDecoration>,
+        cx: &mut App,
+    ) -> Result<(), CditorError> {
+        self.entity
+            .update(cx, |view, cx| {
+                view.sdk_set_search_decorations(decorations, cx)
+            })
+            .map_err(|_| CditorError::ComponentDropped)?;
+        Ok(())
+    }
+
+    pub fn clear_search_decorations(&self, cx: &mut App) -> Result<(), CditorError> {
+        self.set_search_decorations(Vec::new(), cx)
     }
 
     pub fn execute(

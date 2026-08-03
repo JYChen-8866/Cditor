@@ -49,6 +49,7 @@ pub struct RichTextElement {
     pub caret_affinity: TextAffinity,
     pub marked_range: Option<Range<usize>>,
     pub selection_range: Option<Range<usize>>,
+    pub search_ranges: Vec<super::TextSearchRange>,
     pub base_text_color: Option<u32>,
     pub typography: RichTextTypography,
     pub placeholder_text: Option<String>,
@@ -84,6 +85,7 @@ struct RichTextGpuiElement {
     caret_affinity: TextAffinity,
     marked_range: Option<Range<usize>>,
     selection_range: Option<Range<usize>>,
+    search_ranges: Vec<super::TextSearchRange>,
     base_text_color: Option<u32>,
     typography: RichTextTypography,
     placeholder_text: Option<String>,
@@ -101,6 +103,7 @@ struct RichTextGpuiPrepaintState {
     marked_backgrounds: Vec<gpui::PaintQuad>,
     marked_underlines: Vec<gpui::PaintQuad>,
     selection_backgrounds: Vec<gpui::PaintQuad>,
+    search_backgrounds: Vec<gpui::PaintQuad>,
     deferred_placeholders: Vec<gpui::PaintQuad>,
 }
 
@@ -322,6 +325,23 @@ impl Element for RichTextGpuiElement {
                 )
             })
             .collect();
+        let search_backgrounds = self
+            .search_ranges
+            .iter()
+            .flat_map(|search| {
+                layout
+                    .as_ref()
+                    .map(|layout| layout.range_rects(search.byte_range.clone()))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(move |rect| {
+                        fill(
+                            text_rect_to_bounds(bounds, rect),
+                            rgba(super::search_background(search.current)),
+                        )
+                    })
+            })
+            .collect();
         let inline_backgrounds = layout
             .as_ref()
             .map(|layout| text_background_quads(layout, bounds.origin))
@@ -338,6 +358,7 @@ impl Element for RichTextGpuiElement {
             marked_backgrounds,
             marked_underlines,
             selection_backgrounds,
+            search_backgrounds,
             deferred_placeholders,
         }
     }
@@ -395,6 +416,9 @@ impl Element for RichTextGpuiElement {
         }
 
         for background in prepaint.inline_backgrounds.drain(..) {
+            window.paint_quad(background);
+        }
+        for background in prepaint.search_backgrounds.drain(..) {
             window.paint_quad(background);
         }
         for background in prepaint.selection_backgrounds.drain(..) {

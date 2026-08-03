@@ -6,7 +6,7 @@ use cditor_sdk::command::{CditorCommand, CommandOutcome, CommandState};
 use cditor_sdk::diagnostics::CditorDiagnostics;
 use cditor_sdk::document::{
     CloseGuard, DocumentInfo, DocumentSelection, RecoveryExport, SaveReport, SaveStatus,
-    ScrollAlignment, TextStatistics,
+    ScrollAlignment, SearchDecoration, TextStatistics,
 };
 use cditor_sdk::{Cditor, CditorError};
 use cditor_session::{AgentEditOutcome, AgentEditRequest, AgentOutline, AgentOutlineRequest};
@@ -51,6 +51,11 @@ pub trait CditorViewContract: Sized + 'static {
         alignment: ScrollAlignment,
         cx: &mut Context<Self>,
     ) -> Result<(), CditorError>;
+    fn sdk_set_search_decorations(
+        &mut self,
+        decorations: Vec<SearchDecoration>,
+        cx: &mut Context<Self>,
+    );
     fn sdk_execute_command(
         &mut self,
         command: CditorCommand,

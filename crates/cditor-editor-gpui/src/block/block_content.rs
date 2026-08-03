@@ -10,6 +10,7 @@ use crate::document::DocumentTextViewport;
 use crate::editor_view::CditorV2View;
 use crate::features::code::highlight::{CodeHighlightCache, code_theme_item};
 use crate::features::media::render_image_block;
+use crate::features::search::SearchDecorationState;
 use crate::features::table::render_table_block;
 use crate::features::table::{
     TableAxisSelection, TableCellRangeSelection, TableCellSelection, TableReorderPreview,
@@ -51,6 +52,7 @@ pub(crate) fn render_block_content(
     code_scroll_handle: Option<ScrollHandle>,
     code_caret_reveal_after_line_break: bool,
     code_highlights: &CodeHighlightCache,
+    search_decorations: &SearchDecorationState,
     code_highlight_theme: &'static str,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
@@ -128,6 +130,12 @@ pub(crate) fn render_block_content(
                     input.spans = spans;
                 }
                 let text_len = input.text_len();
+                let search_ranges = search_decorations.ranges_for(
+                    block.block_id,
+                    input.content_version,
+                    text_len,
+                    |offset| input.spans.is_char_boundary(offset),
+                );
                 let selection_range = if block.selection_overlay {
                     None
                 } else {
@@ -160,6 +168,7 @@ pub(crate) fn render_block_content(
                             .unwrap_or(cditor_core::edit::TextAffinity::Downstream),
                         block.marked_range.clone(),
                         selection_range,
+                        search_ranges,
                         block.attrs.color.as_deref().and_then(parse_block_hex_color),
                         segmented_viewport,
                         crate::text::element::RichTextInputHandler {
@@ -188,6 +197,7 @@ pub(crate) fn render_block_content(
                     )
                     .with_marked_range(block.marked_range.clone())
                     .with_selection_range(selection_range)
+                    .with_search_ranges(search_ranges)
                     .with_caret_reveal_scroll_handle(
                         (code_caret_reveal_after_line_break
                             && matches!(

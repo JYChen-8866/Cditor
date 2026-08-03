@@ -41,6 +41,7 @@ pub(crate) struct SegmentedRichTextElement {
     caret_affinity: TextAffinity,
     marked_range: Option<Range<usize>>,
     selection_range: Option<Range<usize>>,
+    search_ranges: Vec<super::TextSearchRange>,
     base_text_color: Option<u32>,
     typography: RichTextTypography,
     viewport: SegmentedTextViewport,
@@ -59,6 +60,7 @@ impl SegmentedRichTextElement {
         caret_affinity: TextAffinity,
         marked_range: Option<Range<usize>>,
         selection_range: Option<Range<usize>>,
+        search_ranges: Vec<super::TextSearchRange>,
         base_text_color: Option<u32>,
         viewport: SegmentedTextViewport,
         input_handler: RichTextInputHandler,
@@ -70,6 +72,7 @@ impl SegmentedRichTextElement {
             caret_affinity,
             marked_range,
             selection_range,
+            search_ranges,
             base_text_color,
             typography: RichTextTypography::default(),
             viewport,
@@ -301,6 +304,21 @@ impl Element for SegmentedRichTextElement {
                     rgba(text_selection_background(self.theme)),
                 )
             }));
+        }
+        if let Some(layout) = &platform {
+            for search in &self.search_ranges {
+                backgrounds.extend(
+                    layout
+                        .range_rects(search.byte_range.clone())
+                        .into_iter()
+                        .map(|rect| {
+                            fill(
+                                rect_to_bounds(bounds, rect),
+                                rgba(super::search_background(search.current)),
+                            )
+                        }),
+                );
+            }
         }
         if let Some(request) = &request {
             for fragment in &request.fragments {

@@ -11,6 +11,7 @@ use crate::editor_view::CditorV2View;
 use crate::features::code::highlight::CodeHighlightCache;
 use crate::features::code::render_code_block;
 use crate::features::mermaid::{MermaidRenderCache, render_mermaid_block};
+use crate::features::search::SearchDecorationState;
 use crate::features::table::{
     TableAxisSelection, TableCellRangeSelection, TableCellSelection, TableReorderPreview,
     TableResizePreview,
@@ -66,6 +67,7 @@ impl BlockView {
         code_caret_reveal_after_line_break: bool,
         collapsed_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
         code_highlights: &CodeHighlightCache,
+        search_decorations: &SearchDecorationState,
         mermaid_renders: &MermaidRenderCache,
         mermaid_show_source: bool,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
@@ -99,6 +101,7 @@ impl BlockView {
             code_caret_reveal_after_line_break,
             collapsed_code_blocks,
             code_highlights,
+            search_decorations,
             mermaid_renders,
             mermaid_show_source,
             whiteboard_thumbnails,
@@ -198,6 +201,7 @@ fn render_kind_content(
     code_caret_reveal_after_line_break: bool,
     collapsed_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
     code_highlights: &CodeHighlightCache,
+    search_decorations: &SearchDecorationState,
     mermaid_renders: &MermaidRenderCache,
     mermaid_show_source: bool,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
@@ -227,6 +231,7 @@ fn render_kind_content(
         code_scroll_handle.clone(),
         code_caret_reveal_after_line_break,
         code_highlights,
+        search_decorations,
         code_highlight_theme,
         whiteboard_thumbnails,
         cx,

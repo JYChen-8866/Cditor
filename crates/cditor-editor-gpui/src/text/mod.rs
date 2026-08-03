@@ -10,6 +10,7 @@ mod geometry;
 pub mod input;
 mod layout_adapter;
 mod platform;
+mod search;
 mod segmented_element;
 mod segmented_platform;
 mod segmented_viewport;
@@ -41,6 +42,7 @@ pub(crate) use platform::{
     RichTextPlatformLayout, TextPlatformLayoutIdentity, platform_range_bounds_at,
     platform_text_position_for_local_point,
 };
+pub(crate) use search::{TextSearchRange, search_background};
 pub(crate) use segmented_element::SegmentedRichTextElement;
 pub(crate) use segmented_platform::{
     PlatformTextLayoutSnapshot, SegmentedLayoutFragment, SegmentedPlatformLayout,

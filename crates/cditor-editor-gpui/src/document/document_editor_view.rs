@@ -17,6 +17,7 @@ use crate::editor_view::CditorV2View;
 use crate::editor_view::TableScrollSnapshot;
 use crate::features::code::highlight::CodeHighlightCache;
 use crate::features::mermaid::MermaidRenderCache;
+use crate::features::search::SearchDecorationState;
 use crate::features::table::menu::TableMenuUiState;
 use crate::features::table::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
@@ -136,6 +137,7 @@ impl DocumentEditorView {
         code_caret_reveal_after_line_break: &std::collections::HashSet<BlockId>,
         collapsed_code_blocks: &std::collections::HashSet<BlockId>,
         code_highlights: &CodeHighlightCache,
+        search_decorations: &SearchDecorationState,
         mermaid_renders: &MermaidRenderCache,
         mermaid_source_blocks: &std::collections::HashSet<BlockId>,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
@@ -357,6 +359,7 @@ impl DocumentEditorView {
                             code_caret_reveal_after_line_break.contains(&block.block_id),
                             collapsed_code_blocks,
                             code_highlights,
+                            search_decorations,
                             mermaid_renders,
                             mermaid_source_blocks.contains(&block.block_id),
                             whiteboard_thumbnails,

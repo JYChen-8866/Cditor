@@ -51,6 +51,7 @@ pub(crate) struct FeatureUiState {
     pub(crate) ai_provider: Arc<dyn cditor_ai::AiProvider>,
     pub(crate) ai_enabled: bool,
     pub(crate) code_highlight_theme: &'static str,
+    pub(crate) search_decorations: crate::features::search::SearchDecorationState,
     #[cfg(feature = "whiteboard")]
     pub(crate) whiteboard_editor: Option<WhiteboardEditorSession>,
 }
@@ -61,6 +62,7 @@ impl Default for FeatureUiState {
             ai_provider: default_ai_provider(),
             ai_enabled: true,
             code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT,
+            search_decorations: Default::default(),
             #[cfg(feature = "whiteboard")]
             whiteboard_editor: None,
         }
@@ -74,6 +76,7 @@ impl FeatureUiState {
     }
 
     pub(crate) fn reset_session(&mut self) {
+        self.search_decorations.replace(Vec::new());
         #[cfg(feature = "whiteboard")]
         {
             self.whiteboard_editor = None;

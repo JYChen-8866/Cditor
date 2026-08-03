@@ -414,10 +414,10 @@ mod tests {
         assert!(values.contains(&"jsx"));
         assert!(values.contains(&"json"));
         assert!(values.contains(&"sql"));
-        assert!(!values.contains(&"java"));
+        assert!(values.contains(&"java"));
         assert!(!values.contains(&"css"));
-        assert!(!values.contains(&"shell"));
-        assert!(!values.contains(&"toml"));
+        assert!(values.contains(&"shell"));
+        assert!(values.contains(&"toml"));
     }
 
     #[test]

@@ -26,6 +26,7 @@ impl RichTextElement {
             caret_affinity: TextAffinity::Downstream,
             marked_range: None,
             selection_range: None,
+            search_ranges: Vec::new(),
             base_text_color: None,
             typography: RichTextTypography::default(),
             placeholder_text: None,
@@ -54,6 +55,14 @@ impl RichTextElement {
 
     pub fn with_selection_range(mut self, selection_range: Option<Range<usize>>) -> Self {
         self.selection_range = selection_range;
+        self
+    }
+
+    pub(crate) fn with_search_ranges(
+        mut self,
+        search_ranges: Vec<crate::text::TextSearchRange>,
+    ) -> Self {
+        self.search_ranges = search_ranges;
         self
     }
 
@@ -166,6 +175,7 @@ impl RichTextElement {
             caret_affinity: self.caret_affinity,
             marked_range: self.marked_range.clone(),
             selection_range: self.selection_range.clone(),
+            search_ranges: self.search_ranges.clone(),
             base_text_color: self.base_text_color,
             typography: self.typography,
             placeholder_text: self.placeholder_text.clone(),
