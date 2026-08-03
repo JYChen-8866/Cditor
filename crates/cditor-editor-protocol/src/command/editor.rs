@@ -70,6 +70,8 @@ pub enum EditorCommand {
     #[doc(hidden)]
     InsertImageAsset {
         payload: cditor_core::rich_text::ImagePayload,
+        asset: Option<cditor_core::edit::AssetSnapshot>,
+        after_block_id: Option<cditor_core::ids::BlockId>,
     },
     #[doc(hidden)]
     SetPageCover {
@@ -377,8 +379,14 @@ impl EditorCommand {
                 text: text.clone(),
                 metadata_json: metadata_json.clone(),
             },
-            Self::InsertImageAsset { payload } => CommandArgs::ImageAsset {
+            Self::InsertImageAsset {
+                payload,
+                asset,
+                after_block_id,
+            } => CommandArgs::ImageAsset {
                 payload: payload.clone(),
+                asset: asset.clone(),
+                after_block_id: *after_block_id,
             },
             Self::SetPageCover {
                 source,

@@ -1,8 +1,5 @@
 use std::collections::HashMap;
 
-use gpui::{ClipboardItem, Context};
-
-use crate::clipboard_assets::image_asset_from_clipboard_item;
 use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::features::table::{TableAxis, TableAxisSelection};
 use crate::input::GuiInputCommand;
@@ -18,6 +15,7 @@ use cditor_editor_protocol::command::CaretDirection;
 #[cfg(test)]
 use cditor_runtime::DocumentRuntime;
 use cditor_session::EditorSessionHandle;
+use gpui::{ClipboardItem, Context};
 
 impl CditorV2View {
     pub(crate) fn execute_gui_input_command_handler(
@@ -147,23 +145,8 @@ impl CditorV2View {
                     }
                 }
                 GuiInputCommand::PasteClipboard => {
-                    if let Some(item) = cx.read_from_clipboard() {
-                        deferred_command =
-                            if let Some(asset) = image_asset_from_clipboard_item(&item) {
-                                Some(
-                                cditor_editor_protocol::command::EditorCommand::InsertImageAsset {
-                                    payload: asset.payload,
-                                },
-                            )
-                            } else {
-                                item.text().map(|text| {
-                                cditor_editor_protocol::command::EditorCommand::ApplyClipboardData {
-                                text,
-                                metadata_json: item.metadata().cloned(),
-                                }
-                            })
-                            };
-                    }
+                    deferred_command =
+                        Some(cditor_editor_protocol::command::EditorCommand::PasteClipboard);
                 }
                 GuiInputCommand::UndoFocusedBlock | GuiInputCommand::RedoFocusedBlock => {
                     unreachable!("history returns through Runtime dispatch before the GUI handler")

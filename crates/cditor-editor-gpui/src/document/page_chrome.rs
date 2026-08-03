@@ -1,13 +1,15 @@
 use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis, SvgIcon};
 use gpui::{
-    AnyElement, AnyView, App, AppContext, Entity, InteractiveElement, IntoElement, MouseButton,
-    ObjectFit, ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, Window, div,
+    AnyElement, AnyView, App, Entity, InteractiveElement, IntoElement, MouseButton, ObjectFit,
+    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, Window, div,
     prelude::FluentBuilder, px, rgb,
 };
 
 use cditor_core::layout::BODY_BLOCK_CONTENT_WIDTH_PX;
 use cditor_core::rich_text::{PageCover, PageIcon};
 use cditor_editor_protocol::command::{CommandSource, EditorCommand};
+#[cfg(not(target_family = "wasm"))]
+use cditor_sdk::providers::{AssetInput, ImportedAsset};
 
 use crate::app::worker_admission::EditorWorkerAdmission;
 use crate::document::DocumentLayoutMetrics;
@@ -779,24 +781,48 @@ impl CditorV2View {
     fn choose_page_cover(&mut self, cx: &mut gpui::Context<Self>) {
         #[cfg(not(target_family = "wasm"))]
         {
-            let task = cx.background_spawn(async move {
-                rfd::FileDialog::new()
+            let asset_provider = self.features.asset_provider.clone();
+            let background = cx.background_executor().clone();
+            cx.spawn(async move |view, cx| {
+                let Some(file) = rfd::AsyncFileDialog::new()
                     .set_title("选择页面封面")
                     .add_filter("图片", &["png", "jpg", "jpeg", "webp", "gif"])
                     .pick_file()
-            });
-            cx.spawn(async move |view, cx| {
-                let Some(path) = task.await else { return };
-                let source = path.to_string_lossy().into_owned();
+                    .await
+                else {
+                    return;
+                };
+                let command = if let Some(provider) = asset_provider {
+                    let input = page_cover_asset_input(file.file_name(), file.read().await);
+                    match background
+                        .spawn(async move { provider.import(input).await })
+                        .await
+                    {
+                        Ok(imported) => imported_page_cover_command(imported),
+                        Err(error) => {
+                            let _ = view.update(cx, |view, cx| {
+                                crate::overlays::show_toast(
+                                    view,
+                                    format!("Failed to import page cover: {error}"),
+                                    std::time::Duration::from_secs(5),
+                                    cx,
+                                );
+                            });
+                            return;
+                        }
+                    }
+                } else {
+                    set_page_cover_command(file.path())
+                };
                 let _ = view.update(cx, |view, cx| {
-                    let _ = view.dispatch_command(
-                        EditorCommand::SetPageCover {
-                            source: Some(source),
-                            position_y_milli: 500,
-                        },
-                        CommandSource::Toolbar,
-                        cx,
-                    );
+                    if let Err(error) = view.dispatch_command(command, CommandSource::Toolbar, cx) {
+                        crate::overlays::show_toast(
+                            view,
+                            format!("Failed to set page cover: {error}"),
+                            std::time::Duration::from_secs(5),
+                            cx,
+                        );
+                    }
                 });
             })
             .detach();
@@ -804,10 +830,56 @@ impl CditorV2View {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
+fn page_cover_asset_input(file_name: String, bytes: Vec<u8>) -> AssetInput {
+    let file_name = if file_name.trim().is_empty() {
+        "cover".to_owned()
+    } else {
+        file_name
+    };
+    AssetInput {
+        media_type: image_media_type_for_name(&file_name).map(ToOwned::to_owned),
+        name: file_name,
+        bytes,
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn imported_page_cover_command(imported: ImportedAsset) -> EditorCommand {
+    EditorCommand::SetPageCover {
+        source: Some(imported.reference.source),
+        position_y_milli: 500,
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn image_media_type_for_name(file_name: &str) -> Option<&'static str> {
+    match std::path::Path::new(file_name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => Some("image/png"),
+        Some("jpg" | "jpeg") => Some("image/jpeg"),
+        Some("webp") => Some("image/webp"),
+        Some("gif") => Some("image/gif"),
+        _ => None,
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn set_page_cover_command(path: &std::path::Path) -> EditorCommand {
+    EditorCommand::SetPageCover {
+        source: Some(path.to_string_lossy().into_owned()),
+        position_y_milli: 500,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{Context, Render, TestAppContext, Window};
+    use gpui::{AppContext, Context, Render, TestAppContext, Window};
 
     #[derive(Clone)]
     struct TagBarExtra;
@@ -828,6 +900,64 @@ mod tests {
         assert_eq!(plain.icon_top_px, 36.0);
         assert_eq!(covered.icon_top_px, 184.0);
         assert_eq!(covered.actions_top_px, 232.0);
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn selected_cover_path_is_preserved_for_the_page_cover_command() {
+        let command = set_page_cover_command(std::path::Path::new(
+            r"C:\Users\Aurin\Pictures\cover image.png",
+        ));
+        let EditorCommand::SetPageCover {
+            source,
+            position_y_milli,
+        } = command
+        else {
+            panic!("cover picker produced the wrong editor command");
+        };
+        assert_eq!(
+            source.as_deref(),
+            Some(r"C:\Users\Aurin\Pictures\cover image.png")
+        );
+        assert_eq!(position_y_milli, 500);
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn imported_cover_uses_the_managed_asset_source() {
+        use cditor_core::edit::{AssetSnapshot, AssetState};
+        use cditor_core::rich_text::AssetRef;
+
+        let command = imported_page_cover_command(ImportedAsset {
+            reference: AssetRef {
+                source: "assets/0123456789abcdef.png".to_owned(),
+                media_type: Some("image/png".to_owned()),
+                name: Some("cover.png".to_owned()),
+                size_bytes: Some(4),
+            },
+            snapshot: AssetSnapshot {
+                asset_id: 1,
+                file_name: "cover.png".to_owned(),
+                media_type: "image/png".to_owned(),
+                size_bytes: 4,
+                source: "assets/0123456789abcdef.png".to_owned(),
+                checksum: Some("0".repeat(64)),
+                state: AssetState::Ready,
+            },
+        });
+        let EditorCommand::SetPageCover { source, .. } = command else {
+            panic!("managed page cover produced the wrong editor command");
+        };
+        assert_eq!(source.as_deref(), Some("assets/0123456789abcdef.png"));
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn page_cover_asset_input_keeps_file_metadata() {
+        let input = page_cover_asset_input("Cover.JPEG".to_owned(), vec![1, 2, 3]);
+        assert_eq!(input.name, "Cover.JPEG");
+        assert_eq!(input.media_type.as_deref(), Some("image/jpeg"));
+        assert_eq!(input.bytes, vec![1, 2, 3]);
     }
 
     #[test]

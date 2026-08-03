@@ -68,9 +68,13 @@ impl DocumentRuntime {
                         "raw clipboard data must be planned by cditor-session",
                     ));
                 }
-                EditorCommand::InsertImageAsset { payload } => {
+                EditorCommand::InsertImageAsset {
+                    payload,
+                    asset,
+                    after_block_id,
+                } => {
                     let (image, trailing) = self
-                        .insert_image_asset_after_focused(payload)
+                        .insert_image_asset_after_focused_with_asset(payload, asset, after_block_id)
                         .map_err(apply_error)?;
                     affected_blocks.extend([image, trailing]);
                     true

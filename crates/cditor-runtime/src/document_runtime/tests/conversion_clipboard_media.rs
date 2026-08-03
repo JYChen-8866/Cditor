@@ -316,12 +316,16 @@ fn image_asset_insert_creates_image_block_and_trailing_paragraph() {
     runtime.focus_block_at_offset(1, 5).unwrap();
 
     let (image_block_id, trailing_block_id) = runtime
-        .insert_image_asset_after_focused(ImagePayload {
-            source: "/tmp/paste.png".to_owned(),
-            alt: "paste.png".to_owned(),
-            caption: String::new().into(),
-            display_width_ratio_milli: None,
-        })
+        .insert_image_asset_after_focused_with_asset(
+            ImagePayload {
+                source: "/tmp/paste.png".to_owned(),
+                alt: "paste.png".to_owned(),
+                caption: String::new().into(),
+                display_width_ratio_milli: None,
+            },
+            None,
+            None,
+        )
         .unwrap();
 
     assert_eq!(runtime.document.index.total_count(), 3);

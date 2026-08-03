@@ -2,6 +2,7 @@ use std::{fmt, path::PathBuf};
 
 use async_trait::async_trait;
 pub use cditor_ai::{AiProvider, AiProviderError, AiProviderRequest as AiRequest, AiTaskKind};
+use cditor_core::edit::AssetSnapshot;
 pub use cditor_core::rich_text::AssetRef;
 
 use super::command::{CommandDescriptor, SlashItem, ToolbarItem};
@@ -20,6 +21,12 @@ pub struct ResolvedAsset {
     pub reference: AssetRef,
     pub local_path: Option<PathBuf>,
     pub bytes: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedAsset {
+    pub reference: AssetRef,
+    pub snapshot: AssetSnapshot,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,7 +50,7 @@ impl std::error::Error for AssetError {}
 
 #[async_trait]
 pub trait AssetProvider: Send + Sync {
-    async fn import(&self, input: AssetInput) -> Result<AssetRef, AssetError>;
+    async fn import(&self, input: AssetInput) -> Result<ImportedAsset, AssetError>;
     async fn resolve(&self, asset: &AssetRef) -> Result<ResolvedAsset, AssetError>;
     async fn delete(&self, asset: &AssetRef) -> Result<(), AssetError>;
 }

@@ -232,6 +232,13 @@ impl CditorV2View {
         self.features.ai_enabled = enabled;
     }
 
+    pub fn sdk_configure_asset_provider(
+        &mut self,
+        provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
+    ) {
+        self.features.asset_provider = provider;
+    }
+
     pub fn sdk_is_ready(&self) -> bool {
         self.state.is_ready()
     }

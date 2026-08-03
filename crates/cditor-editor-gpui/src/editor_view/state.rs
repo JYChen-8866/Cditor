@@ -49,6 +49,7 @@ impl EditorDiagnosticsState {
 
 pub(crate) struct FeatureUiState {
     pub(crate) ai_provider: Arc<dyn cditor_ai::AiProvider>,
+    pub(crate) asset_provider: Option<Arc<dyn cditor_sdk::providers::AssetProvider>>,
     pub(crate) ai_enabled: bool,
     pub(crate) code_highlight_theme: &'static str,
     pub(crate) search_decorations: crate::features::search::SearchDecorationState,
@@ -60,6 +61,7 @@ impl Default for FeatureUiState {
     fn default() -> Self {
         Self {
             ai_provider: default_ai_provider(),
+            asset_provider: None,
             ai_enabled: true,
             code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT,
             search_decorations: Default::default(),

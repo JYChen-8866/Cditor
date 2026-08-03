@@ -139,6 +139,7 @@ pub fn run_desktop(cditor: Cditor) {
 fn build_view(builder: Cditor, cx: &mut Context<CditorV2View>) -> CditorV2View {
     let ai_provider = builder.ai_provider();
     let ai_enabled = builder.ai_enabled();
+    let asset_provider = builder.asset_provider();
     let options = builder.into_options();
     let mut view = match CditorColdStartPlan::from_options(&options) {
         CditorColdStartPlan::Demo => CditorV2View::from_runtime_with_options(
@@ -181,6 +182,7 @@ fn build_view(builder: Cditor, cx: &mut Context<CditorV2View>) -> CditorV2View {
         ),
     };
     view.sdk_configure_ai(ai_provider, ai_enabled);
+    view.sdk_configure_asset_provider(asset_provider);
     view
 }
 

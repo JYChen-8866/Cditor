@@ -8,6 +8,7 @@ use super::options::{CditorDocumentSource, CditorOptions};
 pub struct Cditor {
     options: CditorOptions,
     ai_provider: Option<Arc<dyn cditor_ai::AiProvider>>,
+    asset_provider: Option<Arc<dyn crate::providers::AssetProvider>>,
     ai_enabled: bool,
 }
 
@@ -16,6 +17,7 @@ impl Default for Cditor {
         Self {
             options: CditorOptions::default(),
             ai_provider: None,
+            asset_provider: None,
             ai_enabled: true,
         }
     }
@@ -30,6 +32,7 @@ impl fmt::Debug for Cditor {
                 "ai_provider",
                 &self.ai_provider.as_ref().map(|provider| provider.id()),
             )
+            .field("asset_provider", &self.asset_provider.is_some())
             .field("ai_enabled", &self.ai_enabled)
             .finish()
     }
@@ -39,6 +42,11 @@ impl PartialEq for Cditor {
     fn eq(&self, other: &Self) -> bool {
         self.options == other.options
             && self.ai_enabled == other.ai_enabled
+            && match (&self.asset_provider, &other.asset_provider) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
             && self.ai_provider.as_ref().map(|provider| provider.id())
                 == other.ai_provider.as_ref().map(|provider| provider.id())
     }
@@ -124,6 +132,18 @@ impl Cditor {
         self.ai_provider = None;
         self.ai_enabled = false;
         self
+    }
+
+    pub fn with_asset_provider(
+        mut self,
+        provider: Arc<dyn crate::providers::AssetProvider>,
+    ) -> Self {
+        self.asset_provider = Some(provider);
+        self
+    }
+
+    pub fn asset_provider(&self) -> Option<Arc<dyn crate::providers::AssetProvider>> {
+        self.asset_provider.clone()
     }
 
     pub fn options(&self) -> &CditorOptions {

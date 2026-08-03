@@ -80,6 +80,8 @@ pub enum CommandArgs {
     },
     ImageAsset {
         payload: ImagePayload,
+        asset: Option<cditor_core::edit::AssetSnapshot>,
+        after_block_id: Option<BlockId>,
     },
     MoveCaret {
         direction: CaretDirection,

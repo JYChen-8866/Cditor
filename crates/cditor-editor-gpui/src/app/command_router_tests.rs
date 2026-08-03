@@ -49,6 +49,8 @@ fn representative_commands() -> Vec<CditorCommand> {
         },
         CditorCommand::InsertImageAsset {
             payload: cditor_core::rich_text::ImagePayload::default(),
+            asset: None,
+            after_block_id: None,
         },
         CditorCommand::DeleteSelection,
         CditorCommand::ToggleBold,

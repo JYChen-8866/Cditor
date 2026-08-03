@@ -1,6 +1,7 @@
 use crate::clipboard_assets::image_asset_from_clipboard_item;
-use gpui::{ClipboardItem, Context};
+use gpui::{AppContext, ClipboardItem, Context};
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use crate::editor_view::CditorV2View;
 use crate::input::GuiInputCommand;
@@ -58,8 +59,17 @@ impl CditorV2View {
         if let CditorCommand::PasteClipboard = &command {
             command = if let Some(item) = cx.read_from_clipboard() {
                 if let Some(asset) = image_asset_from_clipboard_item(&item) {
+                    if let Some(provider) = self.features.asset_provider.clone() {
+                        self.schedule_clipboard_asset_import(asset, provider, source, cx);
+                        return Ok(CommandOutcome::no_op());
+                    }
+                    let Some(payload) = asset.into_fallback_payload() else {
+                        return Ok(CommandOutcome::no_op());
+                    };
                     CditorCommand::InsertImageAsset {
-                        payload: asset.payload,
+                        payload,
+                        asset: None,
+                        after_block_id: None,
                     }
                 } else if let Some(text) = item.text() {
                     CditorCommand::ApplyClipboardData {
@@ -182,6 +192,64 @@ impl CditorV2View {
         }
 
         self.execute_sdk_command_handler(command, source, cx)
+    }
+
+    fn schedule_clipboard_asset_import(
+        &mut self,
+        asset: crate::clipboard_assets::ClipboardImageAsset,
+        provider: std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>,
+        source: CommandSource,
+        cx: &mut Context<Self>,
+    ) {
+        let after_block_id = self
+            .ready_session()
+            .and_then(|session| session.document_snapshot().ok())
+            .and_then(|snapshot| snapshot.focused_block_id);
+        let task = cx.background_spawn(async move {
+            let input = asset
+                .into_asset_input()
+                .map_err(|message| cditor_sdk::providers::AssetError { message })?;
+            provider.import(input).await
+        });
+        cx.spawn(async move |view, cx| {
+            let imported = task.await;
+            let _ = view.update(cx, |view, cx| match imported {
+                Ok(imported) => {
+                    let payload = cditor_core::rich_text::ImagePayload {
+                        source: imported.reference.source,
+                        alt: imported
+                            .reference
+                            .name
+                            .unwrap_or_else(|| imported.snapshot.file_name.clone()),
+                        caption: String::new().into(),
+                        display_width_ratio_milli: None,
+                    };
+                    if let Err(error) = view.dispatch_command(
+                        CditorCommand::InsertImageAsset {
+                            payload,
+                            asset: Some(imported.snapshot),
+                            after_block_id,
+                        },
+                        source,
+                        cx,
+                    ) {
+                        crate::overlays::show_toast(
+                            view,
+                            format!("Failed to insert image: {error}"),
+                            Duration::from_secs(5),
+                            cx,
+                        );
+                    }
+                }
+                Err(error) => crate::overlays::show_toast(
+                    view,
+                    format!("Failed to import image: {error}"),
+                    Duration::from_secs(5),
+                    cx,
+                ),
+            });
+        })
+        .detach();
     }
 
     pub(in crate::app) fn query_command(&self, command: &CditorCommand) -> CommandQueryState {

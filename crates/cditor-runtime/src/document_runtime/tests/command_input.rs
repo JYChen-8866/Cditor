@@ -642,6 +642,8 @@ fn raw_clipboard_is_rejected_at_runtime_and_typed_image_payload_still_applies() 
         &mut runtime,
         EditorCommand::InsertImageAsset {
             payload: cditor_core::rich_text::ImagePayload::default(),
+            asset: None,
+            after_block_id: None,
         },
     );
     assert!(image.changed());
@@ -651,6 +653,69 @@ fn raw_clipboard_is_rejected_at_runtime_and_typed_image_payload_still_applies() 
         Some(RichBlockKind::Image)
     ));
     assert_eq!(image.transaction_ids.len(), 1);
+}
+
+#[test]
+fn imported_image_and_asset_attachment_commit_in_one_transaction() {
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "start")]);
+    runtime.focus_block_at_offset(1, 5).unwrap();
+    let asset = cditor_core::edit::AssetSnapshot {
+        asset_id: 77,
+        file_name: "image.png".into(),
+        media_type: "image/png".into(),
+        size_bytes: 12,
+        source: "assets/abc.png".into(),
+        checksum: Some("a".repeat(64)),
+        state: cditor_core::edit::AssetState::Ready,
+    };
+
+    let outcome = dispatch(
+        &mut runtime,
+        EditorCommand::InsertImageAsset {
+            payload: cditor_core::rich_text::ImagePayload {
+                source: asset.source.clone(),
+                ..Default::default()
+            },
+            asset: Some(asset.clone()),
+            after_block_id: Some(1),
+        },
+    );
+
+    let image_block = outcome.affected_blocks[0];
+    assert_eq!(outcome.transaction_ids.len(), 1);
+    assert_eq!(
+        runtime.attached_asset_ids(image_block),
+        vec![asset.asset_id]
+    );
+    assert_eq!(runtime.asset_snapshot(asset.asset_id), Some(&asset));
+}
+
+#[test]
+fn imported_image_uses_the_paste_time_block_anchor_after_focus_moves() {
+    let mut runtime = runtime_with_kind_depths_and_text(vec![
+        (RichBlockKind::Paragraph, 0, None, "first"),
+        (RichBlockKind::Paragraph, 0, None, "second"),
+    ]);
+    runtime.focus_block_at_offset(2, 6).unwrap();
+
+    let outcome = dispatch(
+        &mut runtime,
+        EditorCommand::InsertImageAsset {
+            payload: cditor_core::rich_text::ImagePayload {
+                source: "assets/image.png".into(),
+                ..Default::default()
+            },
+            asset: None,
+            after_block_id: Some(1),
+        },
+    );
+
+    assert_eq!(
+        runtime.full_projection_for_tests().blocks[1].block_id,
+        outcome.affected_blocks[0]
+    );
+    assert_eq!(runtime.full_projection_for_tests().blocks[3].block_id, 2);
 }
 
 #[test]
