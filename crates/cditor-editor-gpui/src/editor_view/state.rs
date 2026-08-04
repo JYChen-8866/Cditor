@@ -285,6 +285,7 @@ pub(crate) struct InteractionUiState {
     pub(crate) last_wheel_delta_y: f64,
     pub(crate) scroll_accumulator: ScrollAccumulator,
     wheel_frame_scheduled: bool,
+    initial_viewport_frame_requested: bool,
     pub(crate) editor_viewport_handle: gpui::ScrollHandle,
     pub(crate) code_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
     pub(crate) code_caret_reveal_after_line_break: HashSet<BlockId>,
@@ -319,6 +320,7 @@ impl Default for InteractionUiState {
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             wheel_frame_scheduled: false,
+            initial_viewport_frame_requested: false,
             editor_viewport_handle: Default::default(),
             code_scroll_handles: Default::default(),
             code_caret_reveal_after_line_break: Default::default(),
@@ -344,6 +346,18 @@ impl Default for InteractionUiState {
 }
 
 impl InteractionUiState {
+    pub(crate) fn request_initial_viewport_frame(&mut self) -> bool {
+        if self.initial_viewport_frame_requested {
+            return false;
+        }
+        self.initial_viewport_frame_requested = true;
+        true
+    }
+
+    pub(crate) fn note_viewport_measured(&mut self) {
+        self.initial_viewport_frame_requested = false;
+    }
+
     pub(crate) fn note_input(&mut self) {
         self.last_input_at = Some(web_time::Instant::now());
     }
@@ -734,6 +748,17 @@ mod tests {
 
         assert!(!epoch.matches(previous));
         assert!(epoch.matches(previous + 1));
+    }
+
+    #[test]
+    fn initial_viewport_retry_is_single_shot_until_a_measurement_arrives() {
+        let mut interaction = InteractionUiState::default();
+
+        assert!(interaction.request_initial_viewport_frame());
+        assert!(!interaction.request_initial_viewport_frame());
+
+        interaction.note_viewport_measured();
+        assert!(interaction.request_initial_viewport_frame());
     }
 }
 

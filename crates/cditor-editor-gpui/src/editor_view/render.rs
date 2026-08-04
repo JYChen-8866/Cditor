@@ -107,10 +107,10 @@ impl Render for CditorV2View {
                 .into_any_element();
         }
 
-        let editor_viewport = EditorViewport::from_measurement(
-            self.interaction.editor_viewport_handle.bounds(),
-            window.viewport_size(),
-        );
+        let measured_editor_viewport =
+            EditorViewport::from_bounds(self.interaction.editor_viewport_handle.bounds());
+        let editor_viewport = measured_editor_viewport
+            .unwrap_or_else(|| EditorViewport::from_size(window.viewport_size()));
 
         let view = cx.entity();
         let code_language_edit = self.overlay.code_language_edit.clone();
@@ -398,6 +398,25 @@ impl Render for CditorV2View {
             .flex_col()
             .bg(rgb(theme.surface))
             .text_color(rgb(theme.text));
+
+        if measured_editor_viewport.is_some() {
+            self.interaction.note_viewport_measured();
+        } else if self.state.is_ready() {
+            // A fresh ScrollHandle receives its bounds during prepaint, after
+            // this render pass. Laying out a ready document against the whole
+            // window here makes embedded editors paint wide and then contract
+            // into their dock on the next frame. Paint only the stable root on
+            // this pass and project the document once its own bounds exist.
+            crate::text::sync_automatic_text_layout_pins(&[]);
+            if self.interaction.request_initial_viewport_frame() {
+                cx.on_next_frame(window, |_view, _window, cx| cx.notify());
+            }
+            self.record_frame_telemetry(
+                window.window_handle().window_id(),
+                frame_started.elapsed(),
+            );
+            return root.into_any_element();
+        }
 
         let mut pending_table_scroll_offsets = Vec::new();
         let payload_storage_request = self

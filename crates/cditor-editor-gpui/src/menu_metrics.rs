@@ -20,17 +20,17 @@ pub(crate) struct EditorViewport {
 }
 
 impl EditorViewport {
+    pub(crate) fn from_bounds(measured: Bounds<Pixels>) -> Option<Self> {
+        (measured.size.width > px(0.5) && measured.size.height > px(0.5)).then(|| Self {
+            window_left: f32::from(measured.left()),
+            window_top: f32::from(measured.top()),
+            width: f32::from(measured.size.width),
+            height: f32::from(measured.size.height),
+        })
+    }
+
     pub(crate) fn from_measurement(measured: Bounds<Pixels>, fallback_size: Size<Pixels>) -> Self {
-        if measured.size.width > px(0.5) && measured.size.height > px(0.5) {
-            Self {
-                window_left: f32::from(measured.left()),
-                window_top: f32::from(measured.top()),
-                width: f32::from(measured.size.width),
-                height: f32::from(measured.size.height),
-            }
-        } else {
-            Self::from_size(fallback_size)
-        }
+        Self::from_bounds(measured).unwrap_or_else(|| Self::from_size(fallback_size))
     }
 
     pub(crate) fn from_size(viewport: Size<Pixels>) -> Self {
@@ -153,6 +153,17 @@ mod tests {
         assert_eq!(viewport.window_point_to_local(600.0, 300.0), (360.0, 220.0));
         assert_eq!(viewport.width, 900.0);
         assert_eq!(viewport.height, 600.0);
+    }
+
+    #[test]
+    fn unmeasured_editor_viewport_has_no_document_layout_size() {
+        let unmeasured = Bounds::new(point(px(0.0), px(0.0)), size(px(0.0), px(0.0)));
+
+        assert_eq!(EditorViewport::from_bounds(unmeasured), None);
+        assert_eq!(
+            EditorViewport::from_measurement(unmeasured, size(px(1_400.0), px(900.0))).width,
+            1_400.0
+        );
     }
 
     #[test]
