@@ -356,7 +356,7 @@ impl EditTransaction {
             vec![EditOperation::InsertText {
                 block_id,
                 offset,
-                text: text.clone(),
+                text,
             }],
             vec![EditOperation::DeleteText {
                 block_id,

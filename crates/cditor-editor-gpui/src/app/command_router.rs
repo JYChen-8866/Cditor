@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crate::editor_view::CditorV2View;
 use crate::input::GuiInputCommand;
+use cditor_core::clipboard::ClipboardSelection;
 use cditor_core::edit::ChangeOrigin;
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{
@@ -124,12 +125,39 @@ impl CditorV2View {
             return Ok(CommandOutcome::applied_side_effect(false));
         }
 
+        if let CditorCommand::CopyBlockLink { block_id } = command {
+            let document_id = self
+                .ready_session()
+                .ok_or(CditorError::NotReady)?
+                .snapshot()
+                .map_err(protocol_command_error)?
+                .document_id;
+            let link = self
+                .features
+                .block_link_provider
+                .as_ref()
+                .map(|provider| provider(block_id))
+                .unwrap_or_else(|| {
+                    cditor_core::internal_link::BlockLinkPresentation::plain(
+                        cditor_core::internal_link::block_link(document_id, block_id),
+                    )
+                });
+            let selection = ClipboardSelection::DocumentLink {
+                label: link.label,
+                href: link.href,
+            };
+            let (text, envelope) =
+                crate::input::clipboard::envelope_for_selection(Some(document_id), selection);
+            cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(text, envelope));
+            return Ok(CommandOutcome::applied_side_effect(false));
+        }
+
         if runtime_dispatches(&command) {
             let mutates_document = command_mutates_document(&command);
             let dispatched = self
                 .ready_session()
                 .ok_or(CditorError::NotReady)?
-                .dispatch_with_snapshot(CommandEnvelope::new(command.clone(), source))
+                .dispatch_with_snapshot(CommandEnvelope::new(command, source))
                 .map_err(protocol_command_error)?;
             if dispatched.revision != dispatched.before_revision && mutates_document {
                 self.mark_dirty_at_revision(
@@ -462,6 +490,7 @@ fn command_mutates_document(command: &CditorCommand) -> bool {
             | CditorCommand::SetTextSurfaceSelection { .. }
             | CditorCommand::CopySelection
             | CditorCommand::CopyBlockText { .. }
+            | CditorCommand::CopyBlockLink { .. }
             | CditorCommand::MoveCaret { .. }
     )
 }

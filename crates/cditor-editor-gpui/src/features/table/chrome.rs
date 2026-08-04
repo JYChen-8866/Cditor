@@ -87,7 +87,7 @@ pub(crate) fn render_table_axis_overlays(
             origins.scrolling_top_edge,
             origins.left_edge,
             theme,
-            view.clone(),
+            view,
             block_id,
         );
         overlays.top_edge.extend(gutters.top_edge);

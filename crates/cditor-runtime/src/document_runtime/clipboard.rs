@@ -23,6 +23,12 @@ impl DocumentRuntime {
         }
         match selection {
             ClipboardSelection::Inline { spans } => self.paste_inline_clipboard_spans(spans),
+            ClipboardSelection::DocumentLink { label, href } => {
+                self.paste_inline_clipboard_spans(&[InlineSpan {
+                    text: label.clone(),
+                    marks: vec![InlineMark::DocumentLink { href: href.clone() }],
+                }])
+            }
             ClipboardSelection::TextFragments { fragments } => {
                 if self.selection.focused_table_cell.is_some() {
                     let mut spans = Vec::new();
@@ -366,6 +372,10 @@ impl DocumentRuntime {
 fn auxiliary_clipboard_spans(selection: &ClipboardSelection) -> Vec<InlineSpan> {
     match selection {
         ClipboardSelection::Inline { spans } => spans.clone(),
+        ClipboardSelection::DocumentLink { label, href } => vec![InlineSpan {
+            text: label.clone(),
+            marks: vec![InlineMark::DocumentLink { href: href.clone() }],
+        }],
         ClipboardSelection::TextFragments { fragments } => fragments
             .iter()
             .enumerate()

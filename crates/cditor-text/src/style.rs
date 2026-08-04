@@ -237,7 +237,7 @@ fn inline_mark_visual_style(
             InlineMark::Underline => underline = true,
             InlineMark::Strike => strike = true,
             InlineMark::Code => code = true,
-            InlineMark::Link { .. } => link = true,
+            InlineMark::Link { .. } | InlineMark::DocumentLink { .. } => link = true,
             InlineMark::Color(color) => {
                 explicit_text_color = parse_hex_color(color).or(explicit_text_color);
             }

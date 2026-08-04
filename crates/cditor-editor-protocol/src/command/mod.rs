@@ -391,6 +391,7 @@ pub mod builtin {
     pub const BLOCK_DELETE: &str = "block.delete";
     pub const BLOCK_DUPLICATE: &str = "block.duplicate";
     pub const BLOCK_COPY_TEXT: &str = "block.copy_text";
+    pub const BLOCK_COPY_LINK: &str = "block.copy_link";
     pub const BLOCK_MOVE_BEFORE: &str = "block.move_before";
     pub const BLOCK_MOVE_TO_PARENT: &str = "block.move_to_parent";
     pub const BLOCK_ENTER: &str = "block.enter";

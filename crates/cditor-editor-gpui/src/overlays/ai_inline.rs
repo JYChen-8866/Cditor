@@ -77,7 +77,7 @@ pub(crate) fn render_ai_prompt(
     .height(px(28.0))
     .appearance(false)
     .bordered(false)
-    .focus(focus.clone())
+    .focus(focus)
     .cleanable(true)
     .empty(prompt.draft.is_empty())
     .on_clean(move |_window, cx| {
@@ -268,7 +268,7 @@ pub(crate) fn render_ai_preview_overlay(
                     view.clone(),
                 ))
         })
-        .child(ai_preview_discard_button(theme, view.clone()));
+        .child(ai_preview_discard_button(theme, view));
     let panel = div()
         .id(("ai-preview-panel", preview.request_id))
         .absolute()

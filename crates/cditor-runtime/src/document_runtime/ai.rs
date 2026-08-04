@@ -800,8 +800,7 @@ impl DocumentRuntime {
     pub fn agent_set_block_text(&mut self, block_id: BlockId, text: &str) -> Result<(), String> {
         let kind = self
             .block_kind(block_id)
-            .ok_or_else(|| format!("block {block_id} not found"))?
-            .clone();
+            .ok_or_else(|| format!("block {block_id} not found"))?;
         self.apply_local_block_payload_transaction_with_origin(
             block_id,
             EditTransactionKind::AiApply,

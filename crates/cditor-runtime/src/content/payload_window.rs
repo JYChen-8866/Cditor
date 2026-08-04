@@ -11,6 +11,10 @@ use super::payload_preparation::{PreparedPayloadRecord, prepare_payload_records}
 mod cache_maintenance;
 
 pub const MAX_PAYLOAD_WINDOW_LOAD_ATTEMPTS: u8 = 3;
+/// Failed payloads retain their diagnostic string and retry counter. A broken
+/// document can otherwise add one entry for every block visited during a
+/// session, even after those blocks have left the active payload window.
+pub const MAX_PAYLOAD_WINDOW_FAILURES: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PayloadLoadPriority {
@@ -67,6 +71,7 @@ pub struct PayloadWindow {
     loading_generations: HashMap<BlockId, PayloadLoadOwner>,
     pub failed: HashMap<BlockId, String>,
     pub failure_attempts: HashMap<BlockId, u8>,
+    failure_order: VecDeque<BlockId>,
     persisted_versions: HashMap<BlockId, u64>,
     last_access: HashMap<BlockId, u64>,
     access_order: BTreeSet<(u64, BlockId)>,
@@ -89,6 +94,7 @@ impl PayloadWindow {
             loading_generations: HashMap::new(),
             failed: HashMap::new(),
             failure_attempts: HashMap::new(),
+            failure_order: VecDeque::new(),
             persisted_versions: HashMap::new(),
             last_access: HashMap::new(),
             access_order: BTreeSet::new(),
@@ -115,8 +121,7 @@ impl PayloadWindow {
         let was_resident = self.payloads.contains_key(&block_id);
         self.loading.remove(&block_id);
         self.loading_generations.remove(&block_id);
-        self.failed.remove(&block_id);
-        self.failure_attempts.remove(&block_id);
+        self.clear_failure(block_id);
         self.replace_estimated_size(block_id, estimated_bytes);
         self.clear_estimated_size_dirty(block_id);
         self.payloads.insert(block_id, payload);
@@ -168,8 +173,7 @@ impl PayloadWindow {
     fn remove_internal(&mut self, block_id: BlockId) -> Option<Arc<BlockPayloadRecord>> {
         self.loading.remove(&block_id);
         self.loading_generations.remove(&block_id);
-        self.failed.remove(&block_id);
-        self.failure_attempts.remove(&block_id);
+        self.clear_failure(block_id);
         self.persisted_versions.remove(&block_id);
         if let Some(stamp) = self.last_access.remove(&block_id) {
             self.access_order.remove(&(stamp, block_id));
@@ -281,7 +285,22 @@ impl PayloadWindow {
     pub fn mark_failed(&mut self, block_id: BlockId, message: impl Into<String>) {
         self.loading.remove(&block_id);
         self.loading_generations.remove(&block_id);
+        if !self.failed.contains_key(&block_id) {
+            while self.failed.len() >= MAX_PAYLOAD_WINDOW_FAILURES {
+                if !self.evict_oldest_failure(Some(block_id)) {
+                    break;
+                }
+            }
+            self.failure_order
+                .retain(|candidate| *candidate != block_id);
+            self.failure_order.push_back(block_id);
+        }
         self.failed.insert(block_id, message.into());
+        while self.failed.len() > MAX_PAYLOAD_WINDOW_FAILURES {
+            if !self.evict_oldest_failure(Some(block_id)) {
+                break;
+            }
+        }
         let attempts = self.failure_attempts.entry(block_id).or_default();
         *attempts = attempts.saturating_add(1);
     }
@@ -289,6 +308,40 @@ impl PayloadWindow {
     pub fn can_retry(&self, block_id: BlockId) -> bool {
         self.failure_attempts.get(&block_id).copied().unwrap_or(0)
             < MAX_PAYLOAD_WINDOW_LOAD_ATTEMPTS
+    }
+
+    pub(crate) fn clear_failure(&mut self, block_id: BlockId) -> bool {
+        let had_failure =
+            self.failed.contains_key(&block_id) || self.failure_attempts.contains_key(&block_id);
+        self.failed.remove(&block_id);
+        self.failure_attempts.remove(&block_id);
+        self.failure_order
+            .retain(|candidate| *candidate != block_id);
+        had_failure
+    }
+
+    fn evict_oldest_failure(&mut self, protected: Option<BlockId>) -> bool {
+        while let Some(candidate) = self.failure_order.pop_front() {
+            if Some(candidate) == protected {
+                continue;
+            }
+            if self.failed.remove(&candidate).is_some() {
+                self.failure_attempts.remove(&candidate);
+                return true;
+            }
+        }
+        let candidate = self
+            .failed
+            .keys()
+            .copied()
+            .find(|candidate| Some(*candidate) != protected);
+        if let Some(candidate) = candidate {
+            self.failed.remove(&candidate);
+            self.failure_attempts.remove(&candidate);
+            self.failure_order.retain(|queued| *queued != candidate);
+            return true;
+        }
+        false
     }
 
     fn replace_estimated_size(&mut self, block_id: BlockId, bytes: usize) {
@@ -446,5 +499,29 @@ mod tests {
         assert_eq!(evicted.len(), 100);
         assert_eq!(predicate_calls, 200);
         assert!((1..=100).all(|block_id| window.get(block_id).is_some()));
+    }
+
+    #[test]
+    fn failed_payload_diagnostics_are_bounded_and_keep_latest_failure() {
+        let mut window = PayloadWindow::new(0..0);
+        for block_id in 1..=(MAX_PAYLOAD_WINDOW_FAILURES as u64 + 1) {
+            window.mark_failed(block_id, format!("failure-{block_id}"));
+        }
+
+        assert_eq!(window.failed.len(), MAX_PAYLOAD_WINDOW_FAILURES);
+        assert!(!window.failed.contains_key(&1));
+        assert_eq!(
+            window.failed.get(&(MAX_PAYLOAD_WINDOW_FAILURES as u64 + 1)),
+            Some(&format!(
+                "failure-{}",
+                MAX_PAYLOAD_WINDOW_FAILURES as u64 + 1
+            ))
+        );
+        assert_eq!(
+            window
+                .failure_attempts
+                .get(&(MAX_PAYLOAD_WINDOW_FAILURES as u64 + 1)),
+            Some(&1)
+        );
     }
 }

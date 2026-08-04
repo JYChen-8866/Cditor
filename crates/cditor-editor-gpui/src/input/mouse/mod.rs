@@ -1,5 +1,6 @@
 mod block;
 mod commands;
+mod link;
 mod view;
 
 pub use commands::{
@@ -8,5 +9,6 @@ pub use commands::{
     toggle_block_fold_from_mouse, toggle_todo_from_mouse,
     update_table_cell_text_selection_from_mouse,
 };
+pub use link::open_link_from_mouse;
 #[cfg(test)]
 pub(crate) use view::scroll_delta_y;

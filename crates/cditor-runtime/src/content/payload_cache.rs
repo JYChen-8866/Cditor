@@ -8,11 +8,11 @@ use cditor_core::rich_text::{
 ///
 /// The byte budget is the primary eviction signal. Keeping this ceiling well
 /// above a normal working set avoids throwing away nearby text blocks while
-/// only a small fraction of the 64 MiB payload budget is in use.
-pub const DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES: usize = 65_536;
+/// only a small fraction of the payload byte budget is in use.
+pub const DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES: usize = 8_192;
 /// Default byte budget for heavyweight block payload entities. Structure,
 /// height indexes and stable layout boxes remain resident outside this budget.
-pub const DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+pub const DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 /// Work admitted by one idle payload-cache maintenance callback.
 ///
@@ -225,7 +225,7 @@ fn estimated_spans_bytes(spans: &[InlineSpan], capacity: usize) -> usize {
 
 fn estimated_mark_heap_bytes(mark: &InlineMark) -> usize {
     match mark {
-        InlineMark::Link { href } => href.capacity(),
+        InlineMark::Link { href } | InlineMark::DocumentLink { href } => href.capacity(),
         InlineMark::Color(color) | InlineMark::Background(color) => color.capacity(),
         _ => 0,
     }

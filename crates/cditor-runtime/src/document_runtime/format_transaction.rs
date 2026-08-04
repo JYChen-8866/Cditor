@@ -87,12 +87,12 @@ impl DocumentRuntime {
         let before_operation_spans = if before_text.is_empty() {
             Vec::new()
         } else {
-            before_spans.clone()
+            before_spans
         };
         let after_operation_spans = if after_text.is_empty() {
             Vec::new()
         } else {
-            after_spans.clone()
+            after_spans
         };
         let forward = EditOperation::Text(TextEditOperation::ReplaceSpans {
             surface_id,

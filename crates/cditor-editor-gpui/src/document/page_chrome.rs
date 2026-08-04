@@ -664,7 +664,7 @@ fn render_page_icon_tab_bar(
             custom_tab,
             theme,
             {
-                let view = view.clone();
+                let view = view;
                 move |_window, cx| set_page_icon_menu_tab(&view, true, cx)
             },
         ))

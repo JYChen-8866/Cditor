@@ -5,7 +5,7 @@ use std::sync::{Arc, OnceLock};
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayloadView, RichBlockKind};
 use cditor_runtime::{EditorViewProjection, MainThreadWorkKind, WorkCost, WorkerTaskKind};
-use gpui::{AppContext, Context, RenderImage, Task};
+use gpui::{App, AppContext, Context, RenderImage, Task};
 
 use crate::app::worker_admission::{EditorWorkerAdmission, WorkerPermit};
 use crate::editor_view::CditorV2View;
@@ -120,11 +120,36 @@ impl MermaidRenderEntry {
         }
     }
 
-    pub(crate) fn best_image(&self) -> Option<Arc<RenderImage>> {
-        match self.result.get() {
-            Some(Ok(image)) => Some(image.clone()),
-            _ => self.fallback.clone(),
+    fn take_completed_fallback(&mut self) -> Option<Arc<RenderImage>> {
+        let result = self.result.get()?;
+        let fallback = self.fallback.take()?;
+        if matches!(result, Ok(image) if Arc::ptr_eq(image, &fallback)) {
+            return None;
         }
+        Some(fallback)
+    }
+
+    fn into_fallback_and_retired(mut self) -> (Option<Arc<RenderImage>>, Vec<Arc<RenderImage>>) {
+        let preferred = match self.result.get() {
+            Some(Ok(image)) => Some(image.clone()),
+            Some(Err(_)) | None => self.fallback.take(),
+        };
+        let mut retired = Vec::new();
+        if let Some(fallback) = self.fallback.take() {
+            push_unique_image(&mut retired, fallback, preferred.as_ref());
+        }
+        (preferred, retired)
+    }
+
+    fn into_retired_images(mut self) -> Vec<Arc<RenderImage>> {
+        let mut retired = Vec::new();
+        if let Some(Ok(image)) = self.result.get() {
+            push_unique_image(&mut retired, image.clone(), None);
+        }
+        if let Some(fallback) = self.fallback.take() {
+            push_unique_image(&mut retired, fallback, None);
+        }
+        retired
     }
 
     fn matches(&self, content_version: u64, source_hash: u64, theme: GuiTheme) -> bool {
@@ -147,6 +172,11 @@ impl MermaidRenderCache {
         worker_admission: &EditorWorkerAdmission,
         cx: &mut Context<CditorV2View>,
     ) {
+        let mut retired = self
+            .entries
+            .values_mut()
+            .filter_map(MermaidRenderEntry::take_completed_fallback)
+            .collect::<Vec<_>>();
         let visible = projection
             .blocks
             .iter()
@@ -168,8 +198,17 @@ impl MermaidRenderCache {
             .iter()
             .map(|(block_id, _, _, _)| *block_id)
             .collect::<HashSet<_>>();
-        self.entries
-            .retain(|block_id, _| visible_ids.contains(block_id));
+        let invisible = self
+            .entries
+            .keys()
+            .filter(|block_id| !visible_ids.contains(block_id))
+            .copied()
+            .collect::<Vec<_>>();
+        for block_id in invisible {
+            if let Some(entry) = self.entries.remove(&block_id) {
+                retired.extend(entry.into_retired_images());
+            }
+        }
 
         for (block_id, content_version, hash, source) in visible {
             if self
@@ -182,10 +221,11 @@ impl MermaidRenderCache {
             let Some(permit) = worker_admission.try_acquire(WorkerTaskKind::MermaidRender) else {
                 continue;
             };
-            let fallback = self
-                .entries
-                .remove(&block_id)
-                .and_then(|entry| entry.best_image());
+            let fallback = self.entries.remove(&block_id).and_then(|entry| {
+                let (fallback, superseded) = entry.into_fallback_and_retired();
+                retired.extend(superseded);
+                fallback
+            });
             self.entries.insert(
                 block_id,
                 MermaidRenderEntry::new(
@@ -202,15 +242,46 @@ impl MermaidRenderCache {
                 ),
             );
         }
+        retire_images_after_effect(retired, cx);
     }
 
     pub(crate) fn status(&self, block_id: BlockId) -> Option<MermaidRenderStatus> {
         self.entries.get(&block_id).map(MermaidRenderEntry::status)
     }
 
-    pub(crate) fn clear(&mut self) {
-        self.entries.clear();
+    pub(crate) fn clear(&mut self) -> Vec<Arc<RenderImage>> {
+        self.entries
+            .drain()
+            .flat_map(|(_, entry)| entry.into_retired_images())
+            .fold(Vec::new(), |mut retired, image| {
+                push_unique_image(&mut retired, image, None);
+                retired
+            })
     }
+}
+
+fn push_unique_image(
+    images: &mut Vec<Arc<RenderImage>>,
+    candidate: Arc<RenderImage>,
+    retained: Option<&Arc<RenderImage>>,
+) {
+    if retained.is_some_and(|retained| Arc::ptr_eq(&candidate, retained))
+        || images.iter().any(|image| Arc::ptr_eq(image, &candidate))
+    {
+        return;
+    }
+    images.push(candidate);
+}
+
+fn retire_images_after_effect(images: Vec<Arc<RenderImage>>, cx: &mut App) {
+    if images.is_empty() {
+        return;
+    }
+    cx.defer(move |cx| {
+        for image in images {
+            cx.drop_image(image, None);
+        }
+    });
 }
 
 fn source_hash(source: &str) -> u64 {
@@ -236,6 +307,28 @@ fn validate_source(source: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    fn test_image(width: u32) -> Arc<RenderImage> {
+        Arc::new(RenderImage::new([image::Frame::new(
+            image::RgbaImage::new(width, 1),
+        )]))
+    }
+
+    fn completed_entry(
+        result: RenderResult,
+        fallback: Option<Arc<RenderImage>>,
+    ) -> MermaidRenderEntry {
+        let cell = Arc::new(OnceLock::new());
+        cell.set(result).ok().expect("fresh result cell");
+        MermaidRenderEntry {
+            content_version: 1,
+            source_hash: 1,
+            theme: GuiTheme::light(),
+            result: cell,
+            fallback,
+            _task: None,
+        }
+    }
+
     #[test]
     fn source_validation_rejects_empty_and_oversized_input() {
         assert!(validate_source("  \n").is_err());
@@ -247,5 +340,32 @@ mod tests {
     fn source_hash_changes_with_content() {
         assert_eq!(source_hash("A --> B"), source_hash("A --> B"));
         assert_ne!(source_hash("A --> B"), source_hash("A --> C"));
+    }
+
+    #[test]
+    fn completed_render_retires_its_superseded_fallback() {
+        let current = test_image(2);
+        let fallback = test_image(1);
+        let mut entry = completed_entry(Ok(current), Some(fallback.clone()));
+
+        let retired = entry
+            .take_completed_fallback()
+            .expect("completed render should release fallback");
+
+        assert!(Arc::ptr_eq(&retired, &fallback));
+        assert!(entry.fallback.is_none());
+    }
+
+    #[test]
+    fn replacing_ready_render_keeps_latest_image_and_retires_only_old_fallback() {
+        let current = test_image(2);
+        let fallback = test_image(1);
+        let entry = completed_entry(Ok(current.clone()), Some(fallback.clone()));
+
+        let (next_fallback, retired) = entry.into_fallback_and_retired();
+
+        assert!(next_fallback.is_some_and(|image| Arc::ptr_eq(&image, &current)));
+        assert_eq!(retired.len(), 1);
+        assert!(Arc::ptr_eq(&retired[0], &fallback));
     }
 }

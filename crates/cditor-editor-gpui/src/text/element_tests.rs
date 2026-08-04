@@ -223,6 +223,69 @@ fn inline_box_configuration_reaches_the_shared_text_layout_layout() {
 }
 
 #[test]
+fn document_link_text_soft_wraps_inside_narrow_viewports_without_inline_icons() {
+    let width = 120.0_f32;
+    let document_link = |text: &str, href: &str| InlineSpan {
+        text: text.to_owned(),
+        marks: vec![InlineMark::DocumentLink {
+            href: href.to_owned(),
+        }],
+    };
+    let cases = [
+        vec![
+            InlineSpan::plain("Before "),
+            document_link(
+                "A long document title with spaces 以及需要自动换行的中文标题",
+                "aurin://doc/1",
+            ),
+            InlineSpan::plain(" after"),
+        ],
+        vec![document_link(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "aurin://doc/2",
+        )],
+        vec![
+            InlineSpan::plain("Text that nearly fills "),
+            document_link("First", "aurin://doc/3"),
+            InlineSpan::plain(" "),
+            document_link("SecondLongDocumentTitle", "aurin://doc/4"),
+        ],
+    ];
+
+    for (case_index, spans) in cases.into_iter().enumerate() {
+        let block_id = 10 + case_index as u64;
+        let input = RichTextLayoutInput {
+            block_id,
+            surface_id: TextLayoutSurfaceId::Block(block_id),
+            content_version: 1,
+            layout_version: 1,
+            kind: RichBlockKind::Paragraph,
+            text_align: cditor_core::rich_text::TextAlign::Start,
+            spans: spans.into(),
+            width_px: f64::from(width),
+            theme_version: 1,
+            font_version: 1,
+        };
+        let layout = RichTextElement::new(input, GuiTheme::light()).layout_snapshot();
+
+        assert!(layout.inline_boxes().is_empty());
+        assert!(layout.line_count() > 1);
+        for line in layout.line_snapshots() {
+            assert!(line.text_range.start <= line.text_range.end);
+            assert!(line.text_range.end <= layout.text().len());
+            let line_text = &layout.text()[line.text_range.clone()];
+            if line_text.chars().last().is_some_and(char::is_whitespace) {
+                continue;
+            }
+            assert!(
+                line.logical_right <= width + 0.5,
+                "line escaped viewport: case={case_index}, width={width}, line={line:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn notion_text_sizes_and_line_heights_are_stable() {
     assert_eq!(text_size_for_kind(&RichBlockKind::Paragraph), px(16.0));
     assert_eq!(

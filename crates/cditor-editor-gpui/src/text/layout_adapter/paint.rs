@@ -1,13 +1,13 @@
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, hash_map::DefaultHasher},
+    collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
     sync::{Mutex, OnceLock},
 };
 
 use cditor_text::{TextLayoutSnapshot, TextPaintFont, TextPaintFontStyle, TextPaintRun};
 use gpui::{
-    Bounds, FontId, FontStyle as GpuiFontStyle, FontWeight as GpuiFontWeight, GlyphId, Hsla,
+    App, Bounds, FontId, FontStyle as GpuiFontStyle, FontWeight as GpuiFontWeight, GlyphId, Hsla,
     PaintQuad, Pixels, Point, StrikethroughStyle, TextRun, UnderlineStyle, Window, fill, font,
     point, px, rgb, size,
 };
@@ -108,6 +108,7 @@ pub(crate) fn paint_text_layout(
     origin: Point<Pixels>,
     diagnose_font_bridge: bool,
     window: &mut Window,
+    cx: &mut App,
 ) -> TextPaintReport {
     let mut report = TextPaintReport::default();
     for run in &snapshot.paint_plan().runs {
@@ -175,7 +176,7 @@ pub(crate) fn paint_text_layout(
                 );
             }
             GlyphPaintPath::ExactRasterImageAtlas => {
-                paint_exact_raster_run(run, origin, window, &mut report);
+                paint_exact_raster_run(run, origin, window, cx, &mut report);
             }
         }
         paint_decorations(run, origin, window);
@@ -230,6 +231,7 @@ fn paint_exact_raster_run(
     run: &TextPaintRun,
     origin: Point<Pixels>,
     window: &mut Window,
+    cx: &mut App,
     report: &mut TextPaintReport,
 ) {
     report.exact_raster_runs += 1;
@@ -243,6 +245,7 @@ fn paint_exact_raster_run(
             run.brush.foreground,
             baseline_origin,
             window,
+            cx,
         ) {
             Ok(result) => {
                 if result.painted {
@@ -274,7 +277,7 @@ fn paint_decorations(run: &TextPaintRun, origin: Point<Pixels>, window: &mut Win
         window.paint_underline(
             point(
                 origin.x + px(run.decoration_x),
-                origin.y + px(run.baseline + underline.offset),
+                origin.y + px(decoration_y(run.baseline, underline.offset)),
             ),
             px(run.decoration_width),
             &UnderlineStyle {
@@ -288,7 +291,7 @@ fn paint_decorations(run: &TextPaintRun, origin: Point<Pixels>, window: &mut Win
         window.paint_strikethrough(
             point(
                 origin.x + px(run.decoration_x),
-                origin.y + px(run.baseline + strikethrough.offset),
+                origin.y + px(decoration_y(run.baseline, strikethrough.offset)),
             ),
             px(run.decoration_width),
             &StrikethroughStyle {
@@ -296,6 +299,22 @@ fn paint_decorations(run: &TextPaintRun, origin: Point<Pixels>, window: &mut Win
                 thickness: px(strikethrough.size.max(1.0)),
             },
         );
+    }
+}
+
+fn decoration_y(baseline: f32, font_metric_offset: f32) -> f32 {
+    baseline - font_metric_offset
+}
+
+#[cfg(test)]
+mod decoration_tests {
+    use super::decoration_y;
+
+    #[test]
+    fn converts_font_metric_offsets_to_downward_screen_coordinates() {
+        let baseline = 16.0;
+        assert_eq!(decoration_y(baseline, -1.0), 17.0);
+        assert_eq!(decoration_y(baseline, 6.0), 10.0);
     }
 }
 
@@ -448,13 +467,11 @@ fn validate_gpui_glyph_ids(
     }
 
     let key = glyph_validation_key(window, run, text);
-    static RESULTS: OnceLock<Mutex<HashMap<u64, bool>>> = OnceLock::new();
-    let results = RESULTS.get_or_init(|| Mutex::new(HashMap::new()));
+    let results = glyph_validation_cache();
     if let Some(result) = results
         .lock()
         .expect("glyph validation cache lock poisoned")
-        .get(&key)
-        .copied()
+        .get(key)
     {
         return Some(result);
     }
@@ -481,6 +498,54 @@ fn validate_gpui_glyph_ids(
         .expect("glyph validation cache lock poisoned")
         .insert(key, result);
     Some(result)
+}
+
+/// Font bridge diagnostics are intentionally optional, but when enabled they
+/// can see a new text run for every edit/scroll position. Keep the diagnostic
+/// memoization bounded so it cannot become a process-lifetime map of document
+/// text fingerprints.
+const GLYPH_VALIDATION_CACHE_MAX_ENTRIES: usize = 4096;
+
+struct GlyphValidationCache {
+    entries: HashMap<u64, bool>,
+    insertion_order: VecDeque<u64>,
+}
+
+impl GlyphValidationCache {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            insertion_order: VecDeque::new(),
+        }
+    }
+
+    fn get(&self, key: u64) -> Option<bool> {
+        self.entries.get(&key).copied()
+    }
+
+    fn insert(&mut self, key: u64, value: bool) {
+        if self.entries.contains_key(&key) {
+            self.entries.insert(key, value);
+            return;
+        }
+        if self.entries.len() >= GLYPH_VALIDATION_CACHE_MAX_ENTRIES {
+            if let Some(oldest) = self.insertion_order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
+        self.entries.insert(key, value);
+        self.insertion_order.push_back(key);
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+fn glyph_validation_cache() -> &'static Mutex<GlyphValidationCache> {
+    static CACHE: OnceLock<Mutex<GlyphValidationCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(GlyphValidationCache::new()))
 }
 
 fn glyph_validation_key(window: &Window, run: &TextPaintRun, text: &str) -> u64 {
@@ -554,6 +619,20 @@ mod tests {
         assert!(glyph_ids_match([1, 2, 3], [1, 2, 3]));
         assert!(!glyph_ids_match([1, 2, 3], [1, 3, 2]));
         assert!(!glyph_ids_match([1, 2], [1, 2, 3]));
+    }
+
+    #[test]
+    fn glyph_validation_cache_is_bounded() {
+        let mut cache = GlyphValidationCache::new();
+        for key in 0..(GLYPH_VALIDATION_CACHE_MAX_ENTRIES as u64 + 17) {
+            cache.insert(key, key % 2 == 0);
+        }
+        assert_eq!(cache.len(), GLYPH_VALIDATION_CACHE_MAX_ENTRIES);
+        assert!(cache.get(0).is_none());
+        assert_eq!(
+            cache.get(GLYPH_VALIDATION_CACHE_MAX_ENTRIES as u64 + 16),
+            Some(true)
+        );
     }
 
     #[test]

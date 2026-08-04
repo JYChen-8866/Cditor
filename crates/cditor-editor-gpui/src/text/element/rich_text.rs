@@ -154,6 +154,11 @@ impl RichTextElement {
         self.default_text_layout().inline_boxes()
     }
 
+    #[cfg(test)]
+    pub(crate) fn layout_snapshot(&self) -> TextLayoutSnapshot {
+        self.default_text_layout()
+    }
+
     fn default_text_layout(&self) -> TextLayoutSnapshot {
         default_text_layout_for_input(
             &self.input,

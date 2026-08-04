@@ -295,19 +295,9 @@ impl DocumentRuntime {
         let bounded_range = self.bounded_payload_window_range(block_range);
         let mut reset_count = 0;
         for block_id in self.payload_window_block_ids(&bounded_range) {
-            if self
-                .document
-                .payload_window
-                .failed
-                .remove(&block_id)
-                .is_some()
-            {
+            if self.document.payload_window.clear_failure(block_id) {
                 reset_count += 1;
             }
-            self.document
-                .payload_window
-                .failure_attempts
-                .remove(&block_id);
         }
         reset_count
     }

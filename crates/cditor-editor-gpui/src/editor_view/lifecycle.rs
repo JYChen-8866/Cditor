@@ -1,6 +1,6 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-use gpui::{App, Context, Entity};
+use gpui::{App, Context, Entity, RenderImage};
 
 use cditor_core::ids::BlockId;
 
@@ -18,7 +18,41 @@ use crate::text::CaretBlink;
 use cditor_runtime::DocumentRuntime;
 use cditor_session::{EditorSession, EditorSessionHandle};
 
+fn retire_images_after_effect(images: Vec<Arc<RenderImage>>, cx: &mut App) {
+    if images.is_empty() {
+        return;
+    }
+    cx.defer(move |cx| {
+        for image in images {
+            cx.drop_image(image, None);
+        }
+    });
+}
+
 impl CditorV2View {
+    /// Applies the host tab's activity state.
+    ///
+    /// Inactive document tabs keep their model and undo state, but release
+    /// render-derived caches that can be rebuilt on the next paint. This keeps
+    /// memory proportional to the active viewport instead of the number of
+    /// tabs that have been opened during the process lifetime.
+    pub fn sdk_set_host_active(&mut self, active: bool, cx: &mut Context<Self>) {
+        self.set_caret_blink_enabled(active, cx);
+        if let Some(session) = self.ready_session() {
+            let _ = session.set_host_active(active);
+        }
+        if active {
+            cx.notify();
+            return;
+        }
+
+        self.input.reset();
+        self.interaction.projected_block_rects.clear();
+        self.interaction.projected_table_cells.clear();
+        retire_images_after_effect(self.cache.reset_session(), cx);
+        self.scheduling.main_thread.clear();
+    }
+
     pub(crate) fn set_caret_blink_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.focus
             .caret_blink
@@ -67,13 +101,13 @@ impl CditorV2View {
         }
     }
 
-    fn reset_document_ui(&mut self) {
+    fn reset_document_ui(&mut self, cx: &mut Context<Self>) {
         self.focus.reset_session_projection();
         self.input.reset();
         self.interaction.reset();
         self.features.reset_session();
         self.overlay.reset();
-        self.cache.reset_session();
+        retire_images_after_effect(self.cache.reset_session(), cx);
         self.scheduling.main_thread.clear();
         self.scheduling.workers = Default::default();
         self.scheduling.layout_correction_frame_scheduled = false;
@@ -220,13 +254,13 @@ impl CditorV2View {
         )
     }
 
-    pub fn apply_loaded_session(&mut self, session: EditorSessionHandle) {
+    pub fn apply_loaded_session(&mut self, session: EditorSessionHandle, cx: &mut Context<Self>) {
         let session_readonly = session
             .snapshot()
             .map_or(self.status.requested_readonly, |snapshot| snapshot.readonly);
         self.state.apply_loaded_session(session);
         self.status.reset_for_session(session_readonly);
-        self.reset_document_ui();
+        self.reset_document_ui(cx);
     }
 
     pub fn apply_recovered_session(
@@ -235,7 +269,7 @@ impl CditorV2View {
         recovered_transactions: usize,
         cx: &mut Context<Self>,
     ) {
-        self.apply_loaded_session(session);
+        self.apply_loaded_session(session, cx);
         if recovered_transactions == 0 || self.status.readonly {
             return;
         }
@@ -244,10 +278,10 @@ impl CditorV2View {
         schedule_storage_autosave(self, cx);
     }
 
-    pub fn apply_load_failed(&mut self, message: impl Into<String>) {
+    pub fn apply_load_failed(&mut self, message: impl Into<String>, cx: &mut Context<Self>) {
         self.state.apply_load_failed(message);
         self.status.reset_after_load_failure();
-        self.reset_document_ui();
+        self.reset_document_ui(cx);
     }
 
     /// Return the persistent horizontal `ScrollHandle` for a table block.

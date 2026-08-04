@@ -4,6 +4,7 @@ use super::*;
 fn gutter_format_controls_use_the_provided_svg_assets() {
     assert!(std::str::from_utf8(ICON_COLOR).unwrap().starts_with("<svg"));
     assert!(std::str::from_utf8(ICON_TEXT).unwrap().starts_with("<svg"));
+    assert!(std::str::from_utf8(ICON_COPY).unwrap().starts_with("<svg"));
     assert!(
         std::str::from_utf8(ICON_DELETE)
             .unwrap()

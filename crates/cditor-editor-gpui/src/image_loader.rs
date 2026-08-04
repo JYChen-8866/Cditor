@@ -81,8 +81,10 @@ enum ImageState {
     Failed,
 }
 
-const IMAGE_CACHE_MAX_ENTRIES: usize = 256;
-const IMAGE_CACHE_MAX_DECODED_BYTES: usize = 128 * 1024 * 1024;
+// RenderImage retains CPU pixels and backend texture state. Bound both the
+// decoded-byte working set and the number of graphics resources process-wide.
+const IMAGE_CACHE_MAX_ENTRIES: usize = 96;
+const IMAGE_CACHE_MAX_DECODED_BYTES: usize = 64 * 1024 * 1024;
 
 struct CachedImage {
     state: ImageState,
@@ -131,8 +133,9 @@ impl ImageCache {
         ImageCacheLookup::StartLoad
     }
 
-    fn finish(&mut self, src: String, state: ImageState) {
+    fn finish(&mut self, src: String, state: ImageState) -> Vec<Arc<RenderImage>> {
         self.access_clock = self.access_clock.saturating_add(1);
+        let mut retired = Vec::new();
         let decoded_bytes = match &state {
             ImageState::Ready(image) => decoded_image_bytes(image),
             ImageState::Loading | ImageState::Failed => 0,
@@ -146,9 +149,11 @@ impl ImageCache {
             },
         ) {
             self.decoded_bytes = self.decoded_bytes.saturating_sub(previous.decoded_bytes);
+            self.push_if_uncached(&mut retired, &previous.state);
         }
         self.decoded_bytes = self.decoded_bytes.saturating_add(decoded_bytes);
-        self.trim();
+        self.trim_into(&mut retired);
+        retired
     }
 
     fn abort_start(&mut self, src: &str) {
@@ -171,7 +176,14 @@ impl ImageCache {
         }
     }
 
-    fn trim(&mut self) {
+    #[cfg(test)]
+    fn trim(&mut self) -> Vec<Arc<RenderImage>> {
+        let mut retired = Vec::new();
+        self.trim_into(&mut retired);
+        retired
+    }
+
+    fn trim_into(&mut self, retired: &mut Vec<Arc<RenderImage>>) {
         while self.entries.len() > self.max_entries || self.decoded_bytes > self.max_decoded_bytes {
             let candidate = self
                 .entries
@@ -184,9 +196,43 @@ impl ImageCache {
             };
             if let Some(evicted) = self.entries.remove(&candidate) {
                 self.decoded_bytes = self.decoded_bytes.saturating_sub(evicted.decoded_bytes);
+                self.push_if_uncached(retired, &evicted.state);
             }
         }
     }
+
+    fn push_if_uncached(&self, retired: &mut Vec<Arc<RenderImage>>, state: &ImageState) {
+        let Some(image) = ready_image(state) else {
+            return;
+        };
+        if self
+            .entries
+            .values()
+            .any(|entry| ready_image(&entry.state).is_some_and(|cached| Arc::ptr_eq(cached, image)))
+            || retired.iter().any(|retired| Arc::ptr_eq(retired, image))
+        {
+            return;
+        }
+        retired.push(image.clone());
+    }
+}
+
+fn ready_image(state: &ImageState) -> Option<&Arc<RenderImage>> {
+    match state {
+        ImageState::Ready(image) => Some(image),
+        ImageState::Loading | ImageState::Failed => None,
+    }
+}
+
+fn retire_images_after_effect(images: Vec<Arc<RenderImage>>, cx: &mut App) {
+    if images.is_empty() {
+        return;
+    }
+    cx.defer(move |cx| {
+        for image in images {
+            cx.drop_image(image, None);
+        }
+    });
 }
 
 fn image_cache() -> &'static Mutex<ImageCache> {
@@ -278,14 +324,17 @@ pub fn load_render_image(
                             cost: WorkCost::image_decode_apply(),
                         },
                         move |_view, cx| {
-                            if let Ok(mut cache) = image_cache().lock() {
-                                cache.finish(src, state);
-                            }
+                            let retired = image_cache()
+                                .lock()
+                                .map(|mut cache| cache.finish(src, state))
+                                .unwrap_or_default();
+                            retire_images_after_effect(retired, cx);
                             cx.refresh_windows();
                         },
                         move || {
                             if let Ok(mut cache) = image_cache().lock() {
-                                cache.finish(cancel_src, ImageState::Failed);
+                                let retired = cache.finish(cancel_src, ImageState::Failed);
+                                debug_assert!(retired.is_empty());
                             }
                         },
                         cx,
@@ -606,24 +655,35 @@ mod tests {
             cache.lookup_or_start("a"),
             ImageCacheLookup::StartLoad
         ));
-        cache.finish("a".to_owned(), ImageState::Ready(test_image(2, 2)));
+        assert!(
+            cache
+                .finish("a".to_owned(), ImageState::Ready(test_image(2, 2)))
+                .is_empty()
+        );
         assert!(matches!(
             cache.lookup_or_start("b"),
             ImageCacheLookup::StartLoad
         ));
-        cache.finish("b".to_owned(), ImageState::Ready(test_image(2, 2)));
+        let image_b = test_image(2, 2);
+        assert!(
+            cache
+                .finish("b".to_owned(), ImageState::Ready(image_b.clone()))
+                .is_empty()
+        );
         let _ = cache.lookup_or_start("a");
         assert!(matches!(
             cache.lookup_or_start("c"),
             ImageCacheLookup::StartLoad
         ));
-        cache.finish("c".to_owned(), ImageState::Ready(test_image(3, 3)));
+        let retired = cache.finish("c".to_owned(), ImageState::Ready(test_image(3, 3)));
 
         assert!(cache.entries.contains_key("a"));
         assert!(cache.entries.contains_key("c"));
         assert!(!cache.entries.contains_key("b"));
         assert!(cache.entries.len() <= 2);
         assert!(cache.decoded_bytes <= 64);
+        assert_eq!(retired.len(), 1);
+        assert!(Arc::ptr_eq(&retired[0], &image_b));
     }
 
     #[test]
@@ -641,7 +701,7 @@ mod tests {
             cache.lookup_or_start("second"),
             ImageCacheLookup::StartLoad
         ));
-        cache.trim();
+        assert!(cache.trim().is_empty());
 
         assert!(cache.entries.contains_key("loading"));
         assert!(cache.entries.contains_key("second"));
@@ -667,9 +727,17 @@ mod tests {
     fn failed_image_cache_entry_can_be_retried_without_touching_ready_entries() {
         let mut cache = ImageCache::new(2, 64);
         let _ = cache.lookup_or_start("failed");
-        cache.finish("failed".to_owned(), ImageState::Failed);
+        assert!(
+            cache
+                .finish("failed".to_owned(), ImageState::Failed)
+                .is_empty()
+        );
         let _ = cache.lookup_or_start("ready");
-        cache.finish("ready".to_owned(), ImageState::Ready(test_image(2, 2)));
+        assert!(
+            cache
+                .finish("ready".to_owned(), ImageState::Ready(test_image(2, 2)))
+                .is_empty()
+        );
 
         cache.retry_failed("failed");
         cache.retry_failed("ready");

@@ -399,7 +399,7 @@ fn render_slash_popup_content(
                 theme,
                 total_items,
                 state.scroll_start,
-                view.clone(),
+                view,
             ));
         }
     }

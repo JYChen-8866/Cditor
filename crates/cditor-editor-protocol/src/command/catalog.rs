@@ -170,6 +170,7 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(BLOCK_DUPLICATE, Args::BlockTarget, Document),
         definition(BLOCK_DUPLICATE_SELECTED, Args::None, Document),
         definition(BLOCK_COPY_TEXT, Args::BlockTarget, ReadOnly),
+        definition(BLOCK_COPY_LINK, Args::BlockTarget, ReadOnly),
         definition(BLOCK_MOVE_BEFORE, Args::BlockMoveBefore, Document),
         definition(BLOCK_MOVE_TO_PARENT, Args::BlockMoveToParent, Document),
         definition(BLOCK_ENTER, Args::None, Document),

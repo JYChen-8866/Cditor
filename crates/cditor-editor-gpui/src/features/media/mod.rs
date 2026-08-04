@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, OnceLock};
 
 use gpui::prelude::FluentBuilder;
@@ -222,9 +222,54 @@ fn render_image_caption(
         .into_any_element()
 }
 
-fn media_height_report_cache() -> &'static Mutex<HashMap<BlockId, (u64, u64)>> {
-    static CACHE: OnceLock<Mutex<HashMap<BlockId, (u64, u64)>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+const MEDIA_HEIGHT_REPORT_CACHE_MAX_ENTRIES: usize = 4096;
+
+struct MediaHeightReportCache {
+    entries: HashMap<BlockId, (u64, u64)>,
+    insertion_order: VecDeque<BlockId>,
+}
+
+impl MediaHeightReportCache {
+    fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            insertion_order: VecDeque::new(),
+        }
+    }
+
+    fn get(&self, block_id: BlockId) -> Option<(u64, u64)> {
+        self.entries.get(&block_id).copied()
+    }
+
+    fn insert(&mut self, block_id: BlockId, value: (u64, u64)) {
+        if self.entries.contains_key(&block_id) {
+            self.entries.insert(block_id, value);
+            return;
+        }
+        if self.entries.len() >= MEDIA_HEIGHT_REPORT_CACHE_MAX_ENTRIES {
+            if let Some(oldest) = self.insertion_order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
+        self.entries.insert(block_id, value);
+        self.insertion_order.push_back(block_id);
+    }
+
+    fn remove(&mut self, block_id: BlockId) {
+        self.entries.remove(&block_id);
+        self.insertion_order
+            .retain(|candidate| *candidate != block_id);
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+fn media_height_report_cache() -> &'static Mutex<MediaHeightReportCache> {
+    static CACHE: OnceLock<Mutex<MediaHeightReportCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(MediaHeightReportCache::new()))
 }
 
 pub(crate) fn schedule_rendered_media_height_report(
@@ -240,7 +285,7 @@ pub(crate) fn schedule_rendered_media_height_report(
         .ok()
         .map(|mut cache| {
             let next = (content_version, height_key);
-            if cache.get(&block_id).copied() == Some(next) {
+            if cache.get(block_id) == Some(next) {
                 true
             } else {
                 cache.insert(block_id, next);
@@ -305,7 +350,7 @@ pub(crate) fn schedule_rendered_media_height_report(
 #[cfg(feature = "mermaid")]
 pub(crate) fn invalidate_rendered_media_height_report(block_id: BlockId) {
     if let Ok(mut cache) = media_height_report_cache().lock() {
-        cache.remove(&block_id);
+        cache.remove(block_id);
     }
 }
 
@@ -526,6 +571,33 @@ mod tests {
             IMAGE_RESIZE_HANDLE_ROW_HEIGHT_PX * IMAGE_RESIZE_HANDLE_DOT_ROWS[2] as f32,
             18.0
         );
+    }
+
+    #[test]
+    fn media_height_report_cache_is_bounded() {
+        let mut cache = MediaHeightReportCache::new();
+        for block_id in 0..(MEDIA_HEIGHT_REPORT_CACHE_MAX_ENTRIES as u64 + 17) {
+            cache.insert(block_id, (1, block_id));
+        }
+        assert_eq!(cache.len(), MEDIA_HEIGHT_REPORT_CACHE_MAX_ENTRIES);
+        assert!(cache.get(0).is_none());
+        assert_eq!(
+            cache.get(MEDIA_HEIGHT_REPORT_CACHE_MAX_ENTRIES as u64 + 16),
+            Some((1, MEDIA_HEIGHT_REPORT_CACHE_MAX_ENTRIES as u64 + 16))
+        );
+    }
+
+    #[test]
+    fn media_height_report_cache_removal_does_not_evict_reinserted_entry() {
+        let mut cache = MediaHeightReportCache::new();
+        for block_id in 1..=MEDIA_HEIGHT_REPORT_CACHE_MAX_ENTRIES as u64 {
+            cache.insert(block_id, (1, block_id));
+        }
+        cache.remove(1);
+        cache.insert(1, (2, 2));
+        cache.insert(MEDIA_HEIGHT_REPORT_CACHE_MAX_ENTRIES as u64 + 1, (1, 0));
+        assert_eq!(cache.get(1), Some((2, 2)));
+        assert!(cache.get(2).is_none());
     }
 
     #[test]

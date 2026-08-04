@@ -76,7 +76,7 @@ impl DocumentRuntime {
         let desired = ProjectionWindowTarget {
             structure_version: self.document.visible_index.source_structure_version,
             page_range: desired_ranges.page_range.clone(),
-            block_range: desired_ranges.block_range.clone(),
+            block_range: desired_ranges.block_range,
             visible_block_range: payload_visible_block_range.clone(),
             presented_scroll_top: self.layout.scroll.global_scroll_top,
         };
@@ -108,7 +108,7 @@ impl DocumentRuntime {
                     self.layout.projection.publication.next_frame_id += 1;
                     self.layout.projection.publication.stable = Some(StableProjectionSnapshot {
                         frame_id,
-                        target: stable_target.clone(),
+                        target: stable_target,
                         projection: projection.clone(),
                     });
                     projection
@@ -463,7 +463,7 @@ impl DocumentRuntime {
             payload_visible_block_range: block_range.clone(),
             payload_prefetch_block_range: block_range.clone(),
             payload_prefetch_resident: self.payloads_resident_for(&block_range),
-            layout_prefetch_page_range: page_range.clone(),
+            layout_prefetch_page_range: page_range,
             blocks,
             ai_preview: self.ai_preview_for_block_range(&block_range),
             before_window_height,

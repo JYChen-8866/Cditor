@@ -379,7 +379,7 @@ pub fn render_color_menu(
         .occlude()
         .overflow_hidden()
         .on_hover({
-            let view = view.clone();
+            let view = view;
             move |hovered, _window, cx| {
                 view.update(cx, |view, cx| {
                     view.set_color_menu_hovered(*hovered, cx);

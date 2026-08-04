@@ -53,6 +53,7 @@ impl DocumentRuntime {
             | EditorCommand::CopyBlockText { block_id } => {
                 self.block_payload_record(*block_id).is_some()
             }
+            EditorCommand::CopyBlockLink { block_id } => self.has_block(*block_id),
             EditorCommand::DeleteBlock { block_id } => self.can_delete_block(*block_id),
             EditorCommand::ToggleTodo { block_id } => {
                 matches!(self.block_kind(*block_id), Some(RichBlockKind::Todo { .. }))

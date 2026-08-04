@@ -91,7 +91,7 @@ pub(crate) fn formatting_toolbar_state(
                                 ),
                                 selected_spans_have_mark(
                                     spans,
-                                    range.clone(),
+                                    range,
                                     InlineFormatAction::Strike,
                                 ),
                                 selected_spans_have_mark(

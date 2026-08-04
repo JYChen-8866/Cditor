@@ -860,7 +860,7 @@ impl Render for PopupMenu {
         let estimated_content_height = self.estimated_content_height_px();
         let show_scrollbar =
             self.scrollable && estimated_content_height > scroll_viewport_height + 0.5;
-        let entity = cx.entity().clone();
+        let entity = cx.entity();
         let content = div()
             .id("popup-menu-scroll-content")
             .w_full()

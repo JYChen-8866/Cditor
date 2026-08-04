@@ -433,7 +433,7 @@ impl DocumentEditorView {
             self.theme,
             workers,
             asset_provider,
-            view.clone(),
+            view,
             page_icon_menu_open,
             page_icon_menu_custom_tab,
             page_icon_menu_scroll_handle,

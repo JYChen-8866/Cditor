@@ -101,6 +101,7 @@ fn representative_commands() -> Vec<CditorCommand> {
             language: Some("rust".to_owned()),
         },
         CditorCommand::CopyBlockText { block_id: 1 },
+        CditorCommand::CopyBlockLink { block_id: 1 },
         CditorCommand::ApplyAiPreview {
             mode: AiApplyCommandMode::Replace,
         },

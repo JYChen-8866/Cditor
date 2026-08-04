@@ -1,4 +1,4 @@
-use gpui::{AppContext, Context, EventEmitter, Task, Window};
+use gpui::{App, AppContext, Context, EventEmitter, Task, Window};
 
 use crate::CditorViewContract;
 use crate::editor_view::CditorV2View;
@@ -6,6 +6,7 @@ use crate::persistence::{
     EditorSaveStatus, PersistenceBarrierKind, PersistencePipelineError, schedule_storage_autosave,
 };
 use cditor_core::edit::{ChangeOrigin, EditTransaction};
+use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcome, CommandSource};
 use cditor_sdk::diagnostics::CditorDiagnostics;
 use cditor_sdk::document::{
@@ -237,6 +238,24 @@ impl CditorV2View {
         provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
     ) {
         self.features.asset_provider = provider;
+    }
+
+    pub fn sdk_configure_block_link_provider(
+        &mut self,
+        provider: Option<
+            std::sync::Arc<
+                dyn Fn(BlockId) -> cditor_core::internal_link::BlockLinkPresentation + Send + Sync,
+            >,
+        >,
+    ) {
+        self.features.block_link_provider = provider;
+    }
+
+    pub fn sdk_configure_link_opener(
+        &mut self,
+        opener: Option<std::sync::Arc<dyn Fn(&str, &mut Window, &mut App) -> bool>>,
+    ) {
+        self.features.link_opener = opener;
     }
 
     pub fn sdk_is_ready(&self) -> bool {

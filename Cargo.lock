@@ -1101,6 +1101,7 @@ name = "cditor-component"
 version = "0.2.6"
 dependencies = [
  "gpui",
+ "image",
  "web-time",
 ]
 
@@ -1177,6 +1178,7 @@ dependencies = [
  "swash",
  "tokio",
  "unicode-segmentation",
+ "url",
  "web-time",
 ]
 

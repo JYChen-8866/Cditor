@@ -66,11 +66,10 @@ fn span_to_markdown(span: &InlineSpan) -> String {
     if has(&InlineMark::Strike) {
         text = format!("~~{text}~~");
     }
-    if let Some(InlineMark::Link { href }) = span
-        .marks
-        .iter()
-        .find(|mark| matches!(mark, InlineMark::Link { .. }))
-    {
+    if let Some(href) = span.marks.iter().find_map(|mark| match mark {
+        InlineMark::Link { href } | InlineMark::DocumentLink { href } => Some(href),
+        _ => None,
+    }) {
         text = format!("[{text}]({})", escape_markdown_url(href));
     }
     text

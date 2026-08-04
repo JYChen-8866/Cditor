@@ -4,14 +4,12 @@ mod paint;
 use crate::text::RichTextLayoutInput;
 use crate::theme::GuiTheme;
 
-#[cfg(test)]
-pub use cditor_text::InlineBoxKind;
 pub use cditor_text::{
-    CachedTextLayout, InlineBoxSpec, PositionedInlineBox, TextAccessibilityProjection,
-    TextAlignment, TextBrush, TextFontSlant, TextLayoutCacheRequest, TextLayoutMoveCommand,
-    TextLayoutOptions, TextLayoutPosition, TextLayoutRect, TextLayoutSelection,
-    TextLayoutSelectionKind, TextLayoutSnapshot, TextLayoutSurfaceId, TextLineHeight,
-    TextStyleConfig, accessibility_node_ids, build_text_accessibility_projection,
+    CachedTextLayout, InlineBoxKind, InlineBoxSpec, PositionedInlineBox,
+    TextAccessibilityProjection, TextAlignment, TextBrush, TextFontSlant, TextLayoutCacheRequest,
+    TextLayoutMoveCommand, TextLayoutOptions, TextLayoutPosition, TextLayoutRect,
+    TextLayoutSelection, TextLayoutSelectionKind, TextLayoutSnapshot, TextLayoutSurfaceId,
+    TextLineHeight, TextStyleConfig, accessibility_node_ids, build_text_accessibility_projection,
     sync_automatic_text_layout_pins, text_layout_cache_stats,
 };
 pub(crate) use paint::{paint_text_layout, text_background_quads};

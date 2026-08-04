@@ -76,8 +76,8 @@ pub(crate) fn render_block_content(
                     table_resize_preview,
                     table_reorder_preview,
                     table_scroll_handle,
-                    view.clone(),
-                    focus.clone(),
+                    view,
+                    focus,
                 );
             }
             if let BlockPayload::Table(_table) = &payload.payload {

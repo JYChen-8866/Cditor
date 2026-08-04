@@ -21,7 +21,8 @@ use crate::features::text::paragraph::render_paragraph;
 use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::{
     CodeLanguageEditState, focus_block_from_mouse, gutter_mouse_down_from_mouse,
-    hover_block_from_mouse, toggle_block_fold_from_mouse, toggle_todo_from_mouse,
+    hover_block_from_mouse, open_link_from_mouse, toggle_block_fold_from_mouse,
+    toggle_todo_from_mouse,
 };
 use crate::platform::EDITOR_MONO_FONT_FAMILY;
 use crate::surfaces::TextSurfaceRenderState;
@@ -154,6 +155,10 @@ impl BlockView {
             action,
             collapsed_code_block,
             move |event, window, cx| {
+                if open_link_from_mouse(&focus_view, block_id, event, window, cx) {
+                    cx.stop_propagation();
+                    return;
+                }
                 focus_block_from_mouse(&focus_view, block_id, event, window, cx);
                 cx.stop_propagation();
             },
@@ -232,7 +237,7 @@ fn render_kind_content(
                 && !mermaid_show_source),
         table_axis_selection,
         table_scroll_handle,
-        code_scroll_handle.clone(),
+        code_scroll_handle,
         code_caret_reveal_after_line_break,
         code_highlights,
         search_decorations,
@@ -255,7 +260,7 @@ fn render_kind_content(
                 code_theme_menu_open,
                 code_highlight_theme,
                 action.action_active,
-                view.clone(),
+                view,
                 code_language_focus,
                 code_collapsed,
             )

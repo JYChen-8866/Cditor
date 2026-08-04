@@ -703,7 +703,7 @@ fn table_cell_ime_composition_reaches_runtime_preview_and_commits(cx: &mut gpui:
     let (host, cx) = cx.add_window_view(|_, cx| {
         let editor = cx.new(|cx| {
             let mut editor = CditorV2View::loading("", false, cx);
-            editor.apply_loaded_session(session.clone());
+            editor.apply_loaded_session(session.clone(), cx);
             editor
         });
         Host { editor }

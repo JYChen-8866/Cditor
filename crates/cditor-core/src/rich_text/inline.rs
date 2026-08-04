@@ -23,6 +23,7 @@ pub enum InlineMark {
     Strike,
     Code,
     Link { href: String },
+    DocumentLink { href: String },
     Color(String),
     Background(String),
 }

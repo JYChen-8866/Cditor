@@ -242,7 +242,13 @@ fn unsafe_span_resource_count(spans: &[InlineSpan]) -> usize {
     spans
         .iter()
         .flat_map(|span| &span.marks)
-        .filter(|mark| matches!(mark, InlineMark::Link { href } if !safe_resource(href)))
+        .filter(|mark| {
+            matches!(
+                mark,
+                InlineMark::Link { href } | InlineMark::DocumentLink { href }
+                    if !safe_resource(href)
+            )
+        })
         .count()
 }
 

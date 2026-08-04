@@ -1,6 +1,7 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use cditor_core::ids::{BlockId, SurfaceId};
+use gpui::RenderImage;
 
 use crate::app::text_layout_prewarm::TextLayoutPrewarmKey;
 use crate::features::code::highlight::CodeHighlightCache;
@@ -40,15 +41,16 @@ impl Default for RenderCacheState {
 }
 
 impl RenderCacheState {
-    pub(crate) fn reset_session(&mut self) {
+    pub(crate) fn reset_session(&mut self) -> Vec<Arc<RenderImage>> {
         self.text_layouts.clear();
         self.table_cell_layouts.clear();
         self.text_surface_layouts.clear();
         self.code_highlights.clear();
-        self.mermaid_renders.clear();
+        let retired_images = self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
         self.pending_text_layout_prewarms.clear();
+        retired_images
     }
 }
 
@@ -61,8 +63,9 @@ mod tests {
         let mut cache = RenderCacheState::default();
         cache.mermaid_source_blocks.insert(17);
 
-        cache.reset_session();
+        let retired = cache.reset_session();
 
+        assert!(retired.is_empty());
         assert!(cache.text_layouts.is_empty());
         assert!(cache.table_cell_layouts.is_empty());
         assert!(cache.text_surface_layouts.is_empty());

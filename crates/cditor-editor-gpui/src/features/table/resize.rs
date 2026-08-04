@@ -114,7 +114,7 @@ fn render_table_resize_handle(
     view: Entity<CditorV2View>,
 ) -> AnyElement {
     let color = theme.action_accent;
-    let start_view = view.clone();
+    let start_view = view;
     div()
         .absolute()
         .when(track.axis == TableAxis::Column, |this| {

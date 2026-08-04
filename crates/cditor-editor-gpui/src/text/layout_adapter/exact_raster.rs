@@ -6,7 +6,7 @@ use std::{
 };
 
 use cditor_text::{FontInstanceKey, TextPaintFont};
-use gpui::{Bounds, Corners, Pixels, Point, RenderImage, Window, point, px, size};
+use gpui::{App, Bounds, Corners, Pixels, Point, RenderImage, Window, point, px, size};
 use image::{Frame, RgbaImage};
 use swash::{
     FontRef,
@@ -15,8 +15,12 @@ use swash::{
 };
 
 const EXACT_RASTER_POLICY_VERSION: u16 = 2;
-const EXACT_RASTER_MAX_ENTRIES: usize = 4_096;
-const EXACT_RASTER_MAX_BYTES: usize = 64 * 1024 * 1024;
+// Every entry owns a standalone RenderImage. The pixel buffer is usually tiny,
+// but graphics backends can reserve a page-sized texture allocation per image;
+// a 4K-entry pixel-only budget therefore reached hundreds of MiB on Windows.
+// Keep enough glyphs for the visible working set while bounding GPU resources.
+const EXACT_RASTER_MAX_ENTRIES: usize = 512;
+const EXACT_RASTER_MAX_BYTES: usize = 16 * 1024 * 1024;
 const SUBPIXEL_VARIANTS_X: f32 = 4.0;
 const SUBPIXEL_VARIANTS_Y: f32 = 1.0;
 
@@ -109,6 +113,13 @@ impl ExactRasterCacheValue {
             Self::Empty => 1,
         }
     }
+
+    fn image(&self) -> Option<&Arc<RenderImage>> {
+        match self {
+            Self::Glyph(glyph) => Some(&glyph.image),
+            Self::Empty => None,
+        }
+    }
 }
 
 struct ExactRasterGlyph {
@@ -161,12 +172,18 @@ impl ExactRasterCache {
         self.misses = self.misses.saturating_add(1);
     }
 
-    fn insert(&mut self, key: ExactRasterKey, value: ExactRasterCacheValue) {
+    fn insert(
+        &mut self,
+        key: ExactRasterKey,
+        value: ExactRasterCacheValue,
+    ) -> Vec<Arc<RenderImage>> {
+        let mut retired = Vec::new();
         let value_bytes = value.estimated_bytes();
         if let Some(previous) = self.entries.insert(key.clone(), value) {
             self.estimated_bytes = self
                 .estimated_bytes
                 .saturating_sub(previous.estimated_bytes());
+            self.push_if_uncached(&mut retired, previous.image());
         }
         self.estimated_bytes = self.estimated_bytes.saturating_add(value_bytes);
         self.touch(&key);
@@ -181,7 +198,9 @@ impl ExactRasterCache {
                 .estimated_bytes
                 .saturating_sub(evicted.estimated_bytes());
             self.evictions = self.evictions.saturating_add(1);
+            self.push_if_uncached(&mut retired, evicted.image());
         }
+        retired
     }
 
     fn touch(&mut self, key: &ExactRasterKey) {
@@ -200,6 +219,27 @@ impl ExactRasterCache {
             evictions: self.evictions,
         }
     }
+
+    fn push_if_uncached(
+        &self,
+        retired: &mut Vec<Arc<RenderImage>>,
+        candidate: Option<&Arc<RenderImage>>,
+    ) {
+        let Some(candidate) = candidate else {
+            return;
+        };
+        if self.entries.values().any(|value| {
+            value
+                .image()
+                .is_some_and(|cached| Arc::ptr_eq(cached, candidate))
+        }) || retired
+            .iter()
+            .any(|retired| Arc::ptr_eq(retired, candidate))
+        {
+            return;
+        }
+        retired.push(candidate.clone());
+    }
 }
 
 pub(super) fn paint_exact_glyph(
@@ -210,6 +250,7 @@ pub(super) fn paint_exact_glyph(
     foreground: u32,
     baseline_origin: Point<Pixels>,
     window: &mut Window,
+    cx: &mut App,
 ) -> Result<ExactRasterPaintResult, ExactRasterError> {
     let scale = window.scale_factor().max(f32::EPSILON);
     let device_origin_x = f32::from(baseline_origin.x) * scale;
@@ -226,7 +267,7 @@ pub(super) fn paint_exact_glyph(
         color: color_glyph,
         policy_version: EXACT_RASTER_POLICY_VERSION,
     };
-    let (value, cache_hit) = cached_or_rasterize(
+    let (value, cache_hit, retired) = cached_or_rasterize(
         key,
         RasterFontSource {
             data: font.data(),
@@ -235,6 +276,7 @@ pub(super) fn paint_exact_glyph(
             instance: font.instance_key(),
         },
     )?;
+    retire_images_after_paint(retired, cx);
     let ExactRasterCacheValue::Glyph(glyph) = value else {
         return Ok(ExactRasterPaintResult {
             painted: false,
@@ -264,16 +306,27 @@ pub(super) fn paint_exact_glyph(
 fn cached_or_rasterize(
     key: ExactRasterKey,
     source: RasterFontSource<'_>,
-) -> Result<(ExactRasterCacheValue, bool), ExactRasterError> {
+) -> Result<(ExactRasterCacheValue, bool, Vec<Arc<RenderImage>>), ExactRasterError> {
     if let Some(value) = RASTER_CACHE.with(|cache| cache.borrow_mut().get(&key)) {
-        return Ok((value, true));
+        return Ok((value, true, Vec::new()));
     }
     RASTER_CACHE.with(|cache| cache.borrow_mut().record_miss());
 
     let value = SCALE_CONTEXT
         .with(|context| rasterize_uncached(&key, source, &mut context.borrow_mut()))?;
-    RASTER_CACHE.with(|cache| cache.borrow_mut().insert(key, value.clone()));
-    Ok((value, false))
+    let retired = RASTER_CACHE.with(|cache| cache.borrow_mut().insert(key, value.clone()));
+    Ok((value, false, retired))
+}
+
+fn retire_images_after_paint(images: Vec<Arc<RenderImage>>, cx: &mut App) {
+    if images.is_empty() {
+        return;
+    }
+    cx.defer(move |cx| {
+        for image in images {
+            cx.drop_image(image, None);
+        }
+    });
 }
 
 #[derive(Clone, Copy)]

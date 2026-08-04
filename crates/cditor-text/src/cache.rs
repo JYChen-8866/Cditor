@@ -6,8 +6,8 @@ use cditor_core::rich_text::InlineSpan;
 use super::{TextAlignment, TextLayoutOptions, TextLayoutSnapshot, build_text_layout};
 use crate::{TextLayoutInput, TextLayoutSurfaceId, TextTheme};
 
-const DEFAULT_LAYOUT_CACHE_MAX_ENTRIES: usize = 512;
-const DEFAULT_LAYOUT_CACHE_MAX_BYTES: usize = 32 * 1024 * 1024;
+const DEFAULT_LAYOUT_CACHE_MAX_ENTRIES: usize = 256;
+const DEFAULT_LAYOUT_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 thread_local! {
     static TEXT_LAYOUT_CACHE: std::cell::RefCell<TextLayoutCache> =

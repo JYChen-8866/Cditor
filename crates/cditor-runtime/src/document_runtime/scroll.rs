@@ -340,6 +340,24 @@ impl DocumentRuntime {
         self.layout.window_memory_pressure = pressure;
     }
 
+    /// Adjusts rebuildable runtime state to the host tab's visibility.
+    ///
+    /// The document model, selection, dirty payloads, and undo history remain
+    /// resident. Stable render projections and page-local height vectors are
+    /// viewport derivatives, so inactive tabs can drop them and reconstruct
+    /// them on their next projection request.
+    pub fn set_host_active(&mut self, active: bool) {
+        self.layout.window_memory_pressure = if active {
+            WindowMemoryPressure::Normal
+        } else {
+            WindowMemoryPressure::Critical
+        };
+        if !active {
+            self.layout.projection.publication.stable = None;
+            self.layout.page_local_cache.clear();
+        }
+    }
+
     fn pinned_pages_for_window_plan(&self) -> BTreeSet<usize> {
         let mut pages = BTreeSet::new();
         if let Some(block_id) = self.focused_block_id()
@@ -510,6 +528,39 @@ mod tests {
                 .debug_overlay()
                 .last_memory_pressure,
             WindowMemoryPressure::Critical
+        );
+    }
+
+    #[test]
+    fn inactive_host_releases_only_rebuildable_projection_state() {
+        let payloads = (1..=2_000)
+            .map(|block_id| {
+                BlockPayloadRecord::rich_text(block_id, RichBlockKind::Paragraph, "line")
+            })
+            .collect::<Vec<_>>();
+        let mut runtime = DocumentRuntime::from_payloads(1, payloads, 320.0);
+        runtime.focus_block_at_offset(7, 2).unwrap();
+        let payload_count = runtime.document.payload_window.payloads.len();
+
+        let _ = runtime.projection_for_window_planned();
+        assert!(runtime.layout.projection.publication.stable.is_some());
+        assert!(!runtime.layout.page_local_cache.is_empty());
+
+        runtime.set_host_active(false);
+
+        assert_eq!(
+            runtime.layout.window_memory_pressure,
+            WindowMemoryPressure::Critical
+        );
+        assert!(runtime.layout.projection.publication.stable.is_none());
+        assert!(runtime.layout.page_local_cache.is_empty());
+        assert_eq!(runtime.document.payload_window.payloads.len(), payload_count);
+        assert_eq!(runtime.focused_block_id(), Some(7));
+
+        runtime.set_host_active(true);
+        assert_eq!(
+            runtime.layout.window_memory_pressure,
+            WindowMemoryPressure::Normal
         );
     }
 }

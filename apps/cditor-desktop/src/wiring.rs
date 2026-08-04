@@ -1,5 +1,4 @@
 use std::time::Duration;
-use std::{io::Read, sync::Arc};
 
 use crate::storage_host::{
     CditorColdStartPlan, CditorColdStartProgress, CditorSessionLoadResult, DocumentSchemaAccess,
@@ -18,53 +17,6 @@ use gpui::{
 struct CditorHostView {
     _blink_subscription: Subscription,
     view: gpui::Entity<CditorV2View>,
-}
-
-const REMOTE_IMAGE_MAX_BYTES: u64 = 32 * 1024 * 1024;
-
-struct DesktopRemoteImageDataSource {
-    client: reqwest::blocking::Client,
-}
-
-impl DesktopRemoteImageDataSource {
-    fn new() -> Result<Self, reqwest::Error> {
-        reqwest::blocking::Client::builder()
-            .connect_timeout(Duration::from_secs(5))
-            .timeout(Duration::from_secs(20))
-            .build()
-            .map(|client| Self { client })
-    }
-}
-
-impl cditor_editor_gpui::RemoteImageDataSource for DesktopRemoteImageDataSource {
-    fn load(&self, url: &str) -> Result<Vec<u8>, String> {
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .and_then(reqwest::blocking::Response::error_for_status)
-            .map_err(|error| error.to_string())?;
-        let content_length = response.content_length();
-        read_remote_image_body(response, content_length)
-    }
-}
-
-fn read_remote_image_body(
-    reader: impl Read,
-    content_length: Option<u64>,
-) -> Result<Vec<u8>, String> {
-    if content_length.is_some_and(|length| length > REMOTE_IMAGE_MAX_BYTES) {
-        return Err("remote image exceeds the 32 MiB limit".to_owned());
-    }
-    let mut bytes = Vec::new();
-    reader
-        .take(REMOTE_IMAGE_MAX_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| error.to_string())?;
-    if bytes.len() as u64 > REMOTE_IMAGE_MAX_BYTES {
-        return Err("remote image exceeds the 32 MiB limit".to_owned());
-    }
-    Ok(bytes)
 }
 
 impl CditorHostView {
@@ -98,9 +50,9 @@ impl CditorViewFactory for AppCditorViewFactory {
         {
             return Err(CditorError::InvalidInput(reason));
         }
-        let remote_images = DesktopRemoteImageDataSource::new()
-            .map_err(|error| CditorError::Internal(error.to_string()))?;
-        cditor_editor_gpui::configure_remote_image_data_source(cx, Arc::new(remote_images));
+        // The editor image loader owns one process-wide, lazily initialized
+        // HTTP client. Constructing and replacing a client for every document
+        // duplicated connection pools and retained allocator high-water pages.
         let view = cx.new(|cx| build_view(builder, cx));
         Ok(CditorComponent::from_view(view))
     }
@@ -272,7 +224,10 @@ fn spawn_storage_cold_start(
                         }
                         Ok(None) => {
                             let _ = view.update(cx, |view, cx| {
-                                view.apply_load_failed("storage backend did not produce a runtime");
+                                view.apply_load_failed(
+                                    "storage backend did not produce a runtime",
+                                    cx,
+                                );
                                 cx.emit(CditorEvent::LoadFailed {
                                     error: CditorError::Internal(
                                         "storage backend did not produce a runtime".to_owned(),
@@ -283,7 +238,7 @@ fn spawn_storage_cold_start(
                         }
                         Err(message) => {
                             let _ = view.update(cx, |view, cx| {
-                                view.apply_load_failed(message.clone());
+                                view.apply_load_failed(message.clone(), cx);
                                 cx.emit(CditorEvent::LoadFailed {
                                     error: CditorError::Persistence(message),
                                 });
@@ -311,25 +266,5 @@ fn default_window_options(cx: &mut App) -> WindowOptions {
             ..Default::default()
         }),
         ..Default::default()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::Cursor;
-
-    use super::*;
-
-    #[test]
-    fn remote_image_body_enforces_declared_and_streamed_limits() {
-        assert_eq!(
-            read_remote_image_body(Cursor::new(b"image"), Some(5)).unwrap(),
-            b"image"
-        );
-        assert!(read_remote_image_body(Cursor::new([]), Some(REMOTE_IMAGE_MAX_BYTES + 1)).is_err());
-        assert!(
-            read_remote_image_body(std::io::repeat(0).take(REMOTE_IMAGE_MAX_BYTES + 1), None)
-                .is_err()
-        );
     }
 }

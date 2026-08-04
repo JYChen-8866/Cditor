@@ -128,12 +128,61 @@ fn cache_evicts_by_entry_and_byte_budget() {
         color: false,
         policy_version: EXACT_RASTER_POLICY_VERSION,
     };
-    cache.insert(key(1), ExactRasterCacheValue::Empty);
-    cache.insert(key(2), ExactRasterCacheValue::Empty);
+    assert!(
+        cache
+            .insert(key(1), ExactRasterCacheValue::Empty)
+            .is_empty()
+    );
+    assert!(
+        cache
+            .insert(key(2), ExactRasterCacheValue::Empty)
+            .is_empty()
+    );
 
     assert!(cache.get(&key(1)).is_none());
     assert!(cache.get(&key(2)).is_some());
     assert_eq!(cache.stats().evictions, 1);
+}
+
+#[test]
+fn cache_returns_the_evicted_render_image_for_atlas_retirement() {
+    let mut cache = ExactRasterCache::new(1, 1024);
+    let instance = FontInstanceKey::new(
+        FontFaceKey::new(2, 1, 0),
+        Vec::new(),
+        FontSynthesisKey::new(Vec::new(), false, None),
+    );
+    let key = |glyph_id| ExactRasterKey {
+        font: instance.clone(),
+        glyph_id,
+        device_font_size_bits: 16.0f32.to_bits(),
+        subpixel_x: 0,
+        subpixel_y: 0,
+        foreground: 0,
+        color: false,
+        policy_version: EXACT_RASTER_POLICY_VERSION,
+    };
+    let image = |width| Arc::new(RenderImage::new([Frame::new(RgbaImage::new(width, 1))]));
+    let value = |image: Arc<RenderImage>| {
+        ExactRasterCacheValue::Glyph(Arc::new(ExactRasterGlyph {
+            image,
+            placement: RasterPlacement {
+                left: 0,
+                top: 0,
+                width: 1,
+                height: 1,
+            },
+            estimated_bytes: 4,
+        }))
+    };
+    let first = image(1);
+    let second = image(2);
+
+    assert!(cache.insert(key(1), value(first.clone())).is_empty());
+    let retired = cache.insert(key(2), value(second));
+
+    assert_eq!(retired.len(), 1);
+    assert!(Arc::ptr_eq(&retired[0], &first));
 }
 
 #[test]
@@ -328,12 +377,14 @@ fn repeated_exact_raster_uses_bounded_cache() {
     let key = raster_key(&fixture);
     let source = raster_source(&fixture);
 
-    let (_, first_hit) = cached_or_rasterize(key.clone(), source).unwrap();
-    let (_, second_hit) = cached_or_rasterize(key, source).unwrap();
+    let (_, first_hit, first_retired) = cached_or_rasterize(key.clone(), source).unwrap();
+    let (_, second_hit, second_retired) = cached_or_rasterize(key, source).unwrap();
     let stats = exact_raster_cache_stats();
 
     assert!(!first_hit);
     assert!(second_hit);
+    assert!(first_retired.is_empty());
+    assert!(second_retired.is_empty());
     assert_eq!(stats.entries, 1);
     assert_eq!(stats.hits, 1);
     assert_eq!(stats.misses, 1);
@@ -410,7 +461,7 @@ fn paint_font_fixture(variations: &str, slant: TextFontSlant) -> (TextPaintFont,
 }
 
 fn raster_fixture(fixture: &(TextPaintFont, u32, f32, u32)) -> Vec<u8> {
-    let (value, _) = cached_or_rasterize(raster_key(fixture), raster_source(fixture)).unwrap();
+    let (value, _, _) = cached_or_rasterize(raster_key(fixture), raster_source(fixture)).unwrap();
     cache_value_bytes(&value)
 }
 

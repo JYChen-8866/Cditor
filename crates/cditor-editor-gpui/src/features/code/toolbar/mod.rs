@@ -81,7 +81,7 @@ pub fn render_code_toolbar(
                         .items_center()
                         .gap(px(V1_CODE_TOOLBAR_GAP_PX))
                         .child(render_collapse_button(theme, block_id, view.clone()))
-                        .child(render_copy_button(theme, block_id, view.clone())),
+                        .child(render_copy_button(theme, block_id, view)),
                 ),
         )
         .into_any_element()
@@ -224,7 +224,7 @@ fn render_language_editor(
         caret_offset,
         marked_range,
         code_language_focus,
-        view.clone(),
+        view,
     ))
     .items(items, total_suggestions)
     .scroll(

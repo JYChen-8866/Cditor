@@ -28,6 +28,10 @@ pub enum ClipboardSelection {
     Inline {
         spans: Vec<InlineSpan>,
     },
+    DocumentLink {
+        label: String,
+        href: String,
+    },
     TextFragments {
         fragments: Vec<ClipboardBlockFragment>,
     },
@@ -119,6 +123,7 @@ impl ClipboardSelection {
     pub fn plain_text(&self) -> String {
         match self {
             Self::Inline { spans } => plain_text_from_spans(spans),
+            Self::DocumentLink { href, .. } => href.clone(),
             Self::TextFragments { fragments } => fragments
                 .iter()
                 .map(|fragment| plain_text_from_spans(&fragment.spans))
@@ -139,6 +144,12 @@ impl ClipboardSelection {
         }
         match self {
             Self::Inline { spans } => valid_spans(spans),
+            Self::DocumentLink { label, href } => {
+                !label.is_empty()
+                    && label.len() <= MAX_CLIPBOARD_METADATA_BYTES
+                    && href == system_text
+                    && safe_resource(href)
+            }
             Self::TextFragments { fragments } => {
                 let total_spans = fragments.iter().try_fold(0usize, |total, fragment| {
                     total.checked_add(fragment.spans.len())
@@ -234,7 +245,9 @@ fn valid_spans(spans: &[InlineSpan]) -> bool {
     spans.len() <= MAX_CLIPBOARD_SPANS
         && spans.iter().all(|span| {
             span.marks.iter().all(|mark| match mark {
-                InlineMark::Link { href } => safe_resource(href),
+                InlineMark::Link { href } | InlineMark::DocumentLink { href } => {
+                    safe_resource(href)
+                }
                 _ => true,
             })
         })

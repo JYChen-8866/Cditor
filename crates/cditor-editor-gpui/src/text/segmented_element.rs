@@ -385,6 +385,7 @@ impl Element for SegmentedRichTextElement {
                     point(bounds.left(), bounds.top() + px(fragment.top_px)),
                     false,
                     window,
+                    cx,
                 );
             }
         }

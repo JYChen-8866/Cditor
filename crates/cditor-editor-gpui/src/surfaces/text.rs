@@ -381,6 +381,49 @@ impl CditorV2View {
         self.text_range_bounds_for_block(block_id, offset..offset)
     }
 
+    pub(crate) fn text_range_contains_block_position(
+        &self,
+        block_id: BlockId,
+        range: Range<usize>,
+        position: Point<Pixels>,
+    ) -> bool {
+        if range.is_empty() {
+            return false;
+        }
+        let Some(session) = self.ready_session() else {
+            return false;
+        };
+        let Some(current) = session
+            .surface_version(SurfaceId::Block(block_id))
+            .ok()
+            .flatten()
+        else {
+            return false;
+        };
+        let Some(placement) = self.projected_text_placement_for_block(block_id) else {
+            return false;
+        };
+        let hit_point = projected_text_hit_point(placement, position);
+        let rects = if let Some(geometry) =
+            self.projected_text_geometry_for_block(current, block_id)
+        {
+            geometry.layout().snapshot.range_rects(range)
+        } else {
+            record_synchronous_geometry_fallback();
+            let Some(element) = cold_text_element_for_block(session, block_id, current, placement)
+            else {
+                return false;
+            };
+            element.local_rects_for_range(range)
+        };
+        rects.into_iter().any(|rect| {
+            hit_point.x >= f64::from(rect.x)
+                && hit_point.x <= f64::from(rect.x + rect.width)
+                && hit_point.y >= f64::from(rect.y)
+                && hit_point.y <= f64::from(rect.y + rect.height)
+        })
+    }
+
     pub(crate) fn text_selection_for_block_at_position(
         &self,
         block_id: BlockId,

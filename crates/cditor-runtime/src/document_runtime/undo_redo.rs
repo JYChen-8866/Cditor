@@ -4,7 +4,7 @@ use cditor_core::edit::{ExternalUndoBlobRef, UndoExternalizationJob};
 const TYPING_MERGE_WINDOW: Duration = Duration::from_millis(1_000);
 const TEXT_UNDO_MAX_STEPS: usize = 1_000;
 const TEXT_UNDO_MAX_STEPS_PER_BLOCK: usize = 100;
-pub(crate) const TEXT_UNDO_MAX_ESTIMATED_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const TEXT_UNDO_MAX_ESTIMATED_BYTES: usize = 16 * 1024 * 1024;
 
 impl DocumentRuntime {
     /// Ends the current realtime typing batch before a non-text command or an

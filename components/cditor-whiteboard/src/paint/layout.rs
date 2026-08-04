@@ -282,7 +282,7 @@ fn thumbnail_text_outline(
             caret: None,
             selection: Vec::new(),
             sel_color: hsla(0.0, 0.0, 0.0, 0.0),
-            decorations: layout.decorations.clone(),
+            decorations: layout.decorations,
         });
     }
     if is_closed_shape(kind)
@@ -337,7 +337,7 @@ fn thumbnail_text_outline(
             caret: None,
             selection: Vec::new(),
             sel_color: hsla(0.0, 0.0, 0.0, 0.0),
-            decorations: layout.decorations.clone(),
+            decorations: layout.decorations,
         });
     }
     None

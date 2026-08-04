@@ -47,7 +47,7 @@ pub(crate) fn render_mermaid_block(
         .then(|| status.as_ref().and_then(preview_geometry_for_status))
         .flatten();
     schedule_rendered_media_height_report(
-        view.clone(),
+        view,
         block_id,
         content_version,
         geometry
@@ -179,7 +179,7 @@ fn clickable_preview(
     }
     preview
         .child(
-            img(ImageSource::Render(image.clone()))
+            img(ImageSource::Render(image))
                 .w(px(geometry.image_width_px))
                 .h(px(geometry.image_height_px)),
         )

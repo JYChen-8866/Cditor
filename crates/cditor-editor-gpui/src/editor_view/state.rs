@@ -4,7 +4,7 @@ use std::{
 };
 
 use cditor_session::EditorSessionHandle;
-use gpui::{AppContext, Context, Entity, FocusHandle, Subscription};
+use gpui::{App, AppContext, Context, Entity, FocusHandle, Subscription, Window};
 
 use cditor_component::PopupMenu;
 
@@ -50,6 +50,10 @@ impl EditorDiagnosticsState {
 pub(crate) struct FeatureUiState {
     pub(crate) ai_provider: Arc<dyn cditor_ai::AiProvider>,
     pub(crate) asset_provider: Option<Arc<dyn cditor_sdk::providers::AssetProvider>>,
+    pub(crate) block_link_provider: Option<
+        Arc<dyn Fn(BlockId) -> cditor_core::internal_link::BlockLinkPresentation + Send + Sync>,
+    >,
+    pub(crate) link_opener: Option<Arc<dyn Fn(&str, &mut Window, &mut App) -> bool>>,
     pub(crate) ai_enabled: bool,
     pub(crate) code_highlight_theme: &'static str,
     pub(crate) search_decorations: crate::features::search::SearchDecorationState,
@@ -62,6 +66,8 @@ impl Default for FeatureUiState {
         Self {
             ai_provider: default_ai_provider(),
             asset_provider: None,
+            block_link_provider: None,
+            link_opener: None,
             ai_enabled: true,
             code_highlight_theme: DEFAULT_CODE_HIGHLIGHT_THEME_LIGHT,
             search_decorations: Default::default(),

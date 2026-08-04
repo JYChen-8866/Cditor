@@ -183,7 +183,7 @@ impl DocumentRuntime {
         // Merge new mark with existing marks
         let mut combined_marks = existing_marks_in_range;
         if !combined_marks.contains(&detection.mark) {
-            combined_marks.push(detection.mark.clone());
+            combined_marks.push(detection.mark);
         }
 
         // Create new span with merged marks

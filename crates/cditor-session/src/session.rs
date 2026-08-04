@@ -257,6 +257,11 @@ impl EditorSessionHandle {
         Ok(())
     }
 
+    pub fn set_host_active(&self, active: bool) -> Result<(), ProtocolError> {
+        self.try_session_mut()?.runtime.set_host_active(active);
+        Ok(())
+    }
+
     pub fn dispatch(&self, envelope: CommandEnvelope) -> Result<CommandOutcome, ProtocolError> {
         self.try_session_mut()?.dispatch(envelope)
     }

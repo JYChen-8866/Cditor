@@ -66,7 +66,7 @@ impl EntityInputHandler for CditorV2View {
             }
             let range = utf16_range_to_utf8_range(&edit.draft, &range_utf16);
             let actual = utf8_range_to_utf16_range(&edit.draft, &range);
-            actual_range.replace(actual.clone());
+            actual_range.replace(actual);
             return edit.draft.get(range).map(ToOwned::to_owned);
         }
         let registered_target = self.input.target;

@@ -37,6 +37,7 @@ const GUTTER_FORMAT_BUTTON_SIZE_PX: f32 = 36.0;
 const TOOLBAR_GROUP_LABEL_HEIGHT_PX: f32 = 26.0;
 
 const ICON_COLOR: &[u8] = include_bytes!("../../../../assets/icons/color.svg");
+const ICON_COPY: &[u8] = include_bytes!("../../../../assets/icons/copy.svg");
 const ICON_DELETE: &[u8] = include_bytes!("../../../../assets/icons/delete.svg");
 const ICON_TEXT: &[u8] = include_bytes!("../../../../assets/icons/text.svg");
 const ICON_BOLD: &[u8] = include_bytes!("../../../../assets/icons/bold.svg");
@@ -371,6 +372,7 @@ fn render_gutter_popup_content(
                 true,
             ))
         })
+        .child(render_copy_link_action(theme, view.clone(), state.block_id))
         .child(render_delete_action(
             theme,
             view.clone(),
@@ -388,13 +390,76 @@ fn render_gutter_popup_content(
         ))
         .child(render_custom_ai_button(
             theme,
-            view.clone(),
+            view,
             state.x,
             state.y,
             state.ai_enabled,
             prompt,
             prompt_focus,
         ))
+        .into_any_element()
+}
+
+fn render_copy_link_action(
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    block_id: Option<BlockId>,
+) -> AnyElement {
+    let enabled = block_id.is_some();
+    div()
+        .id("gutter-menu-copy-block-link")
+        .h(px(48.0))
+        .w_full()
+        .px(px(8.0))
+        .flex()
+        .items_center()
+        .gap(px(10.0))
+        .rounded(px(4.0))
+        .text_color(rgb(if enabled { theme.text } else { theme.muted }))
+        .when(!enabled, |row| row.opacity(0.45))
+        .when(enabled, |row| {
+            row.cursor_pointer()
+                .hover(|style| style.bg(rgb(theme.hover_surface)))
+                .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                    if let Some(block_id) = block_id {
+                        view.update(cx, |view, cx| {
+                            view.copy_block_link_from_gui(block_id, cx);
+                        });
+                    }
+                    cx.stop_propagation();
+                })
+        })
+        .child(
+            div()
+                .flex_none()
+                .size(px(36.0))
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(rgb(theme.border))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    SvgIcon::new("gutter-menu-copy-block-link-icon", ICON_COPY)
+                        .color(rgb(if enabled { theme.text } else { theme.muted }))
+                        .size(px(FORMAT_ICON_SIZE_PX)),
+                ),
+        )
+        .child(
+            div()
+                .min_w(px(0.0))
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap(px(1.0))
+                .child(div().text_size(px(14.0)).child("复制区块链接"))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(rgb(theme.muted))
+                        .child("复制指向当前区块的链接"),
+                ),
+        )
         .into_any_element()
 }
 
@@ -712,7 +777,7 @@ fn render_block_format_header(
                     }
                 })
                 .on_mouse_down(MouseButton::Left, {
-                    let view = view.clone();
+                    let view = view;
                     move |_event, _window, cx| {
                         view.update(cx, |view, cx| {
                             view.open_block_transform_menu_from_gui(cx);

@@ -285,7 +285,7 @@ fn spans_html(spans: &[InlineSpan]) -> String {
                     InlineMark::Underline => format!("<u>{text}</u>"),
                     InlineMark::Strike => format!("<s>{text}</s>"),
                     InlineMark::Code => format!("<code>{text}</code>"),
-                    InlineMark::Link { href } => {
+                    InlineMark::Link { href } | InlineMark::DocumentLink { href } => {
                         format!("<a href=\"{}\">{text}</a>", escape_html(href))
                     }
                     InlineMark::Color(color) => format!(

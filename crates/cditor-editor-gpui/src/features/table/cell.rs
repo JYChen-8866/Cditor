@@ -41,7 +41,7 @@ pub(super) fn render_table_cell(
     let selected = range_selected || axis_selected;
     let hover_background = table_cell_hover_background(theme, cell.header);
     let focus_view = view.clone();
-    let range_hover_view = view.clone();
+    let range_hover_view = view;
     div()
         .absolute()
         .left(px(cell.x_px))

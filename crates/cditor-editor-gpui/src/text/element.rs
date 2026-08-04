@@ -431,7 +431,8 @@ impl Element for RichTextGpuiElement {
             window.paint_quad(placeholder);
         }
         if let Some(layout) = prepaint.layout.as_ref() {
-            let report = paint_text_layout(layout, bounds.origin, input_trace_enabled(), window);
+            let report =
+                paint_text_layout(layout, bounds.origin, input_trace_enabled(), window, cx);
             if input_trace_enabled()
                 && (report.glyph_errors != 0
                     || report.font_registration_errors != 0
