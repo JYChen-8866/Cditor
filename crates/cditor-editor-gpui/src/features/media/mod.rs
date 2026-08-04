@@ -42,6 +42,7 @@ pub fn render_image_block(
     theme: GuiTheme,
     caption_state: Option<TextSurfaceRenderState>,
     workers: &EditorWorkerAdmission,
+    asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
     image_resize_preview_width_px: Option<f32>,
@@ -52,6 +53,7 @@ pub fn render_image_block(
         block_id,
         content_version,
         workers,
+        asset_provider,
         view.clone(),
         cx,
     );

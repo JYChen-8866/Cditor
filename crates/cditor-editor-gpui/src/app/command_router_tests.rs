@@ -32,6 +32,23 @@ fn session_realtime_replace(session: &cditor_session::EditorSessionHandle, text:
         .unwrap();
 }
 
+#[gpui::test]
+fn managed_image_load_does_not_read_the_editor_during_entity_update(cx: &mut TestAppContext) {
+    let view = cx.new(|cx| CditorV2View::from_runtime(rich_document_runtime(), false, cx));
+    view.update(cx, |editor, cx| {
+        let loaded = crate::image_loader::load_render_image(
+            "assets/reentrant-read-regression.png",
+            1,
+            1,
+            &editor.scheduling.workers,
+            editor.features.asset_provider.clone(),
+            cx.entity(),
+            cx,
+        );
+        assert!(loaded.is_none());
+    });
+}
+
 /// P4-015：每个 command variant 一个代表性实例（参数只需类型合法）。
 fn representative_commands() -> Vec<CditorCommand> {
     use cditor_editor_protocol::command::BlockTransform;

@@ -222,6 +222,7 @@ pub fn load_render_image(
     block_id: BlockId,
     content_version: u64,
     workers: &EditorWorkerAdmission,
+    asset_provider: Option<Arc<dyn cditor_sdk::providers::AssetProvider>>,
     view: Entity<CditorV2View>,
     cx: &mut App,
 ) -> Option<Arc<RenderImage>> {
@@ -251,7 +252,6 @@ pub fn load_render_image(
     let remote_source = cx
         .try_global::<RemoteImageDataSourceGlobal>()
         .map(|source| source.0.clone());
-    let asset_provider = view.read(cx).features.asset_provider.clone();
     let async_cx = cx.to_async();
     let executor = cx.background_executor().clone();
     cx.foreground_executor()

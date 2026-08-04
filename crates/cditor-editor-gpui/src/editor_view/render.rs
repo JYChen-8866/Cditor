@@ -547,6 +547,7 @@ impl Render for CditorV2View {
                         view.clone(),
                         &image_caption_states,
                         &self.scheduling.workers,
+                        self.features.asset_provider.clone(),
                         self.focus.editor.clone(),
                         self.focus.code_language.clone(),
                         self.interaction.hovered_block_id,

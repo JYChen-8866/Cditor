@@ -111,6 +111,7 @@ impl DocumentEditorView {
         view: Entity<CditorV2View>,
         image_caption_states: &HashMap<BlockId, TextSurfaceRenderState>,
         workers: &EditorWorkerAdmission,
+        asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
         focus: FocusHandle,
         code_language_focus: FocusHandle,
         hovered_block_id: Option<BlockId>,
@@ -329,6 +330,7 @@ impl DocumentEditorView {
                             code_language_focus.clone(),
                             image_caption_states.get(&block.block_id).cloned(),
                             workers,
+                            asset_provider.clone(),
                             show_hover_gutter,
                             block_action,
                             table_axis_selection
@@ -430,6 +432,7 @@ impl DocumentEditorView {
             page_chrome_extras,
             self.theme,
             workers,
+            asset_provider,
             view.clone(),
             page_icon_menu_open,
             page_icon_menu_custom_tab,

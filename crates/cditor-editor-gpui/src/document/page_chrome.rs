@@ -169,6 +169,7 @@ pub(crate) fn render_page_chrome(
     page_chrome_extras: Option<AnyView>,
     theme: GuiTheme,
     workers: &EditorWorkerAdmission,
+    asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
     view: Entity<CditorV2View>,
     page_icon_menu_open: bool,
     page_icon_menu_custom_tab: bool,
@@ -196,6 +197,7 @@ pub(crate) fn render_page_chrome(
             decorations.revision,
             theme,
             workers,
+            asset_provider.clone(),
             view.clone(),
             cx,
         ));
@@ -208,6 +210,7 @@ pub(crate) fn render_page_chrome(
             decorations.revision,
             theme,
             workers,
+            asset_provider,
             view.clone(),
             cx,
         ));
@@ -246,6 +249,7 @@ fn render_cover(
     revision: u64,
     theme: GuiTheme,
     workers: &EditorWorkerAdmission,
+    asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
     view: Entity<CditorV2View>,
     cx: &mut App,
 ) -> AnyElement {
@@ -253,7 +257,7 @@ fn render_cover(
         PageCover::External { url, position_y } => (url.as_str(), position_y.ratio()),
         PageCover::Asset { asset, position_y } => (asset.source.as_str(), position_y.ratio()),
     };
-    let image = load_render_image(source, 0, revision, workers, view, cx);
+    let image = load_render_image(source, 0, revision, workers, asset_provider, view, cx);
     div()
         .id("cditor-page-cover")
         .absolute()
@@ -278,6 +282,7 @@ fn render_icon(
     revision: u64,
     theme: GuiTheme,
     workers: &EditorWorkerAdmission,
+    asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
     view: Entity<CditorV2View>,
     cx: &mut App,
 ) -> AnyElement {
@@ -307,7 +312,15 @@ fn render_icon(
                     )
                     .into_any_element()
             } else {
-                let image = load_render_image(&asset.source, 0, revision, workers, view, cx);
+                let image = load_render_image(
+                    &asset.source,
+                    0,
+                    revision,
+                    workers,
+                    asset_provider,
+                    view,
+                    cx,
+                );
                 base.rounded(px(6.0))
                     .overflow_hidden()
                     .bg(rgb(theme.skeleton))
