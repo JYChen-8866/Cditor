@@ -19,6 +19,9 @@ whiteboard = ["dep:cditor-whiteboard", "dep:cditor-whiteboard-gpui"]
 
 [dev-dependencies]
 cditor-test-support = { path = "../cditor-test-support" }
+async-trait = "0.1"
+futures-lite = "2"
+tokio = { version = "1", features = ["rt", "time"] }
 
 [dependencies]
 async-channel = "2"

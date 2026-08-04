@@ -23,10 +23,33 @@ impl SessionIoExecutor {
         Ok(session_io_runtime()?.block_on(future))
     }
 
+    /// Runs an owned I/O future on the session Tokio runtime without requiring
+    /// the caller's executor to provide a Tokio context.
+    #[cfg(not(target_family = "wasm"))]
+    pub async fn run_async<F, T>(&self, future: F) -> Result<T, String>
+    where
+        F: Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+    {
+        session_io_runtime()?
+            .spawn(future)
+            .await
+            .map_err(|error| format!("session I/O task failed: {error}"))
+    }
+
     #[cfg(target_family = "wasm")]
     pub fn run<F, T>(&self, _future: F) -> Result<T, String>
     where
         F: Future<Output = T>,
+    {
+        Err("SessionIoExecutor is not supported on WASM".to_owned())
+    }
+
+    #[cfg(target_family = "wasm")]
+    pub async fn run_async<F, T>(&self, _future: F) -> Result<T, String>
+    where
+        F: Future<Output = T> + Send + 'static,
+        T: Send + 'static,
     {
         Err("SessionIoExecutor is not supported on WASM".to_owned())
     }
@@ -71,5 +94,32 @@ mod tests {
             })
             .unwrap();
         assert!(result.is_err());
+    }
+
+    #[test]
+    #[cfg(not(target_family = "wasm"))]
+    fn async_bridge_supplies_tokio_context_to_non_tokio_callers() {
+        let result = futures_lite::future::block_on(SessionIoExecutor::shared().run_async(async {
+            tokio::runtime::Handle::try_current().expect("future must run on a Tokio runtime");
+            tokio::time::sleep(Duration::from_millis(1)).await;
+            42
+        }));
+
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[test]
+    #[cfg(not(target_family = "wasm"))]
+    fn async_bridge_is_safe_inside_an_existing_tokio_runtime() {
+        let caller_runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let result = caller_runtime.block_on(SessionIoExecutor::shared().run_async(async {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+            42
+        }));
+
+        assert_eq!(result.unwrap(), 42);
     }
 }

@@ -16,6 +16,7 @@ pub(crate) mod overlays;
 mod persistence;
 mod platform;
 pub(crate) mod presentation;
+mod provider_io;
 mod scroll;
 mod skeleton;
 pub(crate) mod surfaces;

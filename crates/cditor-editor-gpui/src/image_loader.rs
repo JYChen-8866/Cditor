@@ -260,14 +260,10 @@ pub fn load_render_image(
             let state = executor
                 .spawn(async move {
                     let _permit = permit;
-                    fetch_image_bytes(
-                        &fetch_src,
-                        remote_source.as_deref(),
-                        asset_provider.as_deref(),
-                    )
-                    .await
-                    .as_deref()
-                    .and_then(decode_render_image)
+                    fetch_image_bytes(&fetch_src, remote_source.as_deref(), asset_provider)
+                        .await
+                        .as_deref()
+                        .and_then(decode_render_image)
                 })
                 .await
                 .map_or(ImageState::Failed, ImageState::Ready);
@@ -305,15 +301,17 @@ pub fn load_render_image(
 async fn fetch_image_bytes(
     src: &str,
     remote_source: Option<&dyn RemoteImageDataSource>,
-    asset_provider: Option<&dyn cditor_sdk::providers::AssetProvider>,
+    asset_provider: Option<Arc<dyn cditor_sdk::providers::AssetProvider>>,
 ) -> Option<Vec<u8>> {
     if src.starts_with("http://") || src.starts_with("https://") {
         fetch_remote_image_bytes(src, remote_source, builtin_remote_image_data_source())
     } else if src.starts_with("assets/") {
-        let resolved = asset_provider?
-            .resolve(&cditor_core::rich_text::AssetRef::local(src))
-            .await
-            .ok()?;
+        let resolved = crate::provider_io::resolve_asset(
+            asset_provider?,
+            cditor_core::rich_text::AssetRef::local(src),
+        )
+        .await
+        .ok()?;
         match (resolved.bytes, resolved.local_path) {
             (Some(bytes), _) => Some(bytes),
             (None, Some(path)) => std::fs::read(path).ok(),

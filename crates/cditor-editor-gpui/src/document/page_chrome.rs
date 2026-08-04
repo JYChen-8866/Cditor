@@ -808,7 +808,9 @@ impl CditorV2View {
                 let command = if let Some(provider) = asset_provider {
                     let input = page_cover_asset_input(file.file_name(), file.read().await);
                     match background
-                        .spawn(async move { provider.import(input).await })
+                        .spawn(
+                            async move { crate::provider_io::import_asset(provider, input).await },
+                        )
                         .await
                     {
                         Ok(imported) => imported_page_cover_command(imported),

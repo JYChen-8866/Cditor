@@ -209,7 +209,7 @@ impl CditorV2View {
             let input = asset
                 .into_asset_input()
                 .map_err(|message| cditor_sdk::providers::AssetError { message })?;
-            provider.import(input).await
+            crate::provider_io::import_asset(provider, input).await
         });
         cx.spawn(async move |view, cx| {
             let imported = task.await;
