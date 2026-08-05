@@ -9,6 +9,12 @@ mod block;
 mod commonmark;
 pub(crate) mod export;
 mod markdown_stats;
+pub(crate) mod velotype;
+mod velotype_bridge;
+
+#[cfg(test)]
+#[path = "velotype_parity_tests.rs"]
+mod velotype_parity_tests;
 
 pub use block::parse_callout_marker;
 pub use markdown_stats::{MARKDOWN_PARSE_STATS, MarkdownParseStats, MarkdownParseStatsSnapshot};

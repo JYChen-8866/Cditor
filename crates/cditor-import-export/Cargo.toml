@@ -4,9 +4,19 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["html-native"]
+# Matches velotype's `html-native` feature gate in the vendored html.rs:
+# tree-sitter validates block-level HTML well-formedness before it is
+# classified as semantic HTML.
+html-native = ["dep:tree-sitter", "dep:tree-sitter-html"]
+
 [dependencies]
 cditor-core = { path = "../cditor-core" }
+cssparser = "0.37"
 pulldown-cmark = "0.12.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tree-sitter = { version = "0.26.9", optional = true }
+tree-sitter-html = { version = "0.23", optional = true }
 unicode-segmentation = "1.12"
