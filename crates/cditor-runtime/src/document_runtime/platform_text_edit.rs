@@ -114,6 +114,7 @@ impl DocumentRuntime {
         kind: EditTransactionKind,
         origin: cditor_core::edit::ChangeOrigin,
     ) -> Result<bool, String> {
+        let allow_markdown_shortcuts = !matches!(&kind, EditTransactionKind::Paste);
         let explicit_range = range.clone();
         let Some(edit) = self.resolve_focused_text_edit(range) else {
             return Ok(false);
@@ -155,7 +156,12 @@ impl DocumentRuntime {
         )?;
         self.validate_preapplied_surface_truth(&before_surface)?;
 
-        if !self.apply_resolved_focused_text_edit(edit, text, explicit_range)? {
+        if !self.apply_resolved_focused_text_edit(
+            edit,
+            text,
+            explicit_range,
+            allow_markdown_shortcuts,
+        )? {
             return Ok(false);
         }
         let transaction_id = self.transactions.next_id;
@@ -233,6 +239,7 @@ impl DocumentRuntime {
         edit: FocusedTextEdit,
         text: &str,
         explicit_range: Option<Range<usize>>,
+        allow_markdown_shortcuts: bool,
     ) -> Result<bool, String> {
         if matches!(edit.target, InputTarget::TableCell { .. }) {
             return self.apply_focused_table_cell_text_edit(edit, text);
@@ -264,7 +271,8 @@ impl DocumentRuntime {
                         ..composition.range_end as usize)
             ),
         );
-        if text == " "
+        if allow_markdown_shortcuts
+            && text == " "
             && range.is_empty()
             && self.try_apply_space_block_markdown_shortcut(block_id, range.start)?
         {
@@ -315,7 +323,8 @@ impl DocumentRuntime {
             );
             (editing.content_version, model.len(), inserted.end)
         };
-        let applied_shortcut = self.apply_inline_markdown_shortcut(block_id)?;
+        let applied_shortcut =
+            allow_markdown_shortcuts && self.apply_inline_markdown_shortcut(block_id)?;
         if !applied_shortcut {
             self.advance_typing_mark_override(surface_id, replacement_start, next_offset);
         }

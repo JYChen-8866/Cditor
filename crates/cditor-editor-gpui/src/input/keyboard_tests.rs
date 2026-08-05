@@ -21,7 +21,9 @@ use crate::{
     text::{RichTextLayoutInput, TextLayoutOptions, build_text_layout},
     theme::GuiTheme,
 };
-use cditor_core::clipboard::CditorClipboardEnvelope;
+use cditor_core::clipboard::{
+    CditorClipboardEnvelope, ClipboardBlock, ClipboardBlockFragment, ClipboardFragmentBoundary,
+};
 use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineMark, InlineSpan, RichBlockKind, TableCellPayload,
     TablePayload, TableRowPayload,
@@ -52,7 +54,25 @@ fn paragraph_runtime(text: &str) -> DocumentRuntime {
         )],
         720.0,
     );
+    runtime.focus_block(1);
     crate::test_support::focus_block_at_offset(&mut runtime, 1, text.len());
+    runtime
+}
+
+fn text_block_runtime(kind: RichBlockKind, payload: BlockPayload) -> DocumentRuntime {
+    let text_len = payload.plain_text().len();
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord {
+            block_id: 1,
+            content_version: 1,
+            kind,
+            payload,
+        }],
+        720.0,
+    );
+    runtime.focus_block(1);
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, text_len);
     runtime
 }
 
@@ -290,8 +310,9 @@ fn paste_text_from_clipboard_never_reuses_stale_rich_state_for_external_text() {
 }
 
 #[test]
-fn paste_text_from_external_clipboard_parses_inline_markdown() {
+fn paste_external_text_inside_block_does_not_parse_inline_markdown() {
     let mut runtime = paragraph_runtime("");
+    assert!(runtime.input_session_target().is_some());
 
     assert!(dispatch_clipboard_data(
         &mut runtime,
@@ -303,20 +324,223 @@ fn paste_text_from_external_clipboard_parses_inline_markdown() {
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text payload");
     };
-    assert!(
-        spans
-            .iter()
-            .any(|span| span.text == "bold" && span.marks.contains(&InlineMark::Bold))
+    assert_eq!(payload.plain_text(), "**bold** and `code`");
+    assert!(spans.iter().all(|span| span.marks.is_empty()));
+}
+
+#[test]
+fn paste_external_space_after_markdown_marker_does_not_transform_block() {
+    let mut runtime = paragraph_runtime("#");
+
+    assert!(dispatch_clipboard_data(&mut runtime, " ", None));
+
+    let payload = runtime.block_payload_record(1).unwrap();
+    assert!(matches!(payload.kind, RichBlockKind::Paragraph));
+    assert_eq!(payload.plain_text(), "# ");
+}
+
+#[test]
+fn multiline_markdown_paste_into_code_stays_literal_inside_code_block() {
+    let mut runtime = text_block_runtime(
+        RichBlockKind::Code {
+            language: Some("rust".to_owned()),
+        },
+        BlockPayload::Code {
+            language: Some("rust".to_owned()),
+            text: "let value = ".to_owned(),
+        },
     );
-    assert!(
-        spans
-            .iter()
-            .any(|span| span.text == "code" && span.marks.contains(&InlineMark::Code))
+
+    assert!(dispatch_clipboard_data(
+        &mut runtime,
+        "# source\n- first\n- second",
+        None
+    ));
+
+    let payload = runtime.block_payload_record(1).unwrap();
+    assert!(matches!(
+        &payload.kind,
+        RichBlockKind::Code { language } if language.as_deref() == Some("rust")
+    ));
+    assert!(matches!(
+        &payload.payload,
+        BlockPayload::Code { language, text }
+            if language.as_deref() == Some("rust")
+                && text == "let value = # source\n- first\n- second"
+    ));
+    assert_eq!(runtime.projection_for_window().blocks.len(), 1);
+}
+
+#[test]
+fn multiline_external_paste_into_heading_stays_literal_inside_heading_block() {
+    let mut runtime = text_block_runtime(
+        RichBlockKind::Heading { level: 2 },
+        BlockPayload::RichText {
+            spans: vec![InlineSpan::plain("Title ")],
+        },
+    );
+
+    assert!(dispatch_clipboard_data(
+        &mut runtime,
+        "**continued**\n- child",
+        None
+    ));
+
+    let payload = runtime.block_payload_record(1).unwrap();
+    assert!(matches!(payload.kind, RichBlockKind::Heading { level: 2 }));
+    assert_eq!(payload.plain_text(), "Title **continued**\n- child");
+    let BlockPayload::RichText { spans } = &payload.payload else {
+        panic!("expected rich text payload");
+    };
+    assert!(spans.iter().all(|span| span.marks.is_empty()));
+    assert_eq!(runtime.projection_for_window().blocks.len(), 1);
+}
+
+#[test]
+fn internal_block_clipboard_wins_over_markdown_detection_and_preserves_style() {
+    let selection = ClipboardSelection::Blocks {
+        blocks: vec![
+            ClipboardBlock {
+                source_id: 10,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Heading { level: 2 },
+                payload: BlockPayload::RichText {
+                    spans: vec![InlineSpan {
+                        text: "Heading".to_owned(),
+                        marks: vec![InlineMark::Bold],
+                    }],
+                },
+            },
+            ClipboardBlock {
+                source_id: 11,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Quote,
+                payload: BlockPayload::RichText {
+                    spans: vec![InlineSpan {
+                        text: "Quoted".to_owned(),
+                        marks: vec![InlineMark::Italic],
+                    }],
+                },
+            },
+        ],
+    };
+    let text = selection.plain_text();
+    let mut runtime = paragraph_runtime("");
+
+    assert!(dispatch_clipboard_data(
+        &mut runtime,
+        &text,
+        Some(&selection)
+    ));
+
+    assert_eq!(runtime.projection_for_window().blocks.len(), 3);
+    let heading = runtime.block_payload_record(2).unwrap();
+    assert!(matches!(heading.kind, RichBlockKind::Heading { level: 2 }));
+    let BlockPayload::RichText { spans } = &heading.payload else {
+        panic!("expected rich text heading");
+    };
+    assert!(spans[0].marks.contains(&InlineMark::Bold));
+    let quote = runtime.block_payload_record(3).unwrap();
+    assert!(matches!(quote.kind, RichBlockKind::Quote));
+    let BlockPayload::RichText { spans } = &quote.payload else {
+        panic!("expected rich text quote");
+    };
+    assert!(spans[0].marks.contains(&InlineMark::Italic));
+}
+
+#[test]
+fn internal_whole_document_clipboard_preserves_blocks_and_marks() {
+    let selection = ClipboardSelection::TextFragments {
+        fragments: vec![
+            ClipboardBlockFragment {
+                source_id: 10,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Heading { level: 1 },
+                spans: vec![InlineSpan {
+                    text: "Title".to_owned(),
+                    marks: vec![InlineMark::Bold],
+                }],
+                boundary: ClipboardFragmentBoundary::StartPartial,
+                starts_at_block_start: true,
+                ends_at_block_end: true,
+            },
+            ClipboardBlockFragment {
+                source_id: 11,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Quote,
+                spans: vec![InlineSpan {
+                    text: "Body".to_owned(),
+                    marks: vec![InlineMark::Italic],
+                }],
+                boundary: ClipboardFragmentBoundary::EndPartial,
+                starts_at_block_start: true,
+                ends_at_block_end: true,
+            },
+        ],
+    };
+    let text = selection.plain_text();
+    let mut runtime = paragraph_runtime("");
+
+    assert!(dispatch_clipboard_data(
+        &mut runtime,
+        &text,
+        Some(&selection)
+    ));
+
+    let blocks = runtime.projection_for_window().blocks;
+    assert_eq!(blocks.len(), 2);
+    assert!(matches!(
+        blocks[0].kind,
+        RichBlockKind::Heading { level: 1 }
+    ));
+    assert!(matches!(blocks[1].kind, RichBlockKind::Quote));
+    let BlockPayload::RichText { spans } = &runtime.block_payload_record(1).unwrap().payload else {
+        panic!("expected rich text heading");
+    };
+    assert!(spans[0].marks.contains(&InlineMark::Bold));
+    let BlockPayload::RichText { spans } = &runtime.block_payload_record(2).unwrap().payload else {
+        panic!("expected rich text quote");
+    };
+    assert!(spans[0].marks.contains(&InlineMark::Italic));
+}
+
+#[test]
+fn external_markdown_at_document_selection_creates_markdown_blocks() {
+    let mut runtime = paragraph_runtime("");
+    crate::test_support::select_block_range(&mut runtime, 1, 1);
+
+    assert!(dispatch_clipboard_data(
+        &mut runtime,
+        "# Heading\n\n> Quoted",
+        None
+    ));
+
+    let blocks = runtime.projection_for_window().blocks;
+    assert_eq!(blocks.len(), 2);
+    assert!(matches!(
+        blocks[0].kind,
+        RichBlockKind::Heading { level: 1 }
+    ));
+    assert!(matches!(blocks[1].kind, RichBlockKind::Quote));
+    assert_eq!(
+        runtime.block_payload_record(1).unwrap().plain_text(),
+        "Heading"
+    );
+    assert_eq!(
+        runtime
+            .block_payload_record(blocks[1].block_id)
+            .unwrap()
+            .plain_text(),
+        "Quoted"
     );
 }
 
 #[test]
-fn paste_text_with_rich_metadata_prefers_detected_markdown_structure() {
+fn paste_text_with_rich_metadata_stays_inside_active_text_block() {
     let markdown = "- 第一周\n### 阶段一\n- 阅读文档";
     let selection = ClipboardSelection::Inline {
         spans: vec![InlineSpan::plain(markdown)],
@@ -329,18 +553,13 @@ fn paste_text_with_rich_metadata_prefers_detected_markdown_structure() {
         Some(&selection)
     ));
 
-    let kinds = runtime
-        .projection_for_window()
-        .blocks
-        .iter()
-        .map(|block| block.kind.clone())
-        .collect::<Vec<_>>();
-    assert!(matches!(kinds.first(), Some(RichBlockKind::BulletedList)));
-    assert!(matches!(
-        kinds.get(1),
-        Some(RichBlockKind::Heading { level: 3 })
-    ));
-    assert!(matches!(kinds.get(2), Some(RichBlockKind::BulletedList)));
+    let blocks = runtime.projection_for_window().blocks;
+    assert_eq!(blocks.len(), 1);
+    assert!(matches!(blocks[0].kind, RichBlockKind::Paragraph));
+    assert_eq!(
+        runtime.block_payload_record(1).unwrap().plain_text(),
+        markdown
+    );
 }
 
 #[test]

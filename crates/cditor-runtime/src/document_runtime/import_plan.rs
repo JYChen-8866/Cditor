@@ -61,11 +61,14 @@ impl DocumentRuntime {
         &mut self,
         content: &ClipboardImportContent,
     ) -> Result<bool, String> {
-        if let Some(selection @ ClipboardSelection::Table { .. }) =
-            content.internal_selection.as_ref()
-            && self.paste_clipboard_selection(selection)?
-        {
-            return Ok(true);
+        // Valid Cditor metadata is authoritative. In particular, whole-document
+        // and block copies must not be reinterpreted from their plain-text
+        // clipboard representation as external Markdown.
+        if let Some(selection) = content.internal_selection.as_ref() {
+            if self.paste_clipboard_selection(selection)? {
+                return Ok(true);
+            }
+            return self.replace_text_from_paste(None, &content.plain_text);
         }
         if let Some(table) = &content.delimited_table {
             let snapshot = TableClipboardSnapshot {
@@ -83,17 +86,17 @@ impl DocumentRuntime {
                 return Ok(true);
             }
         }
+        if self.input_session_target().is_some() {
+            // Text from outside Cditor is literal when the user is editing a
+            // specific block. Newlines remain inside that block.
+            return self.replace_text_from_paste(None, &content.plain_text);
+        }
         if let Some(markdown) = &content.markdown
             && self.insert_imported_markdown_content_transaction(
                 markdown.clone(),
                 EditTransactionKind::Paste,
                 cditor_core::edit::ChangeOrigin::Import,
             )?
-        {
-            return Ok(true);
-        }
-        if let Some(selection) = content.internal_selection.as_ref()
-            && self.paste_clipboard_selection(selection)?
         {
             return Ok(true);
         }

@@ -29,6 +29,19 @@ impl DocumentRuntime {
             .as_ref()
             .map(|plan| plan.selection.start.block_id)
             .or_else(|| self.focused_block_id())
+            .or_else(|| {
+                self.selection
+                    .selected_block_ids
+                    .iter()
+                    .filter_map(|block_id| {
+                        self.document
+                            .index
+                            .index_of(*block_id)
+                            .map(|index| (index, *block_id))
+                    })
+                    .min_by_key(|(index, _)| *index)
+                    .map(|(_, block_id)| block_id)
+            })
             .ok_or_else(|| "missing focused block".to_owned())?;
         let current_index = self
             .document
