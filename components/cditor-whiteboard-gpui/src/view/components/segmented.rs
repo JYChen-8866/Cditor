@@ -3,10 +3,13 @@ use gpui::{
     prelude::FluentBuilder, px, rgb,
 };
 
+use crate::theme::WhiteboardChrome;
+
 pub(in crate::view) fn segment(
     id: impl Into<ElementId>,
     label: &'static str,
     selected: bool,
+    c: WhiteboardChrome,
 ) -> Stateful<Div> {
     div()
         .id(id)
@@ -20,15 +23,15 @@ pub(in crate::view) fn segment(
         .cursor_pointer()
         .text_size(px(10.0))
         .text_color(if selected {
-            rgb(0xffffff)
+            rgb(c.on_accent)
         } else {
-            rgb(0x505050)
+            rgb(c.text)
         })
-        .when(selected, |button| button.bg(rgb(0x3b82f6)))
+        .when(selected, |button| button.bg(rgb(c.accent)))
         .when(!selected, |button| {
             button
-                .bg(rgb(0xf5f5f5))
-                .hover(|style| style.bg(rgb(0xebebeb)))
+                .bg(rgb(c.bg_strong))
+                .hover(move |style| style.bg(rgb(c.hover)))
         })
         .child(label)
 }

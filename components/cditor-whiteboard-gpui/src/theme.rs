@@ -21,6 +21,8 @@ pub struct WhiteboardTheme {
     pub hover: u32,
     /// Accent color (selection, active tool).
     pub accent: u32,
+    /// Foreground painted on accent controls.
+    pub on_accent: u32,
     /// Ink color used for shape strokes and text on the canvas.
     pub ink: u32,
     /// Background grid color.
@@ -39,6 +41,7 @@ impl Default for WhiteboardTheme {
             panel: 0xffffff,
             hover: 0xf1f1ef,
             accent: 0x2383e2,
+            on_accent: 0xffffff,
             ink: 0x37352f,
             grid: 0xc8c8c8,
             danger: 0xeb5757,
@@ -101,7 +104,7 @@ impl From<WhiteboardTheme> for WhiteboardChrome {
             hover: theme.hover,
             active: blend(theme.accent, theme.panel, 0.18),
             accent: theme.accent,
-            on_accent: theme.page,
+            on_accent: theme.on_accent,
             danger: theme.danger,
         }
     }

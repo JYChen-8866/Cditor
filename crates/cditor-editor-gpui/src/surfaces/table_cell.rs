@@ -199,7 +199,12 @@ impl CditorV2View {
             return Some(geometry.position_for_window_point(position));
         }
         record_synchronous_geometry_fallback();
-        let Some(element) = cold_table_cell_text_element(session, current, projected) else {
+        let Some(element) = cold_table_cell_text_element(
+            session,
+            current,
+            projected,
+            self.interaction.presented_theme,
+        ) else {
             record_unavailable_geometry();
             return None;
         };
@@ -231,7 +236,12 @@ impl CditorV2View {
             return Some(geometry.selection_at_window_point(position, kind));
         }
         record_synchronous_geometry_fallback();
-        let element = cold_table_cell_text_element(session, current, projected)?;
+        let element = cold_table_cell_text_element(
+            session,
+            current,
+            projected,
+            self.interaction.presented_theme,
+        )?;
         Some(element.selection_at_point(projected_text_hit_point(placement, position), kind))
     }
 
@@ -250,7 +260,12 @@ impl CditorV2View {
             return None;
         }
         let placement = self.projected_table_cell_placement(block_id, row, col)?;
-        let element = cold_table_cell_text_element(session, current, projected)?;
+        let element = cold_table_cell_text_element(
+            session,
+            current,
+            projected,
+            self.interaction.presented_theme,
+        )?;
         let local_rects = if range.is_empty() {
             vec![element.local_caret_rect_for_offset(range.start)]
         } else {
@@ -280,6 +295,7 @@ fn cold_table_cell_text_element(
     session: &EditorSessionHandle,
     current: SurfaceVersionSnapshot,
     projected: ProjectedTableCellRect,
+    theme: GuiTheme,
 ) -> Option<RichTextElement> {
     let state = session
         .text_surface_state(current.surface_id)
@@ -297,8 +313,7 @@ fn cold_table_cell_text_element(
         1,
     );
     Some(
-        RichTextElement::new(input, GuiTheme::light())
-            .with_typography(table_cell_typography(projected.header)),
+        RichTextElement::new(input, theme).with_typography(table_cell_typography(projected.header)),
     )
 }
 
@@ -482,6 +497,7 @@ mod tests {
             view.interaction.presented_scroll_top = 20_000_000.25;
             view.interaction.projected_block_rects = projected_block_rects_from_projection(
                 &projection,
+                GuiTheme::light(),
                 DocumentLayoutMetrics::default(),
             );
             view.interaction.projected_block_rects[0].document_top = 20_000_128.25;
@@ -565,6 +581,7 @@ mod tests {
                 Some(DocumentViewportOrigin { x: 20.0, y: 30.0 });
             view.interaction.projected_block_rects = projected_block_rects_from_projection(
                 &projection,
+                GuiTheme::light(),
                 DocumentLayoutMetrics::default(),
             );
             view.interaction.projected_table_cells =
@@ -574,7 +591,9 @@ mod tests {
             let current = session.surface_version(surface).unwrap().unwrap();
             let projected = view.projected_table_cell(1, 0, 0).unwrap();
             let placement = view.projected_table_cell_placement(1, 0, 0).unwrap();
-            let element = cold_table_cell_text_element(session, current, projected).unwrap();
+            let element =
+                cold_table_cell_text_element(session, current, projected, GuiTheme::light())
+                    .unwrap();
             let caret = element.local_caret_rect_for_offset(target_offset);
             let click = point(
                 px((placement.window_origin_x_px + f64::from(caret.x)) as f32),
@@ -627,6 +646,7 @@ mod tests {
                 Some(DocumentViewportOrigin { x: 100.0, y: 40.0 });
             view.interaction.projected_block_rects = projected_block_rects_from_projection(
                 &projection,
+                GuiTheme::light(),
                 DocumentLayoutMetrics::default(),
             );
             view.interaction.projected_table_cells =

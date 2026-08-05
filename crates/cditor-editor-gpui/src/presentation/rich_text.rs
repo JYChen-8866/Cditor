@@ -43,6 +43,7 @@ pub(crate) fn inline_mark_visual_style(
     let mut strike = false;
     let mut underline = false;
     let mut link = false;
+    let mut document_link = false;
 
     for mark in marks {
         match mark {
@@ -51,7 +52,11 @@ pub(crate) fn inline_mark_visual_style(
             InlineMark::Underline => underline = true,
             InlineMark::Strike => strike = true,
             InlineMark::Code => code = true,
-            InlineMark::Link { .. } | InlineMark::DocumentLink { .. } => link = true,
+            InlineMark::Link { .. } => link = true,
+            InlineMark::DocumentLink { .. } => {
+                link = true;
+                document_link = true;
+            }
             InlineMark::Color(color) => {
                 if let Some(color) = parse_hex_color(color) {
                     explicit_text_color = Some(color);
@@ -66,7 +71,9 @@ pub(crate) fn inline_mark_visual_style(
     }
 
     let text_color = explicit_text_color.unwrap_or({
-        if link {
+        if document_link {
+            theme.document_link
+        } else if link {
             theme.focused
         } else if code {
             theme.inline_code_text

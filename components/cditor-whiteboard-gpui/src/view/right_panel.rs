@@ -161,7 +161,7 @@ impl DrafftBoardView {
                 .into_iter()
                 .enumerate()
                 .map(|(index, (size, label))| {
-                    segment((element_key, index), label, (current - size).abs() < 1.0)
+                    segment((element_key, index), label, (current - size).abs() < 1.0, c)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             if math {
                                 view.board.set_math_font_size(size);
@@ -182,13 +182,13 @@ impl DrafftBoardView {
             "Rounded Corners",
             c.text_muted,
             [
-                segment("corner-off", "Off", off)
+                segment("corner-off", "Off", off, c)
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.board.set_corner_radius(0.0);
                         cx.notify();
                     }))
                     .into_any_element(),
-                segment("corner-on", "On", !off)
+                segment("corner-on", "On", !off, c)
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.board.set_corner_radius(32.0);
                         cx.notify();
@@ -207,7 +207,7 @@ impl DrafftBoardView {
                 .into_iter()
                 .enumerate()
                 .map(|(index, (value, label))| {
-                    segment(("sloppiness", index), label, current == value)
+                    segment(("sloppiness", index), label, current == value, c)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.board.set_sloppiness(value);
                             cx.notify();
@@ -226,7 +226,7 @@ impl DrafftBoardView {
                 .into_iter()
                 .enumerate()
                 .map(|(index, (value, label))| {
-                    segment(("fill-pattern", index), label, current == value)
+                    segment(("fill-pattern", index), label, current == value, c)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.board.set_fill_pattern(value);
                             cx.notify();
@@ -246,7 +246,7 @@ impl DrafftBoardView {
                 .into_iter()
                 .enumerate()
                 .map(|(index, (value, label))| {
-                    segment(("path-style", index), label, current == value)
+                    segment(("path-style", index), label, current == value, c)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.board.set_path_style(value);
                             cx.notify();
@@ -266,7 +266,7 @@ impl DrafftBoardView {
                 .into_iter()
                 .enumerate()
                 .map(|(index, (value, label))| {
-                    segment(("stroke-style", index), label, current == value)
+                    segment(("stroke-style", index), label, current == value, c)
                         .on_click(cx.listener(move |view, _, _, cx| {
                             view.board.set_stroke_style(value);
                             cx.notify();
@@ -283,7 +283,7 @@ impl DrafftBoardView {
             "Style",
             c.text_muted,
             [
-                segment("freehand-normal", "Normal", !calligraphy)
+                segment("freehand-normal", "Normal", !calligraphy, c)
                     .on_click(cx.listener(|view, _, _, cx| {
                         if view.board.calligraphy_mode() {
                             view.board.toggle_calligraphy();
@@ -291,7 +291,7 @@ impl DrafftBoardView {
                         }
                     }))
                     .into_any_element(),
-                segment("freehand-calligraphy", "Calligraphy", calligraphy)
+                segment("freehand-calligraphy", "Calligraphy", calligraphy, c)
                     .on_click(cx.listener(|view, _, _, cx| {
                         if !view.board.calligraphy_mode() {
                             view.board.toggle_calligraphy();
@@ -310,7 +310,7 @@ impl DrafftBoardView {
             "Pressure",
             c.text_muted,
             [
-                segment("pressure-uniform", "Uniform", !pressure)
+                segment("pressure-uniform", "Uniform", !pressure, c)
                     .on_click(cx.listener(|view, _, _, cx| {
                         if view.board.pressure_simulation() {
                             view.board.toggle_pressure_simulation();
@@ -318,7 +318,7 @@ impl DrafftBoardView {
                         }
                     }))
                     .into_any_element(),
-                segment("pressure-variable", "Pressure", pressure)
+                segment("pressure-variable", "Pressure", pressure, c)
                     .on_click(cx.listener(|view, _, _, cx| {
                         if !view.board.pressure_simulation() {
                             view.board.toggle_pressure_simulation();

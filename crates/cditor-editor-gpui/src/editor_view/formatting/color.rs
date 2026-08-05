@@ -5,7 +5,9 @@ use cditor_core::rich_text::{InlineColorTarget, InlineMark, InlineSpan};
 
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::overlays::{ActiveColor, ColorMenuAction, PaletteColor};
-use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
+use cditor_editor_protocol::command::{
+    CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
+};
 
 use super::super::CditorV2View;
 
@@ -104,10 +106,31 @@ impl CditorV2View {
         action: ColorMenuAction,
         has_text_selection: bool,
         target_block_id: Option<cditor_core::ids::BlockId>,
+        captured_selection: Option<(cditor_core::ids::BlockId, usize, usize)>,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
         if self.status.readonly {
             return false;
+        }
+        if has_text_selection && let Some((block_id, anchor, focus)) = captured_selection {
+            let restored = self.ready_session().and_then(|session| {
+                session
+                    .dispatch_with_snapshot(CommandEnvelope::new(
+                        CditorCommand::SetDocumentSelection {
+                            selection: cditor_core::edit::DocumentSelection {
+                                anchor: cditor_core::edit::TextPosition::downstream(
+                                    block_id, anchor,
+                                ),
+                                focus: cditor_core::edit::TextPosition::downstream(block_id, focus),
+                            },
+                        },
+                        CommandSource::Toolbar,
+                    ))
+                    .ok()
+            });
+            if restored.is_none() {
+                return false;
+            }
         }
         let gutter_block_id = color_action_block_target(has_text_selection, target_block_id);
         trace_block_color(

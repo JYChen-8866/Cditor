@@ -57,6 +57,7 @@ impl Render for CditorV2View {
         let frame_started = web_time::Instant::now();
         self.run_main_thread_applies(frame_started, cx);
         let theme = active_theme(cx);
+        self.interaction.presented_theme = theme;
 
         // Keep the Drafft whiteboard (canvas + chrome) in sync with the editor
         // theme. This must run before the whiteboard early-return below; the
@@ -72,6 +73,7 @@ impl Render for CditorV2View {
                 panel: theme.panel,
                 hover: theme.hover_surface,
                 accent: theme.action_accent,
+                on_accent: theme.checkbox_checked_text,
                 ink: theme.text,
                 grid: theme.border,
                 danger: theme.danger,
@@ -518,7 +520,7 @@ impl Render for CditorV2View {
                 let scrollbar_visual = frame.scrollbar_visual;
                 let table_resize_preview = self.table_resize_preview();
                 self.interaction.projected_block_rects =
-                    projected_block_rects_from_projection(&projection, document_layout);
+                    projected_block_rects_from_projection(&projection, theme, document_layout);
                 self.interaction.projected_table_cells =
                     projected_table_cells_from_projection(&projection, table_resize_preview);
                 let drag_overlay = self.block_drag_overlay_snapshot();

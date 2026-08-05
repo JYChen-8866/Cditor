@@ -19,7 +19,15 @@ fn block_conversion_capability_rejects_asset_flattening_but_keeps_text_exports()
     assert!(!rich.can_convert_block_kind(1, &RichBlockKind::Paragraph));
 
     let table = runtime_with_single_payload(RichBlockKind::Table, sample_table_payload().payload);
-    assert!(table.can_convert_block_kind(1, &RichBlockKind::Paragraph));
+    assert!(!table.can_convert_block_kind(1, &RichBlockKind::Paragraph));
+
+    let heading = runtime_with_kind_depths_and_text(vec![(
+        RichBlockKind::Heading { level: 1 },
+        0,
+        None,
+        "heading",
+    )]);
+    assert!(!heading.can_convert_block_kind(1, &RichBlockKind::Table));
 
     let image = runtime_with_single_payload(
         RichBlockKind::Image,

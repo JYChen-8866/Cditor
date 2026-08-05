@@ -6,6 +6,8 @@ use gpui::{
     StatefulInteractiveElement, Styled, div, hsla, prelude::FluentBuilder, px, rgb,
 };
 
+use crate::theme::chrome;
+
 const TRACK_WIDTH: f32 = 180.0;
 const TRACK_THUMB_SIZE: f32 = 10.0;
 
@@ -97,6 +99,7 @@ impl ColorPicker {
 
     fn render_trigger(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let value = self.current_color();
+        let c = chrome(cx);
         div()
             .id("color-picker-trigger")
             .relative()
@@ -120,7 +123,7 @@ impl ColorPicker {
                     .size(px(10.0))
                     .rounded(px(5.0))
                     .border_1()
-                    .border_color(rgb(0xffffff))
+                    .border_color(rgb(c.bg))
                     .bg(value),
             )
     }
@@ -140,6 +143,7 @@ impl ColorPicker {
 
     fn palette_none(&self, cx: &mut Context<Self>) -> AnyElement {
         let selected = self.value.is_none();
+        let c = chrome(cx);
         div()
             .id("picker-none")
             .relative()
@@ -147,9 +151,9 @@ impl ColorPicker {
             .rounded(px(3.0))
             .border(if selected { px(2.0) } else { px(1.0) })
             .border_color(if selected {
-                rgb(0x2563eb)
+                rgb(c.accent)
             } else {
-                rgb(0xcbd5e1)
+                rgb(c.border)
             })
             .child(
                 div()
@@ -158,13 +162,14 @@ impl ColorPicker {
                     .top(px(8.0))
                     .w(px(14.0))
                     .h(px(2.0))
-                    .bg(rgb(0xef4444)),
+                    .bg(rgb(c.danger)),
             )
             .on_click(cx.listener(|this, _, _, cx| this.select(None, true, cx)))
             .into_any_element()
     }
 
     fn palette_swatch(&self, color: Hsla, cx: &mut Context<Self>) -> AnyElement {
+        let c = chrome(cx);
         let selected = self
             .value
             .is_some_and(|value| color_distance(value, color) < 0.01);
@@ -174,9 +179,9 @@ impl ColorPicker {
             .rounded(px(3.0))
             .border(if selected { px(2.0) } else { px(1.0) })
             .border_color(if selected {
-                rgb(0x2563eb)
+                rgb(c.accent)
             } else {
-                rgb(0xcbd5e1)
+                rgb(c.border)
             })
             .bg(color)
             .hover(|style| style.shadow_sm())
@@ -186,6 +191,7 @@ impl ColorPicker {
 
     fn render_hsla(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let color = self.current_color();
+        let c = chrome(cx);
         div()
             .flex()
             .flex_col()
@@ -198,7 +204,7 @@ impl ColorPicker {
                 div()
                     .pt(px(2.0))
                     .text_size(px(11.0))
-                    .text_color(rgb(0x64748b))
+                    .text_color(rgb(c.text_muted))
                     .child(format!("{}  A {:.0}%", color_hex(color), color.a * 100.0)),
             )
     }
@@ -213,6 +219,7 @@ impl ColorPicker {
     ) -> impl IntoElement {
         let bounds = self.channel_bounds[channel_index(channel)].clone();
         let colors = track_colors(channel, color);
+        let c = chrome(cx);
         let track = div()
             .id(("color-track", channel_index(channel)))
             .relative()
@@ -242,7 +249,7 @@ impl ColorPicker {
                     .size(px(TRACK_THUMB_SIZE))
                     .rounded(px(TRACK_THUMB_SIZE / 2.0))
                     .border_2()
-                    .border_color(rgb(0xffffff))
+                    .border_color(rgb(c.bg))
                     .shadow_sm()
                     .bg(match channel {
                         Channel::Alpha => Hsla { a: value, ..color },
@@ -273,7 +280,7 @@ impl ColorPicker {
                 div()
                     .w(px(70.0))
                     .text_size(px(10.0))
-                    .text_color(rgb(0x64748b))
+                    .text_color(rgb(c.text_muted))
                     .child(label),
             )
             .child(track)
@@ -281,6 +288,7 @@ impl ColorPicker {
 
     fn render_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let palette_active = self.active_tab == PickerTab::Palette;
+        let c = chrome(cx);
         div()
             .absolute()
             .top(px(26.0))
@@ -292,8 +300,8 @@ impl ColorPicker {
             .gap(px(10.0))
             .rounded(px(7.0))
             .border_1()
-            .border_color(rgb(0xd7dce2))
-            .bg(rgb(0xffffff))
+            .border_color(rgb(c.border))
+            .bg(rgb(c.bg))
             .shadow_lg()
             .occlude()
             .child(
@@ -302,7 +310,7 @@ impl ColorPicker {
                     .p(px(2.0))
                     .flex()
                     .rounded(px(5.0))
-                    .bg(rgb(0xf1f5f9))
+                    .bg(rgb(c.bg_strong))
                     .child(self.tab_button("Palette", PickerTab::Palette, palette_active, cx))
                     .child(self.tab_button("HSLA", PickerTab::Hsla, !palette_active, cx)),
             )
@@ -320,6 +328,7 @@ impl ColorPicker {
         active: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let c = chrome(cx);
         div()
             .id(("picker-tab", tab as usize))
             .flex_1()
@@ -329,8 +338,8 @@ impl ColorPicker {
             .justify_center()
             .rounded(px(4.0))
             .text_size(px(11.0))
-            .text_color(rgb(0x334155))
-            .when(active, |style| style.bg(rgb(0xffffff)).shadow_sm())
+            .text_color(rgb(c.text))
+            .when(active, |style| style.bg(rgb(c.bg)).shadow_sm())
             .child(label)
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.active_tab = tab;

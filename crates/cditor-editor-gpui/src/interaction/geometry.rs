@@ -230,6 +230,7 @@ pub(crate) fn drop_target_for_document_y_from_rects(
 
 pub(crate) fn projected_block_rects_from_projection(
     projection: &EditorViewProjection,
+    theme: GuiTheme,
     document_layout: DocumentLayoutMetrics,
 ) -> Vec<ProjectedBlockRect> {
     let mut top = projection.before_window_height;
@@ -238,9 +239,8 @@ pub(crate) fn projected_block_rects_from_projection(
         .iter()
         .map(|block| {
             let height = block.layout.effective_height();
-            let chrome = BlockChromeStyle::from_snapshot(block, GuiTheme::light());
-            let text_geometry =
-                DocumentTextGeometry::for_block(block, GuiTheme::light(), document_layout);
+            let chrome = BlockChromeStyle::from_snapshot(block, theme);
+            let text_geometry = DocumentTextGeometry::for_block(block, theme, document_layout);
             let horizontal = chrome.horizontal_geometry();
             let block_geometry = DocumentBlockGeometry::for_block(block, document_layout);
             let rect = ProjectedBlockRect {

@@ -38,6 +38,13 @@ impl DocumentRuntime {
         if &record.kind == target {
             return false;
         }
+        // Tables own structured cell content and headings are single rich-text
+        // blocks. Converting between these shapes would silently flatten or
+        // discard structure, so the block transform menu must keep the pair
+        // mutually exclusive.
+        if matches!(record.kind, RichBlockKind::Table) || matches!(target, RichBlockKind::Table) {
+            return false;
+        }
         if !cditor_core::schema::builtin_block_registry()
             .descriptor_for_kind(target)
             .capabilities

@@ -64,6 +64,7 @@ pub fn try_compatible_text_layout_with_request(
 fn text_theme(theme: GuiTheme) -> cditor_text::TextTheme {
     cditor_text::TextTheme {
         link_text: theme.focused,
+        document_link_text: theme.document_link,
         inline_code_text: theme.inline_code_text,
         inline_code_background: theme.inline_code_background,
     }

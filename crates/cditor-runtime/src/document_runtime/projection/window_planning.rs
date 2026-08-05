@@ -3,6 +3,11 @@ use super::*;
 const MAX_RENDER_WINDOW_BLOCKS: usize = 320;
 const NORMAL_RENDER_OVERSCAN_VIEWPORTS: f64 = 1.0;
 const WARNING_RENDER_OVERSCAN_VIEWPORTS: f64 = 0.5;
+// The GPUI surface can place document chrome before the first block (a cover,
+// icon, and status notice currently need up to 332px). Keep enough leading
+// geometry resident even under critical pressure so the render window can be
+// positioned above the viewport instead of exposing that offset as blank UI.
+const MIN_RENDER_LEADING_GUARD_PX: f64 = 384.0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ViewportWindowRanges {
@@ -67,10 +72,11 @@ impl DocumentRuntime {
             WindowMemoryPressure::Critical => 0.0,
         };
         let overscan_px = viewport_height * overscan_viewports;
+        let leading_overscan_px = overscan_px.max(MIN_RENDER_LEADING_GUARD_PX);
         let overscan_start = self
             .layout
             .height_index
-            .block_at_offset((self.layout.scroll.global_scroll_top - overscan_px).max(0.0))
+            .block_at_offset((self.layout.scroll.global_scroll_top - leading_overscan_px).max(0.0))
             .map(|hit| hit.index)
             .unwrap_or(current)
             .min(current);

@@ -56,6 +56,7 @@ pub trait CditorViewContract: Sized + 'static {
         decorations: Vec<SearchDecoration>,
         cx: &mut Context<Self>,
     );
+    fn sdk_highlight_block(&mut self, block_id: cditor_core::ids::BlockId, cx: &mut Context<Self>);
     fn sdk_execute_command(
         &mut self,
         command: CditorCommand,

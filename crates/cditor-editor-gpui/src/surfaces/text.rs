@@ -207,8 +207,13 @@ impl CditorV2View {
         }
 
         record_synchronous_geometry_fallback();
-        let element =
-            cold_text_element_for_auxiliary_surface(session, surface_id, current, geometry)?;
+        let element = cold_text_element_for_auxiliary_surface(
+            session,
+            surface_id,
+            current,
+            geometry,
+            self.interaction.presented_theme,
+        )?;
         if element.input.spans.is_empty() {
             return Some(TextLayoutPosition::downstream(0));
         }
@@ -237,8 +242,13 @@ impl CditorV2View {
                 kind,
             ));
         }
-        let element =
-            cold_text_element_for_auxiliary_surface(session, surface_id, current, geometry)?;
+        let element = cold_text_element_for_auxiliary_surface(
+            session,
+            surface_id,
+            current,
+            geometry,
+            self.interaction.presented_theme,
+        )?;
         Some(element.selection_at_point(hit_point, kind))
     }
 
@@ -283,7 +293,13 @@ impl CditorV2View {
         placement: ProjectedTextPlacement,
         hit_point: TextHitPoint,
     ) -> Option<TextLayoutPosition> {
-        let element = cold_text_element_for_block(session, block_id, current, placement)?;
+        let element = cold_text_element_for_block(
+            session,
+            block_id,
+            current,
+            placement,
+            self.interaction.presented_theme,
+        )?;
         if element.input.spans.is_empty() {
             return Some(TextLayoutPosition::downstream(0));
         }
@@ -364,7 +380,13 @@ impl CditorV2View {
     ) -> Option<Bounds<Pixels>> {
         record_synchronous_geometry_fallback();
         let placement = self.projected_text_placement_for_block(block_id)?;
-        let element = cold_text_element_for_block(session, block_id, current, placement)?;
+        let element = cold_text_element_for_block(
+            session,
+            block_id,
+            current,
+            placement,
+            self.interaction.presented_theme,
+        )?;
         let local_rects = if range.is_empty() {
             vec![element.local_caret_rect_for_offset(range.start)]
         } else {
@@ -404,18 +426,22 @@ impl CditorV2View {
             return false;
         };
         let hit_point = projected_text_hit_point(placement, position);
-        let rects = if let Some(geometry) =
-            self.projected_text_geometry_for_block(current, block_id)
-        {
-            geometry.layout().snapshot.range_rects(range)
-        } else {
-            record_synchronous_geometry_fallback();
-            let Some(element) = cold_text_element_for_block(session, block_id, current, placement)
-            else {
-                return false;
+        let rects =
+            if let Some(geometry) = self.projected_text_geometry_for_block(current, block_id) {
+                geometry.layout().snapshot.range_rects(range)
+            } else {
+                record_synchronous_geometry_fallback();
+                let Some(element) = cold_text_element_for_block(
+                    session,
+                    block_id,
+                    current,
+                    placement,
+                    self.interaction.presented_theme,
+                ) else {
+                    return false;
+                };
+                element.local_rects_for_range(range)
             };
-            element.local_rects_for_range(range)
-        };
         rects.into_iter().any(|rect| {
             hit_point.x >= f64::from(rect.x)
                 && hit_point.x <= f64::from(rect.x + rect.width)
@@ -443,7 +469,7 @@ impl CditorV2View {
         let payload = session.loaded_payload_record(block_id).ok().flatten()?;
         let input = block_text_layout_input(&payload, current, placement)?;
         Some(
-            RichTextElement::new(input, crate::theme::GuiTheme::light())
+            RichTextElement::new(input, self.interaction.presented_theme)
                 .selection_at_point(hit_point, kind),
         )
     }
@@ -592,10 +618,11 @@ fn cold_text_element_for_block(
     block_id: BlockId,
     current: SurfaceVersionSnapshot,
     placement: ProjectedTextPlacement,
+    theme: crate::theme::GuiTheme,
 ) -> Option<RichTextElement> {
     let payload = session.loaded_payload_record(block_id).ok().flatten()?;
     let input = block_text_layout_input(&payload, current, placement)?;
-    Some(RichTextElement::new(input, crate::theme::GuiTheme::light()))
+    Some(RichTextElement::new(input, theme))
 }
 
 fn cold_text_element_for_auxiliary_surface(
@@ -603,6 +630,7 @@ fn cold_text_element_for_auxiliary_surface(
     surface_id: SurfaceId,
     current: SurfaceVersionSnapshot,
     geometry: TextSurfaceInteractionGeometry,
+    theme: crate::theme::GuiTheme,
 ) -> Option<RichTextElement> {
     let state = session.text_surface_state(surface_id).ok().flatten()?;
     if state.snapshot.identity.content_version != current.content_version {
@@ -616,10 +644,7 @@ fn cold_text_element_for_auxiliary_surface(
         1,
         1,
     );
-    Some(
-        RichTextElement::new(input, crate::theme::GuiTheme::light())
-            .with_typography(geometry.typography),
-    )
+    Some(RichTextElement::new(input, theme).with_typography(geometry.typography))
 }
 
 pub(super) fn projected_bounds_for_local_rects(

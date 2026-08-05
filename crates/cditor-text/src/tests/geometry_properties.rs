@@ -112,6 +112,7 @@ fn layout(text: &str, width: f32, scale: f32) -> TextLayoutSnapshot {
         &input,
         TextTheme {
             link_text: 0x0057ff,
+            document_link_text: 0x9065b0,
             inline_code_text: 0xd1242f,
             inline_code_background: 0xf2f2f2,
         },

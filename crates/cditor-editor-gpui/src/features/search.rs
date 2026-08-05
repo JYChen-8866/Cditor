@@ -8,9 +8,14 @@ use crate::text::TextSearchRange;
 #[derive(Debug, Default)]
 pub(crate) struct SearchDecorationState {
     by_block: HashMap<BlockId, Vec<SearchDecoration>>,
+    jump_highlight_block: Option<BlockId>,
 }
 
 impl SearchDecorationState {
+    pub(crate) fn set_jump_highlight(&mut self, block_id: Option<BlockId>) {
+        self.jump_highlight_block = block_id;
+    }
+
     pub(crate) fn replace(&mut self, decorations: Vec<SearchDecoration>) {
         self.by_block.clear();
         for decoration in decorations {
@@ -31,7 +36,8 @@ impl SearchDecorationState {
         text_len: usize,
         is_char_boundary: impl Fn(usize) -> bool,
     ) -> Vec<TextSearchRange> {
-        self.by_block
+        let mut ranges = self
+            .by_block
             .get(&block_id)
             .into_iter()
             .flatten()
@@ -46,7 +52,14 @@ impl SearchDecorationState {
                 byte_range: item.byte_range.clone(),
                 current: item.current,
             })
-            .collect()
+            .collect::<Vec<_>>();
+        if self.jump_highlight_block == Some(block_id) && text_len > 0 {
+            ranges.push(TextSearchRange {
+                byte_range: 0..text_len,
+                current: true,
+            });
+        }
+        ranges
     }
 }
 
@@ -82,5 +95,16 @@ mod tests {
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0].byte_range, 0..3);
         assert!(ranges[0].current);
+    }
+
+    #[test]
+    fn jump_highlight_covers_the_entire_target_block() {
+        let mut state = SearchDecorationState::default();
+        state.set_jump_highlight(Some(7));
+        let ranges = state.ranges_for(7, 1, 5, |offset| offset <= 5);
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].byte_range, 0..5);
+        assert!(ranges[0].current);
+        assert!(state.ranges_for(8, 1, 5, |offset| offset <= 5).is_empty());
     }
 }

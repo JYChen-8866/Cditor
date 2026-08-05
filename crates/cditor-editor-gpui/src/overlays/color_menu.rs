@@ -300,6 +300,7 @@ pub fn render_color_menu(
                             view.clone(),
                             state.has_text_selection,
                             state.block_id,
+                            state.text_selection,
                             true,
                         ))
                         .child(section_divider(theme))
@@ -312,6 +313,7 @@ pub fn render_color_menu(
                     view.clone(),
                     state.has_text_selection,
                     state.block_id,
+                    state.text_selection,
                     false,
                 ))
                 .children(PaletteColor::ALL.into_iter().map(|color| {
@@ -323,6 +325,7 @@ pub fn render_color_menu(
                         view.clone(),
                         state.has_text_selection,
                         state.block_id,
+                        state.text_selection,
                         false,
                     )
                 }))
@@ -335,6 +338,7 @@ pub fn render_color_menu(
                     view.clone(),
                     state.has_text_selection,
                     state.block_id,
+                    state.text_selection,
                     false,
                 ))
                 .children(PaletteColor::ALL.into_iter().map(|color| {
@@ -346,6 +350,7 @@ pub fn render_color_menu(
                         view.clone(),
                         state.has_text_selection,
                         state.block_id,
+                        state.text_selection,
                         false,
                     )
                 })),
@@ -405,6 +410,7 @@ fn render_color_action_row(
     view: Entity<CditorV2View>,
     has_text_selection: bool,
     target_block_id: Option<cditor_core::ids::BlockId>,
+    captured_selection: Option<(cditor_core::ids::BlockId, usize, usize)>,
     last_used: bool,
 ) -> AnyElement {
     let id = color_action_index(action) + usize::from(last_used) * 32;
@@ -439,6 +445,7 @@ fn render_color_action_row(
                     action,
                     has_text_selection,
                     target_block_id,
+                    captured_selection,
                     cx,
                 );
             });

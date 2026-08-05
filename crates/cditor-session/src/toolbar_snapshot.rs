@@ -72,19 +72,23 @@ pub fn project_toolbar_context(
 ) -> ToolbarContextSnapshot {
     let focused_block_id = runtime.focused_block_id();
     let focused_payload = focused_block_id.and_then(|id| runtime.block_payload_record(id));
-    let cross_block_fragments = runtime
-        .document_text_selection_fragments()
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|fragment| {
-            runtime
-                .block_content_version(fragment.block_id)
-                .map(|content_version| VersionedSelectionFragment {
-                    fragment,
-                    content_version,
-                })
-        })
-        .collect();
+    let cross_block_fragments = if runtime.has_cross_block_text_selection() {
+        runtime
+            .document_text_selection_fragments()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|fragment| {
+                runtime
+                    .block_content_version(fragment.block_id)
+                    .map(|content_version| VersionedSelectionFragment {
+                        fragment,
+                        content_version,
+                    })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     let gutter = request.gutter_block_id.map(|block_id| {
         let convertible_kinds = request
             .transform_targets

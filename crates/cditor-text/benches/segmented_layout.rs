@@ -249,6 +249,7 @@ fn build_slice(text: &str) -> TextLayoutSnapshot {
         &input,
         TextTheme {
             link_text: 0x2383e2,
+            document_link_text: 0x9065b0,
             inline_code_text: 0xeb5757,
             inline_code_background: 0xf1f1ef,
         },

@@ -8,6 +8,7 @@ use gpui::{
 };
 
 use crate::image_loader::RasterImageElement;
+use crate::theme::active_theme;
 
 const PREVIEW_CLOSE_DURATION: Duration = Duration::from_millis(150);
 const PREVIEW_MAX_VIEWPORT_RATIO: f32 = 0.88;
@@ -86,6 +87,7 @@ pub fn close_active_preview(cx: &mut App) {
 }
 
 pub fn render_image_preview_overlay(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+    let theme = active_theme(cx);
     let (image, closing, close_on_click_outside, close_on_escape) =
         cx.try_global::<ActiveImagePreview>().and_then(|preview| {
             preview.image.clone().map(|image| {
@@ -132,7 +134,7 @@ pub fn render_image_preview_overlay(window: &mut Window, cx: &mut App) -> Option
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(gpui::black().opacity(PREVIEW_OVERLAY_OPACITY))
+                .bg(rgb(theme.surface).opacity(PREVIEW_OVERLAY_OPACITY))
                 .when(close_on_click_outside, |s| {
                     s.on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
                         close_active_preview(cx);
@@ -167,11 +169,11 @@ pub fn render_image_preview_overlay(window: &mut Window, cx: &mut App) -> Option
                         .flex()
                         .items_center()
                         .justify_center()
-                        .bg(rgb(0x252525))
-                        .text_color(rgb(0xffffff))
+                        .bg(rgb(theme.panel))
+                        .text_color(rgb(theme.text))
                         .text_size(px(14.0))
                         .cursor_pointer()
-                        .hover(|style| style.bg(rgb(0x454545)))
+                        .hover(|style| style.bg(rgb(theme.hover_surface)))
                         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
                             close_active_preview(cx);
                             cx.stop_propagation();

@@ -31,6 +31,7 @@ use crate::persistence::EditorSaveStatus;
 use crate::scroll::ScrollAccumulator;
 use crate::surfaces::table_cell::TableCellLayoutKey;
 use crate::text::{CaretBlink, TextPlatformLayoutIdentity};
+use crate::theme::GuiTheme;
 
 use super::{CditorV2View, GuiPlatformInputTarget, SelectionToolbarDelay, ai::default_ai_provider};
 use crate::app::{
@@ -85,6 +86,7 @@ impl FeatureUiState {
 
     pub(crate) fn reset_session(&mut self) {
         self.search_decorations.replace(Vec::new());
+        self.search_decorations.set_jump_highlight(None);
         #[cfg(feature = "whiteboard")]
         {
             self.whiteboard_editor = None;
@@ -281,6 +283,8 @@ pub(crate) struct PlatformCharacterCoordinatesIdentity {
 }
 
 pub(crate) struct InteractionUiState {
+    /// Theme used to build the projection currently presented on screen.
+    pub(crate) presented_theme: GuiTheme,
     pub(crate) last_input_at: Option<web_time::Instant>,
     pub(crate) last_wheel_delta_y: f64,
     pub(crate) scroll_accumulator: ScrollAccumulator,
@@ -316,6 +320,7 @@ pub(crate) struct InteractionUiState {
 impl Default for InteractionUiState {
     fn default() -> Self {
         Self {
+            presented_theme: GuiTheme::light(),
             last_input_at: None,
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),

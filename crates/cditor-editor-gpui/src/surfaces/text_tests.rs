@@ -245,7 +245,14 @@ fn cold_resident_block_first_body_selection_hits_and_activates_without_gutter(
                 .surface_version(SurfaceId::Block(1))
                 .unwrap()
                 .unwrap();
-            let element = cold_text_element_for_block(session, 1, current, placement).unwrap();
+            let element = cold_text_element_for_block(
+                session,
+                1,
+                current,
+                placement,
+                crate::theme::GuiTheme::light(),
+            )
+            .unwrap();
             let caret = element.local_caret_rect_for_offset(target_offset);
             let click = point(
                 px((placement.window_origin_x_px + f64::from(caret.x)) as f32),
@@ -320,7 +327,14 @@ fn cold_block_hit_and_multiclick_respect_center_and_end_alignment(cx: &mut TestA
                 .unwrap()
                 .unwrap();
             let placement = view.projected_text_placement_for_block(1).unwrap();
-            let element = cold_text_element_for_block(session, 1, current, placement).unwrap();
+            let element = cold_text_element_for_block(
+                session,
+                1,
+                current,
+                placement,
+                crate::theme::GuiTheme::light(),
+            )
+            .unwrap();
             let target = TextLayoutPosition::downstream(2);
             let caret = element.local_caret_rect_for_offset(target.offset);
             assert!(
@@ -388,7 +402,14 @@ fn resize_rejects_old_wrap_width_before_block_hit(cx: &mut TestAppContext) {
         let target_offset = text.find("five").unwrap();
         let click = {
             let session = view.ready_session().unwrap();
-            let element = cold_text_element_for_block(session, 1, current, placement).unwrap();
+            let element = cold_text_element_for_block(
+                session,
+                1,
+                current,
+                placement,
+                crate::theme::GuiTheme::light(),
+            )
+            .unwrap();
             let caret = element.local_caret_rect_for_offset(target_offset);
             point(
                 px((placement.window_origin_x_px + f64::from(caret.x)) as f32),
@@ -463,7 +484,14 @@ fn code_block_hit_ignores_stale_internal_scroll_handle(cx: &mut TestAppContext) 
             .unwrap();
         let placement = view.projected_text_placement_for_block(1).unwrap();
         assert_eq!(placement.window_origin_y_px, 168.0);
-        let element = cold_text_element_for_block(session, 1, current, placement).unwrap();
+        let element = cold_text_element_for_block(
+            session,
+            1,
+            current,
+            placement,
+            crate::theme::GuiTheme::light(),
+        )
+        .unwrap();
         let caret = element.local_caret_rect_for_offset(target_offset);
         let click = point(
             px((placement.window_origin_x_px + f64::from(caret.x)) as f32),
@@ -640,8 +668,14 @@ fn auxiliary_caption_hit_uses_explicit_live_placement_for_cold_and_warm_layouts(
         );
         let session = view.ready_session().unwrap();
         let current = session.surface_version(surface_id).unwrap().unwrap();
-        let cold = cold_text_element_for_auxiliary_surface(session, surface_id, current, geometry)
-            .unwrap();
+        let cold = cold_text_element_for_auxiliary_surface(
+            session,
+            surface_id,
+            current,
+            geometry,
+            crate::theme::GuiTheme::light(),
+        )
+        .unwrap();
         let cold_caret = cold.local_caret_rect_for_offset(target_offset);
         let cold_click = point(
             px((geometry.placement.window_origin_x_px + f64::from(cold_caret.x)) as f32),

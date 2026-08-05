@@ -210,6 +210,17 @@ impl<V: CditorViewContract> CditorHandle<V> {
         self.set_search_decorations(Vec::new(), cx)
     }
 
+    pub fn highlight_block(
+        &self,
+        block_id: cditor_core::ids::BlockId,
+        cx: &mut App,
+    ) -> Result<(), CditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_highlight_block(block_id, cx))
+            .map_err(|_| CditorError::ComponentDropped)?;
+        Ok(())
+    }
+
     pub fn execute(
         &self,
         command: CditorCommand,

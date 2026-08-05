@@ -453,7 +453,7 @@ fn scrollbar_foreground_range_guards_the_complete_render_window() {
 }
 
 #[test]
-fn critical_memory_pressure_removes_render_overscan_but_keeps_visible_core() {
+fn critical_memory_pressure_keeps_the_leading_geometry_guard() {
     let mut runtime = runtime_with_paragraph_blocks(10_000);
     let target_index = 2_000;
     runtime.set_window_memory_pressure(WindowMemoryPressure::Critical);
@@ -472,11 +472,16 @@ fn critical_memory_pressure_removes_render_overscan_but_keeps_visible_core() {
 
     let projection = runtime.projection_for_window_planned();
 
+    assert_eq!(projection.render_window.block_range, 1_988..2_023);
     assert_eq!(
-        projection.render_window.block_range,
-        projection.payload_visible_block_range
+        projection.before_window_height,
+        runtime.layout.height_index.offset_of_block(1_988).unwrap()
     );
-    assert_eq!(projection.render_window.block_range, 2_000..2_023);
+    assert!(
+        projection.before_window_height + 384.0
+            <= projection.scroll.global_scroll_top + f64::EPSILON,
+        "the critical-pressure window must still cover document chrome above the viewport"
+    );
 }
 
 #[test]

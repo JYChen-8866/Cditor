@@ -134,6 +134,10 @@ impl CditorViewContract for CditorV2View {
         CditorV2View::sdk_set_search_decorations(self, decorations, cx);
     }
 
+    fn sdk_highlight_block(&mut self, block_id: cditor_core::ids::BlockId, cx: &mut Context<Self>) {
+        CditorV2View::sdk_highlight_block(self, block_id, cx);
+    }
+
     fn sdk_execute_command(
         &mut self,
         command: CditorCommand,
@@ -166,6 +170,17 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         self.features.search_decorations.replace(decorations);
+        cx.notify();
+    }
+
+    pub fn sdk_highlight_block(
+        &mut self,
+        block_id: cditor_core::ids::BlockId,
+        cx: &mut Context<Self>,
+    ) {
+        self.features
+            .search_decorations
+            .set_jump_highlight(Some(block_id));
         cx.notify();
     }
 

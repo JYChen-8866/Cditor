@@ -174,7 +174,7 @@ impl DrafftBoardView {
             .flex()
             .items_center()
             .justify_center()
-            .bg(rgb(0x000000).opacity(0.28))
+            .bg(rgb(c.text).opacity(0.28))
             .occlude()
             .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
@@ -188,6 +188,7 @@ impl DrafftBoardView {
                     .border_1()
                     .border_color(rgb(c.border))
                     .bg(rgb(c.bg))
+                    .text_color(rgb(c.text))
                     .shadow_lg()
                     .child(div().text_size(px(15.0)).child("Edit equation"))
                     .child(

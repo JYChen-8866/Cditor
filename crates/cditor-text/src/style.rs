@@ -229,6 +229,7 @@ fn inline_mark_visual_style(
     let mut strike = false;
     let mut underline = false;
     let mut link = false;
+    let mut document_link = false;
 
     for mark in marks {
         match mark {
@@ -237,7 +238,11 @@ fn inline_mark_visual_style(
             InlineMark::Underline => underline = true,
             InlineMark::Strike => strike = true,
             InlineMark::Code => code = true,
-            InlineMark::Link { .. } | InlineMark::DocumentLink { .. } => link = true,
+            InlineMark::Link { .. } => link = true,
+            InlineMark::DocumentLink { .. } => {
+                link = true;
+                document_link = true;
+            }
             InlineMark::Color(color) => {
                 explicit_text_color = parse_hex_color(color).or(explicit_text_color);
             }
@@ -248,7 +253,9 @@ fn inline_mark_visual_style(
     }
 
     let text_color = explicit_text_color.unwrap_or({
-        if link {
+        if document_link {
+            theme.document_link_text
+        } else if link {
             theme.link_text
         } else if code {
             theme.inline_code_text

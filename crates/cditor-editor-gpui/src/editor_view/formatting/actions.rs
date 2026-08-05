@@ -28,6 +28,7 @@ impl CditorV2View {
         &mut self,
         action: InlineFormatAction,
         has_text_selection: bool,
+        captured_selection: Option<(BlockId, usize, usize)>,
         cx: &mut gpui::Context<Self>,
     ) -> bool {
         if self.status.readonly {
@@ -66,6 +67,26 @@ impl CditorV2View {
                 })
                 .unwrap_or(false);
             if !prepared {
+                return false;
+            }
+        }
+        if has_text_selection && let Some((block_id, anchor, focus)) = captured_selection {
+            let restored = self.ready_session().and_then(|session| {
+                session
+                    .dispatch_with_snapshot(CommandEnvelope::new(
+                        CditorCommand::SetDocumentSelection {
+                            selection: cditor_core::edit::DocumentSelection {
+                                anchor: cditor_core::edit::TextPosition::downstream(
+                                    block_id, anchor,
+                                ),
+                                focus: cditor_core::edit::TextPosition::downstream(block_id, focus),
+                            },
+                        },
+                        CommandSource::Toolbar,
+                    ))
+                    .ok()
+            });
+            if restored.is_none() {
                 return false;
             }
         }

@@ -76,6 +76,9 @@ pub struct FloatingToolbarState {
     pub x: f32,
     pub y: f32,
     pub block_id: Option<BlockId>,
+    /// Selection captured when the toolbar was projected. Toolbar clicks can
+    /// move focus away from the editor before the command is dispatched.
+    pub text_selection: Option<(BlockId, usize, usize)>,
     pub has_text_selection: bool,
     pub show_inline_format: bool,
     pub show_color: bool,
@@ -915,7 +918,12 @@ fn render_format_button(
                 .hover(|style| style.bg(rgb(theme.hover_surface)))
                 .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
                     view.update(cx, |view, cx| {
-                        view.apply_inline_format_from_toolbar(action, state.has_text_selection, cx);
+                        view.apply_inline_format_from_toolbar(
+                            action,
+                            state.has_text_selection,
+                            state.text_selection,
+                            cx,
+                        );
                     });
                     cx.stop_propagation();
                 })

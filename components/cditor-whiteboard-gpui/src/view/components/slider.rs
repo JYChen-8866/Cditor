@@ -4,6 +4,8 @@ use gpui::{
     Render, RenderOnce, StatefulInteractiveElement, Styled, Window, canvas, div, px, relative, rgb,
 };
 
+use crate::theme::chrome;
+
 #[derive(Clone)]
 struct DragSlider(EntityId);
 
@@ -129,6 +131,7 @@ impl RenderOnce for Slider {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let entity_id = self.state.entity_id();
         let percentage = self.state.read(cx).percentage;
+        let c = chrome(cx);
 
         div()
             .id(("slider", entity_id))
@@ -192,8 +195,8 @@ impl RenderOnce for Slider {
                             .h(px(6.0))
                             .w_full()
                             .rounded(px(999.0))
-                            .bg(rgb(0x3b82f6).opacity(0.2))
-                            .active(|style| style.bg(rgb(0x3b82f6).opacity(0.4)))
+                            .bg(rgb(c.accent).opacity(0.2))
+                            .active(move |style| style.bg(rgb(c.accent).opacity(0.4)))
                             .child(
                                 div()
                                     .absolute()
@@ -202,7 +205,7 @@ impl RenderOnce for Slider {
                                     .bottom_0()
                                     .right(relative(1.0 - percentage))
                                     .rounded(px(999.0))
-                                    .bg(rgb(0x3b82f6)),
+                                    .bg(rgb(c.accent)),
                             )
                             .child(
                                 div()
@@ -213,9 +216,9 @@ impl RenderOnce for Slider {
                                     .size(px(16.0))
                                     .p(px(1.0))
                                     .rounded(px(999.0))
-                                    .bg(rgb(0x3b82f6).opacity(0.5))
+                                    .bg(rgb(c.accent).opacity(0.5))
                                     .shadow_md()
-                                    .child(div().size_full().rounded(px(999.0)).bg(rgb(0xffffff))),
+                                    .child(div().size_full().rounded(px(999.0)).bg(rgb(c.bg))),
                             )
                             .child({
                                 let state = self.state.clone();

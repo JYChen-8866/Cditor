@@ -44,6 +44,7 @@ fn toolbar_state() -> FloatingToolbarState {
         x: 0.0,
         y: 0.0,
         block_id: Some(1),
+        text_selection: None,
         has_text_selection: true,
         show_inline_format: true,
         show_color: true,

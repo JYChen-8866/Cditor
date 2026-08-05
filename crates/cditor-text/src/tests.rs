@@ -16,6 +16,7 @@ const BASE_TEXT_COLOR: u32 = 0x37352f;
 fn theme() -> TextTheme {
     TextTheme {
         link_text: 0x2383e2,
+        document_link_text: 0x9065b0,
         inline_code_text: 0xeb5757,
         inline_code_background: 0xf1f1ef,
     }
@@ -92,6 +93,39 @@ fn style_runs_cover_text_and_map_all_current_inline_marks() {
     assert_eq!(runs[1].style.brush.background_padding_y, 1);
     assert_eq!(runs[1].style.brush.background_radius, 3);
     assert!(runs[1].style.font_features.contains("'liga' 0"));
+}
+
+#[test]
+fn external_and_document_links_use_distinct_theme_colors() {
+    let theme = theme();
+    let spans = vec![
+        InlineSpan {
+            text: "external".to_owned(),
+            marks: vec![InlineMark::Link {
+                href: "https://example.com".to_owned(),
+            }],
+        },
+        InlineSpan {
+            text: "block".to_owned(),
+            marks: vec![InlineMark::DocumentLink {
+                href: "cditor://document/1/block/2".to_owned(),
+            }],
+        },
+    ];
+    let runs = text_style_runs(
+        &spans,
+        &RichBlockKind::Paragraph,
+        theme,
+        BASE_TEXT_COLOR,
+        &TextStyleConfig::default(),
+        "Cditor Mono",
+    );
+    assert_eq!(runs[0].style.brush.foreground, theme.link_text);
+    assert_eq!(runs[1].style.brush.foreground, theme.document_link_text);
+    assert_ne!(
+        runs[0].style.brush.foreground,
+        runs[1].style.brush.foreground
+    );
 }
 
 #[test]
