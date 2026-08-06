@@ -1,6 +1,5 @@
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div,
-    px,
+    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div, px,
 };
 
 use crate::app::worker_admission::EditorWorkerAdmission;

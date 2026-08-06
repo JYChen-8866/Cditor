@@ -3226,11 +3226,11 @@ fn can_close_emphasis(tokens: &[CharToken], index: usize) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::html::HtmlCssColor;
     use super::{
         InlineFragment, InlineInsertionAttributes, InlineLinkHit, InlineMathDelimiter,
         InlineScript, InlineStyle, InlineTextTree, LinkReferenceDefinitions, StyleFlag,
     };
-    use super::super::html::HtmlCssColor;
 
     #[test]
     fn parses_supported_styles_and_serializes_canonically() {

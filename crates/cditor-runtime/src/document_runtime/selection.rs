@@ -255,7 +255,8 @@ impl DocumentRuntime {
             // SiYuan select-all: an empty focused block has no text to
             // select, so the first invocation already switches to a block
             // selection of the whole document.
-            self.selection.selected_block_ids = self.document.index.block_ids.iter().copied().collect();
+            self.selection.selected_block_ids =
+                self.document.index.block_ids.iter().copied().collect();
             self.editing.session = None;
             return true;
         }
@@ -630,9 +631,9 @@ impl DocumentRuntime {
                 })
             })
             .collect::<Option<Vec<_>>>()?;
-        let has_non_rich = blocks.iter().any(|block| {
-            !matches!(block.payload, BlockPayload::RichText { .. })
-        });
+        let has_non_rich = blocks
+            .iter()
+            .any(|block| !matches!(block.payload, BlockPayload::RichText { .. }));
         (has_non_rich && !blocks.is_empty()).then_some(blocks)
     }
 

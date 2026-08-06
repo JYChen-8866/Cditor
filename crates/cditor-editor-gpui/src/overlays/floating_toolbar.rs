@@ -1,7 +1,6 @@
 use cditor_component::{
     Input, InputStyle, InteractiveScrollbar, InteractiveScrollbarStyle,
-    POPUP_MENU_ITEM_FONT_SIZE_PX, PopupMenu, PopupMenuItem,
-    PopupMenuStyle, ScrollbarAxis, SvgIcon,
+    POPUP_MENU_ITEM_FONT_SIZE_PX, PopupMenu, PopupMenuItem, PopupMenuStyle, ScrollbarAxis, SvgIcon,
 };
 use gpui::prelude::FluentBuilder;
 use gpui::{

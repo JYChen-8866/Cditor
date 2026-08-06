@@ -301,9 +301,11 @@ fn delete_backward_after_select_all_block_selection_empties_the_document() {
         "DeleteForward must stay enabled while blocks are selected"
     );
 
-    assert!(runtime
-        .delete_backward()
-        .unwrap_or_else(|error| panic!("{error}")));
+    assert!(
+        runtime
+            .delete_backward()
+            .unwrap_or_else(|error| panic!("{error}"))
+    );
     assert_eq!(runtime.document_block_count(), 1);
     assert!(!runtime.has_selected_blocks());
     assert_eq!(runtime.focused_text(), Some(""));

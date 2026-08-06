@@ -258,7 +258,7 @@ fn inline_mark_visual_style(
         if document_link {
             theme.document_link_text
         } else if link {
-            theme.link_text
+            theme.inline_code_text
         } else if code {
             theme.inline_code_text
         } else {

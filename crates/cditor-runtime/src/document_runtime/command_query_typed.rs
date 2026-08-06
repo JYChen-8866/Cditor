@@ -91,8 +91,9 @@ impl DocumentRuntime {
                     )
                 })
             }
-            EditorCommand::InsertParagraphAfterFocused
-            | EditorCommand::MoveCaret { .. } => self.focused_block_id().is_some(),
+            EditorCommand::InsertParagraphAfterFocused | EditorCommand::MoveCaret { .. } => {
+                self.focused_block_id().is_some()
+            }
             // Delete must stay enabled while a block selection is active: the
             // progressive Select All clears the editing session when it enters
             // the whole-document block selection, so focused_block_id() alone

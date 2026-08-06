@@ -55,6 +55,20 @@ pub fn parse_markdown_document(
     commonmark::parse_document(&mut parser, markdown)
 }
 
+/// Parse clipboard Markdown with paste semantics: every physical line becomes
+/// its own block and `---` is a divider, matching the visual result users
+/// expect when pasting instead of CommonMark paragraph merging.
+#[must_use]
+pub fn parse_markdown_paste_document(
+    markdown: &str,
+    options: MarkdownImportOptions,
+) -> ParsedMarkdownDocument {
+    let markdown = unwrap_outer_markdown_fence(markdown);
+    MARKDOWN_PARSE_STATS.record_full_parse(markdown.len());
+    let mut parser = MarkdownParser::new(options);
+    parser.parse_document(markdown)
+}
+
 /// Parse a standalone GFM table (header row + separator row + optional data
 /// rows) into a [`TablePayload`]. Returns `None` when the text is not a table,
 /// so plain-text insertion keeps its existing behavior.

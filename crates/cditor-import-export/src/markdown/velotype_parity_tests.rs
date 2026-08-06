@@ -16,10 +16,13 @@ fn intraword_underscores_stay_literal_like_velotype() {
         assert_eq!(spans[0].text, text);
         assert!(spans[0].marks.is_empty());
     }
-    let spans =
-        import_markdown_inline_incremental("README_a.md 与 foo_bar 保持原样").expect("inline parse");
+    let spans = import_markdown_inline_incremental("README_a.md 与 foo_bar 保持原样")
+        .expect("inline parse");
     assert_eq!(
-        spans.iter().map(|span| span.text.as_str()).collect::<Vec<_>>(),
+        spans
+            .iter()
+            .map(|span| span.text.as_str())
+            .collect::<Vec<_>>(),
         vec!["README", "a.md 与 foo", "bar 保持原样"]
     );
     assert_eq!(spans[1].marks, vec![InlineMark::Italic]);
@@ -28,10 +31,12 @@ fn intraword_underscores_stay_literal_like_velotype() {
 
 #[test]
 fn nested_emphasis_and_adjacent_marks_match_velotype() {
-    let spans = import_markdown_inline_incremental("**bold *italic* bold**")
-        .expect("inline parse");
+    let spans = import_markdown_inline_incremental("**bold *italic* bold**").expect("inline parse");
     assert_eq!(
-        spans.iter().map(|span| span.text.as_str()).collect::<Vec<_>>(),
+        spans
+            .iter()
+            .map(|span| span.text.as_str())
+            .collect::<Vec<_>>(),
         vec!["bold ", "italic", " bold"]
     );
     assert_eq!(spans[0].marks, vec![InlineMark::Bold]);
@@ -42,14 +47,15 @@ fn nested_emphasis_and_adjacent_marks_match_velotype() {
 
 #[test]
 fn inline_html_style_maps_to_color_marks() {
-    let spans = import_markdown_inline_incremental(
-        "留意<span style='color:blue;'>磁盘</span>问题",
-    )
-    .expect("inline parse");
+    let spans = import_markdown_inline_incremental("留意<span style='color:blue;'>磁盘</span>问题")
+        .expect("inline parse");
     assert_eq!(spans.len(), 3);
     assert_eq!(spans[0].text, "留意");
     assert_eq!(spans[1].text, "磁盘");
-    assert_eq!(spans[1].marks, vec![InlineMark::Color("#0000ff".to_owned())]);
+    assert_eq!(
+        spans[1].marks,
+        vec![InlineMark::Color("#0000ff".to_owned())]
+    );
     assert_eq!(spans[2].text, "问题");
 }
 

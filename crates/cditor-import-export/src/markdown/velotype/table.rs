@@ -319,12 +319,12 @@ pub fn serialize_table_markdown_lines(table: &TableData) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::inline::InlineTextTree;
     use super::{
         TableColumnAlignment, TableData, collect_pipeless_table_region,
         collect_root_table_candidate_region, is_root_table_candidate_line, parse_root_table_region,
         serialize_table_markdown_lines,
     };
-    use super::super::inline::InlineTextTree;
 
     #[test]
     fn parses_valid_root_table_region() {
@@ -471,5 +471,4 @@ mod tests {
         assert!(is_root_table_candidate_line(&lines[0]));
         assert_eq!(collect_root_table_candidate_region(&lines, 0), 3);
     }
-
 }

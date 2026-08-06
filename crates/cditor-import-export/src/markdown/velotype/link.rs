@@ -2,11 +2,6 @@
 
 use std::collections::HashMap;
 
-
-
-
-
-
 /// Active fenced code block while scanning for link reference definitions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FenceInfo {

@@ -4,21 +4,27 @@
 //! velotype table parser so GFM tables (including pipeless tables, escaped
 //! pipes, alignment colons and short/long body rows) behave identically.
 
-use super::*;
 use super::velotype::table as velotype_table;
 use super::velotype_bridge::table_data_to_payload;
+use super::*;
 
 pub(super) fn is_table_candidate_line(line: &str) -> bool {
     velotype_table::is_table_candidate_line(line)
 }
 
 pub(super) fn collect_table_candidate_region(lines: &[&str], start: usize) -> usize {
-    let owned = lines.iter().map(|line| (*line).to_owned()).collect::<Vec<_>>();
+    let owned = lines
+        .iter()
+        .map(|line| (*line).to_owned())
+        .collect::<Vec<_>>();
     velotype_table::collect_table_candidate_region(&owned, start)
 }
 
 pub(super) fn parse_table_region(lines: &[&str]) -> Option<TablePayload> {
-    let owned = lines.iter().map(|line| (*line).to_owned()).collect::<Vec<_>>();
+    let owned = lines
+        .iter()
+        .map(|line| (*line).to_owned())
+        .collect::<Vec<_>>();
     let table = velotype_table::parse_table_region(&owned)?;
     Some(table_data_to_payload(&table))
 }

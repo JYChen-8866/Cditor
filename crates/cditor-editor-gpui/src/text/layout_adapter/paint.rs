@@ -1,18 +1,18 @@
 use std::{
     borrow::Cow,
-    collections::{hash_map::DefaultHasher, HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher},
     hash::{Hash, Hasher},
     sync::{Mutex, OnceLock},
 };
 
 use cditor_text::{TextLayoutSnapshot, TextPaintFont, TextPaintFontStyle, TextPaintRun};
 use gpui::{
-    fill, font, point, px, rgb, size, App, Bounds, FontId, FontStyle as GpuiFontStyle,
-    FontWeight as GpuiFontWeight, GlyphId, Hsla, PaintQuad, Pixels, Point, StrikethroughStyle,
-    TextRun, UnderlineStyle, Window,
+    App, Bounds, FontId, FontStyle as GpuiFontStyle, FontWeight as GpuiFontWeight, GlyphId, Hsla,
+    PaintQuad, Pixels, Point, StrikethroughStyle, TextRun, UnderlineStyle, Window, fill, font,
+    point, px, rgb, size,
 };
 
-use super::exact_raster::{exact_raster_cache_stats, paint_exact_glyph, ExactRasterErrorKind};
+use super::exact_raster::{ExactRasterErrorKind, exact_raster_cache_stats, paint_exact_glyph};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct TextPaintReport {

@@ -582,6 +582,30 @@ fn external_markdown_at_document_selection_creates_markdown_blocks() {
 }
 
 #[test]
+fn paste_markdown_with_separator_creates_multiple_blocks() {
+    let mut runtime = paragraph_runtime("");
+
+    assert!(dispatch_clipboard_data(
+        &mut runtime,
+        "# Success\nline1\nline2\nline3\nline4\n---",
+        None
+    ));
+
+    let blocks = runtime.projection_for_window().blocks;
+    assert_eq!(blocks.len(), 6);
+    assert!(matches!(
+        blocks[0].kind,
+        RichBlockKind::Heading { level: 1 }
+    ));
+    assert!(matches!(blocks[5].kind, RichBlockKind::Separator));
+    assert!(
+        blocks[1..5]
+            .iter()
+            .all(|block| matches!(block.kind, RichBlockKind::Paragraph))
+    );
+}
+
+#[test]
 fn paste_text_with_rich_metadata_stays_inside_active_text_block() {
     let markdown = "- 第一周\n### 阶段一\n- 阅读文档";
     let selection = ClipboardSelection::Inline {

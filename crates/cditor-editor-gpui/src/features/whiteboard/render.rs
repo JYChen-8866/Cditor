@@ -1,6 +1,6 @@
 use cditor_component::SvgIcon;
 use gpui::{
-    div, px, rgb, AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled,
+    AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
@@ -8,8 +8,8 @@ use crate::skeleton::{SkeletonItem, SkeletonVariant};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 
-use super::cache::WhiteboardThumbnailCache;
 use super::WHITEBOARD_THUMBNAIL_HEIGHT_PX;
+use super::cache::WhiteboardThumbnailCache;
 
 const WHITEBOARD_FRAME_RADIUS_PX: f32 = 6.0;
 

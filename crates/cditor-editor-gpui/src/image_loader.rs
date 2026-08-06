@@ -84,7 +84,7 @@ enum ImageState {
 // RenderImage retains CPU pixels and backend texture state. Bound both the
 // decoded-byte working set and the number of graphics resources process-wide.
 const IMAGE_CACHE_MAX_ENTRIES: usize = 96;
-const IMAGE_CACHE_MAX_DECODED_BYTES: usize = 64 * 1024 * 1024;
+const IMAGE_CACHE_MAX_DECODED_BYTES: usize = 24 * 1024 * 1024;
 
 struct CachedImage {
     state: ImageState,

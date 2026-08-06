@@ -9,7 +9,10 @@ use cditor_core::rich_text::{
     TableTrackSize,
 };
 
-use crate::markdown::{MarkdownImportOptions, looks_like_markdown_paste, parse_markdown_document};
+use crate::markdown::{
+    MarkdownImportOptions, looks_like_markdown_paste, parse_markdown_document,
+    parse_markdown_paste_document,
+};
 
 pub fn plan_clipboard_import(
     system_text: &str,
@@ -45,8 +48,8 @@ pub fn plan_clipboard_import(
         }
     });
     let delimited_table = parse_delimited_table(&text);
-    let markdown = looks_like_markdown_paste(&text).then(|| {
-        let parsed = parse_markdown_document(
+    let markdown = (text.contains('\n') || looks_like_markdown_paste(&text)).then(|| {
+        let parsed = parse_markdown_paste_document(
             &text,
             MarkdownImportOptions {
                 document_id: target.document_id,

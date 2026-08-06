@@ -263,13 +263,26 @@ fn build_text_plan(
     first.depth = depth;
     first.payload = prepend_spans_to_payload(prefix, first.payload);
     let (focus_block_id, focus_offset) = if let Some(last) = imported.blocks.last_mut() {
-        let offset = last.payload.plain_text().len();
-        last.payload = append_spans_to_payload(last.payload.clone(), suffix);
-        (last.id, offset)
+        if last.kind.supports_rich_text_title() {
+            let offset = last.payload.plain_text().len();
+            last.payload = append_spans_to_payload(last.payload.clone(), suffix);
+            (last.id, offset)
+        } else if let Some(editable) = imported
+            .blocks
+            .iter_mut()
+            .rev()
+            .find(|block| block.kind.supports_rich_text_title())
+        {
+            let offset = editable.payload.plain_text().len();
+            editable.payload = append_spans_to_payload(editable.payload.clone(), suffix);
+            (editable.id, offset)
+        } else {
+            first.payload = append_spans_to_payload(first.payload, suffix);
+            (current_block_id, first.payload.plain_text().len())
+        }
     } else {
-        let offset = first.payload.plain_text().len();
         first.payload = append_spans_to_payload(first.payload, suffix);
-        (current_block_id, offset)
+        (current_block_id, first.payload.plain_text().len())
     };
     let (inserted_records, inserted_payloads) = block_operation_records(imported.blocks, insert_at);
     Ok(MarkdownApplyPlan {

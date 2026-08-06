@@ -6,8 +6,8 @@ use cditor_core::ids::BlockId;
 use cditor_core::rich_text::RichBlockKind;
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    deferred, div, px, rgb, AnyElement, Entity, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Styled,
+    AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled,
+    deferred, div, px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
@@ -639,11 +639,7 @@ pub fn slash_scroll_delta_rows(delta_y: f32) -> isize {
         return 0;
     }
     let rows = (delta_y.abs() / SLASH_MENU_ROW_HEIGHT_PX).ceil().max(1.0) as isize;
-    if delta_y > 0.0 {
-        -rows
-    } else {
-        rows
-    }
+    if delta_y > 0.0 { -rows } else { rows }
 }
 
 #[cfg(test)]
@@ -676,9 +672,11 @@ mod tests {
             assert!(std::str::from_utf8(source).unwrap().starts_with("<svg"));
         }
         assert!(items.iter().all(|item| slash_menu_svg_icon(item).is_some()));
-        assert!(std::str::from_utf8(ICON_SUBMENU_ARROW)
-            .unwrap()
-            .starts_with("<svg"));
+        assert!(
+            std::str::from_utf8(ICON_SUBMENU_ARROW)
+                .unwrap()
+                .starts_with("<svg")
+        );
     }
 
     #[test]
@@ -715,19 +713,27 @@ mod tests {
         assert_eq!(items[0].command, Some(SlashMenuCommand::AskAi));
         assert_eq!(items[1].kind, RichBlockKind::Paragraph);
         assert_eq!(items[15].kind, RichBlockKind::Divider);
-        assert!(items
-            .iter()
-            .any(|item| item.kind == RichBlockKind::Paragraph));
-        assert!(items
-            .iter()
-            .any(|item| item.kind == RichBlockKind::Code { language: None }));
+        assert!(
+            items
+                .iter()
+                .any(|item| item.kind == RichBlockKind::Paragraph)
+        );
+        assert!(
+            items
+                .iter()
+                .any(|item| item.kind == RichBlockKind::Code { language: None })
+        );
         assert!(items.iter().any(|item| item.kind == RichBlockKind::Table));
-        assert!(items
-            .iter()
-            .any(|item| item.kind == RichBlockKind::Whiteboard));
-        assert!(items
-            .iter()
-            .all(|item| !item.icon.is_empty() && !item.description.is_empty()));
+        assert!(
+            items
+                .iter()
+                .any(|item| item.kind == RichBlockKind::Whiteboard)
+        );
+        assert!(
+            items
+                .iter()
+                .all(|item| !item.icon.is_empty() && !item.description.is_empty())
+        );
     }
 
     #[test]

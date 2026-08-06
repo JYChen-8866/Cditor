@@ -120,7 +120,7 @@ fn external_and_document_links_use_distinct_theme_colors() {
         &TextStyleConfig::default(),
         "Cditor Mono",
     );
-    assert_eq!(runs[0].style.brush.foreground, theme.link_text);
+    assert_eq!(runs[0].style.brush.foreground, theme.inline_code_text);
     assert_eq!(runs[1].style.brush.foreground, theme.document_link_text);
     assert_ne!(
         runs[0].style.brush.foreground,

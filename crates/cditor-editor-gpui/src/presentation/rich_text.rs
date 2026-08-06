@@ -74,7 +74,7 @@ pub(crate) fn inline_mark_visual_style(
         if document_link {
             theme.document_link
         } else if link {
-            theme.focused
+            theme.inline_code_text
         } else if code {
             theme.inline_code_text
         } else {
@@ -452,6 +452,30 @@ mod tests {
         assert_eq!(style.text_color, 0x123456);
         assert_eq!(style.background_color, Some(0xabcdef));
         assert!(style.strike);
+    }
+
+    #[test]
+    fn external_link_uses_inline_code_red_and_document_link_stays_blue() {
+        let theme = GuiTheme::light();
+        let external = inline_mark_visual_style(
+            &[InlineMark::Link {
+                href: "https://example.com".to_owned(),
+            }],
+            theme,
+            theme.text,
+        );
+        let document = inline_mark_visual_style(
+            &[InlineMark::DocumentLink {
+                href: "cditor://document/1/block/2".to_owned(),
+            }],
+            theme,
+            theme.text,
+        );
+
+        assert_eq!(external.text_color, theme.inline_code_text);
+        assert_eq!(document.text_color, theme.document_link);
+        assert!(external.underline);
+        assert!(document.underline);
     }
 
     #[test]
