@@ -252,11 +252,11 @@ impl DocumentRuntime {
         if len == 0 {
             self.selection.document_selection = None;
             self.selection.focused_text_selection = None;
-            self.selection.selected_block_ids.insert(block_id);
-            if let Some(editing) = self.editing.session.as_mut() {
-                editing.set_input_target(InputTarget::BlockText { block_id });
-                editing.set_collapsed_selection(0);
-            }
+            // SiYuan select-all: an empty focused block has no text to
+            // select, so the first invocation already switches to a block
+            // selection of the whole document.
+            self.selection.selected_block_ids = self.document.index.block_ids.iter().copied().collect();
+            self.editing.session = None;
             return true;
         }
         self.selection.focused_text_selection = Some(FocusedTextSelection {
@@ -282,6 +282,20 @@ impl DocumentRuntime {
         if let Some(selected) = self.select_focused_auxiliary_text_all() {
             return selected;
         }
+        let all_block_ids = self.document.index.block_ids.clone();
+        if !all_block_ids.is_empty()
+            && all_block_ids
+                .iter()
+                .all(|id| self.selection.selected_block_ids.contains(id))
+        {
+            // SiYuan's third invocation is a no-op while the whole document is
+            // already block-selected.
+            trace_input(
+                "select_all_command.document",
+                format_args!("blocks_already_selected={}", all_block_ids.len()),
+            );
+            return true;
+        }
         let Some(block_id) = self.focused_block_id() else {
             return false;
         };
@@ -301,7 +315,7 @@ impl DocumentRuntime {
                     && selection.anchor.offset.min(selection.focus.offset) == 0
                     && selection.anchor.offset.max(selection.focus.offset) == block_len
             });
-        if !focused_block_is_fully_selected || self.document.index.total_count() <= 1 {
+        if !focused_block_is_fully_selected {
             trace_input(
                 "select_all_command.block",
                 format_args!("block={block_id} text_len={block_len}"),
@@ -309,46 +323,29 @@ impl DocumentRuntime {
             return self.select_focused_text_all();
         }
 
-        let Some(first_block_id) = self.document.index.block_ids.first().copied() else {
-            return false;
-        };
-        let Some(last_block_id) = self.document.index.block_ids.last().copied() else {
-            return false;
-        };
-        let Some(last_offset) = self
-            .document
-            .text_models
-            .get(&last_block_id)
-            .map(PieceTableTextModel::len)
-            .or_else(|| {
-                self.document
-                    .payload_window
-                    .get(last_block_id)
-                    .map(|payload| payload.plain_text().len())
-            })
-        else {
-            trace_input(
-                "select_all_command.document_unavailable",
-                format_args!("last_block={last_block_id} payload_not_loaded=true"),
-            );
-            return false;
-        };
-
-        self.selection.selected_block_ids.clear();
+        // SiYuan progressive Select All: once the focused block is fully
+        // selected, the next invocation switches to a block selection of the
+        // whole document (protyle-wysiwyg--select on every top-level block).
+        // Copying that selection goes through the Blocks clipboard path, so
+        // non-rich blocks such as Separator/Divider/Image survive the copy
+        // instead of aborting the text-fragments path.
+        let all_block_ids = all_block_ids.into_iter().collect::<HashSet<_>>();
         self.selection.focused_table_cell = None;
         self.selection.focused_text_selection = None;
-        self.selection.document_selection = Some(DocumentSelection {
-            anchor: TextPosition::downstream(first_block_id, 0),
-            focus: TextPosition::downstream(last_block_id, last_offset),
-        });
-        if let Some(editing) = self.editing.session.as_mut() {
-            let caret = editing.focus_offset();
-            editing.set_collapsed_selection(caret);
-        }
+        self.selection.document_selection = None;
+        self.selection.selected_block_ids = all_block_ids;
+        self.editing.session = None;
+        crate::diagnostics::write_stderr(format_args!(
+            "[cditor][copy][select_all] blocks_selected count={} total_blocks={} resident={}",
+            self.selection.selected_block_ids.len(),
+            self.document.index.total_count(),
+            self.document.payload_window.payloads.len(),
+        ));
         trace_input(
             "select_all_command.document",
             format_args!(
-                "first={first_block_id}:0 last={last_block_id}:{last_offset} focused={block_id}"
+                "blocks_selected={} focused={block_id}",
+                self.selection.selected_block_ids.len()
             ),
         );
         true
@@ -437,11 +434,15 @@ impl DocumentRuntime {
         if !self.selection.selected_block_ids.is_empty() {
             let block_ids = self.selected_block_subtree_ids();
             let included = block_ids.iter().copied().collect::<HashSet<_>>();
+            let mut missing_payloads = Vec::new();
             let blocks = block_ids
                 .into_iter()
                 .map(|block_id| {
                     let index = self.document.index.index_of(block_id)?;
-                    let payload = self.document.payload_window.get(block_id)?;
+                    let Some(payload) = self.document.payload_window.get(block_id) else {
+                        missing_payloads.push(block_id);
+                        return None;
+                    };
                     Some(ClipboardBlock {
                         source_id: block_id,
                         parent_source_id: self.document.index.parent_ids[index]
@@ -451,7 +452,25 @@ impl DocumentRuntime {
                         payload: payload.payload.clone(),
                     })
                 })
-                .collect::<Option<Vec<_>>>()?;
+                .collect::<Option<Vec<_>>>();
+            if blocks.is_none() {
+                crate::diagnostics::write_stderr(format_args!(
+                    "[cditor][copy][blocks] FAILED selected_blocks={} subtree_ids={} missing_payloads={missing_payloads:?} total_blocks={} resident={} window_range={:?}",
+                    self.selection.selected_block_ids.len(),
+                    self.selected_block_subtree_ids().len(),
+                    self.document.index.total_count(),
+                    self.document.payload_window.payloads.len(),
+                    self.document.payload_window.block_range,
+                ));
+                return None;
+            }
+            let blocks = blocks.unwrap();
+            crate::diagnostics::write_stderr(format_args!(
+                "[cditor][copy][blocks] OK count={} total_blocks={} resident={}",
+                blocks.len(),
+                self.document.index.total_count(),
+                self.document.payload_window.payloads.len(),
+            ));
             return (!blocks.is_empty()).then_some(ClipboardSelection::Blocks { blocks });
         }
 
@@ -461,13 +480,47 @@ impl DocumentRuntime {
                 .document_selection?
                 .normalize(&self.document.index)
                 .ok()?;
+            // SiYuan semantics: whole-block cross-block selections (Select All
+            // expanded to the document, or a block-range selection) copy as
+            // blocks, not as text fragments. Non-rich blocks such as
+            // Separator/Divider/Image must survive the copy instead of
+            // aborting the whole clipboard snapshot.
+            if let Some(blocks) = self.whole_block_clipboard_blocks(&normalized) {
+                crate::diagnostics::write_stderr(format_args!(
+                    "[cditor][copy][blocks_from_selection] OK count={} total_blocks={} resident={}",
+                    blocks.len(),
+                    self.document.index.total_count(),
+                    self.document.payload_window.payloads.len(),
+                ));
+                return Some(ClipboardSelection::Blocks { blocks });
+            }
+            crate::diagnostics::write_stderr(format_args!(
+                "[cditor][copy][text_fragments] start selected_blocks={} document_selection={:?} total_blocks={} resident={} window_range={:?}",
+                self.selection.selected_block_ids.len(),
+                self.selection.document_selection,
+                self.document.index.total_count(),
+                self.document.payload_window.payloads.len(),
+                self.document.payload_window.block_range,
+            ));
             let start_index = self.document.index.index_of(normalized.start.block_id)?;
             let end_index = self.document.index.index_of(normalized.end.block_id)?;
             let mut fragments = Vec::with_capacity(end_index.saturating_sub(start_index) + 1);
             for index in start_index..=end_index {
                 let block_id = self.document.index.block_ids[index];
-                let payload = self.document.payload_window.get(block_id)?;
+                let Some(payload) = self.document.payload_window.get(block_id) else {
+                    crate::diagnostics::write_stderr(format_args!(
+                        "[cditor][copy][text_fragments] MISSING payload index={index} block={block_id} start={start_index} end={end_index} total_blocks={} resident={} window_range={:?}",
+                        self.document.index.total_count(),
+                        self.document.payload_window.payloads.len(),
+                        self.document.payload_window.block_range,
+                    ));
+                    return None;
+                };
                 let BlockPayload::RichText { spans } = &payload.payload else {
+                    crate::diagnostics::write_stderr(format_args!(
+                        "[cditor][copy][text_fragments] NON_RICH payload index={index} block={block_id} kind={:?}",
+                        payload.kind,
+                    ));
                     return None;
                 };
                 let text_len = plain_text_from_spans(spans).len();
@@ -504,14 +557,83 @@ impl DocumentRuntime {
                     ends_at_block_end: range.end == text_len,
                 });
             }
+            crate::diagnostics::write_stderr(format_args!(
+                "[cditor][copy][text_fragments] OK fragments={} start={start_index} end={end_index}",
+                fragments.len(),
+            ));
             return (!fragments.is_empty())
                 .then_some(ClipboardSelection::TextFragments { fragments });
         }
 
-        self.selected_focused_rich_text()
-            .map(|snapshot| ClipboardSelection::Inline {
-                spans: snapshot.spans,
+        let inline = self.selected_focused_rich_text();
+        crate::diagnostics::write_stderr(format_args!(
+            "[cditor][copy][inline] selected_blocks={} cross_block={} document_selection={:?} inline={} focused_selection={:?}",
+            self.selection.selected_block_ids.len(),
+            self.has_cross_block_text_selection(),
+            self.selection.document_selection,
+            inline.is_some(),
+            self.focused_text_selection_range(),
+        ));
+        inline.map(|snapshot| ClipboardSelection::Inline {
+            spans: snapshot.spans,
+        })
+    }
+
+    /// Materializes a cross-block text selection as whole blocks when the
+    /// selection spans from the start of the first block to the end of the
+    /// last block and the range contains at least one non-rich block
+    /// (Separator/Divider/Image). TextFragments cannot represent those
+    /// payloads and would abort the whole clipboard snapshot, so the Blocks
+    /// path is the only lossless representation. Selections over pure rich
+    /// text stay on the TextFragments path, mirroring SiYuan's range copy.
+    fn whole_block_clipboard_blocks(
+        &self,
+        normalized: &NormalizedSelection,
+    ) -> Option<Vec<ClipboardBlock>> {
+        if normalized.start.offset != 0 {
+            return None;
+        }
+        let start_index = self.document.index.index_of(normalized.start.block_id)?;
+        let end_index = self.document.index.index_of(normalized.end.block_id)?;
+        let end_block_id = self.document.index.block_ids[end_index];
+        let end_text_len = self
+            .document
+            .text_models
+            .get(&end_block_id)
+            .map(PieceTableTextModel::len)
+            .or_else(|| {
+                self.document
+                    .payload_window
+                    .get(end_block_id)
+                    .map(|payload| payload.plain_text().len())
+            })?;
+        if normalized.end.offset != end_text_len {
+            return None;
+        }
+
+        let block_ids = (start_index..=end_index)
+            .map(|index| self.document.index.block_ids[index])
+            .collect::<Vec<_>>();
+        let included = block_ids.iter().copied().collect::<HashSet<_>>();
+        let blocks = block_ids
+            .into_iter()
+            .map(|block_id| {
+                let index = self.document.index.index_of(block_id)?;
+                let payload = self.document.payload_window.get(block_id)?;
+                Some(ClipboardBlock {
+                    source_id: block_id,
+                    parent_source_id: self.document.index.parent_ids[index]
+                        .filter(|parent| included.contains(parent)),
+                    depth: self.document.index.depths[index],
+                    kind: payload.kind.clone(),
+                    payload: payload.payload.clone(),
+                })
             })
+            .collect::<Option<Vec<_>>>()?;
+        let has_non_rich = blocks.iter().any(|block| {
+            !matches!(block.payload, BlockPayload::RichText { .. })
+        });
+        (has_non_rich && !blocks.is_empty()).then_some(blocks)
     }
 
     pub fn has_cross_block_text_selection(&self) -> bool {

@@ -18,9 +18,9 @@ use crate::editor_view::CditorV2View;
 use crate::image_loader::{RasterImageElement, load_render_image};
 use crate::theme::GuiTheme;
 
-const PAGE_ICON_SIZE_PX: f32 = 72.0;
+const PAGE_ICON_SIZE_PX: f32 = 78.0;
 const PAGE_ICON_TOP_WITHOUT_COVER_PX: f32 = 36.0;
-const PAGE_ICON_COVER_OVERLAP_PX: f32 = 36.0;
+const PAGE_ICON_COVER_OVERLAP_PX: f32 = 42.0;
 const PAGE_ACTIONS_TOP_WITHOUT_COVER_PX: f32 = 54.0;
 const PAGE_ACTIONS_COVER_BOTTOM_GAP_PX: f32 = 12.0;
 const PAGE_ACTION_HEIGHT_PX: f32 = 28.0;
@@ -913,8 +913,8 @@ mod tests {
 
         assert_eq!(plain.content_left_px, 320.0);
         assert_eq!(plain.icon_top_px, 36.0);
-        assert_eq!(covered.icon_top_px, 184.0);
-        assert_eq!(covered.actions_top_px, 232.0);
+        assert_eq!(covered.icon_top_px, 158.0);
+        assert_eq!(covered.actions_top_px, 212.0);
     }
 
     #[cfg(not(target_family = "wasm"))]

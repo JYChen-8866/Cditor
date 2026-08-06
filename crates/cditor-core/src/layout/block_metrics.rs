@@ -1,5 +1,5 @@
 use crate::layout::{HeightConfidence, HeightEstimate};
-use crate::rich_text::{BlockPayload, RichBlockKind, plain_text_from_spans};
+use crate::rich_text::{plain_text_from_spans, BlockPayload, RichBlockKind};
 
 pub const DEFAULT_LAYOUT_WIDTH_PX: f64 = super::BODY_BLOCK_CONTENT_WIDTH_PX;
 pub const COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX: f64 = 16.0;
@@ -42,6 +42,12 @@ pub const NOTION_HEADING_3_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
     .styles
     .heading_3
     .line_height_px as f64;
+pub const NOTION_HEADING_4_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .heading_4
+    .line_height_px as f64;
 pub const V1_CODE_TEXT_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
     .document
     .typography
@@ -60,6 +66,7 @@ pub const V1_CODE_BASE_HEIGHT_PX: f64 = V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX
     + V1_CODE_CONTENT_PADDING_BOTTOM_PX;
 pub const V1_CODE_INNER_MIN_HEIGHT_PX: f64 = V1_CODE_BASE_HEIGHT_PX + V1_CODE_TEXT_LINE_HEIGHT_PX;
 pub const IMAGE_BLOCK_ESTIMATED_HEIGHT_PX: f64 = 260.0;
+pub const NOTION_DIVIDER_BLOCK_HEIGHT_PX: f64 = 13.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextBlockChromeMetrics {
@@ -83,17 +90,20 @@ impl TextBlockChromeMetrics {
     }
 }
 
-/// Notion-style vertical spacing per block kind. Body-like blocks stay tight
-/// (2px each side), headings get progressively more breathing room above than
+/// Notion-style vertical spacing per block kind. Body-like blocks reserve 8px
+/// on each side, headings get progressively more breathing room above than
 /// below, and container blocks (callout/code/table/media) keep a stable 4px.
 pub fn block_outer_padding_for_kind(kind: &RichBlockKind) -> (f64, f64) {
     match kind {
-        RichBlockKind::Heading { level: 1 } => (16.0, 8.0),
-        RichBlockKind::Heading { level: 2 } => (12.0, 6.0),
-        RichBlockKind::Heading { level: 3 } => (10.0, 5.0),
-        RichBlockKind::Heading { level: 4 } => (8.0, 4.0),
+        RichBlockKind::Divider | RichBlockKind::Separator => (0.0, 0.0),
+        RichBlockKind::Heading { level: 1 | 2 } => (28.0, 8.0),
+        RichBlockKind::Heading { level: 3 } => (24.0, 8.0),
+        RichBlockKind::Heading { level: 4 } => (20.0, 8.0),
         RichBlockKind::Heading { level: 5 } => (6.0, 3.0),
         RichBlockKind::Heading { level: 6 } => (4.0, 3.0),
+        RichBlockKind::Code { .. } | RichBlockKind::Mermaid | RichBlockKind::Whiteboard => {
+            (8.0, 8.0)
+        }
         RichBlockKind::Paragraph
         | RichBlockKind::Quote
         | RichBlockKind::Todo { .. }
@@ -102,7 +112,7 @@ pub fn block_outer_padding_for_kind(kind: &RichBlockKind) -> (f64, f64) {
         | RichBlockKind::Toggle
         | RichBlockKind::FootnoteDefinition
         | RichBlockKind::Html
-        | RichBlockKind::Comment => (2.0, 2.0),
+        | RichBlockKind::Comment => (8.0, 8.0),
         _ => (4.0, 4.0),
     }
 }
@@ -112,6 +122,7 @@ pub fn text_block_chrome_metrics_for_kind(kind: &RichBlockKind) -> TextBlockChro
     let heading_min = |level: u8| match level {
         1 => NOTION_HEADING_1_LINE_HEIGHT_PX,
         2 => NOTION_HEADING_2_LINE_HEIGHT_PX,
+        4 => NOTION_HEADING_4_LINE_HEIGHT_PX,
         _ => NOTION_HEADING_3_LINE_HEIGHT_PX,
     };
     let metrics = match kind {
@@ -231,6 +242,16 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
             NOTION_HEADING_2_LINE_HEIGHT_PX,
             14.0,
         )),
+        RichBlockKind::Heading { level: 3 } => BlockHeightRule::TextLike(text_metrics(
+            text_block_chrome_metrics_for_kind(kind),
+            NOTION_HEADING_3_LINE_HEIGHT_PX,
+            12.0,
+        )),
+        RichBlockKind::Heading { level: 4 } => BlockHeightRule::TextLike(text_metrics(
+            text_block_chrome_metrics_for_kind(kind),
+            NOTION_HEADING_4_LINE_HEIGHT_PX,
+            11.0,
+        )),
         RichBlockKind::Heading { .. } => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
             NOTION_HEADING_3_LINE_HEIGHT_PX,
@@ -306,7 +327,9 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
             estimated_height: 160.0,
             max_error_hint: 80.0,
         },
-        RichBlockKind::Divider | RichBlockKind::Separator => BlockHeightRule::Fixed(32.0),
+        RichBlockKind::Divider | RichBlockKind::Separator => {
+            BlockHeightRule::Fixed(NOTION_DIVIDER_BLOCK_HEIGHT_PX)
+        }
         RichBlockKind::FootnoteDefinition => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
             20.0,
@@ -539,8 +562,8 @@ mod tests {
         let paragraph = text_block_chrome_metrics_for_kind(&RichBlockKind::Paragraph);
         assert_eq!(paragraph.content_min_height, 24.0);
         assert_eq!(paragraph.content_padding_y, 0.0);
-        assert_eq!(paragraph.outer_min_height(), 28.0);
-        assert_eq!(paragraph.outer_chrome_y(), 4.0);
+        assert_eq!(paragraph.outer_min_height(), 40.0);
+        assert_eq!(paragraph.outer_chrome_y(), 16.0);
 
         let callout = text_block_chrome_metrics_for_kind(&RichBlockKind::Callout {
             variant: crate::rich_text::CalloutVariant::Note,
@@ -554,8 +577,8 @@ mod tests {
         assert_eq!(code.content_min_height, 93.0);
         assert_eq!(code.content_padding_y, 0.0);
         assert_eq!(code.extra_inner_chrome_y, 0.0);
-        assert_eq!(code.outer_min_height(), 101.0);
-        assert_eq!(code.outer_chrome_y(), 8.0);
+        assert_eq!(code.outer_min_height(), 109.0);
+        assert_eq!(code.outer_chrome_y(), 16.0);
         assert_eq!(code_block_v1_outer_min_height(), 101.0);
         assert_eq!(code_block_v1_chrome_y(), 77.0);
 
@@ -574,7 +597,7 @@ mod tests {
             RichBlockKind::Quote,
         ] {
             let estimate = estimate_text_payload_height(&kind, "item", DEFAULT_LAYOUT_WIDTH_PX);
-            assert_eq!(estimate.height, 28.0);
+            assert_eq!(estimate.height, 40.0);
         }
     }
 
@@ -599,9 +622,9 @@ mod tests {
     fn multiline_list_todo_quote_callout_and_code_have_non_overlapping_outer_heights() {
         let three_lines = "a\nb\nc";
         let cases = [
-            (RichBlockKind::BulletedList, 76.0),
-            (RichBlockKind::Todo { checked: false }, 76.0),
-            (RichBlockKind::Quote, 76.0),
+            (RichBlockKind::BulletedList, 88.0),
+            (RichBlockKind::Todo { checked: false }, 88.0),
+            (RichBlockKind::Quote, 88.0),
             (
                 RichBlockKind::Callout {
                     variant: crate::rich_text::CalloutVariant::Warning,
@@ -635,7 +658,7 @@ mod tests {
     fn fixed_and_stable_kinds_have_non_zero_heights() {
         assert_eq!(
             estimate_kind_fallback_height(&RichBlockKind::Divider).height,
-            32.0
+            NOTION_DIVIDER_BLOCK_HEIGHT_PX
         );
         assert!(estimate_kind_fallback_height(&RichBlockKind::Whiteboard).height >= 240.0);
         assert!(estimate_kind_fallback_height(&RichBlockKind::Database).height >= 160.0);
@@ -701,7 +724,7 @@ mod tests {
         assert_eq!(text_line_height_for_kind(&RichBlockKind::Paragraph), 24.0);
         assert_eq!(
             normalize_text_inner_measured_height(&RichBlockKind::Paragraph, 24.0).height,
-            28.0
+            40.0
         );
         assert_eq!(
             text_line_height_for_kind(&RichBlockKind::Code { language: None }),
@@ -714,23 +737,27 @@ mod tests {
         );
         assert_eq!(
             normalize_text_inner_measured_height(&RichBlockKind::Divider, 200.0).height,
-            32.0
+            NOTION_DIVIDER_BLOCK_HEIGHT_PX
         );
     }
 
     #[test]
     fn notion_heading_line_heights_are_shared_with_layout() {
-        assert_eq!(
-            text_line_height_for_kind(&RichBlockKind::Heading { level: 1 }),
-            39.0
+        assert!(
+            (text_line_height_for_kind(&RichBlockKind::Heading { level: 1 }) - 39.0).abs()
+                < 0.000_01
         );
-        assert_eq!(
-            text_line_height_for_kind(&RichBlockKind::Heading { level: 2 }),
-            32.0
+        assert!(
+            (text_line_height_for_kind(&RichBlockKind::Heading { level: 2 }) - 31.2).abs()
+                < 0.000_01
         );
         assert_eq!(
             text_line_height_for_kind(&RichBlockKind::Heading { level: 3 }),
             26.0
+        );
+        assert!(
+            (text_line_height_for_kind(&RichBlockKind::Heading { level: 4 }) - 26.0).abs()
+                < 0.000_01
         );
     }
 }

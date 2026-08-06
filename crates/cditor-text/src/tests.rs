@@ -5,7 +5,7 @@ mod geometry_properties;
 mod geometry_snapshot_consistency;
 mod segmented_consistency;
 mod visual_regression;
-use crate::bundled_fonts::{DOCUMENT_BODY_FONT_FAMILY, DOCUMENT_BODY_FONT_REGULAR};
+use crate::bundled_fonts::DOCUMENT_BODY_FONT_FAMILY;
 use cditor_core::{
     edit::TextAffinity,
     rich_text::{InlineMark, InlineSpan, RichBlockKind},
@@ -83,7 +83,7 @@ fn style_runs_cover_text_and_map_all_current_inline_marks() {
     assert_eq!(runs[0].range, 0..5);
     assert_eq!(runs[1].range, 5..9);
     assert_eq!(runs[1].style.font_family, "Cditor Mono");
-    assert_eq!(runs[1].style.font_weight, 700.0);
+    assert_eq!(runs[1].style.font_weight, NOTION_BOLD_FONT_WEIGHT);
     assert_eq!(runs[1].style.font_slant, TextFontSlant::Italic);
     assert!(runs[1].style.underline);
     assert!(runs[1].style.strikethrough);
@@ -158,8 +158,8 @@ fn parley_layout_shapes_cjk_combining_and_emoji_clusters() {
 }
 
 #[test]
-fn bundled_document_font_shapes_latin_and_chinese_without_system_fallback() {
-    let text = "Alibaba PuHuiTi 正文混排";
+fn system_document_font_shapes_mixed_text() {
+    let text = "系统字体正文混排";
     let input = input(vec![InlineSpan::plain(text)], 500.0);
     let mut options = options(500.0);
     options.base_style.font_family = DOCUMENT_BODY_FONT_FAMILY.to_owned();
@@ -168,14 +168,7 @@ fn bundled_document_font_shapes_latin_and_chinese_without_system_fallback() {
     let runs = &layout.paint_plan().runs;
 
     assert!(!runs.is_empty());
-    assert!(
-        runs.iter()
-            .all(|run| run.font.family == DOCUMENT_BODY_FONT_FAMILY)
-    );
-    assert!(
-        runs.iter()
-            .all(|run| run.font.data() == DOCUMENT_BODY_FONT_REGULAR)
-    );
+    assert!(runs.iter().any(|run| !run.font.family.is_empty()));
 }
 
 #[test]

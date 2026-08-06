@@ -51,17 +51,32 @@ fn span_to_markdown(span: &InlineSpan) -> String {
             .iter()
             .any(|mark| std::mem::discriminant(mark) == std::mem::discriminant(expected))
     };
+    let is_link = span.marks.iter().any(|mark| {
+        matches!(
+            mark,
+            InlineMark::Link { .. } | InlineMark::DocumentLink { .. }
+        )
+    });
     let mut text = if has(&InlineMark::Code) {
         let fence = if span.text.contains('`') { "``" } else { "`" };
         format!("{fence}{}{fence}", span.text)
+    } else if is_link {
+        // Mirrors SiYuan/Lute: link text escapes the Protyle inline markers so
+        // the link destination stays unambiguous.
+        escape_protyle_markers(&span.text)
     } else {
-        escape_markdown_text(&span.text)
+        // Mirrors SiYuan/Lute: plain text is exported verbatim. CommonMark
+        // treats intraword `*`, `_`, `[` and `]` literally, so unconditional
+        // escaping would only produce noise like `a\_b` for `a_b`.
+        span.text.clone()
     };
     if has(&InlineMark::Bold) {
         text = format!("**{text}**");
     }
     if has(&InlineMark::Italic) {
-        text = format!("_{text}_");
+        // SiYuan/Lute emits emphasis with `*` (not `_`), which also avoids
+        // intraword underscore edge cases on re-import.
+        text = format!("*{text}*");
     }
     if has(&InlineMark::Strike) {
         text = format!("~~{text}~~");
@@ -75,12 +90,20 @@ fn span_to_markdown(span: &InlineSpan) -> String {
     text
 }
 
-fn escape_markdown_text(text: &str) -> String {
-    text.replace('\\', "\\\\")
-        .replace('*', "\\*")
-        .replace('_', "\\_")
-        .replace('[', "\\[")
-        .replace(']', "\\]")
+/// Escapes the Protyle inline markers the same way Lute's
+/// `EscapeProtyleMarkers` does for link text: `\ * _ ` ` ~ $ = ^ < >`.
+fn escape_protyle_markers(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' | '*' | '_' | '`' | '~' | '$' | '=' | '^' | '<' | '>' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 fn escape_markdown_url(url: &str) -> String {

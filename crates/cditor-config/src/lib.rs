@@ -17,18 +17,9 @@ pub struct DocumentTypographyConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DocumentFontsConfig {
-    pub body: BodyFontConfig,
+    pub body: PlatformFontConfig,
     pub code: PlatformFontConfig,
     pub ui: PlatformFontConfig,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BodyFontConfig {
-    pub family: &'static str,
-    pub regular: &'static [u8],
-    pub medium: &'static [u8],
-    pub semibold: &'static [u8],
-    pub bold: &'static [u8],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -56,6 +47,7 @@ pub struct DocumentTextStylesConfig {
     pub heading_1: TextStyleConfig,
     pub heading_2: TextStyleConfig,
     pub heading_3: TextStyleConfig,
+    pub heading_4: TextStyleConfig,
     pub footnote: TextStyleConfig,
     pub table_cell: TextStyleConfig,
     pub table_header: TextStyleConfig,
@@ -86,9 +78,7 @@ mod tests {
     #[test]
     fn generated_document_typography_is_valid_and_shared() {
         let typography = APP_CONFIG.document.typography;
-        assert_eq!(typography.fonts.body.family, "Alibaba PuHuiTi 3.0");
-        assert!(!typography.fonts.body.regular.is_empty());
-        assert!(!typography.fonts.body.medium.is_empty());
+        assert_eq!(typography.fonts.body.current(), ".SystemUIFont");
         assert_eq!(typography.styles.body.weight, 400);
         assert_eq!(typography.styles.table_cell.weight, 400);
     }

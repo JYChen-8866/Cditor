@@ -4,7 +4,9 @@ use gpui::{
     PathBuilder, Styled, Window, canvas, div, point, px, rgb,
 };
 
-use crate::block::chrome::{BLOCK_PREFIX_WIDTH_PX, CALLOUT_PREFIX_WIDTH_PX};
+use crate::block::chrome::{
+    BLOCK_PREFIX_WIDTH_PX, CALLOUT_PREFIX_WIDTH_PX, NOTION_LIST_PREFIX_WIDTH_PX,
+};
 use crate::theme::GuiTheme;
 use cditor_component::SvgIcon;
 use cditor_core::block::BlockPrefixSnapshot;
@@ -14,6 +16,7 @@ pub type TodoToggleHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) 
 pub type FoldToggleHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 
 const NOTION_PREFIX_LINE_HEIGHT_PX: f32 = 24.0;
+const NOTION_LIST_MARKER_SLOT_HEIGHT_PX: f32 = 28.0;
 const NOTION_CHECKBOX_SIZE_PX: f32 = 16.0;
 const NOTION_CHECKBOX_RADIUS_PX: f32 = 2.0;
 const NOTION_FOLD_HOVER_SIZE_PX: f32 = 22.0;
@@ -180,8 +183,6 @@ fn render_bullet_marker(depth: usize, theme: GuiTheme) -> AnyElement {
         move |bounds, _, window, _| {
             let center_x = bounds.origin.x + bounds.size.width / 2.0;
             let center_y = bounds.origin.y + bounds.size.height / 2.0;
-            // GPUI centers strokes on the path. Inset the hollow-circle path so
-            // its painted outer diameter matches the filled marker bounds.
             let path_size_px = style.path_size_px();
             let half = px(path_size_px / 2.0);
             let color = rgb(theme.text);
@@ -242,8 +243,8 @@ pub fn render_block_content_prefix(
     match prefix {
         BlockPrefixSnapshot::Bullet { depth } => Some(
             div()
-                .w(px(BLOCK_PREFIX_WIDTH_PX))
-                .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
+                .w(px(NOTION_LIST_PREFIX_WIDTH_PX))
+                .h(px(NOTION_LIST_MARKER_SLOT_HEIGHT_PX))
                 .flex_shrink_0()
                 .flex()
                 .items_center()
@@ -253,8 +254,8 @@ pub fn render_block_content_prefix(
         ),
         BlockPrefixSnapshot::Number { ordinal } => Some(
             div()
-                .w(px(BLOCK_PREFIX_WIDTH_PX))
-                .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
+                .w(px(NOTION_LIST_PREFIX_WIDTH_PX))
+                .h(px(NOTION_LIST_MARKER_SLOT_HEIGHT_PX))
                 .flex_shrink_0()
                 .flex()
                 .items_center()
@@ -265,8 +266,8 @@ pub fn render_block_content_prefix(
         ),
         BlockPrefixSnapshot::Todo { checked } => Some(
             div()
-                .w(px(BLOCK_PREFIX_WIDTH_PX))
-                .h(px(NOTION_PREFIX_LINE_HEIGHT_PX))
+                .w(px(NOTION_LIST_PREFIX_WIDTH_PX))
+                .h(px(NOTION_LIST_MARKER_SLOT_HEIGHT_PX))
                 .flex_shrink_0()
                 .flex()
                 .items_center()
@@ -419,8 +420,10 @@ mod tests {
     #[test]
     fn prefix_width_constants_match_v1() {
         assert_eq!(BLOCK_PREFIX_WIDTH_PX, 22.0);
+        assert_eq!(NOTION_LIST_PREFIX_WIDTH_PX, 24.0);
         assert_eq!(CALLOUT_PREFIX_WIDTH_PX, 36.0);
         assert_eq!(NOTION_PREFIX_LINE_HEIGHT_PX, 24.0);
+        assert_eq!(NOTION_LIST_MARKER_SLOT_HEIGHT_PX, 28.0);
         assert_eq!(NOTION_CHECKBOX_SIZE_PX, 16.0);
         assert_eq!(NOTION_CHECKBOX_RADIUS_PX, 2.0);
         assert_eq!(NOTION_FOLD_HOVER_SIZE_PX, 22.0);

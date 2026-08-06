@@ -1,8 +1,9 @@
 use cditor_core::ids::BlockId;
 use cditor_core::layout::{BODY_BLOCK_CONTENT_WIDTH_PX, COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX};
+use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, Entity, ImageSource, InteractiveElement, IntoElement, ParentElement,
-    RenderImage, Styled, div, img, px, rgb,
+    RenderImage, Styled, div, img, px, rgb, rgba,
 };
 
 use crate::block::chrome::BLOCK_CONTENT_BORDER_WIDTH_PX;
@@ -14,13 +15,16 @@ use crate::theme::GuiTheme;
 use super::{MermaidRenderCache, MermaidRenderStatus};
 
 const MERMAID_TOOLBAR_HEIGHT_PX: f32 = 28.0;
-const MERMAID_BODY_PADDING_PX: f32 = 8.0;
-const MERMAID_FRAME_RADIUS_PX: f32 = 6.0;
+const MERMAID_SOURCE_PADDING_PX: f32 = 8.0;
+const MERMAID_PREVIEW_PADDING_X_PX: f32 = 22.0;
+const MERMAID_PREVIEW_PADDING_Y_PX: f32 = 32.0;
+const MERMAID_FRAME_RADIUS_PX: f32 = 10.0;
+const MERMAID_FRAME_BORDER_WIDTH_PX: f32 = 1.0;
 const MERMAID_LOADING_BODY_HEIGHT_PX: f32 = 188.0;
 const MERMAID_MAX_IMAGE_HEIGHT_PX: f32 = 1200.0;
 const MERMAID_MAX_IMAGE_WIDTH_PX: f32 = BODY_BLOCK_CONTENT_WIDTH_PX as f32
     - BLOCK_CONTENT_BORDER_WIDTH_PX * 2.0
-    - MERMAID_BODY_PADDING_PX * 2.0;
+    - MERMAID_PREVIEW_PADDING_X_PX * 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct MermaidPreviewGeometry {
@@ -66,15 +70,19 @@ pub(crate) fn render_mermaid_block(
         )
     };
 
-    div()
+    let frame_background = (theme.text << 8) | 0x08;
+    let mut frame = div()
         .id(("mermaid-block", block_id))
         .relative()
         .w_full()
         .h_full()
         .rounded(px(MERMAID_FRAME_RADIUS_PX))
-        .bg(rgb(theme.code_background))
-        .overflow_hidden()
-        .child(
+        .border(px(MERMAID_FRAME_BORDER_WIDTH_PX))
+        .border_color(rgb(theme.border))
+        .bg(rgba(frame_background))
+        .overflow_hidden();
+    if show_source {
+        frame = frame.child(
             div()
                 .h(px(MERMAID_TOOLBAR_HEIGHT_PX))
                 .w_full()
@@ -101,12 +109,18 @@ pub(crate) fn render_mermaid_block(
                             cx.stop_propagation();
                         }),
                 ),
-        )
+        );
+    }
+    frame
         .child(
             div()
                 .w_full()
                 .h(px(body_height))
-                .p(px(MERMAID_BODY_PADDING_PX))
+                .when(show_source, |body| body.p(px(MERMAID_SOURCE_PADDING_PX)))
+                .when(!show_source, |body| {
+                    body.px(px(MERMAID_PREVIEW_PADDING_X_PX))
+                        .py(px(MERMAID_PREVIEW_PADDING_Y_PX))
+                })
                 .overflow_hidden()
                 .child(body),
         )
@@ -207,10 +221,8 @@ fn mermaid_preview_geometry(image: &RenderImage) -> MermaidPreviewGeometry {
         .min(1.0);
     let image_width_px = natural_width * scale;
     let image_height_px = natural_height * scale;
-    let body_height_px = image_height_px + MERMAID_BODY_PADDING_PX * 2.0;
-    let block_height_px = f64::from(
-        MERMAID_TOOLBAR_HEIGHT_PX + body_height_px + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32,
-    );
+    let body_height_px = image_height_px + MERMAID_PREVIEW_PADDING_Y_PX * 2.0;
+    let block_height_px = f64::from(body_height_px + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32);
     MermaidPreviewGeometry {
         image_width_px,
         image_height_px,
@@ -237,7 +249,8 @@ mod tests {
 
     #[test]
     fn mermaid_frame_uses_the_prototype_radius() {
-        assert_eq!(MERMAID_FRAME_RADIUS_PX, 6.0);
+        assert_eq!(MERMAID_FRAME_RADIUS_PX, 10.0);
+        assert_eq!(MERMAID_FRAME_BORDER_WIDTH_PX, 1.0);
     }
 
     #[test]
@@ -255,11 +268,22 @@ mod tests {
         let image = test_render_image(1404, 600);
         let geometry = mermaid_preview_geometry(&image);
 
-        assert_eq!(MERMAID_MAX_IMAGE_WIDTH_PX, 782.0);
-        assert_eq!(geometry.image_width_px, 702.0);
-        assert_eq!(geometry.image_height_px, 300.0);
-        assert_eq!(geometry.body_height_px, 316.0);
-        assert_eq!(geometry.block_height_px, 360.0);
+        assert_eq!(MERMAID_MAX_IMAGE_WIDTH_PX, 754.0);
+        assert!((geometry.image_width_px - 754.0).abs() < 0.001);
+        assert!((geometry.image_height_px - 322.222_23).abs() < 0.001);
+        assert!((geometry.body_height_px - 386.222_23).abs() < 0.001);
+        assert!((geometry.block_height_px - 402.222_23).abs() < 0.001);
+    }
+
+    #[test]
+    fn small_preview_keeps_its_intrinsic_size_instead_of_stretching() {
+        let image = test_render_image(140, 159);
+        let geometry = mermaid_preview_geometry(&image);
+
+        assert_eq!(geometry.image_width_px, 140.0);
+        assert_eq!(geometry.image_height_px, 159.0);
+        assert_eq!(geometry.body_height_px, 223.0);
+        assert_eq!(geometry.block_height_px, 239.0);
     }
 
     #[test]
@@ -270,7 +294,7 @@ mod tests {
         assert_eq!(geometry.image_width_px, 200.0);
         assert_eq!(geometry.image_height_px, MERMAID_MAX_IMAGE_HEIGHT_PX);
         assert_eq!(geometry.image_height_px / geometry.image_width_px, 6.0);
-        assert_eq!(geometry.block_height_px, 1260.0);
+        assert_eq!(geometry.block_height_px, 1280.0);
     }
 
     #[test]

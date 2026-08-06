@@ -109,6 +109,18 @@ pub fn render_code_block(
                 )),
         )
         .when_some(code_viewport, |this, viewport| this.child(viewport))
+        // GPUI paints child backgrounds over the frame border. Keep the
+        // bottom rule as an independent overlay so it remains visible when
+        // another block follows immediately after this one.
+        .child(
+            div()
+                .absolute()
+                .left(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                .right(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                .bottom_0()
+                .h(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                .bg(rgb(theme.code_toolbar_border)),
+        )
         .into_any_element()
 }
 

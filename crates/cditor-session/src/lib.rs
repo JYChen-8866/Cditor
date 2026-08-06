@@ -67,7 +67,10 @@ pub use history_port::{
     project_begin_undo_blob_spill, project_finish_undo_blob_cleanup, project_history_action,
     project_hydrated_history_action,
 };
-pub use import_port::{ImportDispatchReport, project_ai_preview_import, project_clipboard_import};
+pub use import_port::{
+    ImportDispatchReport, project_ai_preview_import, project_clipboard_import,
+    project_markdown_import,
+};
 pub use input_port::{
     FocusedPlatformTextSnapshot, InputCompositionSnapshot, InputContextSnapshot,
     project_input_context,

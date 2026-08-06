@@ -545,7 +545,8 @@ fn fallback_todo_text_starts_after_checkbox_at_shared_surface_origin() {
 
     assert_eq!(
         todo.origin_x_in_block_px,
-        paragraph.origin_x_in_block_px + f64::from(crate::block::chrome::BLOCK_PREFIX_WIDTH_PX)
+        paragraph.origin_x_in_block_px
+            + f64::from(crate::block::chrome::NOTION_LIST_PREFIX_WIDTH_PX)
     );
 }
 

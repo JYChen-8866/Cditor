@@ -7,6 +7,7 @@ use gpui::{
 use crate::block::chrome::{
     BLOCK_ROW_GAP_PX, BLOCK_SHELL_BORDER_WIDTH_PX, BLOCK_SHELL_OUTER_PADDING_X_PX, BlockChromeStyle,
 };
+use crate::block::divider::NOTION_DIVIDER_BLOCK_HEIGHT_PX;
 use crate::block::gutter::{GutterAddHandler, GutterMouseDownHandler, render_block_gutter};
 use crate::block::prefix::{
     FoldToggleHandler, TodoToggleHandler, render_block_content_prefix, render_block_prefix,
@@ -112,6 +113,14 @@ pub fn block_shell(
                         gutter_visible,
                         action.action_active,
                         gutter_control_top_px(&block.kind, chrome.content_min_height_px),
+                        if matches!(
+                            block.kind,
+                            RichBlockKind::Divider | RichBlockKind::Separator
+                        ) {
+                            NOTION_DIVIDER_BLOCK_HEIGHT_PX
+                        } else {
+                            crate::block::chrome::BLOCK_GUTTER_HEIGHT_PX
+                        },
                         on_gutter_add,
                         on_gutter_mouse_down,
                     ))

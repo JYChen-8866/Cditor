@@ -68,6 +68,12 @@ impl DocumentRuntime {
                         "raw clipboard data must be planned by cditor-session",
                     ));
                 }
+                EditorCommand::ApplyMarkdownImport { .. } => {
+                    return Err(ProtocolError::new(
+                        ProtocolErrorCode::InvalidArguments,
+                        "raw markdown import must be planned by cditor-session",
+                    ));
+                }
                 EditorCommand::InsertImageAsset {
                     payload,
                     asset,

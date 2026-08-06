@@ -548,3 +548,92 @@ fn inline_clipboard_paste_into_table_cell_preserves_marks() {
             .any(|span| span.text == "bold" && span.marks.contains(&InlineMark::Bold))
     );
 }
+
+#[test]
+fn whole_block_text_selection_containing_separator_copies_as_blocks() {
+    // A drag text-selection that spans whole blocks and includes a non-rich
+    // block cannot be represented by TextFragments; it must fall back to the
+    // Blocks clipboard path so the Separator survives the copy.
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "aa"),
+            BlockPayloadRecord {
+                block_id: 2,
+                content_version: 1,
+                kind: RichBlockKind::Separator,
+                payload: BlockPayload::Empty,
+            },
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "bb"),
+        ],
+        720.0,
+    );
+    runtime.set_document_text_selection(1, 0, 3, 2).unwrap();
+
+    let selection = runtime
+        .clipboard_selection_snapshot()
+        .expect("copy over a Separator must not silently fail");
+    let ClipboardSelection::Blocks { ref blocks } = selection else {
+        panic!("non-rich whole-block selection must copy as Blocks, got {selection:?}");
+    };
+    assert_eq!(blocks.len(), 3);
+    assert!(
+        blocks
+            .iter()
+            .any(|block| block.kind == RichBlockKind::Separator)
+    );
+    let plain_text = selection.plain_text();
+    assert!(
+        plain_text.contains("aa") && plain_text.contains("bb"),
+        "clipboard must contain the selected text, got {plain_text:?}"
+    );
+}
+
+#[test]
+fn select_all_copy_keeps_separator_blocks_as_blocks() {
+    // Regression for "全文复制失效": SiYuan's progressive Select All switches
+    // to a block selection of the whole document on the second invocation, and
+    // copying that selection goes through the Blocks clipboard path, so
+    // non-rich blocks such as Separator survive the copy instead of aborting
+    // the text-fragments path on the first non-rich payload.
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "first"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "second"),
+            BlockPayloadRecord {
+                block_id: 5,
+                content_version: 1,
+                kind: RichBlockKind::Separator,
+                payload: BlockPayload::Empty,
+            },
+            BlockPayloadRecord::rich_text(9, RichBlockKind::Paragraph, "tail"),
+        ],
+        720.0,
+    );
+    runtime.focus_block_at_offset(2, 3).unwrap();
+
+    assert!(runtime.select_all_command());
+    assert!(runtime.select_all_command());
+    assert!(runtime.has_selected_blocks());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2, 5, 9]);
+    assert_eq!(runtime.document_text_selection_fragments(), None);
+
+    let selection = runtime
+        .clipboard_selection_snapshot()
+        .expect("full-document copy must not silently fail");
+    let ClipboardSelection::Blocks { ref blocks } = selection else {
+        panic!("block selection must copy as Blocks, got {selection:?}");
+    };
+    assert_eq!(blocks.len(), 4);
+    assert!(
+        blocks
+            .iter()
+            .any(|block| block.kind == RichBlockKind::Separator)
+    );
+    let plain_text = selection.plain_text();
+    assert!(
+        plain_text.contains("first") && plain_text.contains("tail"),
+        "clipboard must contain the whole document, got {plain_text:?}"
+    );
+}

@@ -310,7 +310,7 @@ fn paste_text_from_clipboard_never_reuses_stale_rich_state_for_external_text() {
 }
 
 #[test]
-fn paste_external_text_inside_block_does_not_parse_inline_markdown() {
+fn paste_external_markdown_into_paragraph_parses_inline_marks() {
     let mut runtime = paragraph_runtime("");
     assert!(runtime.input_session_target().is_some());
 
@@ -324,8 +324,17 @@ fn paste_external_text_inside_block_does_not_parse_inline_markdown() {
     let BlockPayload::RichText { spans } = &payload.payload else {
         panic!("expected rich text payload");
     };
-    assert_eq!(payload.plain_text(), "**bold** and `code`");
-    assert!(spans.iter().all(|span| span.marks.is_empty()));
+    assert_eq!(payload.plain_text(), "bold and code");
+    assert!(
+        spans
+            .iter()
+            .any(|span| span.text == "bold" && span.marks.contains(&InlineMark::Bold))
+    );
+    assert!(
+        spans
+            .iter()
+            .any(|span| span.text == "code" && span.marks.contains(&InlineMark::Code))
+    );
 }
 
 #[test]
@@ -372,7 +381,7 @@ fn multiline_markdown_paste_into_code_stays_literal_inside_code_block() {
 }
 
 #[test]
-fn multiline_external_paste_into_heading_stays_literal_inside_heading_block() {
+fn multiline_external_paste_into_heading_parses_markdown_blocks() {
     let mut runtime = text_block_runtime(
         RichBlockKind::Heading { level: 2 },
         BlockPayload::RichText {
@@ -386,14 +395,47 @@ fn multiline_external_paste_into_heading_stays_literal_inside_heading_block() {
         None
     ));
 
-    let payload = runtime.block_payload_record(1).unwrap();
-    assert!(matches!(payload.kind, RichBlockKind::Heading { level: 2 }));
-    assert_eq!(payload.plain_text(), "Title **continued**\n- child");
-    let BlockPayload::RichText { spans } = &payload.payload else {
+    let blocks = runtime.projection_for_window().blocks;
+    assert_eq!(blocks.len(), 2);
+    let first = runtime.block_payload_record(1).unwrap();
+    assert!(matches!(first.kind, RichBlockKind::Paragraph));
+    assert_eq!(first.plain_text(), "Title continued");
+    let BlockPayload::RichText { spans } = &first.payload else {
         panic!("expected rich text payload");
     };
-    assert!(spans.iter().all(|span| span.marks.is_empty()));
-    assert_eq!(runtime.projection_for_window().blocks.len(), 1);
+    assert!(
+        spans
+            .iter()
+            .any(|span| span.text == "continued" && span.marks.contains(&InlineMark::Bold))
+    );
+    let second = runtime.block_payload_record(blocks[1].block_id).unwrap();
+    assert!(matches!(second.kind, RichBlockKind::BulletedList));
+    assert_eq!(second.plain_text(), "child");
+}
+
+#[test]
+fn multiline_external_paste_into_quote_parses_markdown_blocks() {
+    let mut runtime = text_block_runtime(
+        RichBlockKind::Quote,
+        BlockPayload::RichText {
+            spans: vec![InlineSpan::plain("Preamble ")],
+        },
+    );
+
+    assert!(dispatch_clipboard_data(
+        &mut runtime,
+        "> Quoted\n\n- child",
+        None
+    ));
+
+    let blocks = runtime.projection_for_window().blocks;
+    assert_eq!(blocks.len(), 2);
+    let first = runtime.block_payload_record(1).unwrap();
+    assert!(matches!(first.kind, RichBlockKind::Quote));
+    assert_eq!(first.plain_text(), "Preamble Quoted");
+    let second = runtime.block_payload_record(blocks[1].block_id).unwrap();
+    assert!(matches!(second.kind, RichBlockKind::BulletedList));
+    assert_eq!(second.plain_text(), "child");
 }
 
 #[test]

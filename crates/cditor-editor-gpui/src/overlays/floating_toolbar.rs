@@ -1,6 +1,6 @@
 use cditor_component::{
     Input, InputStyle, InteractiveScrollbar, InteractiveScrollbarStyle,
-    POPUP_MENU_ITEM_FONT_SIZE_PX, POPUP_MENU_LABEL_FONT_SIZE_PX, PopupMenu, PopupMenuItem,
+    POPUP_MENU_ITEM_FONT_SIZE_PX, PopupMenu, PopupMenuItem,
     PopupMenuStyle, ScrollbarAxis, SvgIcon,
 };
 use gpui::prelude::FluentBuilder;
@@ -30,7 +30,8 @@ const TOOLBAR_ANCHOR_GAP_PX: f32 = 8.0;
 const AI_ACTIONS_VIEWPORT_HEIGHT_PX: f32 = 110.0;
 const AI_ACTION_ROW_HEIGHT_PX: f32 = 36.0;
 const AI_ACTION_COUNT: usize = 6;
-const FORMAT_ICON_SIZE_PX: f32 = 24.0;
+const FORMAT_ICON_SIZE_PX: f32 = 20.0;
+const GUTTER_MENU_LABEL_FONT_SIZE_PX: f32 = 12.0;
 const GUTTER_FORMAT_ROW_PADDING_PX: f32 = 8.0;
 const FORMAT_BUTTON_SIZE_PX: f32 = 30.0;
 const GUTTER_FORMAT_BUTTON_SIZE_PX: f32 = 36.0;
@@ -251,7 +252,7 @@ pub fn render_floating_toolbar(
         .child(toolbar_divider(theme))
         .child(
             div()
-                .text_size(px(POPUP_MENU_LABEL_FONT_SIZE_PX))
+                .text_size(px(GUTTER_MENU_LABEL_FONT_SIZE_PX))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(rgb(theme.muted))
                 .child("AI"),
@@ -458,7 +459,7 @@ fn render_copy_link_action(
                 .child(div().text_size(px(14.0)).child("复制区块链接"))
                 .child(
                     div()
-                        .text_size(px(11.0))
+                        .text_size(px(GUTTER_MENU_LABEL_FONT_SIZE_PX))
                         .text_color(rgb(theme.muted))
                         .child("复制指向当前区块的链接"),
                 ),
@@ -543,7 +544,7 @@ fn render_color_trigger(
                 .child(div().text_size(px(14.0)).child("颜色"))
                 .child(
                     div()
-                        .text_size(px(11.0))
+                        .text_size(px(GUTTER_MENU_LABEL_FONT_SIZE_PX))
                         .text_color(rgb(theme.muted))
                         .child("设置文字与背景颜色"),
                 )
@@ -680,7 +681,7 @@ fn render_delete_action(
                 .child(div().text_size(px(14.0)).child("删除"))
                 .child(
                     div()
-                        .text_size(px(11.0))
+                        .text_size(px(GUTTER_MENU_LABEL_FONT_SIZE_PX))
                         .text_color(rgb(theme.muted))
                         .child("删除当前区块"),
                 ),
@@ -748,7 +749,7 @@ fn render_block_format_header(
                 .child(div().text_size(px(14.0)).child("文字格式"))
                 .child(
                     div()
-                        .text_size(px(11.0))
+                        .text_size(px(GUTTER_MENU_LABEL_FONT_SIZE_PX))
                         .text_color(rgb(theme.muted))
                         .child("转换当前区块类型"),
                 )
@@ -1195,7 +1196,7 @@ fn toolbar_group_label(label: &'static str, theme: GuiTheme) -> AnyElement {
         .px(px(8.0))
         .flex()
         .items_center()
-        .text_size(px(POPUP_MENU_LABEL_FONT_SIZE_PX))
+        .text_size(px(GUTTER_MENU_LABEL_FONT_SIZE_PX))
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(rgb(theme.muted))
         .child(label)

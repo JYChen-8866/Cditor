@@ -32,7 +32,7 @@ impl Typography {
     pub fn from_app_config() -> Self {
         let config = cditor_config::APP_CONFIG.document.typography;
         let body = FontFamily {
-            primary: config.fonts.body.family.to_owned(),
+            primary: config.fonts.body.current().to_owned(),
             fallbacks: Vec::new(),
         };
         let ui = FontFamily {

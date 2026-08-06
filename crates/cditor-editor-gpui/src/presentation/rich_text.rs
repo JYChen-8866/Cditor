@@ -3,7 +3,7 @@ use gpui::{
     AnyElement, FontWeight, IntoElement, ParentElement, SharedString, Styled, div, px, rgb,
 };
 
-use cditor_core::layout::block_metrics::BLOCK_SHELL_PADDING_Y_PX;
+use cditor_core::layout::block_metrics::block_outer_padding_for_kind;
 use cditor_core::layout::estimate_kind_fallback_height;
 use cditor_core::rich_text::{
     BlockPayload, BlockPayloadRecord, InlineMark, InlineSpan, RichBlockKind,
@@ -306,7 +306,8 @@ fn embedded_surface_label(kind: &RichBlockKind) -> &'static str {
 }
 
 fn fallback_inner_height_px(kind: &RichBlockKind) -> f32 {
-    let shell_height = BLOCK_SHELL_PADDING_Y_PX * 2.0;
+    let (padding_top, padding_bottom) = block_outer_padding_for_kind(kind);
+    let shell_height = padding_top + padding_bottom;
     (estimate_kind_fallback_height(kind).height - shell_height).max(0.0) as f32
 }
 
@@ -382,7 +383,7 @@ fn render_span_with_wrapping(span: &InlineSpan, theme: GuiTheme, wrapping: bool)
                 .text_size(px(NOTION_INLINE_CODE_TEXT_SIZE_PX))
         })
         .when_some(style.background_color, |this, color| this.bg(rgb(color)))
-        .when(style.bold, |this| this.font_weight(FontWeight::BOLD))
+        .when(style.bold, |this| this.font_weight(FontWeight::SEMIBOLD))
         .when(style.italic, |this| this.italic())
         .when(style.underline, |this| this.text_decoration_1())
         .when(style.strike, |this| this.line_through())
@@ -465,7 +466,7 @@ mod tests {
         assert_eq!(fallback_inner_height_px(&RichBlockKind::File), 48.0);
         assert_eq!(fallback_inner_height_px(&RichBlockKind::Attachment), 56.0);
         assert_eq!(fallback_inner_height_px(&RichBlockKind::Embed), 152.0);
-        assert_eq!(fallback_inner_height_px(&RichBlockKind::Whiteboard), 472.0);
+        assert_eq!(fallback_inner_height_px(&RichBlockKind::Whiteboard), 464.0);
         assert_eq!(fallback_inner_height_px(&RichBlockKind::MindMap), 352.0);
     }
 

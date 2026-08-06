@@ -68,6 +68,10 @@ pub enum EditorCommand {
         metadata_json: Option<String>,
     },
     #[doc(hidden)]
+    ApplyMarkdownImport {
+        text: String,
+    },
+    #[doc(hidden)]
     InsertImageAsset {
         payload: cditor_core::rich_text::ImagePayload,
         asset: Option<cditor_core::edit::AssetSnapshot>,
@@ -302,6 +306,7 @@ impl EditorCommand {
             Self::CutSelection => "edit.cut",
             Self::PasteClipboard => "edit.paste",
             Self::ApplyClipboardData { .. } => builtin::EDIT_APPLY_CLIPBOARD_DATA,
+            Self::ApplyMarkdownImport { .. } => builtin::EDIT_APPLY_MARKDOWN_IMPORT,
             Self::InsertImageAsset { .. } => builtin::ASSET_INSERT_IMAGE_PAYLOAD,
             Self::SetPageCover { .. } => builtin::DOCUMENT_SET_COVER,
             Self::SetPageIconEmoji { .. } => builtin::DOCUMENT_SET_ICON,
@@ -384,6 +389,7 @@ impl EditorCommand {
                 text: text.clone(),
                 metadata_json: metadata_json.clone(),
             },
+            Self::ApplyMarkdownImport { text } => CommandArgs::Markdown { text: text.clone() },
             Self::InsertImageAsset {
                 payload,
                 asset,

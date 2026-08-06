@@ -517,7 +517,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             String::from_utf8(output).unwrap(),
-            "**bold**[_ link_](https://example.com/a_\\(b\\)) color"
+            "**bold**[* link*](https://example.com/a_\\(b\\)) color"
         );
         assert!(
             report

@@ -1,6 +1,6 @@
 use cditor_core::layout::block_metrics::{
     NOTION_BODY_LINE_HEIGHT_PX, NOTION_HEADING_1_LINE_HEIGHT_PX, NOTION_HEADING_2_LINE_HEIGHT_PX,
-    NOTION_HEADING_3_LINE_HEIGHT_PX,
+    NOTION_HEADING_3_LINE_HEIGHT_PX, NOTION_HEADING_4_LINE_HEIGHT_PX,
 };
 use cditor_core::rich_text::RichBlockKind;
 use gpui::{AvailableSpace, Bounds, FontStyle, FontWeight, Pixels, Size, point, px};
@@ -130,6 +130,7 @@ pub(in crate::text) fn text_size_for_kind(kind: &RichBlockKind) -> Pixels {
     match kind {
         RichBlockKind::Heading { level: 1 } => px(styles.heading_1.size_px),
         RichBlockKind::Heading { level: 2 } => px(styles.heading_2.size_px),
+        RichBlockKind::Heading { level: 4 } => px(styles.heading_4.size_px),
         RichBlockKind::Heading { .. } => px(styles.heading_3.size_px),
         RichBlockKind::Code { .. } => px(styles.code.size_px),
         RichBlockKind::FootnoteDefinition => px(styles.footnote.size_px),
@@ -145,6 +146,7 @@ pub(in crate::text) fn base_font_weight_for_kind(
     let configured = match kind {
         RichBlockKind::Heading { level: 1 } => styles.heading_1.weight,
         RichBlockKind::Heading { level: 2 } => styles.heading_2.weight,
+        RichBlockKind::Heading { level: 4 } => styles.heading_4.weight,
         RichBlockKind::Heading { .. } => styles.heading_3.weight,
         RichBlockKind::Code { .. } => styles.code.weight,
         RichBlockKind::FootnoteDefinition => styles.footnote.weight,
@@ -164,6 +166,7 @@ pub(in crate::text) fn line_height_for_kind(kind: &RichBlockKind, _text_size: Pi
         RichBlockKind::Code { .. } => px(styles.code.line_height_px),
         RichBlockKind::Heading { level: 1 } => px(NOTION_HEADING_1_LINE_HEIGHT_PX as f32),
         RichBlockKind::Heading { level: 2 } => px(NOTION_HEADING_2_LINE_HEIGHT_PX as f32),
+        RichBlockKind::Heading { level: 4 } => px(NOTION_HEADING_4_LINE_HEIGHT_PX as f32),
         RichBlockKind::Heading { .. } => px(NOTION_HEADING_3_LINE_HEIGHT_PX as f32),
         RichBlockKind::FootnoteDefinition => px(styles.footnote.line_height_px),
         _ => px(NOTION_BODY_LINE_HEIGHT_PX as f32),

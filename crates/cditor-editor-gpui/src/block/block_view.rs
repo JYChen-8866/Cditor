@@ -1,11 +1,12 @@
 use gpui::{
     AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div,
-    px, rgb,
+    px,
 };
 
 use crate::app::worker_admission::EditorWorkerAdmission;
 use crate::block::block_content::render_block_content;
 use crate::block::block_shell::{BlockActionState, block_shell};
+use crate::block::divider::render_notion_divider;
 use crate::document::DocumentTextViewport;
 use crate::editor_view::CditorV2View;
 use crate::features::code::highlight::CodeHighlightCache;
@@ -296,12 +297,7 @@ fn render_kind_content(
             .text_size(px(13.0))
             .child(content)
             .into_any_element(),
-        RichBlockKind::Divider | RichBlockKind::Separator => div()
-            .w_full()
-            .my(px(11.0))
-            .h(px(1.0))
-            .bg(rgb(theme.border))
-            .into_any_element(),
+        RichBlockKind::Divider | RichBlockKind::Separator => render_notion_divider(theme),
         _ => render_paragraph(content),
     }
 }

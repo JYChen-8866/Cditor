@@ -1,9 +1,7 @@
 [document.typography.fonts.body]
-family = "Alibaba PuHuiTi 3.0"
-regular_asset = "assets/fonts/AlibabaPuHuiTi-Regular.ttf"
-medium_asset = "assets/fonts/AlibabaPuHuiTi-Medium.ttf"
-semibold_asset = "assets/fonts/AlibabaPuHuiTi-SemiBold.ttf"
-bold_asset = "assets/fonts/AlibabaPuHuiTi-Bold.ttf"
+macos = ".SystemUIFont"
+windows = "Segoe UI"
+linux = "DejaVu Sans"
 
 [document.typography.fonts.code]
 macos = "Menlo"
@@ -27,10 +25,15 @@ weight = 600
 
 [document.typography.styles.heading_2]
 size_px = 24.0
-line_height_px = 32.0
+line_height_px = 31.2
 weight = 600
 
 [document.typography.styles.heading_3]
+size_px = 20.0
+line_height_px = 26.0
+weight = 600
+
+[document.typography.styles.heading_4]
 size_px = 20.0
 line_height_px = 26.0
 weight = 600

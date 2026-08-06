@@ -8,6 +8,8 @@ use parley::{
 
 use crate::TextTheme;
 
+pub const NOTION_BOLD_FONT_WEIGHT: f32 = 600.0;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TextBrush {
     pub foreground: u32,
@@ -78,7 +80,7 @@ impl Default for TextStyleConfig {
         let typography = cditor_config::APP_CONFIG.document.typography;
         let body = typography.styles.body;
         Self {
-            font_family: typography.fonts.body.family.to_owned(),
+            font_family: typography.fonts.body.current().to_owned(),
             font_size: body.size_px,
             font_width: 1.0,
             font_slant: TextFontSlant::Normal,
@@ -185,7 +187,7 @@ pub fn text_style_runs(
             background_radius: if visual.code { 3 } else { 0 },
         };
         if visual.bold {
-            style.font_weight = style.font_weight.max(700.0);
+            style.font_weight = style.font_weight.max(NOTION_BOLD_FONT_WEIGHT);
         }
         if visual.italic {
             style.font_slant = TextFontSlant::Italic;

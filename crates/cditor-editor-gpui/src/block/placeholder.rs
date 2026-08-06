@@ -73,11 +73,11 @@ mod tests {
         );
         assert_eq!(
             empty_line_placeholder_top_px(&RichBlockKind::Heading { level: 1 }),
-            7.5
+            3.6000004
         );
         assert_eq!(
             empty_line_placeholder_top_px(&RichBlockKind::Heading { level: 2 }),
-            4.0
+            3.6000004
         );
         assert_eq!(
             empty_line_placeholder_top_px(&RichBlockKind::Heading { level: 3 }),

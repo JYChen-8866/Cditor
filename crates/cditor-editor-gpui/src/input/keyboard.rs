@@ -75,6 +75,20 @@ impl CditorV2View {
                     "select-all returns through Runtime dispatch before the GUI handler"
                 ),
                 GuiInputCommand::CopySelection => {
+                    let snapshot_before = runtime.clipboard_snapshot();
+                    crate::diagnostics::stderr::write(format_args!(
+                        "[cditor][copy][gui] selected_table_axis={:?} snapshot_err={:?} snapshot_selection={:?} selected_text={:?}",
+                        selected_table_axis,
+                        snapshot_before.as_ref().err(),
+                        snapshot_before
+                            .as_ref()
+                            .ok()
+                            .map(|snapshot| snapshot.selection.is_some()),
+                        snapshot_before
+                            .as_ref()
+                            .ok()
+                            .and_then(|snapshot| snapshot.selected_text.as_ref().map(String::len)),
+                    ));
                     if let Some((block_id, range)) =
                         selected_table_axis_range(runtime, selected_table_axis)
                         && let Ok(Some(selection)) =
@@ -84,9 +98,14 @@ impl CditorV2View {
                             runtime.snapshot().ok().map(|snapshot| snapshot.document_id);
                         let (system_text, envelope) =
                             crate::input::clipboard::envelope_for_selection(document_id, selection);
+                        let written_len = system_text.len();
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
                             system_text,
                             &envelope,
+                        ));
+                        crate::diagnostics::stderr::write(format_args!(
+                            "[cditor][copy][gui] wrote TABLE envelope text_len={}",
+                            written_len,
                         ));
                     } else if let Ok(snapshot) = runtime.clipboard_snapshot()
                         && let Some(selection) = snapshot.selection
@@ -96,12 +115,22 @@ impl CditorV2View {
                                 Some(snapshot.document_id),
                                 selection,
                             );
+                        let written_len = system_text.len();
                         cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
                             system_text,
                             &envelope,
                         ));
+                        crate::diagnostics::stderr::write(format_args!(
+                            "[cditor][copy][gui] wrote SNAPSHOT envelope text_len={}",
+                            written_len,
+                        ));
                     } else if let Ok(Some(text)) = runtime.selected_text() {
+                        let written_len = text.len();
                         cx.write_to_clipboard(ClipboardItem::new_string(text));
+                        crate::diagnostics::stderr::write(format_args!(
+                            "[cditor][copy][gui] wrote PLAIN TEXT fallback text_len={}",
+                            written_len,
+                        ));
                     }
                 }
                 GuiInputCommand::CutSelection => {

@@ -1,5 +1,6 @@
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentBuilder, px, rgb};
 
+use crate::block::divider::render_notion_divider;
 use crate::skeleton::{SkeletonItem, SkeletonRows, SkeletonVariant};
 use crate::theme::GuiTheme;
 use cditor_core::rich_text::RichBlockKind;
@@ -170,11 +171,7 @@ fn render_table_skeleton(theme: GuiTheme) -> AnyElement {
 }
 
 fn render_divider_skeleton(theme: GuiTheme) -> AnyElement {
-    div()
-        .w_full()
-        .py_2()
-        .child(div().h(px(1.0)).bg(rgb(theme.border)))
-        .into_any_element()
+    render_notion_divider(theme)
 }
 
 #[cfg(test)]

@@ -24,15 +24,6 @@ pub(super) fn register_outline_fonts(font_cx: &mut FontContext, allow_system_han
     #[cfg(not(target_os = "macos"))]
     let _ = allow_system_hanzipen;
 
-    let registered = font_cx.collection.register_fonts(
-        Blob::new(Arc::new(crate::font::CJK_MEDIUM)),
-        Some(FontInfoOverride {
-            family_name: Some(crate::font::OUTLINE_CJK_FAMILY),
-            weight: Some(parley::FontWeight::NORMAL),
-            ..Default::default()
-        }),
-    );
-    debug_assert!(!registered.is_empty(), "failed to register CJK fallback");
 }
 
 #[cfg(target_os = "macos")]

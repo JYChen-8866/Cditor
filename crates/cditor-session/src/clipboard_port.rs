@@ -14,10 +14,32 @@ pub struct SessionClipboardSnapshot {
 impl EditorSessionHandle {
     pub fn clipboard_snapshot(&self) -> Result<SessionClipboardSnapshot, ProtocolError> {
         let session = self.inner.try_borrow().map_err(|_| busy_error())?;
+        let selection = session.runtime.clipboard_selection_snapshot();
+        let selected_text = session.runtime.selected_focused_text();
+        eprintln!(
+            "[cditor][copy][session] selection={} selected_text_len={:?}",
+            selection
+                .as_ref()
+                .map(|selection| match selection {
+                    ClipboardSelection::Inline { spans } => {
+                        format!("Inline(spans={})", spans.len())
+                    }
+                    ClipboardSelection::DocumentLink { .. } => "DocumentLink".to_owned(),
+                    ClipboardSelection::TextFragments { fragments } => {
+                        format!("TextFragments(fragments={})", fragments.len())
+                    }
+                    ClipboardSelection::Blocks { blocks } => {
+                        format!("Blocks(blocks={})", blocks.len())
+                    }
+                    ClipboardSelection::Table { .. } => "Table".to_owned(),
+                })
+                .unwrap_or_else(|| "None".to_owned()),
+            selected_text.as_ref().map(String::len),
+        );
         Ok(SessionClipboardSnapshot {
             document_id: session.runtime.document_id(),
-            selection: session.runtime.clipboard_selection_snapshot(),
-            selected_text: session.runtime.selected_focused_text(),
+            selection,
+            selected_text,
         })
     }
 

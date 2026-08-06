@@ -117,6 +117,26 @@ pub fn project_focused_block_kind(runtime: &DocumentRuntime) -> Option<(BlockId,
 }
 
 impl EditorSessionHandle {
+    /// Renders the whole document to GitHub-Flavored Markdown.
+    ///
+    /// The export reads the runtime's full document model. Heavyweight
+    /// payloads evicted from the in-memory cache by cache maintenance appear
+    /// as placeholders, so a complete export should run on a fresh read-only
+    /// session whose payload window covers the whole document.
+    pub fn export_markdown(&self) -> Result<String, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        let document = session.runtime.rich_text_document();
+        Ok(cditor_import_export::markdown::export_plain_markdown(
+            &document,
+        ))
+    }
+
     /// Returns only the focused block identity and kind, without cloning its payload.
     pub fn focused_block_kind(&self) -> Result<Option<(BlockId, RichBlockKind)>, ProtocolError> {
         let session = self.inner.try_borrow().map_err(|_| {
@@ -271,6 +291,33 @@ mod tests {
     use crate::EditorSession;
 
     #[test]
+    fn export_markdown_renders_heading_paragraph_and_quote() {
+        let handle = EditorSession::new(DocumentRuntime::demo(), true).into_handle();
+        let markdown = handle.export_markdown().expect("export markdown");
+        assert!(markdown.contains("# Cditor"), "heading missing: {markdown}");
+        assert!(
+            markdown.contains("最小 GPUI 富文本编辑器"),
+            "paragraph missing: {markdown}"
+        );
+        assert!(
+            markdown.contains("runtime 才是真相"),
+            "quote missing: {markdown}"
+        );
+    }
+
+    #[test]
+    fn export_markdown_on_blank_document_is_not_an_error() {
+        let handle = EditorSession::new(DocumentRuntime::empty(), true).into_handle();
+        let markdown = handle.export_markdown().expect("export markdown");
+        // `empty()` still contains one blank heading block; the export must
+        // succeed and carry the heading marker rather than erroring.
+        assert!(
+            markdown.contains("#"),
+            "expected heading marker: {markdown:?}"
+        );
+    }
+
+    #[test]
     fn document_snapshot_owns_metadata_and_applies_readonly_history_policy() {
         let runtime = DocumentRuntime::demo();
         let block_id = runtime.visible_block_ids()[0];
@@ -391,4 +438,5 @@ mod tests {
         assert!(!scene.is_empty());
         assert!(handle.whiteboard_scene(paragraph_id).unwrap().is_none());
     }
+
 }

@@ -13,7 +13,6 @@ fn records_markdown_parse_stats_like_v1() {
     assert!(snapshot.incremental_parse_count >= 1);
     assert!(snapshot.incremental_parse_chars >= "- item".len() as u64);
 }
-
 #[test]
 fn markdown_paste_detection_includes_inline_syntax() {
     assert!(looks_like_markdown_paste("**bold** and `code`"));
@@ -320,4 +319,77 @@ fn parsed_to_document(parsed: ParsedMarkdownDocument) -> RichTextDocument {
     document.root_blocks = parsed.root_blocks;
     document.blocks = parsed.blocks;
     document
+}
+
+#[test]
+fn export_plain_text_keeps_markdown_markers_verbatim() {
+    let mut document = RichTextDocument::empty(1);
+    document.push_root_block(RichBlockRecord::paragraph(1, "a_b *c* [d] e\\f 中文_测试"));
+    assert_eq!(
+        export_plain_markdown(&document),
+        "a_b *c* [d] e\\f 中文_测试"
+    );
+}
+
+#[test]
+fn export_italic_uses_single_asterisk_like_lute() {
+    let mut document = RichTextDocument::empty(1);
+    let spans = vec![InlineSpan {
+        text: "强调".to_owned(),
+        marks: vec![InlineMark::Italic],
+    }];
+    document.push_root_block(RichBlockRecord::new(
+        1,
+        RichBlockKind::Paragraph,
+        BlockPayload::RichText { spans },
+    ));
+    assert_eq!(export_plain_markdown(&document), "*强调*");
+}
+
+#[test]
+fn export_link_text_escapes_protyle_inline_markers() {
+    let mut document = RichTextDocument::empty(1);
+    let spans = vec![InlineSpan {
+        text: "a*b_c`~$=^<>".to_owned(),
+        marks: vec![InlineMark::Link {
+            href: "https://example.com".to_owned(),
+        }],
+    }];
+    document.push_root_block(RichBlockRecord::new(
+        1,
+        RichBlockKind::Paragraph,
+        BlockPayload::RichText { spans },
+    ));
+    assert_eq!(
+        export_plain_markdown(&document),
+        "[a\\*b\\_c\\`\\~\\$\\=\\^\\<\\>](https://example.com)"
+    );
+}
+
+#[test]
+fn export_multi_mark_spans_wrap_in_lute_order() {
+    let mut document = RichTextDocument::empty(1);
+    let spans = vec![
+        InlineSpan {
+            text: "bold".to_owned(),
+            marks: vec![InlineMark::Bold],
+        },
+        InlineSpan {
+            text: "both".to_owned(),
+            marks: vec![InlineMark::Bold, InlineMark::Italic],
+        },
+        InlineSpan {
+            text: "strike".to_owned(),
+            marks: vec![InlineMark::Strike],
+        },
+    ];
+    document.push_root_block(RichBlockRecord::new(
+        1,
+        RichBlockKind::Paragraph,
+        BlockPayload::RichText { spans },
+    ));
+    assert_eq!(
+        export_plain_markdown(&document),
+        "**bold*****both***~~strike~~"
+    );
 }

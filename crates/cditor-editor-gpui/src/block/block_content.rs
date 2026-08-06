@@ -1,5 +1,6 @@
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div, px,
+    AnyElement, App, Entity, FocusHandle, FontWeight, IntoElement, ParentElement, ScrollHandle,
+    Styled, div, px,
 };
 
 use crate::app::worker_admission::EditorWorkerAdmission;
@@ -22,7 +23,8 @@ use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::features::whiteboard::render_whiteboard_thumbnail;
 use crate::surfaces::TextSurfaceRenderState;
 use crate::text::{
-    RichTextElement, RichTextLayoutInput, SegmentedRichTextElement, SegmentedTextViewport,
+    RichTextElement, RichTextLayoutInput, RichTextTypography, SegmentedRichTextElement,
+    SegmentedTextViewport,
 };
 use crate::{presentation::rich_text::render_payload_text, theme::GuiTheme};
 use cditor_core::edit::SelectionRange;
@@ -30,6 +32,9 @@ use cditor_core::rich_text::{BlockPayload, BlockPayloadView};
 use cditor_runtime::ViewBlockSnapshot;
 
 const EMPTY_PAGE_TITLE_PLACEHOLDER: &str = "新页面";
+const NOTION_PAGE_TITLE_SIZE_PX: f32 = 40.0;
+const NOTION_PAGE_TITLE_LINE_HEIGHT_PX: f32 = 48.0;
+const NOTION_PAGE_TITLE_WEIGHT: FontWeight = FontWeight::BOLD;
 
 #[expect(clippy::too_many_arguments, reason = "P4-002 render context 聚合")]
 pub(crate) fn render_block_content(
@@ -182,7 +187,7 @@ pub(crate) fn render_block_content(
                     )
                     .render();
                 }
-                let text_element = RichTextElement::new(input, text_theme)
+                let mut text_element = RichTextElement::new(input, text_theme)
                     .with_prewarmed_layout()
                     .with_placeholder(page_title_placeholder(block, text_len))
                     .with_base_text_color(
@@ -213,8 +218,11 @@ pub(crate) fn render_block_content(
                         view,
                         focus,
                         text_input_active(block.focused, suppress_text_input),
-                    )
-                    .render();
+                    );
+                if let Some(typography) = page_title_typography(block) {
+                    text_element = text_element.with_typography(typography);
+                }
+                let text_element = text_element.render();
                 if should_show_empty_ai_hint(block, suppress_text_input, text_len) {
                     div()
                         .relative()
@@ -274,6 +282,20 @@ fn page_title_placeholder(block: &ViewBlockSnapshot, text_len: usize) -> Option<
             cditor_core::rich_text::RichBlockKind::Heading { level: 1 }
         ))
     .then_some(EMPTY_PAGE_TITLE_PLACEHOLDER)
+}
+
+fn page_title_typography(block: &ViewBlockSnapshot) -> Option<RichTextTypography> {
+    (block.visible_index == 0
+        && block.depth == 0
+        && matches!(
+            block.kind,
+            cditor_core::rich_text::RichBlockKind::Heading { level: 1 }
+        ))
+    .then_some(RichTextTypography {
+        font_size_px: Some(NOTION_PAGE_TITLE_SIZE_PX),
+        line_height_px: Some(NOTION_PAGE_TITLE_LINE_HEIGHT_PX),
+        font_weight: Some(NOTION_PAGE_TITLE_WEIGHT),
+    })
 }
 
 fn text_input_active(block_focused: bool, suppress_text_input: bool) -> bool {
@@ -351,10 +373,19 @@ mod tests {
         );
         assert!(!should_show_empty_ai_hint(&block, false, 0));
         assert_eq!(page_title_placeholder(&block, 1), None);
+        assert_eq!(
+            page_title_typography(&block),
+            Some(RichTextTypography {
+                font_size_px: Some(40.0),
+                line_height_px: Some(48.0),
+                font_weight: Some(FontWeight::BOLD),
+            })
+        );
 
         let mut non_title_h1 = block;
         non_title_h1.visible_index = 1;
         assert_eq!(page_title_placeholder(&non_title_h1, 0), None);
+        assert_eq!(page_title_typography(&non_title_h1), None);
     }
 
     #[test]

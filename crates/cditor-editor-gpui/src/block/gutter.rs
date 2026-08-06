@@ -6,7 +6,9 @@ use gpui::{
 
 use cditor_component::SvgIcon;
 
-use crate::block::chrome::{BLOCK_GUTTER_HEIGHT_PX, BLOCK_GUTTER_WIDTH_PX};
+use crate::block::chrome::BLOCK_GUTTER_WIDTH_PX;
+#[cfg(test)]
+use crate::block::chrome::BLOCK_GUTTER_HEIGHT_PX;
 use crate::theme::GuiTheme;
 
 pub type GutterMouseDownHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
@@ -22,6 +24,7 @@ pub fn render_block_gutter(
     visible: bool,
     action_active: bool,
     control_top_px: f32,
+    height_px: f32,
     _on_add: Option<GutterAddHandler>,
     on_mouse_down: Option<GutterMouseDownHandler>,
 ) -> AnyElement {
@@ -32,7 +35,7 @@ pub fn render_block_gutter(
     };
     div()
         .w(px(BLOCK_GUTTER_WIDTH_PX))
-        .h(px(BLOCK_GUTTER_HEIGHT_PX))
+        .h(px(height_px))
         .relative()
         .flex_shrink_0()
         .child(if visible {

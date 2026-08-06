@@ -78,6 +78,9 @@ pub enum CommandArgs {
         text: String,
         metadata_json: Option<String>,
     },
+    Markdown {
+        text: String,
+    },
     ImageAsset {
         payload: ImagePayload,
         asset: Option<cditor_core::edit::AssetSnapshot>,
@@ -220,6 +223,7 @@ impl CommandArgs {
             Self::Text(_) => CommandArgumentKind::Text,
             Self::ReplaceText { .. } => CommandArgumentKind::ReplaceText,
             Self::ClipboardData { .. } => CommandArgumentKind::ClipboardData,
+            Self::Markdown { .. } => CommandArgumentKind::Markdown,
             Self::ImageAsset { .. } => CommandArgumentKind::ImageAsset,
             Self::MoveCaret { .. } => CommandArgumentKind::MoveCaret,
             Self::DocumentSelection(_) => CommandArgumentKind::DocumentSelection,
@@ -261,6 +265,7 @@ pub enum CommandArgumentKind {
     Text,
     ReplaceText,
     ClipboardData,
+    Markdown,
     ImageAsset,
     MoveCaret,
     DocumentSelection,

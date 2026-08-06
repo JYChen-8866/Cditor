@@ -6,8 +6,8 @@ use cditor_core::ids::BlockId;
 use cditor_core::rich_text::RichBlockKind;
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, Entity, InteractiveElement, IntoElement, MouseButton, ParentElement, Styled,
-    deferred, div, px, rgb,
+    deferred, div, px, rgb, AnyElement, Entity, InteractiveElement, IntoElement, MouseButton,
+    ParentElement, Styled,
 };
 
 use crate::editor_view::CditorV2View;
@@ -22,6 +22,10 @@ const SLASH_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
 const SLASH_MENU_GROUP_HEIGHT_PX: f32 = 28.0;
 const SLASH_MENU_PANEL_PADDING_PX: f32 = 4.0;
 const SLASH_MENU_ICON_SIZE_PX: f32 = 36.0;
+const SLASH_MENU_ICON_GLYPH_SIZE_PX: f32 = 20.0;
+const SLASH_MENU_LABEL_SIZE_PX: f32 = 14.0;
+const SLASH_MENU_DESCRIPTION_SIZE_PX: f32 = 12.0;
+const SLASH_MENU_GROUP_SIZE_PX: f32 = 12.0;
 const SLASH_MENU_VIEWPORT_MARGIN_PX: f32 = 8.0;
 const SLASH_MENU_ANCHOR_GAP_PX: f32 = 4.0;
 const SLASH_MENU_SVG_ICON_SIZE_PX: f32 = 20.0;
@@ -500,7 +504,7 @@ fn render_slash_menu_group_header(theme: GuiTheme) -> AnyElement {
         .flex()
         .items_center()
         .px(px(8.0))
-        .text_size(px(11.0))
+        .text_size(px(SLASH_MENU_GROUP_SIZE_PX))
         .text_color(rgb(theme.muted))
         .child("Basic blocks")
         .into_any_element()
@@ -565,13 +569,13 @@ fn render_slash_menu_row(
                 .gap(px(1.0))
                 .child(
                     div()
-                        .text_size(px(14.0))
+                        .text_size(px(SLASH_MENU_LABEL_SIZE_PX))
                         .text_color(rgb(theme.text))
                         .child(item.label),
                 )
                 .child(
                     div()
-                        .text_size(px(11.0))
+                        .text_size(px(SLASH_MENU_DESCRIPTION_SIZE_PX))
                         .text_color(rgb(theme.muted))
                         .child(item.description),
                 ),
@@ -599,7 +603,10 @@ fn render_slash_menu_item_icon(item: &SlashMenuItem, theme: GuiTheme) -> AnyElem
             .size(px(SLASH_MENU_SVG_ICON_SIZE_PX))
             .into_any_element()
     } else {
-        div().child(item.icon).into_any_element()
+        div()
+            .text_size(px(SLASH_MENU_ICON_GLYPH_SIZE_PX))
+            .child(item.icon)
+            .into_any_element()
     }
 }
 
@@ -632,7 +639,11 @@ pub fn slash_scroll_delta_rows(delta_y: f32) -> isize {
         return 0;
     }
     let rows = (delta_y.abs() / SLASH_MENU_ROW_HEIGHT_PX).ceil().max(1.0) as isize;
-    if delta_y > 0.0 { -rows } else { rows }
+    if delta_y > 0.0 {
+        -rows
+    } else {
+        rows
+    }
 }
 
 #[cfg(test)]
@@ -665,11 +676,9 @@ mod tests {
             assert!(std::str::from_utf8(source).unwrap().starts_with("<svg"));
         }
         assert!(items.iter().all(|item| slash_menu_svg_icon(item).is_some()));
-        assert!(
-            std::str::from_utf8(ICON_SUBMENU_ARROW)
-                .unwrap()
-                .starts_with("<svg")
-        );
+        assert!(std::str::from_utf8(ICON_SUBMENU_ARROW)
+            .unwrap()
+            .starts_with("<svg"));
     }
 
     #[test]
@@ -706,27 +715,19 @@ mod tests {
         assert_eq!(items[0].command, Some(SlashMenuCommand::AskAi));
         assert_eq!(items[1].kind, RichBlockKind::Paragraph);
         assert_eq!(items[15].kind, RichBlockKind::Divider);
-        assert!(
-            items
-                .iter()
-                .any(|item| item.kind == RichBlockKind::Paragraph)
-        );
-        assert!(
-            items
-                .iter()
-                .any(|item| item.kind == RichBlockKind::Code { language: None })
-        );
+        assert!(items
+            .iter()
+            .any(|item| item.kind == RichBlockKind::Paragraph));
+        assert!(items
+            .iter()
+            .any(|item| item.kind == RichBlockKind::Code { language: None }));
         assert!(items.iter().any(|item| item.kind == RichBlockKind::Table));
-        assert!(
-            items
-                .iter()
-                .any(|item| item.kind == RichBlockKind::Whiteboard)
-        );
-        assert!(
-            items
-                .iter()
-                .all(|item| !item.icon.is_empty() && !item.description.is_empty())
-        );
+        assert!(items
+            .iter()
+            .any(|item| item.kind == RichBlockKind::Whiteboard));
+        assert!(items
+            .iter()
+            .all(|item| !item.icon.is_empty() && !item.description.is_empty()));
     }
 
     #[test]
@@ -843,6 +844,15 @@ mod tests {
         assert_eq!(slash_menu_panel_height(0), 84.0);
         assert_eq!(slash_menu_panel_height(3), 180.0);
         assert_eq!(slash_menu_panel_height(20), 420.0);
+    }
+
+    #[test]
+    fn slash_menu_typography_and_icon_geometry_match_notion_density() {
+        assert_eq!(SLASH_MENU_LABEL_SIZE_PX, 14.0);
+        assert_eq!(SLASH_MENU_DESCRIPTION_SIZE_PX, 12.0);
+        assert_eq!(SLASH_MENU_GROUP_SIZE_PX, 12.0);
+        assert_eq!(SLASH_MENU_ICON_GLYPH_SIZE_PX, 20.0);
+        assert_eq!(SLASH_MENU_ICON_SIZE_PX, 36.0);
     }
 
     #[test]

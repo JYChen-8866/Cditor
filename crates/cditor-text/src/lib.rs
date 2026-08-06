@@ -59,7 +59,8 @@ pub use snapshot::{
     PositionedInlineBox, TextClusterSnapshot, TextLayoutSnapshot, TextLineSnapshot,
 };
 pub use style::{
-    TextBrush, TextFontSlant, TextLineHeight, TextStyleConfig, TextStyleRun, text_style_runs,
+    NOTION_BOLD_FONT_WEIGHT, TextBrush, TextFontSlant, TextLineHeight, TextStyleConfig,
+    TextStyleRun, text_style_runs,
 };
 pub use text_snapshot::TextSnapshot;
 pub use theme::TextTheme;

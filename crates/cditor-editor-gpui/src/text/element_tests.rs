@@ -294,19 +294,27 @@ fn notion_text_sizes_and_line_heights_are_stable() {
     );
     assert_eq!(
         text_size_for_kind(&RichBlockKind::Heading { level: 1 }),
-        px(30.0)
+        px(24.0)
     );
     assert_eq!(
-        line_height_for_kind(&RichBlockKind::Heading { level: 1 }, px(30.0)),
-        px(39.0)
+        line_height_for_kind(&RichBlockKind::Heading { level: 1 }, px(24.0)),
+        px(31.2)
     );
     assert_eq!(
         line_height_for_kind(&RichBlockKind::Heading { level: 2 }, px(24.0)),
-        px(32.0)
+        px(31.2)
     );
     assert_eq!(
         line_height_for_kind(&RichBlockKind::Heading { level: 3 }, px(20.0)),
         px(26.0)
+    );
+    assert_eq!(
+        text_size_for_kind(&RichBlockKind::Heading { level: 4 }),
+        px(18.0)
+    );
+    assert_eq!(
+        line_height_for_kind(&RichBlockKind::Heading { level: 4 }, px(18.0)),
+        px(23.4)
     );
     assert_eq!(
         base_font_weight_for_kind(&RichBlockKind::Heading { level: 1 }, FontWeight::NORMAL),

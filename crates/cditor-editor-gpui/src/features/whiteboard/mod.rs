@@ -12,9 +12,10 @@ mod render;
 mod style;
 
 /// The runtime reserves 480 px for the complete block. The shell contributes
-/// 8 px of vertical padding, leaving a stable 472 px thumbnail surface.
+/// 8 px of outer padding and 4 px of inner padding on each side, leaving a
+/// stable 464 px thumbnail surface whose bottom border remains visible.
 #[cfg(feature = "whiteboard")]
-pub(super) const WHITEBOARD_THUMBNAIL_HEIGHT_PX: f32 = 472.0;
+pub(super) const WHITEBOARD_THUMBNAIL_HEIGHT_PX: f32 = 464.0;
 
 #[cfg(feature = "whiteboard")]
 pub(crate) use backend::WhiteboardBackendEntity;

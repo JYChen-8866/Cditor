@@ -1,18 +1,18 @@
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher},
+    collections::{hash_map::DefaultHasher, HashMap, HashSet, VecDeque},
     hash::{Hash, Hasher},
     sync::{Mutex, OnceLock},
 };
 
 use cditor_text::{TextLayoutSnapshot, TextPaintFont, TextPaintFontStyle, TextPaintRun};
 use gpui::{
-    App, Bounds, FontId, FontStyle as GpuiFontStyle, FontWeight as GpuiFontWeight, GlyphId, Hsla,
-    PaintQuad, Pixels, Point, StrikethroughStyle, TextRun, UnderlineStyle, Window, fill, font,
-    point, px, rgb, size,
+    fill, font, point, px, rgb, size, App, Bounds, FontId, FontStyle as GpuiFontStyle,
+    FontWeight as GpuiFontWeight, GlyphId, Hsla, PaintQuad, Pixels, Point, StrikethroughStyle,
+    TextRun, UnderlineStyle, Window,
 };
 
-use super::exact_raster::{ExactRasterErrorKind, exact_raster_cache_stats, paint_exact_glyph};
+use super::exact_raster::{exact_raster_cache_stats, paint_exact_glyph, ExactRasterErrorKind};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct TextPaintReport {
@@ -353,9 +353,6 @@ fn ensure_font_available(font_info: &TextPaintFont, window: &Window) -> gpui::Re
         ))
         .into());
     }
-    if is_document_body_font_family(&font_info.family) {
-        return ensure_document_body_font_family_available(window);
-    }
     static REGISTERED_BLOBS: OnceLock<Mutex<HashSet<(usize, u64)>>> = OnceLock::new();
     let text_system_id = std::ptr::from_ref(window.text_system()) as usize;
     let blob_id = font_info.blob_id();
@@ -398,33 +395,6 @@ fn ensure_font_available(font_info: &TextPaintFont, window: &Window) -> gpui::Re
         .entry(text_system_id)
         .or_default()
         .insert(font_info.family.to_lowercase());
-    Ok(())
-}
-
-fn is_document_body_font_family(family: &str) -> bool {
-    family.eq_ignore_ascii_case(cditor_text::DOCUMENT_BODY_FONT_FAMILY)
-}
-
-fn ensure_document_body_font_family_available(window: &Window) -> gpui::Result<()> {
-    static REGISTERED_TEXT_SYSTEMS: OnceLock<Mutex<HashSet<usize>>> = OnceLock::new();
-
-    let text_system_id = std::ptr::from_ref(window.text_system()) as usize;
-    let registered = REGISTERED_TEXT_SYSTEMS.get_or_init(|| Mutex::new(HashSet::new()));
-    let mut registered = registered
-        .lock()
-        .expect("registered document font lock poisoned");
-    if registered.contains(&text_system_id) {
-        return Ok(());
-    }
-
-    let body = cditor_config::APP_CONFIG.document.typography.fonts.body;
-    window.text_system().add_fonts(vec![
-        Cow::Borrowed(body.regular),
-        Cow::Borrowed(body.medium),
-        Cow::Borrowed(body.semibold),
-        Cow::Borrowed(body.bold),
-    ])?;
-    registered.insert(text_system_id);
     Ok(())
 }
 
@@ -601,17 +571,6 @@ mod tests {
         assert!(!font_requires_registration(false, true));
         assert!(!font_requires_registration(true, false));
         assert!(font_requires_registration(false, false));
-    }
-
-    #[test]
-    fn document_font_family_routes_to_complete_weight_registration() {
-        assert!(is_document_body_font_family(
-            cditor_text::DOCUMENT_BODY_FONT_FAMILY
-        ));
-        assert!(is_document_body_font_family(
-            &cditor_text::DOCUMENT_BODY_FONT_FAMILY.to_uppercase()
-        ));
-        assert!(!is_document_body_font_family("Menlo"));
     }
 
     #[test]

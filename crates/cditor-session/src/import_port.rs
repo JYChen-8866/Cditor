@@ -64,6 +64,66 @@ pub fn project_ai_preview_import(
     })
 }
 
+/// Applies `markdown` as a forced Markdown document import.
+///
+/// Unlike [`project_clipboard_import`], this never falls back to a single
+/// plain-text block: the text is always parsed into typed blocks (headings,
+/// lists, code, tables, and blank-line-separated paragraphs), which is what
+/// external document imports need regardless of whether the text "looks like"
+/// a markdown paste.
+pub fn project_markdown_import(
+    runtime: &mut DocumentRuntime,
+    markdown: &str,
+) -> Result<ImportDispatchReport, ProtocolError> {
+    let before_revision = runtime.revision();
+    let before_transaction = runtime.last_committed_transaction_id();
+    let focused = runtime.focused_block_id();
+    let (target, first_block_id) = runtime.import_target();
+    let plan = cditor_import_export::import_plan::plan_markdown_import(
+        markdown,
+        ImportSource::Markdown,
+        target,
+        first_block_id,
+        ImportLimits::default(),
+    );
+    let ImportApplicationReport {
+        changed,
+        revision,
+        plan_report,
+    } = runtime.apply_import_plan(&plan).map_err(|message| {
+        let code = if plan.report().rejected() {
+            ProtocolErrorCode::InvalidArguments
+        } else {
+            ProtocolErrorCode::ApplyFailed
+        };
+        ProtocolError::new(code, message).with_document(runtime.document_id())
+    })?;
+    if changed && runtime.revision() == before_revision {
+        runtime.note_content_changed();
+    }
+    let transaction_ids = runtime
+        .last_committed_transaction_id()
+        .filter(|id| Some(*id) != before_transaction)
+        .into_iter()
+        .collect();
+    let outcome = if changed {
+        CommandOutcome::applied(transaction_ids, focused.into_iter().collect())
+    } else {
+        CommandOutcome::no_op()
+    };
+    debug_assert_eq!(outcome.status == CommandOutcomeStatus::Applied, changed);
+    Ok(ImportDispatchReport {
+        outcome,
+        source_report: plan_report,
+        before_revision,
+        revision: if changed {
+            runtime.revision()
+        } else {
+            revision
+        },
+    })
+}
+
 pub fn project_clipboard_import(
     runtime: &mut DocumentRuntime,
     text: &str,
@@ -142,9 +202,8 @@ mod tests {
             ))
             .unwrap();
         handle
-            .dispatch(command(EditorCommand::ApplyClipboardData {
+            .dispatch(command(EditorCommand::ApplyMarkdownImport {
                 text: "# Title\n- one\n- two".to_owned(),
-                metadata_json: None,
             }))
             .unwrap();
         let snapshot = handle.document_snapshot().unwrap();
@@ -158,6 +217,97 @@ mod tests {
         let snapshot = handle.document_snapshot().unwrap();
         assert_eq!(snapshot.block_count, 1);
         assert_eq!(handle.text_block_context(1).unwrap().unwrap().text, "");
+    }
+
+    #[test]
+    fn markdown_import_splits_plain_prose_into_paragraph_blocks() {
+        let handle = EditorSession::new(DocumentRuntime::empty(), false).into_handle();
+        handle
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::FocusBlock { block_id: 1 },
+                CommandSource::Automation,
+            ))
+            .unwrap();
+        handle
+            .dispatch(command(EditorCommand::ApplyMarkdownImport {
+                text: "first paragraph\n\nsecond paragraph".to_owned(),
+            }))
+            .unwrap();
+        let snapshot = handle.document_snapshot().unwrap();
+        assert_eq!(
+            snapshot.block_count, 2,
+            "plain prose must not collapse into one block"
+        );
+        assert_eq!(
+            handle.text_block_context(1).unwrap().unwrap().kind,
+            RichBlockKind::Paragraph
+        );
+        assert_eq!(
+            handle.text_block_context(1).unwrap().unwrap().text,
+            "first paragraph"
+        );
+        assert_eq!(
+            handle.text_block_context(3).unwrap().unwrap().text,
+            "second paragraph"
+        );
+    }
+
+    #[test]
+    fn markdown_import_parses_typed_blocks_without_heuristics() {
+        let handle = EditorSession::new(DocumentRuntime::empty(), false).into_handle();
+        handle
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::FocusBlock { block_id: 1 },
+                CommandSource::Automation,
+            ))
+            .unwrap();
+        handle
+            .dispatch(command(EditorCommand::ApplyMarkdownImport {
+                text: "# Title\n- one\n- two\n\n```rust\nfn main() {}\n```".to_owned(),
+            }))
+            .unwrap();
+        let snapshot = handle.document_snapshot().unwrap();
+        assert_eq!(snapshot.block_count, 4);
+        assert!(matches!(
+            handle.text_block_context(1).unwrap().unwrap().kind,
+            RichBlockKind::Heading { level: 1 }
+        ));
+        for block_id in [3, 4] {
+            assert_eq!(
+                handle.text_block_context(block_id).unwrap().unwrap().kind,
+                RichBlockKind::BulletedList,
+                "block {block_id} should be a bulleted list item"
+            );
+        }
+        assert!(matches!(
+            handle.text_block_context(5).unwrap().unwrap().kind,
+            RichBlockKind::Code { .. }
+        ));
+    }
+
+    #[test]
+    fn clipboard_import_keeps_plain_text_semantics() {
+        // Regression guard: pasting prose stays a single plain-text block,
+        // while document import uses ApplyMarkdownImport for parsing.
+        let handle = EditorSession::new(DocumentRuntime::empty(), false).into_handle();
+        handle
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::FocusBlock { block_id: 1 },
+                CommandSource::Automation,
+            ))
+            .unwrap();
+        handle
+            .dispatch(command(EditorCommand::ApplyClipboardData {
+                text: "first paragraph\n\nsecond paragraph".to_owned(),
+                metadata_json: None,
+            }))
+            .unwrap();
+        let snapshot = handle.document_snapshot().unwrap();
+        assert_eq!(snapshot.block_count, 1);
+        assert_eq!(
+            handle.block_plain_text(1).unwrap().as_deref(),
+            Some("first paragraph\n\nsecond paragraph")
+        );
     }
 
     #[test]

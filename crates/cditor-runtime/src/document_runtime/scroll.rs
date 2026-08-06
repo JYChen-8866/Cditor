@@ -554,7 +554,10 @@ mod tests {
         );
         assert!(runtime.layout.projection.publication.stable.is_none());
         assert!(runtime.layout.page_local_cache.is_empty());
-        assert_eq!(runtime.document.payload_window.payloads.len(), payload_count);
+        assert_eq!(
+            runtime.document.payload_window.payloads.len(),
+            payload_count
+        );
         assert_eq!(runtime.focused_block_id(), Some(7));
 
         runtime.set_host_active(true);

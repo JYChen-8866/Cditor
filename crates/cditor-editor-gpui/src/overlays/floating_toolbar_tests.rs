@@ -25,13 +25,13 @@ fn gutter_format_controls_use_the_provided_svg_assets() {
         let (_, source) = format_icon_source(action).expect("provided formatting SVG is mapped");
         assert!(std::str::from_utf8(source).unwrap().starts_with("<svg"));
     }
-    assert_eq!(FORMAT_ICON_SIZE_PX, 24.0);
+    assert_eq!(FORMAT_ICON_SIZE_PX, 20.0);
     assert_eq!(GUTTER_FORMAT_ROW_PADDING_PX, 8.0);
     assert_eq!(FORMAT_BUTTON_SIZE_PX, 30.0);
     assert_eq!(GUTTER_FORMAT_BUTTON_SIZE_PX, 36.0);
     assert_eq!(TOOLBAR_GROUP_LABEL_HEIGHT_PX, 26.0);
     assert_eq!(POPUP_MENU_ITEM_FONT_SIZE_PX, 14.0);
-    assert_eq!(POPUP_MENU_LABEL_FONT_SIZE_PX, 11.0);
+    assert_eq!(GUTTER_MENU_LABEL_FONT_SIZE_PX, 12.0);
 }
 
 #[test]
@@ -192,5 +192,5 @@ fn ai_actions_use_provided_svg_icons_and_shared_row_metrics() {
         AI_ACTION_COUNT
     );
     assert_eq!(AI_ACTION_ROW_HEIGHT_PX, 36.0);
-    assert_eq!(FORMAT_ICON_SIZE_PX, 24.0);
+    assert_eq!(FORMAT_ICON_SIZE_PX, 20.0);
 }

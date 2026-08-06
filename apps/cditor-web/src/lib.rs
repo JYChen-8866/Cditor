@@ -1,27 +1,7 @@
-use std::borrow::Cow;
-
 use cditor_editor_gpui::{CditorV2View, bind_cditor_keys};
 use cditor_runtime::DocumentRuntime;
 use gpui::*;
 use wasm_bindgen::prelude::*;
-
-// ── bundled fonts ───────────────────────────────────────────────────
-// WASM 环境下没有系统字体，必须通过 include_bytes! 嵌入
-const ALIBABA_PUHUITI_MEDIUM: &[u8] =
-    include_bytes!("../../../assets/fonts/AlibabaPuHuiTi-Medium.ttf");
-const ALIBABA_PUHUITI_SEMIBOLD: &[u8] =
-    include_bytes!("../../../assets/fonts/AlibabaPuHuiTi-SemiBold.ttf");
-
-fn load_web_fonts(cx: &mut App) {
-    let mut fonts = cditor_whiteboard_drafft::cjk_fallback_fonts();
-    fonts.extend([
-        Cow::Borrowed(ALIBABA_PUHUITI_MEDIUM),
-        Cow::Borrowed(ALIBABA_PUHUITI_SEMIBOLD),
-    ]);
-    cx.text_system()
-        .add_fonts(fonts)
-        .expect("load bundled fonts for Cditor Web");
-}
 
 // ── Cditor web view ─────────────────────────────────────────────────
 
@@ -80,7 +60,6 @@ pub fn run() -> Result<(), JsValue> {
     };
 
     app.run(|cx: &mut App| {
-        load_web_fonts(cx);
         bind_cditor_keys(cx);
         cx.activate(true);
 

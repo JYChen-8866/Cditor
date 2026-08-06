@@ -141,9 +141,9 @@ use cditor_core::document::{BlockIndexRecord, DocumentIndex, VisibleDocumentInde
 use cditor_core::edit::{
     AssetSnapshot, CollectionRecordSnapshot, CommentThreadSnapshot, DocumentSelection,
     EditOperation, EditTransaction, EditTransactionKind, InnerSelectionAnchor, InternalTextOffset,
-    ScrollAnchor, SelectionRange, TableEditOperation, TextAffinity, TextEditOperation,
-    TextOffsetMap, TextPosition, TransactionPermission, TransactionPermissionSet,
-    TransactionPrecondition, UndoStack,
+    NormalizedSelection, ScrollAnchor, SelectionRange, TableEditOperation, TextAffinity,
+    TextEditOperation, TextOffsetMap, TextPosition, TransactionPermission,
+    TransactionPermissionSet, TransactionPrecondition, UndoStack,
 };
 use cditor_core::ids::{AssetId, BlockId, CollectionId, CommentThreadId, DocumentId, SurfaceId};
 use cditor_core::import_plan::ImportedBlockDocument;

@@ -1,7 +1,7 @@
 use crate::theme::GuiTheme;
 use cditor_core::layout::block_metrics::{
     NOTION_BODY_LINE_HEIGHT_PX, NOTION_HEADING_1_LINE_HEIGHT_PX, NOTION_HEADING_2_LINE_HEIGHT_PX,
-    NOTION_HEADING_3_LINE_HEIGHT_PX, block_outer_padding_for_kind,
+    NOTION_HEADING_3_LINE_HEIGHT_PX, NOTION_HEADING_4_LINE_HEIGHT_PX, block_outer_padding_for_kind,
 };
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
@@ -81,6 +81,7 @@ pub const fn block_gutter_top_px(outer_padding_top_px: f32) -> f32 {
     BLOCK_SHELL_BORDER_WIDTH_PX + outer_padding_top_px
 }
 pub const BLOCK_PREFIX_WIDTH_PX: f32 = 22.0;
+pub const NOTION_LIST_PREFIX_WIDTH_PX: f32 = 24.0;
 pub const CALLOUT_PREFIX_WIDTH_PX: f32 = 36.0;
 pub const NOTION_QUOTE_CONTENT_GAP_PX: f32 = 14.0;
 
@@ -122,8 +123,14 @@ impl BlockChromeStyle {
             .as_deref()
             .and_then(parse_hex_color)
             .unwrap_or(kind_style.text);
-        let (outer_padding_top_px, outer_padding_bottom_px) =
-            block_outer_padding_for_kind(&block.kind);
+        let is_page_title = block.visible_index == 0
+            && block.depth == 0
+            && matches!(block.kind, RichBlockKind::Heading { level: 1 });
+        let (outer_padding_top_px, outer_padding_bottom_px) = if is_page_title {
+            (28.0, 20.0)
+        } else {
+            block_outer_padding_for_kind(&block.kind)
+        };
         Self {
             indent_px: block.chrome.list_info.depth as f32 * BLOCK_INDENT_STEP_PX,
             gutter_width_px: BLOCK_GUTTER_WIDTH_PX,
@@ -132,7 +139,11 @@ impl BlockChromeStyle {
             content_prefix_width_px: block_content_prefix_width_px(block),
             outer_padding_top_px: outer_padding_top_px as f32,
             outer_padding_bottom_px: outer_padding_bottom_px as f32,
-            content_min_height_px: kind_style.min_height_px,
+            content_min_height_px: if is_page_title {
+                48.0
+            } else {
+                kind_style.min_height_px
+            },
             content_padding_y_px: kind_style.padding_y_px,
             content_padding_left_px: kind_style.padding_left_px,
             content_padding_right_px: kind_style.padding_right_px,
@@ -184,7 +195,7 @@ pub fn block_content_prefix_width_px(block: &ViewBlockSnapshot) -> f32 {
         BlockPrefixSnapshot::Callout { .. } => CALLOUT_PREFIX_WIDTH_PX,
         BlockPrefixSnapshot::Bullet { .. }
         | BlockPrefixSnapshot::Number { .. }
-        | BlockPrefixSnapshot::Todo { .. } => BLOCK_PREFIX_WIDTH_PX,
+        | BlockPrefixSnapshot::Todo { .. } => NOTION_LIST_PREFIX_WIDTH_PX,
         _ => 0.0,
     }
 }
@@ -210,7 +221,9 @@ impl KindChromeStyle {
             RichBlockKind::Quote => Self::quote(theme),
             RichBlockKind::Callout { .. } => Self::callout(theme),
             RichBlockKind::Code { .. } => Self::code(theme),
+            RichBlockKind::Mermaid => Self::mermaid(theme),
             RichBlockKind::RawMarkdown => Self::raw_markdown(theme),
+            RichBlockKind::Divider | RichBlockKind::Separator => Self::divider(theme),
             // Media and table geometry is consumed by their stable-box/overlay paths.
             RichBlockKind::Image | RichBlockKind::Table => Self::legacy_complex(theme),
             _ => Self::paragraph(theme),
@@ -232,10 +245,19 @@ impl KindChromeStyle {
         }
     }
 
+    fn divider(theme: GuiTheme) -> Self {
+        Self {
+            min_height_px: crate::block::divider::NOTION_DIVIDER_BLOCK_HEIGHT_PX,
+            content_border_width_px: 0.0,
+            ..Self::paragraph(theme)
+        }
+    }
+
     fn heading(level: u8, theme: GuiTheme) -> Self {
         let min_height_px = match level {
             1 => NOTION_HEADING_1_LINE_HEIGHT_PX as f32,
             2 => NOTION_HEADING_2_LINE_HEIGHT_PX as f32,
+            4 => NOTION_HEADING_4_LINE_HEIGHT_PX as f32,
             _ => NOTION_HEADING_3_LINE_HEIGHT_PX as f32,
         };
         Self {
@@ -287,7 +309,26 @@ impl KindChromeStyle {
             padding_right_px: 0.0,
             min_height_px: cditor_core::layout::V1_CODE_INNER_MIN_HEIGHT_PX as f32,
             radius_px: 0.0,
-            content_border_width_px: BLOCK_CONTENT_BORDER_WIDTH_PX,
+            // The code component owns its complete frame, including the
+            // bottom border. The shell must not add a second border around it.
+            content_border_width_px: 0.0,
+            quote_bar: None,
+        }
+    }
+
+    fn mermaid(theme: GuiTheme) -> Self {
+        // Mermaid owns its preview/source padding and reports the complete
+        // rendered height, so the shell must not add another inner inset.
+        Self {
+            background: theme.surface,
+            border: theme.surface,
+            text: theme.text,
+            padding_y_px: 0.0,
+            padding_left_px: 0.0,
+            padding_right_px: 0.0,
+            min_height_px: 0.0,
+            radius_px: 0.0,
+            content_border_width_px: 0.0,
             quote_bar: None,
         }
     }
@@ -374,7 +415,7 @@ mod tests {
         assert_eq!(style.indent_px, 48.0);
         assert_eq!(style.gutter_width_px, BLOCK_GUTTER_WIDTH_PX);
         assert_eq!(style.marker_lane_width_px, BLOCK_PREFIX_WIDTH_PX);
-        assert_eq!(style.content_prefix_width_px, BLOCK_PREFIX_WIDTH_PX);
+        assert_eq!(style.content_prefix_width_px, NOTION_LIST_PREFIX_WIDTH_PX);
     }
 
     #[test]
@@ -521,7 +562,7 @@ mod tests {
         );
 
         assert_eq!(style.marker_lane_width_px, BLOCK_PREFIX_WIDTH_PX);
-        assert_eq!(style.content_prefix_width_px, BLOCK_PREFIX_WIDTH_PX);
+        assert_eq!(style.content_prefix_width_px, NOTION_LIST_PREFIX_WIDTH_PX);
     }
 
     #[test]
@@ -562,7 +603,7 @@ mod tests {
             );
             assert_eq!(
                 list_geometry.text_left_px,
-                paragraph_geometry.text_left_px + BLOCK_PREFIX_WIDTH_PX
+                paragraph_geometry.text_left_px + NOTION_LIST_PREFIX_WIDTH_PX
             );
         }
     }

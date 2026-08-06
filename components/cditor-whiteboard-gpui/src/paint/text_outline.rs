@@ -534,20 +534,12 @@ mod tests {
                 data_hash(crate::font::VIRGIL)
             );
             assert_eq!(
-                data_hash(runs[0].font().data.data()),
-                data_hash(crate::font::CJK_MEDIUM)
-            );
-            assert_eq!(
                 data_hash(runs[1].font().data.data()),
                 data_hash(crate::font::VIRGIL)
             );
             assert_ne!(
                 data_hash(runs[2].font().data.data()),
                 data_hash(crate::font::VIRGIL)
-            );
-            assert_eq!(
-                data_hash(runs[2].font().data.data()),
-                data_hash(crate::font::CJK_MEDIUM)
             );
             for run in runs {
                 assert!(

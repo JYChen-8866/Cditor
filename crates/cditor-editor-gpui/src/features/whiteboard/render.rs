@@ -1,6 +1,6 @@
 use cditor_component::SvgIcon;
 use gpui::{
-    AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled, div, px, rgb,
+    div, px, rgb, AnyElement, Entity, InteractiveElement, IntoElement, ParentElement, Styled,
 };
 
 use crate::editor_view::CditorV2View;
@@ -8,8 +8,8 @@ use crate::skeleton::{SkeletonItem, SkeletonVariant};
 use crate::theme::GuiTheme;
 use cditor_core::ids::BlockId;
 
-use super::WHITEBOARD_THUMBNAIL_HEIGHT_PX;
 use super::cache::WhiteboardThumbnailCache;
+use super::WHITEBOARD_THUMBNAIL_HEIGHT_PX;
 
 const WHITEBOARD_FRAME_RADIUS_PX: f32 = 6.0;
 
@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn thumbnail_height_matches_the_stable_block_inner_box() {
-        assert_eq!(WHITEBOARD_THUMBNAIL_HEIGHT_PX, 472.0);
+        assert_eq!(WHITEBOARD_THUMBNAIL_HEIGHT_PX, 464.0);
         assert_eq!(WHITEBOARD_FRAME_RADIUS_PX, 6.0);
     }
 

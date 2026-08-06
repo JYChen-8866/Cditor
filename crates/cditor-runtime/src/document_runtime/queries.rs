@@ -1,6 +1,78 @@
 use super::*;
 
+/// Sets `prev_id`/`next_id` on the given sibling block ids (already in
+/// document order), looking the blocks up in the reconstructed list.
+fn link_siblings(blocks: &mut [RichBlockRecord], parent_id: Option<BlockId>, siblings: &[BlockId]) {
+    for (index, block_id) in siblings.iter().copied().enumerate() {
+        let Some(block) = blocks.iter_mut().find(|block| block.id == block_id) else {
+            continue;
+        };
+        block.prev_id = index.checked_sub(1).map(|previous| siblings[previous]);
+        block.next_id = siblings.get(index + 1).copied();
+        block.parent_id = parent_id;
+    }
+}
+
 impl DocumentRuntime {
+    /// Materializes the complete rich-text document model behind this runtime.
+    ///
+    /// The runtime normally keeps the document decomposed for large-document
+    /// performance; this reconstruction is only for whole-document exports.
+    /// Blocks whose heavyweight payload was evicted from the in-memory cache
+    /// by cache maintenance are omitted (they are placeholders), so a
+    /// complete export should run on a fresh session whose payload window
+    /// covers the whole document.
+    pub fn rich_text_document(&self) -> RichTextDocument {
+        let mut blocks = Vec::with_capacity(self.document.index.block_ids.len());
+        let mut root_blocks = Vec::new();
+        let mut children: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
+
+        for (index, block_id) in self.document.index.block_ids.iter().copied().enumerate() {
+            let Some(payload) = self.document.payload_window.get(block_id) else {
+                continue;
+            };
+            let parent_id = self.document.index.parent_ids[index];
+            let mut block =
+                RichBlockRecord::new(block_id, payload.kind.clone(), payload.payload.clone());
+            block.document_id = self.document_id;
+            block.parent_id = parent_id;
+            block.depth = self.document.index.depths[index];
+            block.attrs = self
+                .document
+                .block_attrs
+                .get(&block_id)
+                .cloned()
+                .unwrap_or_default();
+            block.content_version = payload.content_version;
+            block.structure_version = self.document.index.structure_version;
+            block.measured_height = self.document.index.layout_meta[index].measured_height;
+            block.estimated_height = self.document.index.layout_meta[index].estimated_height;
+            match parent_id {
+                Some(parent) => children.entry(parent).or_default().push(block_id),
+                None => root_blocks.push(block_id),
+            }
+            blocks.push(block);
+        }
+
+        // Restore sibling links and children lists from the structural order.
+        for block in &mut blocks {
+            block.children = children.remove(&block.id).unwrap_or_default();
+        }
+        for (parent_id, siblings) in children {
+            link_siblings(&mut blocks, Some(parent_id), &siblings);
+        }
+        link_siblings(&mut blocks, None, &root_blocks);
+
+        RichTextDocument {
+            id: self.document_id,
+            version: cditor_core::rich_text::document::CURRENT_RICH_TEXT_FORMAT_VERSION,
+            metadata: self.document.metadata.clone(),
+            root_blocks,
+            blocks,
+            structure_version: self.document.index.structure_version,
+        }
+    }
+
     pub fn document_id(&self) -> DocumentId {
         self.document_id
     }

@@ -2,6 +2,7 @@ pub mod block_content;
 pub mod block_shell;
 pub mod block_view;
 pub mod chrome;
+pub mod divider;
 pub mod drag_overlay;
 pub mod gutter;
 pub mod placeholder;

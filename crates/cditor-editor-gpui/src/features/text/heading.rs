@@ -18,7 +18,12 @@ pub const NOTION_HEADING_3_TEXT_SIZE_PX: f32 = cditor_config::APP_CONFIG
     .styles
     .heading_3
     .size_px;
-pub const HEADING_4_TEXT_SIZE_PX: f32 = 18.0;
+pub const HEADING_4_TEXT_SIZE_PX: f32 = cditor_config::APP_CONFIG
+    .document
+    .typography
+    .styles
+    .heading_4
+    .size_px;
 pub const HEADING_5_TEXT_SIZE_PX: f32 = 16.0;
 pub const HEADING_6_TEXT_SIZE_PX: f32 = 14.0;
 
@@ -67,6 +72,14 @@ fn heading_font_weight(level: u8) -> FontWeight {
                 .heading_3
                 .weight as f32,
         ),
+        4 => FontWeight(
+            cditor_config::APP_CONFIG
+                .document
+                .typography
+                .styles
+                .heading_4
+                .weight as f32,
+        ),
         _ => FontWeight::MEDIUM,
     }
 }
@@ -77,7 +90,7 @@ mod tests {
 
     #[test]
     fn heading_sizes_cover_all_six_levels() {
-        assert_eq!(heading_text_size_px(1), 30.0);
+        assert_eq!(heading_text_size_px(1), 24.0);
         assert_eq!(heading_text_size_px(2), 24.0);
         assert_eq!(heading_text_size_px(3), 20.0);
         assert_eq!(heading_text_size_px(4), 18.0);

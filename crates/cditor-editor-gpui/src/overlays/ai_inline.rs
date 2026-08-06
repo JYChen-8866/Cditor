@@ -9,6 +9,7 @@ use gpui::{
     px, rgb,
 };
 
+use crate::block::divider::render_notion_divider;
 use crate::editor_view::CditorV2View;
 use crate::features::text::heading::render_heading;
 use crate::features::text::list::{render_bulleted, render_numbered, render_todo};
@@ -406,12 +407,7 @@ fn render_ai_preview_content(markdown: &str, theme: GuiTheme) -> AnyElement {
                     .font_weight(FontWeight::NORMAL)
                     .child(text)
                     .into_any_element(),
-                RichBlockKind::Divider | RichBlockKind::Separator => div()
-                    .w_full()
-                    .h(px(1.0))
-                    .my(px(6.0))
-                    .bg(rgb(theme.border))
-                    .into_any_element(),
+                RichBlockKind::Divider | RichBlockKind::Separator => render_notion_divider(theme),
                 _ => div()
                     .w_full()
                     .min_w(px(0.0))

@@ -86,9 +86,10 @@ impl DocumentRuntime {
                 return Ok(true);
             }
         }
-        if self.input_session_target().is_some() {
-            // Text from outside Cditor is literal when the user is editing a
-            // specific block. Newlines remain inside that block.
+        if self.clipboard_paste_target_is_literal() {
+            // SiYuan semantics: only code contexts keep external text literal
+            // (raw insertion into the code block). Everywhere else the text is
+            // parsed as Markdown so pasted headings/lists/quotes become blocks.
             return self.replace_text_from_paste(None, &content.plain_text);
         }
         if let Some(markdown) = &content.markdown
@@ -101,5 +102,25 @@ impl DocumentRuntime {
             return Ok(true);
         }
         self.replace_text_from_paste(None, &content.plain_text)
+    }
+
+    /// Mirrors SiYuan's paste rule: a paste target is literal only when it is a
+    /// code block (or an editing surface that must not be restructured, such as
+    /// a table cell, image caption or collection title).
+    fn clipboard_paste_target_is_literal(&self) -> bool {
+        let Some(target) = self.input_session_target() else {
+            return false;
+        };
+        match target {
+            InputTarget::BlockText { block_id } => match self.block_payload_record(block_id) {
+                Some(record) => matches!(record.kind, RichBlockKind::Code { .. }),
+                None => true,
+            },
+            InputTarget::TableCell { .. }
+            | InputTarget::ImageCaption { .. }
+            | InputTarget::CollectionTitle { .. }
+            | InputTarget::ComplexBlock { .. }
+            | InputTarget::BlockChrome { .. } => true,
+        }
     }
 }

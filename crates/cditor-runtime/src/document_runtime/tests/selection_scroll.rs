@@ -1,5 +1,6 @@
 use super::*;
 use cditor_core::edit::{InnerSelectionAnchor, SelectionEndpoint, SelectionRange};
+use cditor_editor_protocol::command::EditorCommand;
 
 #[test]
 fn document_text_selection_projects_partial_and_full_ranges() {
@@ -190,7 +191,10 @@ fn document_text_selection_fragments_cover_every_selected_block_in_document_orde
 }
 
 #[test]
-fn select_all_command_expands_from_focused_block_to_entire_document() {
+fn select_all_command_switches_from_focused_block_to_whole_document_blocks() {
+    // Mirrors SiYuan's progressive Select All: the first invocation selects
+    // the focused block's text, the second switches to a block selection of
+    // the whole document (protyle-wysiwyg--select on every block).
     let mut runtime = DocumentRuntime::from_payloads(
         1,
         vec![
@@ -212,25 +216,9 @@ fn select_all_command_expands_from_focused_block_to_entire_document() {
     );
 
     assert!(runtime.select_all_command());
-    assert_eq!(
-        runtime.document_text_selection_fragments().unwrap(),
-        vec![
-            DocumentTextSelectionFragment {
-                block_id: 1,
-                range: 0..5,
-            },
-            DocumentTextSelectionFragment {
-                block_id: 2,
-                range: 0..6,
-            },
-            DocumentTextSelectionFragment {
-                block_id: 3,
-                range: 0..4,
-            },
-        ]
-    );
-    assert_eq!(runtime.focused_block_id(), Some(2));
-    assert!(runtime.has_entire_document_text_selection());
+    assert_eq!(runtime.document_text_selection_fragments(), None);
+    assert!(runtime.has_selected_blocks());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2, 3]);
 }
 
 #[test]
@@ -252,7 +240,10 @@ fn entire_document_selection_query_rejects_partial_cross_block_ranges() {
 }
 
 #[test]
-fn select_all_command_selects_an_empty_block_before_expanding_to_document() {
+fn select_all_command_selects_whole_document_blocks_from_an_empty_focused_block() {
+    // Mirrors SiYuan: an empty focused block has no text to select, so the
+    // first invocation already enters the whole-document block selection and
+    // later invocations are no-ops.
     let mut runtime = DocumentRuntime::from_payloads(
         1,
         vec![
@@ -266,27 +257,56 @@ fn select_all_command_selects_an_empty_block_before_expanding_to_document() {
 
     assert!(runtime.select_all_command());
     assert!(runtime.has_selected_blocks());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2, 3]);
     assert_eq!(runtime.document_text_selection_fragments(), None);
 
     assert!(runtime.select_all_command());
-    assert!(!runtime.has_selected_blocks());
-    assert_eq!(
-        runtime.document_text_selection_fragments().unwrap(),
+    assert!(runtime.has_selected_blocks());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2, 3]);
+    assert_eq!(runtime.document_text_selection_fragments(), None);
+}
+
+#[test]
+fn delete_backward_after_select_all_block_selection_empties_the_document() {
+    // Regression: the progressive Select All clears the editing session when
+    // it switches to the whole-document block selection, which used to make
+    // the Delete/Backspace command query report disabled (no focused block)
+    // so the GUI silently dropped the key.
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
         vec![
-            DocumentTextSelectionFragment {
-                block_id: 1,
-                range: 0..5,
-            },
-            DocumentTextSelectionFragment {
-                block_id: 2,
-                range: 0..0,
-            },
-            DocumentTextSelectionFragment {
-                block_id: 3,
-                range: 0..4,
-            },
-        ]
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "first"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "middle"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "last"),
+        ],
+        720.0,
     );
+    runtime.focus_block_at_offset(2, 3).unwrap();
+
+    assert!(runtime.select_all_command());
+    assert!(runtime.select_all_command());
+    assert!(runtime.has_selected_blocks());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2, 3]);
+
+    assert!(
+        runtime
+            .query_editor_command(&EditorCommand::DeleteBackward)
+            .enabled,
+        "DeleteBackward must stay enabled while blocks are selected"
+    );
+    assert!(
+        runtime
+            .query_editor_command(&EditorCommand::DeleteForward)
+            .enabled,
+        "DeleteForward must stay enabled while blocks are selected"
+    );
+
+    assert!(runtime
+        .delete_backward()
+        .unwrap_or_else(|error| panic!("{error}")));
+    assert_eq!(runtime.document_block_count(), 1);
+    assert!(!runtime.has_selected_blocks());
+    assert_eq!(runtime.focused_text(), Some(""));
 }
 
 #[test]

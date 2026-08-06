@@ -24,18 +24,9 @@ struct SourceTypography {
 
 #[derive(Deserialize)]
 struct SourceFonts {
-    body: SourceBodyFont,
+    body: SourcePlatformFont,
     code: SourcePlatformFont,
     ui: SourcePlatformFont,
-}
-
-#[derive(Deserialize)]
-struct SourceBodyFont {
-    family: String,
-    regular_asset: String,
-    medium_asset: String,
-    semibold_asset: String,
-    bold_asset: String,
 }
 
 #[derive(Deserialize)]
@@ -51,6 +42,7 @@ struct SourceStyles {
     heading_1: SourceTextStyle,
     heading_2: SourceTextStyle,
     heading_3: SourceTextStyle,
+    heading_4: SourceTextStyle,
     footnote: SourceTextStyle,
     table_cell: SourceTextStyle,
     table_header: SourceTextStyle,
@@ -91,15 +83,21 @@ fn main() {
 
 fn validate(config: &SourceConfig) {
     let typography = &config.document.typography;
-    assert!(
-        !typography.fonts.body.family.trim().is_empty(),
-        "body font family must not be empty"
-    );
+    for (name, font) in [
+        ("body", &typography.fonts.body),
+        ("code", &typography.fonts.code),
+        ("ui", &typography.fonts.ui),
+    ] {
+        assert!(!font.macos.trim().is_empty(), "{name}.macos must not be empty");
+        assert!(!font.windows.trim().is_empty(), "{name}.windows must not be empty");
+        assert!(!font.linux.trim().is_empty(), "{name}.linux must not be empty");
+    }
     for (name, style) in [
         ("body", &typography.styles.body),
         ("heading_1", &typography.styles.heading_1),
         ("heading_2", &typography.styles.heading_2),
         ("heading_3", &typography.styles.heading_3),
+        ("heading_4", &typography.styles.heading_4),
         ("footnote", &typography.styles.footnote),
         ("table_cell", &typography.styles.table_cell),
         ("table_header", &typography.styles.table_header),
@@ -125,31 +123,16 @@ fn validate(config: &SourceConfig) {
     assert!(table.cell_padding_y_px >= 0.0);
 }
 
-fn render(config: &SourceConfig, workspace_root: &Path) -> String {
+fn render(config: &SourceConfig, _workspace_root: &Path) -> String {
     let document = &config.document;
     let typography = &document.typography;
     let fonts = &typography.fonts;
     let styles = &typography.styles;
-    let regular = asset_path(workspace_root, &fonts.body.regular_asset);
-    let medium = asset_path(workspace_root, &fonts.body.medium_asset);
-    let semibold = asset_path(workspace_root, &fonts.body.semibold_asset);
-    let bold = asset_path(workspace_root, &fonts.body.bold_asset);
-    for path in [&regular, &medium, &semibold, &bold] {
-        println!("cargo:rerun-if-changed={}", path.display());
-        assert!(
-            path.is_file(),
-            "configured font asset does not exist: {}",
-            path.display()
-        );
-    }
-
     format!(
-        "pub const APP_CONFIG: AppConfig = AppConfig {{\n    document: DocumentConfig {{\n        typography: DocumentTypographyConfig {{\n            fonts: DocumentFontsConfig {{\n                body: BodyFontConfig {{ family: {family:?}, regular: include_bytes!({regular:?}), medium: include_bytes!({medium:?}), semibold: include_bytes!({semibold:?}), bold: include_bytes!({bold:?}) }},\n                code: PlatformFontConfig {{ macos: {code_macos:?}, windows: {code_windows:?}, linux: {code_linux:?} }},\n                ui: PlatformFontConfig {{ macos: {ui_macos:?}, windows: {ui_windows:?}, linux: {ui_linux:?} }},\n            }},\n            styles: DocumentTextStylesConfig {{ body: {body}, heading_1: {h1}, heading_2: {h2}, heading_3: {h3}, footnote: {footnote}, table_cell: {table_cell}, table_header: {table_header}, code: {code}, ui: {ui} }},\n        }},\n        table: TableConfig {{ default_row_height_px: {row_height:?}, cell_padding_x_px: {padding_x:?}, cell_padding_y_px: {padding_y:?} }},\n    }},\n}};\n",
-        family = fonts.body.family,
-        regular = regular.display().to_string(),
-        medium = medium.display().to_string(),
-        semibold = semibold.display().to_string(),
-        bold = bold.display().to_string(),
+        "pub const APP_CONFIG: AppConfig = AppConfig {{\n    document: DocumentConfig {{\n        typography: DocumentTypographyConfig {{\n            fonts: DocumentFontsConfig {{\n                body: PlatformFontConfig {{ macos: {body_macos:?}, windows: {body_windows:?}, linux: {body_linux:?} }},\n                code: PlatformFontConfig {{ macos: {code_macos:?}, windows: {code_windows:?}, linux: {code_linux:?} }},\n                ui: PlatformFontConfig {{ macos: {ui_macos:?}, windows: {ui_windows:?}, linux: {ui_linux:?} }},\n            }},\n            styles: DocumentTextStylesConfig {{ body: {body}, heading_1: {h1}, heading_2: {h2}, heading_3: {h3}, heading_4: {h4}, footnote: {footnote}, table_cell: {table_cell}, table_header: {table_header}, code: {code}, ui: {ui} }},\n        }},\n        table: TableConfig {{ default_row_height_px: {row_height:?}, cell_padding_x_px: {padding_x:?}, cell_padding_y_px: {padding_y:?} }},\n    }},\n}};\n",
+        body_macos = fonts.body.macos,
+        body_windows = fonts.body.windows,
+        body_linux = fonts.body.linux,
         code_macos = fonts.code.macos,
         code_windows = fonts.code.windows,
         code_linux = fonts.code.linux,
@@ -160,6 +143,7 @@ fn render(config: &SourceConfig, workspace_root: &Path) -> String {
         h1 = style(&styles.heading_1),
         h2 = style(&styles.heading_2),
         h3 = style(&styles.heading_3),
+        h4 = style(&styles.heading_4),
         footnote = style(&styles.footnote),
         table_cell = style(&styles.table_cell),
         table_header = style(&styles.table_header),
@@ -176,10 +160,4 @@ fn style(style: &SourceTextStyle) -> String {
         "TextStyleConfig {{ size_px: {:?}, line_height_px: {:?}, weight: {} }}",
         style.size_px, style.line_height_px, style.weight
     )
-}
-
-fn asset_path(workspace_root: &Path, configured: &str) -> PathBuf {
-    let path = workspace_root.join(configured);
-    path.canonicalize()
-        .unwrap_or_else(|error| panic!("invalid configured asset {}: {error}", path.display()))
 }
