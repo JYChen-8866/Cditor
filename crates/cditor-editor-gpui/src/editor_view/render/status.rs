@@ -9,6 +9,9 @@ use crate::theme::GuiTheme;
 
 impl CditorV2View {
     pub(crate) fn document_layout_metrics(&self, viewport_width_px: f32) -> DocumentLayoutMetrics {
+        if self.embedded_composer {
+            return DocumentLayoutMetrics::embedded_composer(viewport_width_px);
+        }
         let decorations = self
             .ready_session()
             .and_then(|session| session.document_snapshot().ok());

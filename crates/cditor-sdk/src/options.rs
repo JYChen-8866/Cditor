@@ -48,6 +48,7 @@ pub struct CditorOptions {
     pub payload_window_size: usize,
     pub autosave_interval: Option<Duration>,
     pub storage_load_timeout: Duration,
+    pub embedded_composer: bool,
 }
 
 impl Default for CditorOptions {
@@ -60,6 +61,7 @@ impl Default for CditorOptions {
             payload_window_size: 128,
             autosave_interval: Some(Duration::from_millis(250)),
             storage_load_timeout: Duration::from_secs(90),
+            embedded_composer: false,
         }
     }
 }

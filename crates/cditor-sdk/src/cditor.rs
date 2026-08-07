@@ -134,6 +134,12 @@ impl Cditor {
         self
     }
 
+    /// Uses the editor as a compact, chrome-free composer embedded in another view.
+    pub fn embedded_composer(mut self) -> Self {
+        self.options.embedded_composer = true;
+        self
+    }
+
     pub fn with_asset_provider(
         mut self,
         provider: Arc<dyn crate::providers::AssetProvider>,
@@ -287,5 +293,16 @@ mod tests {
         let disabled = configured.without_ai();
         assert!(!disabled.ai_enabled);
         assert!(disabled.ai_provider.is_none());
+    }
+
+    #[test]
+    fn embedded_composer_is_opt_in() {
+        assert!(!Cditor::new().options().embedded_composer);
+        assert!(
+            Cditor::new()
+                .embedded_composer()
+                .options()
+                .embedded_composer
+        );
     }
 }

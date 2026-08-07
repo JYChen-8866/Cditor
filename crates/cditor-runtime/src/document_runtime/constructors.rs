@@ -10,6 +10,12 @@ impl DocumentRuntime {
         Self::from_rich_text_document(document, 720.0)
     }
 
+    pub fn empty_composer() -> Self {
+        let mut document = RichTextDocument::empty(1);
+        document.push_root_block(RichBlockRecord::paragraph(1, ""));
+        Self::from_rich_text_document(document, 720.0)
+    }
+
     pub fn demo() -> Self {
         let mut document = RichTextDocument::empty(1);
         document.push_root_block(RichBlockRecord::heading(1, 1, "Cditor"));
@@ -350,6 +356,20 @@ mod empty_document_tests {
             runtime.block_kind(1),
             Some(RichBlockKind::Heading { level: 1 })
         );
+        assert!(
+            runtime
+                .block_payload_record(1)
+                .unwrap()
+                .plain_text()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn empty_composer_starts_with_a_paragraph_instead_of_a_page_title() {
+        let runtime = DocumentRuntime::empty_composer();
+
+        assert_eq!(runtime.block_kind(1), Some(RichBlockKind::Paragraph));
         assert!(
             runtime
                 .block_payload_record(1)

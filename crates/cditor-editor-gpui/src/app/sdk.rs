@@ -85,6 +85,14 @@ impl CditorViewContract for CditorV2View {
         CditorV2View::sdk_close_guard(self)
     }
 
+    fn sdk_export_markdown(&self) -> Result<String, CditorError> {
+        CditorV2View::sdk_export_markdown(self)
+    }
+
+    fn sdk_content_height(&self) -> Result<f64, CditorError> {
+        CditorV2View::sdk_content_height(self)
+    }
+
     fn sdk_export_recovery(&self) -> Result<RecoveryExport, CditorError> {
         CditorV2View::sdk_export_recovery(self)
     }
@@ -455,6 +463,26 @@ impl CditorV2View {
             media_type: "application/vnd.cditor.recovery+json",
             bytes: artifact.bytes,
         })
+    }
+
+    /// Exports the current in-memory document as GitHub-Flavored Markdown.
+    pub fn sdk_export_markdown(&self) -> Result<String, CditorError> {
+        self.ready_session()
+            .ok_or(CditorError::NotReady)?
+            .export_markdown()
+            .map_err(|error| CditorError::Export(error.to_string()))
+    }
+
+    /// Returns the editor's current laid-out content height in logical pixels.
+    ///
+    /// Unlike estimating from exported text, this includes soft wrapping and
+    /// the measured heights of non-paragraph blocks.
+    pub fn sdk_content_height(&self) -> Result<f64, CditorError> {
+        self.ready_session()
+            .ok_or(CditorError::NotReady)?
+            .ui_snapshot()
+            .map(|snapshot| snapshot.content_height)
+            .map_err(|error| CditorError::Internal(error.to_string()))
     }
 
     pub fn sdk_save(&mut self, cx: &mut Context<Self>) -> Task<Result<SaveReport, CditorError>> {

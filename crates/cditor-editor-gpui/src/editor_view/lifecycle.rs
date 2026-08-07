@@ -98,6 +98,7 @@ impl CditorV2View {
             cache: RenderCacheState::default(),
             scheduling: Default::default(),
             page_chrome_extras: None,
+            embedded_composer: false,
         }
     }
 

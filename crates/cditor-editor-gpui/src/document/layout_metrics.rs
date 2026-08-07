@@ -39,6 +39,16 @@ impl DocumentLayoutMetrics {
         }
     }
 
+    pub fn embedded_composer(viewport_width_px: f32) -> Self {
+        let width = viewport_width_px.max(1.0);
+        Self {
+            page_width_px: width,
+            content_width_px: width,
+            min_height_px: 96.0,
+            top_inset_px: 8.0,
+        }
+    }
+
     pub const fn with_additional_top_inset_px(mut self, additional_top_inset_px: f32) -> Self {
         self.top_inset_px += additional_top_inset_px;
         self
@@ -126,5 +136,15 @@ mod tests {
         assert_eq!(cover.top_inset_px, PAGE_COVER_DOCUMENT_TOP_INSET_PX);
         assert_eq!(cover_and_icon.top_inset_px, cover.top_inset_px);
         assert_eq!(cover.page_width_px, base.page_width_px);
+    }
+
+    #[test]
+    fn embedded_composer_uses_the_viewport_without_page_chrome_spacing() {
+        let metrics = DocumentLayoutMetrics::embedded_composer(522.0);
+
+        assert_eq!(metrics.page_width_px, 522.0);
+        assert_eq!(metrics.content_width_px, 522.0);
+        assert_eq!(metrics.min_height_px, 96.0);
+        assert_eq!(metrics.top_inset_px, 8.0);
     }
 }

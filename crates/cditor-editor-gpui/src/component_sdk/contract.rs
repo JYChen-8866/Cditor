@@ -34,6 +34,8 @@ pub trait CditorViewContract: Sized + 'static {
     fn sdk_is_dirty(&self) -> bool;
     fn sdk_save_status(&self) -> SaveStatus;
     fn sdk_close_guard(&self) -> CloseGuard;
+    fn sdk_export_markdown(&self) -> Result<String, CditorError>;
+    fn sdk_content_height(&self) -> Result<f64, CditorError>;
     fn sdk_export_recovery(&self) -> Result<RecoveryExport, CditorError>;
     fn sdk_save(&mut self, cx: &mut Context<Self>) -> Task<Result<SaveReport, CditorError>>;
     fn sdk_flush(&mut self, cx: &mut Context<Self>) -> Task<Result<SaveReport, CditorError>>;

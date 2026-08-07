@@ -43,6 +43,7 @@ pub struct CditorV2View {
     pub(crate) cache: RenderCacheState,
     pub(crate) scheduling: EditorSchedulingState,
     pub(crate) page_chrome_extras: Option<AnyView>,
+    pub(crate) embedded_composer: bool,
 }
 
 impl CditorV2View {
@@ -69,6 +70,13 @@ impl CditorV2View {
     /// Removes the host-owned page chrome view, if any.
     pub fn clear_page_chrome_extra(&mut self, cx: &mut Context<Self>) {
         if self.page_chrome_extras.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    pub fn set_embedded_composer(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.embedded_composer != enabled {
+            self.embedded_composer = enabled;
             cx.notify();
         }
     }

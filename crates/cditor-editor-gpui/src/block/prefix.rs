@@ -16,7 +16,7 @@ pub type TodoToggleHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) 
 pub type FoldToggleHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 
 const NOTION_PREFIX_LINE_HEIGHT_PX: f32 = 24.0;
-const NOTION_LIST_MARKER_SLOT_HEIGHT_PX: f32 = 28.0;
+const NOTION_LIST_MARKER_SLOT_HEIGHT_PX: f32 = 24.0;
 const NOTION_CHECKBOX_SIZE_PX: f32 = 16.0;
 const NOTION_CHECKBOX_RADIUS_PX: f32 = 2.0;
 const NOTION_FOLD_HOVER_SIZE_PX: f32 = 22.0;
@@ -423,7 +423,7 @@ mod tests {
         assert_eq!(NOTION_LIST_PREFIX_WIDTH_PX, 24.0);
         assert_eq!(CALLOUT_PREFIX_WIDTH_PX, 36.0);
         assert_eq!(NOTION_PREFIX_LINE_HEIGHT_PX, 24.0);
-        assert_eq!(NOTION_LIST_MARKER_SLOT_HEIGHT_PX, 28.0);
+        assert_eq!(NOTION_LIST_MARKER_SLOT_HEIGHT_PX, 24.0);
         assert_eq!(NOTION_CHECKBOX_SIZE_PX, 16.0);
         assert_eq!(NOTION_CHECKBOX_RADIUS_PX, 2.0);
         assert_eq!(NOTION_FOLD_HOVER_SIZE_PX, 22.0);

@@ -93,6 +93,7 @@ fn build_view(builder: Cditor, cx: &mut Context<CditorV2View>) -> CditorV2View {
     let ai_enabled = builder.ai_enabled();
     let asset_provider = builder.asset_provider();
     let options = builder.into_options();
+    let embedded_composer = options.embedded_composer;
     let mut view = match CditorColdStartPlan::from_options(&options) {
         CditorColdStartPlan::Demo => CditorV2View::from_runtime_with_options(
             cditor_runtime::DocumentRuntime::demo(),
@@ -101,7 +102,11 @@ fn build_view(builder: Cditor, cx: &mut Context<CditorV2View>) -> CditorV2View {
             cx,
         ),
         CditorColdStartPlan::Memory => CditorV2View::from_runtime_with_options(
-            cditor_runtime::DocumentRuntime::empty(),
+            if embedded_composer {
+                cditor_runtime::DocumentRuntime::empty_composer()
+            } else {
+                cditor_runtime::DocumentRuntime::empty()
+            },
             options.debug_overlay,
             options.readonly,
             cx,
@@ -135,6 +140,7 @@ fn build_view(builder: Cditor, cx: &mut Context<CditorV2View>) -> CditorV2View {
     };
     view.sdk_configure_ai(ai_provider, ai_enabled);
     view.sdk_configure_asset_provider(asset_provider);
+    view.set_embedded_composer(embedded_composer, cx);
     view
 }
 

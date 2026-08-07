@@ -15,6 +15,8 @@ pub struct SessionUiSnapshot {
     pub session: SessionSnapshot,
     pub structure_version: u64,
     pub global_scroll_top: f64,
+    /// Current document height after estimated and measured block layout.
+    pub content_height: f64,
     pub focused_block_id: Option<BlockId>,
     pub focused_table_cell: Option<(BlockId, usize, usize, usize)>,
     pub input_target: Option<InputTarget>,
@@ -44,6 +46,7 @@ impl EditorSessionHandle {
             session: session.snapshot(),
             structure_version: runtime.structure_version(),
             global_scroll_top: runtime.global_scroll_top(),
+            content_height: runtime.model_total_height(),
             focused_block_id: runtime.focused_block_id(),
             focused_table_cell: runtime.focused_table_cell_offset(),
             input_target: runtime.input_session_target(),

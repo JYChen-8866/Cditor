@@ -130,6 +130,18 @@ impl<V: CditorViewContract> CditorHandle<V> {
             })
     }
 
+    pub fn export_markdown(&self, cx: &App) -> Result<String, CditorError> {
+        self.entity
+            .read_with(cx, |view, _| view.sdk_export_markdown())
+            .map_err(|_| CditorError::ComponentDropped)?
+    }
+
+    pub fn content_height(&self, cx: &App) -> Result<f64, CditorError> {
+        self.entity
+            .read_with(cx, |view, _| view.sdk_content_height())
+            .map_err(|_| CditorError::ComponentDropped)?
+    }
+
     pub fn export_recovery(&self, cx: &App) -> Result<RecoveryExport, CditorError> {
         self.entity
             .read_with(cx, |view, _| view.sdk_export_recovery())

@@ -108,6 +108,7 @@ impl DocumentEditorView {
         projection: &EditorViewProjection,
         page_decorations: &PageDecorationSnapshot,
         page_chrome_extras: Option<AnyView>,
+        show_page_chrome: bool,
         view: Entity<CditorV2View>,
         image_caption_states: &HashMap<BlockId, TextSurfaceRenderState>,
         workers: &EditorWorkerAdmission,
@@ -422,26 +423,31 @@ impl DocumentEditorView {
         );
         surface.placeholder_window_error = projection.placeholder_window_error.clone();
         surface.placeholder_window_failure = projection.placeholder_window_failure.clone();
-        let (page_chrome, page_icon_menu) = render_page_chrome(
-            page_decorations,
-            editor_viewport_width_px,
-            editor_viewport_height_px,
-            document_layout,
-            projection.scroll.global_scroll_top,
-            readonly,
-            page_chrome_extras,
-            self.theme,
-            workers,
-            asset_provider,
-            view,
-            page_icon_menu_open,
-            page_icon_menu_custom_tab,
-            page_icon_menu_scroll_handle,
-            cx,
-        );
+        let (page_chrome, page_icon_menu) = if show_page_chrome {
+            let (chrome, menu) = render_page_chrome(
+                page_decorations,
+                editor_viewport_width_px,
+                editor_viewport_height_px,
+                document_layout,
+                projection.scroll.global_scroll_top,
+                readonly,
+                page_chrome_extras,
+                self.theme,
+                workers,
+                asset_provider,
+                view,
+                page_icon_menu_open,
+                page_icon_menu_custom_tab,
+                page_icon_menu_scroll_handle,
+                cx,
+            );
+            (Some(chrome), menu)
+        } else {
+            (None, None)
+        };
         surface.render(
             self.theme,
-            Some(page_chrome),
+            page_chrome,
             block_elements,
             Some(overlay),
             page_icon_menu,

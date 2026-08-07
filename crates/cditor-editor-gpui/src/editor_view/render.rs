@@ -565,6 +565,7 @@ impl Render for CditorV2View {
                         &projection,
                         &page_decorations,
                         self.page_chrome_extras.clone(),
+                        !self.embedded_composer,
                         view.clone(),
                         &image_caption_states,
                         &self.scheduling.workers,
