@@ -2,12 +2,9 @@ use std::borrow::Cow;
 
 /// GPUI's native macOS system UI family. The platform resolves this to the
 /// appropriate SF Pro optical variant and falls back to the system CJK face.
-pub(crate) const EDITOR_UI_FONT_FAMILY: &str = cditor_config::APP_CONFIG
-    .document
-    .typography
-    .fonts
-    .ui
-    .current();
+pub(crate) fn editor_ui_font_family() -> String {
+    cditor_config::proportional_font_family()
+}
 
 /// A concrete monospace family that ships with the host operating system.
 ///
@@ -21,7 +18,9 @@ pub(crate) const EDITOR_MONO_FONT_FAMILY: &str = cditor_config::APP_CONFIG
     .current();
 
 /// Proportional body-text font for document content.
-pub(crate) const BODY_FONT_FAMILY: &str = cditor_text::DOCUMENT_BODY_FONT_FAMILY;
+pub(crate) fn body_font_family() -> String {
+    cditor_text::document_body_font_family()
+}
 
 /// Convert external/native text to the editor's internal LF convention.
 ///

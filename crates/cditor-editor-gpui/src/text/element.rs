@@ -146,7 +146,7 @@ impl Element for RichTextGpuiElement {
             .then_some(self.theme.muted)
             .or(self.base_text_color);
         let base_font = window.text_style().font();
-        let font_family = crate::platform::BODY_FONT_FAMILY.to_string();
+        let font_family = crate::platform::body_font_family();
         let font_weight = base_font.weight;
         let font_style = base_font.style;
         let scale = window.scale_factor();

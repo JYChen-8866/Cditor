@@ -4,6 +4,10 @@ pub const DEFAULT_DOCUMENT_MIN_HEIGHT_PX: f32 = 640.0;
 pub const DEFAULT_DOCUMENT_TOP_INSET_PX: f32 = 96.0;
 pub const COMPACT_DOCUMENT_TOP_INSET_PX: f32 = 48.0;
 pub const COMPACT_DOCUMENT_VIEWPORT_MAX_WIDTH_PX: f32 = 720.0;
+/// Below this width the document's symmetric safe insets leave too little room
+/// for a meaningful text layout. Split-pane resizing can briefly report these
+/// widths even when the pane immediately expands again.
+pub const MIN_DOCUMENT_LAYOUT_VIEWPORT_WIDTH_PX: f32 = 160.0;
 pub const PAGE_COVER_HEIGHT_PX: f32 = 200.0;
 pub const PAGE_COVER_DOCUMENT_TOP_INSET_PX: f32 = 248.0;
 pub const PAGE_ICON_DOCUMENT_TOP_INSET_PX: f32 = 168.0;
@@ -37,6 +41,10 @@ impl DocumentLayoutMetrics {
             top_inset_px,
             ..Self::DEFAULT
         }
+    }
+
+    pub fn viewport_width_is_usable(viewport_width_px: f32) -> bool {
+        viewport_width_px.is_finite() && viewport_width_px >= MIN_DOCUMENT_LAYOUT_VIEWPORT_WIDTH_PX
     }
 
     pub fn embedded_composer(viewport_width_px: f32) -> Self {
@@ -105,6 +113,15 @@ mod tests {
             DocumentLayoutMetrics::for_viewport(700.0).page_width_px,
             700.0
         );
+    }
+
+    #[test]
+    fn transient_collapsed_pane_width_is_not_a_usable_document_viewport() {
+        assert!(!DocumentLayoutMetrics::viewport_width_is_usable(0.0));
+        assert!(!DocumentLayoutMetrics::viewport_width_is_usable(1.0));
+        assert!(!DocumentLayoutMetrics::viewport_width_is_usable(159.0));
+        assert!(!DocumentLayoutMetrics::viewport_width_is_usable(f32::NAN));
+        assert!(DocumentLayoutMetrics::viewport_width_is_usable(160.0));
     }
 
     #[test]

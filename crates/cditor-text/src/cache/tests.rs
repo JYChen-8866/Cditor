@@ -121,6 +121,7 @@ fn compatible_probe_reuses_same_shape_without_reflow_or_miss_telemetry() {
     let after = text_layout_cache_stats();
 
     assert_eq!(fallback.layout.text(), "same shaped text");
+    assert_eq!(fallback.key.width_bits, Some(240.0_f32.to_bits()));
     assert_eq!(before.misses, after.misses);
     assert_eq!(before.reflows, after.reflows);
     assert_eq!(after.entries, 1);
@@ -303,8 +304,80 @@ fn stats_distinguish_hits_misses_reflows_and_evictions() {
     assert_eq!(stats.hits, 1);
     assert_eq!(stats.misses, 2);
     assert_eq!(stats.reflows, 1);
-    assert_eq!(stats.entries, 2);
+    assert_eq!(stats.entries, 1);
     assert!(stats.estimated_bytes > 0);
+}
+
+#[test]
+fn rapid_width_changes_keep_only_the_current_geometry_per_surface() {
+    reset_text_layout_cache_for_tests();
+    let input = input(TextLayoutSurfaceId::Block(81), "resize cache convergence");
+
+    for width in 100..400 {
+        cached_text_layout(&input, theme(), &options(width as f32));
+    }
+
+    let stats = text_layout_cache_stats();
+    assert_eq!(stats.entries, 1);
+    assert!(stats.evictions >= 299);
+    assert!(
+        try_cached_text_layout_with_request(
+            &input,
+            &options(399.0),
+            TextLayoutCacheRequest::visible(),
+        )
+        .is_some()
+    );
+    assert!(
+        try_cached_text_layout_with_request(
+            &input,
+            &options(398.0),
+            TextLayoutCacheRequest::visible(),
+        )
+        .is_none()
+    );
+    assert!(
+        try_cached_text_layout_with_request(
+            &input,
+            &options(397.0),
+            TextLayoutCacheRequest::visible(),
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn pinned_surface_does_not_retain_obsolete_resize_history() {
+    reset_text_layout_cache_for_tests();
+    let input = input(TextLayoutSurfaceId::Block(82), "pinned resize cache");
+
+    for width in 100..400 {
+        cached_text_layout_with_request(
+            &input,
+            theme(),
+            &options(width as f32),
+            TextLayoutCacheRequest::editing(),
+        );
+    }
+
+    let stats = text_layout_cache_stats();
+    assert_eq!(stats.entries, 1);
+    assert_eq!(stats.pinned_entries, 1);
+    assert!(!stats.over_budget_due_to_pins);
+}
+
+#[test]
+fn new_text_identity_replaces_old_history_for_the_same_surface() {
+    reset_text_layout_cache_for_tests();
+    let mut input = input(TextLayoutSurfaceId::Block(83), "old content");
+    cached_text_layout(&input, theme(), &options(200.0));
+    cached_text_layout(&input, theme(), &options(201.0));
+    input.content_version += 1;
+    input.spans = vec![InlineSpan::plain("new content")];
+
+    cached_text_layout(&input, theme(), &options(202.0));
+
+    assert_eq!(text_layout_cache_stats().entries, 1);
 }
 
 #[test]
@@ -351,7 +424,7 @@ fn focused_relayout_does_not_invalidate_one_hundred_visible_surfaces() {
     );
 
     assert_eq!(focused_result.strategy, TextRelayoutStrategy::Reflow);
-    assert_eq!(text_layout_cache_stats().entries, 101);
+    assert_eq!(text_layout_cache_stats().entries, 100);
     for (index, input) in visible.iter().enumerate() {
         if index == 41 {
             continue;

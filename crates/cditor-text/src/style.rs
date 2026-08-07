@@ -80,7 +80,7 @@ impl Default for TextStyleConfig {
         let typography = cditor_config::APP_CONFIG.document.typography;
         let body = typography.styles.body;
         Self {
-            font_family: typography.fonts.body.current().to_owned(),
+            font_family: crate::document_body_font_family(),
             font_size: body.size_px,
             font_width: 1.0,
             font_slant: TextFontSlant::Normal,

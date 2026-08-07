@@ -7,7 +7,7 @@ use gpui::{AnyElement, FontStyle, FontWeight, IntoElement, ScrollHandle};
 use super::InlineBoxRenderer;
 use super::metrics::text_layout_options;
 use super::{RichTextElement, RichTextGpuiElement, RichTextTypography};
-use crate::platform::BODY_FONT_FAMILY;
+use crate::platform::body_font_family;
 use crate::text::{
     InlineBoxSpec, RichTextLayoutInput, TextHitPoint, TextLayoutCacheRequest, TextLayoutPosition,
     TextLayoutRect, TextLayoutSelection, TextLayoutSelectionKind, TextLayoutSnapshot,
@@ -214,7 +214,7 @@ pub(super) fn default_text_layout_for_input(
             input,
             theme,
             base_text_color,
-            BODY_FONT_FAMILY,
+            &body_font_family(),
             FontWeight::NORMAL,
             FontStyle::Normal,
             1.0,

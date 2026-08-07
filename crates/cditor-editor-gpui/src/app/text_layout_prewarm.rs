@@ -2,18 +2,22 @@ use cditor_core::{ids::SurfaceId, rich_text::RichBlockKind};
 use cditor_runtime::{EditorViewProjection, MainThreadWorkKind, WorkCost};
 use cditor_text::requires_segmentation;
 use gpui::{Context, FontStyle, FontWeight, Window};
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::{
+    collections::HashMap,
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 use crate::{
-    block::block_content::parse_block_hex_color,
+    block::block_content::{page_title_typography, parse_block_hex_color},
+    diagnostics::text_layout::trace as trace_text_layout,
     document::{DocumentLayoutMetrics, DocumentTextGeometry},
     editor_view::CditorV2View,
     features::code::highlight::code_theme_item,
-    platform::BODY_FONT_FAMILY,
+    platform::body_font_family,
     text::{
-        RichTextLayoutInput, RichTextTypography, TextLayoutCacheRequest, TextLayoutOptions,
+        RichTextLayoutInput, TextLayoutCacheRequest, TextLayoutOptions,
         cached_text_layout_with_request, element::metrics::text_layout_options,
-        try_cached_text_layout_with_request,
+        text_layout_cache_stats, try_cached_text_layout_with_request,
     },
     theme::GuiTheme,
 };
@@ -42,6 +46,30 @@ pub(crate) struct TextLayoutPrewarmKey {
     text_fingerprint: u64,
 }
 
+#[derive(Default)]
+pub(crate) struct TextLayoutPrewarmGenerationState {
+    latest: HashMap<SurfaceId, (TextLayoutPrewarmKey, u64)>,
+    next: u64,
+}
+
+impl TextLayoutPrewarmGenerationState {
+    fn generation_for(&mut self, key: TextLayoutPrewarmKey) -> u64 {
+        if let Some((latest_key, generation)) = self.latest.get(&key.surface_id)
+            && latest_key == &key
+        {
+            return *generation;
+        }
+        self.next = self.next.saturating_add(1).max(1);
+        self.latest.insert(key.surface_id, (key, self.next));
+        self.next
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.latest.clear();
+        self.next = 0;
+    }
+}
+
 impl CditorV2View {
     pub(crate) fn ensure_text_layout_prewarm(
         &mut self,
@@ -59,11 +87,30 @@ impl CditorV2View {
         let bytes = input.text_len();
         let cost = text_shape_cost(bytes);
         if self.scheduling.main_thread.try_admit_inline(kind, cost) {
-            cached_text_layout_with_request(&input, theme, &options, request);
+            let cached = cached_text_layout_with_request(&input, theme, &options, request);
+            let stats = text_layout_cache_stats();
+            trace_text_layout(
+                "prewarm.inline",
+                format_args!(
+                    "surface={:?} kind={kind:?} width={:?} strategy={:?} entries={} pinned={} misses={} reflows={} evictions={}",
+                    input.surface_id,
+                    options.width,
+                    cached.strategy,
+                    stats.entries,
+                    stats.pinned_entries,
+                    stats.misses,
+                    stats.reflows,
+                    stats.evictions,
+                ),
+            );
             return;
         }
 
-        let generation = layout_generation(input.content_version, input.layout_version);
+        let prewarm_key = prewarm_key(&input, &options);
+        let generation = self
+            .cache
+            .text_layout_prewarm_generations
+            .generation_for(prewarm_key);
         let block_id = match input.surface_id {
             SurfaceId::Block(block_id) => Some(block_id),
             _ => None,
@@ -74,16 +121,31 @@ impl CditorV2View {
                 .main_thread
                 .has_pending(kind, block_id, generation)
         {
+            trace_text_layout(
+                "prewarm.skip-pending",
+                format_args!(
+                    "surface={:?} kind={kind:?} generation={generation} width={:?}",
+                    input.surface_id, options.width
+                ),
+            );
             return;
         }
-        let pending_key = block_id.is_none().then(|| prewarm_key(&input, &options));
+        let pending_key = block_id.is_none().then_some(prewarm_key);
         if let Some(key) = pending_key
             && !self.cache.pending_text_layout_prewarms.insert(key)
         {
+            trace_text_layout(
+                "prewarm.skip-key",
+                format_args!(
+                    "surface={:?} kind={kind:?} generation={generation} width={:?}",
+                    input.surface_id, options.width
+                ),
+            );
             return;
         }
         let surface_id = input.surface_id;
-        self.enqueue_main_thread_apply(
+        let requested_width = options.width;
+        let decision = self.enqueue_main_thread_apply(
             kind,
             generation,
             block_id,
@@ -103,11 +165,40 @@ impl CditorV2View {
                         })
                 });
                 if current {
-                    cached_text_layout_with_request(&input, theme, &options, request);
+                    let cached =
+                        cached_text_layout_with_request(&input, theme, &options, request);
+                    let stats = text_layout_cache_stats();
+                    trace_text_layout(
+                        "prewarm.apply",
+                        format_args!(
+                            "surface={surface_id:?} kind={kind:?} generation={generation} width={:?} strategy={:?} entries={} pinned={} misses={} reflows={} evictions={}",
+                            options.width,
+                            cached.strategy,
+                            stats.entries,
+                            stats.pinned_entries,
+                            stats.misses,
+                            stats.reflows,
+                            stats.evictions,
+                        ),
+                    );
                     cx.notify();
+                } else {
+                    trace_text_layout(
+                        "prewarm.drop-version",
+                        format_args!(
+                            "surface={surface_id:?} kind={kind:?} generation={generation} width={:?}",
+                            options.width
+                        ),
+                    );
                 }
             },
             cx,
+        );
+        trace_text_layout(
+            "prewarm.enqueue",
+            format_args!(
+                "surface={surface_id:?} kind={kind:?} generation={generation} width={requested_width:?} decision={decision:?}"
+            ),
         );
     }
 
@@ -160,12 +251,12 @@ impl CditorV2View {
                 &input,
                 text_theme,
                 block.attrs.color.as_deref().and_then(parse_block_hex_color),
-                BODY_FONT_FAMILY,
+                &body_font_family(),
                 FontWeight::NORMAL,
                 FontStyle::Normal,
                 scale,
                 Some(text_geometry.width_px as f32),
-                RichTextTypography::default(),
+                page_title_typography(block).unwrap_or_default(),
                 Vec::new(),
             );
             let request = if block.focused {
@@ -183,8 +274,12 @@ impl CditorV2View {
             } else {
                 (MainThreadWorkKind::Prefetch, 2)
             };
+            let generation = self
+                .cache
+                .text_layout_prewarm_generations
+                .generation_for(prewarm_key(&input, &options));
             pending.push(PrimaryTextPrewarm {
-                generation: layout_generation(input.content_version, input.layout_version),
+                generation,
                 cost: text_shape_cost(text_len),
                 input,
                 theme: text_theme,
@@ -215,11 +310,28 @@ impl CditorV2View {
                         .main_thread
                         .try_admit_inline(task.kind, task.cost));
             if admitted {
-                cached_text_layout_with_request(
+                let cached = cached_text_layout_with_request(
                     &task.input,
                     task.theme,
                     &task.options,
                     task.request,
+                );
+                let stats = text_layout_cache_stats();
+                trace_text_layout(
+                    "primary.inline",
+                    format_args!(
+                        "surface={:?} kind={:?} rank={} width={:?} strategy={:?} entries={} pinned={} misses={} reflows={} evictions={}",
+                        task.input.surface_id,
+                        task.kind,
+                        task.rank,
+                        task.options.width,
+                        cached.strategy,
+                        stats.entries,
+                        stats.pinned_entries,
+                        stats.misses,
+                        stats.reflows,
+                        stats.evictions,
+                    ),
                 );
                 if task.rank <= 1 {
                     synchronous_visible_layouts += 1;
@@ -232,11 +344,21 @@ impl CditorV2View {
                 .main_thread
                 .has_pending(task.kind, block_id, task.generation)
             {
+                trace_text_layout(
+                    "primary.skip-pending",
+                    format_args!(
+                        "block={block_id} kind={:?} generation={} width={:?}",
+                        task.kind, task.generation, task.options.width
+                    ),
+                );
                 continue;
             }
             let input = task.input;
             let options = task.options;
-            self.enqueue_main_thread_apply(
+            let kind = task.kind;
+            let generation = task.generation;
+            let requested_width = options.width;
+            let decision = self.enqueue_main_thread_apply(
                 task.kind,
                 task.generation,
                 Some(block_id),
@@ -253,11 +375,44 @@ impl CditorV2View {
                             })
                     });
                     if current {
-                        cached_text_layout_with_request(&input, task.theme, &options, task.request);
+                        let cached = cached_text_layout_with_request(
+                            &input,
+                            task.theme,
+                            &options,
+                            task.request,
+                        );
+                        let stats = text_layout_cache_stats();
+                        trace_text_layout(
+                            "primary.apply",
+                            format_args!(
+                                "block={block_id} kind={kind:?} generation={generation} width={:?} strategy={:?} entries={} pinned={} misses={} reflows={} evictions={}",
+                                options.width,
+                                cached.strategy,
+                                stats.entries,
+                                stats.pinned_entries,
+                                stats.misses,
+                                stats.reflows,
+                                stats.evictions,
+                            ),
+                        );
                         cx.notify();
+                    } else {
+                        trace_text_layout(
+                            "primary.drop-version",
+                            format_args!(
+                                "block={block_id} kind={kind:?} generation={generation} width={:?}",
+                                options.width
+                            ),
+                        );
                     }
                 },
                 cx,
+            );
+            trace_text_layout(
+                "primary.enqueue",
+                format_args!(
+                    "block={block_id} kind={kind:?} generation={generation} width={requested_width:?} decision={decision:?}"
+                ),
             );
         }
     }
@@ -289,12 +444,6 @@ fn text_shape_cost(bytes: usize) -> WorkCost {
     }
 }
 
-fn layout_generation(content_version: u64, layout_version: u64) -> u64 {
-    content_version
-        .saturating_mul(1_000_000_000)
-        .saturating_add(layout_version.min(999_999_999))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,9 +463,39 @@ mod tests {
     }
 
     #[test]
-    fn layout_generation_orders_content_before_layout_versions() {
-        assert!(layout_generation(4, 1) > layout_generation(3, 999_999_999));
-        assert!(layout_generation(4, 2) > layout_generation(4, 1));
+    fn prewarm_generation_is_stable_for_one_key_and_advances_for_new_widths() {
+        let input = RichTextLayoutInput {
+            block_id: 5,
+            surface_id: SurfaceId::Block(5),
+            content_version: 7,
+            layout_version: 11,
+            kind: RichBlockKind::Paragraph,
+            text_align: cditor_core::rich_text::TextAlign::Start,
+            spans: vec![cditor_core::rich_text::InlineSpan::plain("resize")].into(),
+            width_px: 200.0,
+            theme_version: 13,
+            font_version: 17,
+        };
+        let narrow = TextLayoutOptions {
+            width: Some(100.0),
+            ..TextLayoutOptions::default()
+        };
+        let wide = TextLayoutOptions {
+            width: Some(200.0),
+            ..TextLayoutOptions::default()
+        };
+        let mut generations = TextLayoutPrewarmGenerationState::default();
+
+        let first = generations.generation_for(prewarm_key(&input, &narrow));
+        assert_eq!(
+            generations.generation_for(prewarm_key(&input, &narrow)),
+            first
+        );
+        let second = generations.generation_for(prewarm_key(&input, &wide));
+        let third = generations.generation_for(prewarm_key(&input, &narrow));
+
+        assert!(second > first);
+        assert!(third > second);
     }
 
     #[test]

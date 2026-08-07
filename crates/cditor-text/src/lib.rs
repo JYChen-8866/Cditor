@@ -24,7 +24,9 @@ mod tests;
 pub use accessibility::{
     TextAccessibilityProjection, accessibility_node_ids, build_text_accessibility_projection,
 };
-pub use bundled_fonts::DOCUMENT_BODY_FONT_FAMILY;
+pub use bundled_fonts::{
+    DOCUMENT_BODY_FONT_FAMILY, document_body_font_family, set_document_body_font_family,
+};
 pub use cache::{
     CachedTextLayout, TextLayoutCachePolicy, TextLayoutCachePriority, TextLayoutCacheRequest,
     TextLayoutCacheStats, TextLayoutCacheTrimReport, TextLayoutKey, TextLayoutMemoryPressure,

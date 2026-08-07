@@ -31,12 +31,13 @@ pub struct Typography {
 impl Typography {
     pub fn from_app_config() -> Self {
         let config = cditor_config::APP_CONFIG.document.typography;
+        let proportional_family = cditor_config::proportional_font_family();
         let body = FontFamily {
-            primary: config.fonts.body.current().to_owned(),
+            primary: proportional_family.clone(),
             fallbacks: Vec::new(),
         };
         let ui = FontFamily {
-            primary: config.fonts.ui.current().to_owned(),
+            primary: proportional_family,
             fallbacks: Vec::new(),
         };
         let code = FontFamily {

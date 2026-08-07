@@ -8,6 +8,7 @@ use crate::{TextLayoutInput, TextLayoutSurfaceId, TextTheme};
 
 const DEFAULT_LAYOUT_CACHE_MAX_ENTRIES: usize = 256;
 const DEFAULT_LAYOUT_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
+const MAX_LAYOUT_GEOMETRIES_PER_SURFACE: usize = 1;
 
 thread_local! {
     static TEXT_LAYOUT_CACHE: std::cell::RefCell<TextLayoutCache> =
@@ -241,13 +242,13 @@ impl TextLayoutCache {
         Some(layout)
     }
 
-    fn compatible_shape(&self, key: &TextLayoutKey) -> Option<TextLayoutSnapshot> {
+    fn compatible_shape(&self, key: &TextLayoutKey) -> Option<(TextLayoutKey, TextLayoutSnapshot)> {
         self.order.iter().rev().find_map(|candidate| {
             (candidate.shape == key.shape)
                 .then(|| {
                     self.entries
                         .get(candidate)
-                        .map(|entry| entry.layout.clone())
+                        .map(|entry| (candidate.clone(), entry.layout.clone()))
                 })
                 .flatten()
         })
@@ -305,7 +306,36 @@ impl TextLayoutCache {
         }
         self.estimated_bytes = self.estimated_bytes.saturating_add(estimated_bytes);
         self.touch(&key);
+        self.prune_surface_history(&key);
         self.trim_to(self.policy.max_entries, self.policy.max_estimated_bytes);
+    }
+
+    fn prune_surface_history(&mut self, current: &TextLayoutKey) {
+        let mut retained_geometries = 1;
+        let mut victims = Vec::new();
+        for candidate in self.order.iter().rev() {
+            if candidate == current || candidate.shape.surface_id != current.shape.surface_id {
+                continue;
+            }
+            let same_geometry = candidate.width_bits == current.width_bits
+                && candidate.alignment == current.alignment;
+            let retain = candidate.shape == current.shape
+                && !same_geometry
+                && retained_geometries < MAX_LAYOUT_GEOMETRIES_PER_SURFACE;
+            if retain {
+                retained_geometries += 1;
+            } else {
+                victims.push(candidate.clone());
+            }
+        }
+        for victim in victims {
+            let Some(entry) = self.entries.remove(&victim) else {
+                continue;
+            };
+            self.order.retain(|candidate| candidate != &victim);
+            self.estimated_bytes = self.estimated_bytes.saturating_sub(entry.estimated_bytes);
+            self.evictions = self.evictions.saturating_add(1);
+        }
     }
 
     fn touch(&mut self, key: &TextLayoutKey) {
@@ -447,7 +477,8 @@ pub fn try_cached_text_layout_with_request(
 
 /// Returns the newest snapshot with the same shaped text/style identity without
 /// reflowing it to the requested width. This is a paintable one-frame fallback
-/// while a scheduler-admitted reflow is pending.
+/// while a scheduler-admitted reflow is pending. The returned key describes the
+/// source snapshot so callers can reject incompatible paint geometry.
 pub fn try_compatible_text_layout_with_request(
     input: &TextLayoutInput,
     options: &TextLayoutOptions,
@@ -457,10 +488,10 @@ pub fn try_compatible_text_layout_with_request(
     TEXT_LAYOUT_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         cache.prepare_request(input.surface_id, request);
-        let layout = cache.compatible_shape(&key)?;
+        let (source_key, layout) = cache.compatible_shape(&key)?;
         let estimated_bytes = layout.estimated_bytes();
         Some(CachedTextLayout {
-            key,
+            key: source_key,
             layout,
             cache_hit: true,
             reflowed: false,
@@ -494,7 +525,7 @@ pub fn cached_text_layout_with_request(
         }
 
         cache.misses = cache.misses.saturating_add(1);
-        let (layout, strategy) = if let Some(layout) = cache.compatible_shape(&key) {
+        let (layout, strategy) = if let Some((_, layout)) = cache.compatible_shape(&key) {
             cache.reflows = cache.reflows.saturating_add(1);
             (
                 layout.reflow(options.width, options.alignment),

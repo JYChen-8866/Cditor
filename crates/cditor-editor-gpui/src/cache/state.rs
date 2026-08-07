@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use cditor_core::ids::{BlockId, SurfaceId};
 use gpui::RenderImage;
 
-use crate::app::text_layout_prewarm::TextLayoutPrewarmKey;
+use crate::app::text_layout_prewarm::{TextLayoutPrewarmGenerationState, TextLayoutPrewarmKey};
 use crate::features::code::highlight::CodeHighlightCache;
 use crate::features::mermaid::MermaidRenderCache;
 use crate::features::whiteboard::WhiteboardThumbnailCache;
@@ -23,6 +23,7 @@ pub(crate) struct RenderCacheState {
     pub(crate) mermaid_source_blocks: HashSet<BlockId>,
     pub(crate) whiteboard_thumbnails: WhiteboardThumbnailCache,
     pub(crate) pending_text_layout_prewarms: HashSet<TextLayoutPrewarmKey>,
+    pub(crate) text_layout_prewarm_generations: TextLayoutPrewarmGenerationState,
 }
 
 impl Default for RenderCacheState {
@@ -36,6 +37,7 @@ impl Default for RenderCacheState {
             mermaid_source_blocks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             pending_text_layout_prewarms: Default::default(),
+            text_layout_prewarm_generations: Default::default(),
         }
     }
 }
@@ -50,6 +52,7 @@ impl RenderCacheState {
         self.mermaid_source_blocks.clear();
         self.whiteboard_thumbnails.clear();
         self.pending_text_layout_prewarms.clear();
+        self.text_layout_prewarm_generations.clear();
         retired_images
     }
 }

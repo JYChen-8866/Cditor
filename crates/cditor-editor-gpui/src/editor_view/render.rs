@@ -3,7 +3,10 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div, rgb,
 };
 
-use crate::document::{DocumentBlockActionProjection, DocumentEditorView, PageDecorationSnapshot};
+use crate::document::{
+    DocumentBlockActionProjection, DocumentEditorView, DocumentLayoutMetrics,
+    PageDecorationSnapshot,
+};
 use crate::editor_view::{
     CditorV2View, CditorViewState, floating_toolbar_passes_selection_delay,
     formatting_toolbar_context, formatting_toolbar_state,
@@ -31,7 +34,7 @@ use crate::overlays::{
     update_gutter_popup_menu, update_slash_popup_menu,
 };
 use crate::persistence::{EditorLoadStateLabel, render_load_state};
-use crate::platform::EDITOR_UI_FONT_FAMILY;
+use crate::platform::editor_ui_font_family;
 use crate::scroll::HeightCorrectionPriority;
 use crate::surfaces::table_cell::projected_table_cells_from_projection;
 use crate::theme::{active_theme, is_dark_mode};
@@ -131,7 +134,7 @@ impl Render for CditorV2View {
         let selection_toolbar_ready = self.sync_selection_toolbar_delay(cx);
         let mut root = div()
             .id("cditor-v2-root")
-            .font_family(EDITOR_UI_FONT_FAMILY)
+            .font_family(editor_ui_font_family())
             .relative()
             .overflow_hidden()
             .track_scroll(&self.interaction.editor_viewport_handle)
@@ -413,6 +416,20 @@ impl Render for CditorV2View {
             if self.interaction.request_initial_viewport_frame() {
                 cx.on_next_frame(window, |_view, _window, cx| cx.notify());
             }
+            self.record_frame_telemetry(
+                window.window_handle().window_id(),
+                frame_started.elapsed(),
+            );
+            return root.into_any_element();
+        }
+
+        if self.state.is_ready()
+            && !DocumentLayoutMetrics::viewport_width_is_usable(editor_viewport.width)
+        {
+            // A split-pane resize can expose a transient 1px-wide editor. Do
+            // not turn that host-layout artifact into exact layouts for every
+            // visible block; the next usable resize frame will project them.
+            crate::text::sync_automatic_text_layout_pins(&[]);
             self.record_frame_telemetry(
                 window.window_handle().window_id(),
                 frame_started.elapsed(),

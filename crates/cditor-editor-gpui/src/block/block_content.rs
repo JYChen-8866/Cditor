@@ -284,7 +284,7 @@ fn page_title_placeholder(block: &ViewBlockSnapshot, text_len: usize) -> Option<
     .then_some(EMPTY_PAGE_TITLE_PLACEHOLDER)
 }
 
-fn page_title_typography(block: &ViewBlockSnapshot) -> Option<RichTextTypography> {
+pub(crate) fn page_title_typography(block: &ViewBlockSnapshot) -> Option<RichTextTypography> {
     (block.visible_index == 0
         && block.depth == 0
         && matches!(

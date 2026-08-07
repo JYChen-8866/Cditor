@@ -137,7 +137,7 @@ impl Element for SegmentedRichTextElement {
         let editor_view = self.input_handler.view.clone();
         let viewport = self.viewport.clone();
         let base_font = window.text_style().font();
-        let font_family = crate::platform::BODY_FONT_FAMILY.to_owned();
+        let font_family = crate::platform::body_font_family();
         let font_weight = base_font.weight;
         let font_style = base_font.style;
         let scale = window.scale_factor();
