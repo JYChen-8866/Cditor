@@ -78,7 +78,7 @@ pub const fn block_content_left_px(indent_px: f32) -> f32 {
 }
 
 pub const fn block_gutter_top_px(outer_padding_top_px: f32) -> f32 {
-    BLOCK_SHELL_BORDER_WIDTH_PX + outer_padding_top_px
+    outer_padding_top_px
 }
 pub const BLOCK_PREFIX_WIDTH_PX: f32 = 22.0;
 pub const NOTION_LIST_PREFIX_WIDTH_PX: f32 = 24.0;

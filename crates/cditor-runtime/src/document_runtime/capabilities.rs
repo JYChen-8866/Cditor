@@ -38,12 +38,18 @@ impl DocumentRuntime {
         if &record.kind == target {
             return false;
         }
-        // Tables own structured cell content and headings are single rich-text
-        // blocks. Converting between these shapes would silently flatten or
-        // discard structure, so the block transform menu must keep the pair
-        // mutually exclusive.
-        if matches!(record.kind, RichBlockKind::Table) || matches!(target, RichBlockKind::Table) {
+        // Existing tables own structured cell content and must never be
+        // flattened through a block-kind conversion.
+        if matches!(record.kind, RichBlockKind::Table) {
             return false;
+        }
+        // Table is a creation target, not a general transform target. A plain
+        // paragraph may explicitly become a fresh table (for example through
+        // `/table`), while headings and other semantic text blocks stay
+        // incompatible with table conversion.
+        if matches!(target, RichBlockKind::Table) {
+            return matches!(record.kind, RichBlockKind::Paragraph)
+                && matches!(&record.payload, BlockPayload::RichText { .. });
         }
         if !cditor_core::schema::builtin_block_registry()
             .descriptor_for_kind(target)

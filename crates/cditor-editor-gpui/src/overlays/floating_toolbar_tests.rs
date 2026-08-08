@@ -36,7 +36,7 @@ fn gutter_format_controls_use_the_provided_svg_assets() {
 
 #[test]
 fn gutter_menu_groups_format_color_and_delete_under_actions() {
-    assert_eq!(GUTTER_GROUP_LABELS, ["文字样式", "操作", "AI"]);
+    assert_eq!(GUTTER_GROUP_LABELS, ["文字样式", "操作"]);
 }
 
 fn toolbar_state() -> FloatingToolbarState {
@@ -72,6 +72,24 @@ fn toolbar_state() -> FloatingToolbarState {
         color_menu_open: false,
         last_color_action: None,
     }
+}
+
+#[test]
+fn floating_toolbar_width_tracks_visible_control_groups() {
+    let state = toolbar_state();
+    assert_eq!(toolbar_content_width(state), 272.0);
+
+    let color_only = FloatingToolbarState {
+        show_inline_format: false,
+        ..state
+    };
+    assert_eq!(toolbar_content_width(color_only), 102.0);
+
+    let format_only = FloatingToolbarState {
+        show_color: false,
+        ..state
+    };
+    assert_eq!(toolbar_content_width(format_only), 182.0);
 }
 
 #[test]

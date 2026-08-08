@@ -61,8 +61,12 @@ pub fn render_code_block(
             div()
                 .relative()
                 .w_full()
-                .flex()
-                .bg(rgb(code_theme.background))
+                .rounded_b(px(V1_CODE_BLOCK_RADIUS_PX))
+                .border_l(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                .border_r(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                .border_b(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                .border_color(rgb(theme.code_toolbar_border))
+                .bg(rgb(content_background))
                 .child(
                     div()
                         .w_full()
@@ -80,10 +84,6 @@ pub fn render_code_block(
             this.min_h(px(V1_CODE_BLOCK_MIN_HEIGHT_PX))
         })
         .rounded(px(V1_CODE_BLOCK_RADIUS_PX))
-        .border(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
-        .border_color(rgb(theme.code_toolbar_border))
-        .bg(rgb(theme.code_toolbar_border))
-        .overflow_hidden()
         .flex()
         .flex_col()
         .when(!collapsed, |this| {
@@ -94,33 +94,36 @@ pub fn render_code_block(
             div()
                 .relative()
                 .w_full()
-                .h(px(V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX as f32))
-                .flex_none()
+                .rounded(px(V1_CODE_BLOCK_RADIUS_PX))
+                .when(!collapsed, |this| this.rounded_b_none())
+                .border_t(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                .border_l(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                .border_r(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                .when(collapsed, |this| {
+                    this.border_b(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+                })
+                .border_color(rgb(theme.code_toolbar_border))
                 .bg(rgb(theme.code_toolbar_background))
-                .child(render_code_toolbar(
-                    block_id,
-                    theme,
-                    language,
-                    language_edit,
-                    code_theme_menu_open,
-                    code_highlight_theme,
-                    view,
-                    code_language_focus,
-                )),
+                .flex_none()
+                .child(
+                    div()
+                        .relative()
+                        .w_full()
+                        .h(px(V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX as f32))
+                        .bg(rgb(theme.code_toolbar_background))
+                        .child(render_code_toolbar(
+                            block_id,
+                            theme,
+                            language,
+                            language_edit,
+                            code_theme_menu_open,
+                            code_highlight_theme,
+                            view,
+                            code_language_focus,
+                        )),
+                ),
         )
         .when_some(code_viewport, |this, viewport| this.child(viewport))
-        // GPUI paints child backgrounds over the frame border. Keep the
-        // bottom rule as an independent overlay so it remains visible when
-        // another block follows immediately after this one.
-        .child(
-            div()
-                .absolute()
-                .left(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
-                .right(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
-                .bottom_0()
-                .h(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
-                .bg(rgb(theme.code_toolbar_border)),
-        )
         .into_any_element()
 }
 

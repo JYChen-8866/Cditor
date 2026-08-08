@@ -294,13 +294,23 @@ impl DocumentRuntime {
                     .cloned()
                     .map(|payload| {
                         if self.document.table_runtimes.contains_key(block_id) {
-                            Arc::new(self.table_runtime_payload_record(
+                            return Arc::new(self.table_runtime_payload_record(
                                 *block_id,
                                 payload.as_ref().clone(),
-                            ))
-                        } else {
-                            payload
+                            ));
                         }
+                        if matches!(payload.kind, RichBlockKind::Table)
+                            && !matches!(&payload.payload, BlockPayload::Table(table) if table::table_has_cells(table))
+                        {
+                            // Storage adapters may return a stale text payload
+                            // for a block whose persisted kind is already Table.
+                            // Repair only this exceptional path; normal tables
+                            // keep their shared resident allocation.
+                            return Arc::new(normalize_payload_record_for_kind(
+                                payload.as_ref().clone(),
+                            ));
+                        }
+                        payload
                     })
                     .map(|payload| self.payload_with_composition_preview(*block_id, payload))
                     .map(BlockPayloadView::Loaded)
@@ -320,6 +330,20 @@ impl DocumentRuntime {
                     layout.estimated_height = IMAGE_BLOCK_ESTIMATED_HEIGHT_PX;
                     layout.measured_height = None;
                     layout.dirty = true;
+                }
+                if matches!(kind, RichBlockKind::Table)
+                    && let BlockPayloadView::Loaded(record) = &payload
+                    && let BlockPayload::Table(table) = &record.payload
+                {
+                    let table_height =
+                        f64::from(table::table_payload_projected_height_px(table));
+                    if layout.effective_height() < table_height
+                        || layout.measured_height != Some(table_height)
+                    {
+                        layout.estimated_height = table_height;
+                        layout.measured_height = Some(table_height);
+                        layout.dirty = false;
+                    }
                 }
                 let chrome = self.document
                     .list_projection_cache

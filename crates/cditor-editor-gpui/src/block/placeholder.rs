@@ -27,7 +27,7 @@ pub fn render_empty_ai_hint(kind: &RichBlockKind, theme: GuiTheme) -> AnyElement
         .text_size(px(EMPTY_LINE_PLACEHOLDER_TEXT_SIZE_PX))
         .font_weight(FontWeight::NORMAL)
         .text_color(rgb(theme.muted))
-        .child("按 space（空格）以启用 AI，或按“/”启用命令")
+        .child("按“/”启用命令")
         .into_any_element()
 }
 

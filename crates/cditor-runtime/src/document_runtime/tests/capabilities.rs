@@ -16,6 +16,7 @@ fn rich_text_menu_actions_require_non_empty_rich_text_payload() {
 fn block_conversion_capability_rejects_asset_flattening_but_keeps_text_exports() {
     let rich = runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "text")]);
     assert!(rich.can_convert_block_kind(1, &RichBlockKind::Heading { level: 2 }));
+    assert!(rich.can_convert_block_kind(1, &RichBlockKind::Table));
     assert!(!rich.can_convert_block_kind(1, &RichBlockKind::Paragraph));
 
     let table = runtime_with_single_payload(RichBlockKind::Table, sample_table_payload().payload);

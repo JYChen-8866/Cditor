@@ -101,9 +101,8 @@ pub fn block_outer_padding_for_kind(kind: &RichBlockKind) -> (f64, f64) {
         RichBlockKind::Heading { level: 4 } => (20.0, 8.0),
         RichBlockKind::Heading { level: 5 } => (6.0, 3.0),
         RichBlockKind::Heading { level: 6 } => (4.0, 3.0),
-        RichBlockKind::Code { .. } | RichBlockKind::Mermaid | RichBlockKind::Whiteboard => {
-            (8.0, 8.0)
-        }
+        RichBlockKind::Code { .. } => (BLOCK_SHELL_PADDING_Y_PX, BLOCK_SHELL_PADDING_Y_PX),
+        RichBlockKind::Mermaid | RichBlockKind::Whiteboard => (8.0, 8.0),
         RichBlockKind::Paragraph
         | RichBlockKind::Quote
         | RichBlockKind::Todo { .. }
@@ -141,7 +140,7 @@ pub fn text_block_chrome_metrics_for_kind(kind: &RichBlockKind) -> TextBlockChro
             outer_padding_bottom,
         },
         RichBlockKind::Code { .. } => TextBlockChromeMetrics {
-            // 外层 shell 只承载 gutter/prefix 行；内层 code component 自己绘制 V1 min_h(92)、toolbar 和 padding。
+            // 外层 shell 只承载 gutter/prefix 行；内层 code component 自己绘制 toolbar、frame 和 padding。
             content_min_height: V1_CODE_INNER_MIN_HEIGHT_PX,
             content_padding_y: 0.0,
             extra_inner_chrome_y: 0.0,
@@ -577,8 +576,8 @@ mod tests {
         assert_eq!(code.content_min_height, 93.0);
         assert_eq!(code.content_padding_y, 0.0);
         assert_eq!(code.extra_inner_chrome_y, 0.0);
-        assert_eq!(code.outer_min_height(), 109.0);
-        assert_eq!(code.outer_chrome_y(), 16.0);
+        assert_eq!(code.outer_min_height(), 101.0);
+        assert_eq!(code.outer_chrome_y(), 8.0);
         assert_eq!(code_block_v1_outer_min_height(), 101.0);
         assert_eq!(code_block_v1_chrome_y(), 77.0);
 

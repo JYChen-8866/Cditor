@@ -92,7 +92,11 @@ pub fn block_shell(
     let shell = div()
         .id(("v2-block", block.block_id))
         .w_full()
-        .border(px(BLOCK_SHELL_BORDER_WIDTH_PX))
+        // The shell border is a horizontal geometry slot only. Core block
+        // heights do not include vertical shell borders, so top/bottom borders
+        // would make adjacent absolutely-positioned blocks overlap by 2px.
+        .border_l(px(BLOCK_SHELL_BORDER_WIDTH_PX))
+        .border_r(px(BLOCK_SHELL_BORDER_WIDTH_PX))
         .border_color(rgb(shell_border))
         .bg(rgb(outer_background))
         .text_color(rgb(chrome.text_color))

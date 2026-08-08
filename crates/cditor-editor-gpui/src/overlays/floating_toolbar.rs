@@ -21,9 +21,13 @@ use super::block_transform_menu::{
 };
 use super::color_menu::{ActiveColor, ColorMenuAction, PaletteColor, render_color_menu};
 
-pub(crate) const TOOLBAR_WIDTH_PX: f32 = 194.0;
+pub(crate) const TOOLBAR_WIDTH_PX: f32 = 250.0;
+const TOOLBAR_HORIZONTAL_PADDING_PX: f32 = 16.0;
+const TOOLBAR_ACTION_GAP_PX: f32 = 4.0;
+const TOOLBAR_COLOR_WIDTH_PX: f32 = 86.0;
+const TOOLBAR_DELETE_WIDTH_PX: f32 = 60.0;
 pub(crate) const GUTTER_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
-const TOOLBAR_HEIGHT_PX: f32 = 324.0;
+const TOOLBAR_HEIGHT_PX: f32 = 46.0;
 const VIEWPORT_MARGIN_PX: f32 = 10.0;
 const TOOLBAR_ANCHOR_GAP_PX: f32 = 8.0;
 const AI_ACTIONS_VIEWPORT_HEIGHT_PX: f32 = 110.0;
@@ -60,7 +64,7 @@ const AI_ACTION_ICON_KEYS: [&str; AI_ACTION_COUNT] = [
     "ai-action-explain",
     "ai-action-translate",
 ];
-const GUTTER_GROUP_LABELS: [&str; 3] = ["文字样式", "操作", "AI"];
+const GUTTER_GROUP_LABELS: [&str; 2] = ["文字样式", "操作"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InlineFormatAction {
@@ -171,6 +175,28 @@ fn clamp_toolbar_x(x: f32, viewport_width: f32) -> f32 {
     x.clamp(VIEWPORT_MARGIN_PX, max_x)
 }
 
+pub(crate) fn toolbar_content_width(state: FloatingToolbarState) -> f32 {
+    let visible = [
+        (state.show_color, TOOLBAR_COLOR_WIDTH_PX),
+        (state.show_inline_format, inline_format_row_width()),
+        (state.show_delete, TOOLBAR_DELETE_WIDTH_PX),
+    ];
+    let count = visible.iter().filter(|(shown, _)| *shown).count();
+    TOOLBAR_HORIZONTAL_PADDING_PX
+        + visible
+            .iter()
+            .filter(|(shown, _)| *shown)
+            .map(|(_, width)| *width)
+            .sum::<f32>()
+        + TOOLBAR_ACTION_GAP_PX * count.saturating_sub(1) as f32
+}
+
+fn inline_format_row_width() -> f32 {
+    let button_count = 5usize;
+    FORMAT_BUTTON_SIZE_PX * button_count as f32
+        + TOOLBAR_ACTION_GAP_PX * button_count.saturating_sub(1) as f32
+}
+
 fn clamp_gutter_menu_x(x: f32, viewport_width: f32) -> f32 {
     let max_x =
         (viewport_width - GUTTER_MENU_WIDTH_PX - VIEWPORT_MARGIN_PX).max(VIEWPORT_MARGIN_PX);
@@ -192,20 +218,20 @@ pub fn render_floating_toolbar(
     state: FloatingToolbarState,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
-    prompt: Option<&AiPromptState>,
-    prompt_focus: FocusHandle,
+    _prompt: Option<&AiPromptState>,
+    _prompt_focus: FocusHandle,
     color_scroll_handle: &ScrollHandle,
-    ai_actions_scroll_handle: &ScrollHandle,
+    _ai_actions_scroll_handle: &ScrollHandle,
 ) -> AnyElement {
     let panel = div()
         .absolute()
         .left(px(state.x))
         .top(px(state.y))
-        .w(px(TOOLBAR_WIDTH_PX))
+        .w(px(toolbar_content_width(state)))
         .h(px(TOOLBAR_HEIGHT_PX))
         .p(px(8.0))
         .flex()
-        .flex_col()
+        .flex_row()
         .gap(px(4.0))
         .rounded(px(8.0))
         .border_1()
@@ -229,13 +255,6 @@ pub fn render_floating_toolbar(
                 })
             },
         )
-        .child(render_block_format_header(
-            state,
-            theme,
-            view.clone(),
-            None,
-            false,
-        ))
         .when(state.show_color, |this| {
             this.child(render_color_trigger(
                 state,
@@ -248,38 +267,14 @@ pub fn render_floating_toolbar(
         .when(state.show_inline_format || state.show_delete, |this| {
             this.child(render_inline_format_row(state, theme, view.clone(), false))
         })
-        .child(toolbar_divider(theme))
-        .child(
-            div()
-                .text_size(px(GUTTER_MENU_LABEL_FONT_SIZE_PX))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(theme.muted))
-                .child("AI"),
-        )
-        .child(render_ai_actions(
-            theme,
-            view.clone(),
-            state.ai_enabled,
-            ai_actions_scroll_handle,
-        ))
-        .child(render_custom_ai_button(
-            theme,
-            view.clone(),
-            state.x,
-            state.y,
-            state.ai_enabled,
-            prompt,
-            prompt_focus,
-        ))
         .when(state.show_delete, |this| {
-            this.child(toolbar_divider(theme))
-                .child(render_delete_action(
-                    theme,
-                    view.clone(),
-                    state.block_id,
-                    state.delete_enabled,
-                    false,
-                ))
+            this.child(render_delete_action(
+                theme,
+                view.clone(),
+                state.block_id,
+                state.delete_enabled,
+                false,
+            ))
         });
 
     deferred(panel).with_priority(130).into_any_element()
@@ -343,10 +338,10 @@ fn render_gutter_popup_content(
     state: FloatingToolbarState,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
-    prompt: Option<&AiPromptState>,
-    prompt_focus: FocusHandle,
+    _prompt: Option<&AiPromptState>,
+    _prompt_focus: FocusHandle,
     color_scroll_handle: &ScrollHandle,
-    ai_actions_scroll_handle: &ScrollHandle,
+    _ai_actions_scroll_handle: &ScrollHandle,
     block_transform_popup_menu: Option<Entity<PopupMenu>>,
 ) -> AnyElement {
     div()
@@ -382,23 +377,6 @@ fn render_gutter_popup_content(
             state.block_id,
             state.delete_enabled,
             true,
-        ))
-        .child(toolbar_divider(theme))
-        .child(toolbar_group_label(GUTTER_GROUP_LABELS[2], theme))
-        .child(render_ai_actions(
-            theme,
-            view.clone(),
-            state.ai_enabled,
-            ai_actions_scroll_handle,
-        ))
-        .child(render_custom_ai_button(
-            theme,
-            view,
-            state.x,
-            state.y,
-            state.ai_enabled,
-            prompt,
-            prompt_focus,
         ))
         .into_any_element()
 }
@@ -556,6 +534,9 @@ fn render_color_trigger(
                 .into_any_element()
         })
         .child(render_submenu_arrow("gutter-color-arrow", theme));
+    let row = row.when(!slash_style, |row| {
+        row.flex_none().w(px(TOOLBAR_COLOR_WIDTH_PX))
+    });
     div()
         .relative()
         .child(row)
@@ -688,6 +669,8 @@ fn render_delete_action(
         .into_any_element()
     } else {
         row.gap(px(8.0))
+            .flex_none()
+            .w(px(TOOLBAR_DELETE_WIDTH_PX))
             .child(
                 SvgIcon::new("floating-toolbar-delete-icon", ICON_DELETE)
                     .color(rgb(if enabled { theme.danger } else { theme.muted }))
@@ -807,6 +790,9 @@ fn render_inline_format_row(
 ) -> AnyElement {
     div()
         .w_full()
+        .when(!use_svg_icons, |row| {
+            row.flex_none().w(px(inline_format_row_width()))
+        })
         .flex()
         .when(use_svg_icons, |row| {
             row.px(px(GUTTER_FORMAT_ROW_PADDING_PX)).justify_between()

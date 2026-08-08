@@ -71,6 +71,38 @@ fn slash_block_command_rejects_stale_range_without_mutating() {
 }
 
 #[test]
+fn slash_table_command_creates_and_projects_default_grid() {
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "/table")]);
+    runtime.focus_block_at_offset(1, "/table".len()).unwrap();
+
+    assert!(
+        runtime
+            .apply_slash_block_kind(1, 0.."/table".len(), RichBlockKind::Table)
+            .unwrap()
+    );
+
+    let record = runtime.block_payload_record(1).unwrap();
+    assert_eq!(record.kind, RichBlockKind::Table);
+    let BlockPayload::Table(table) = record.payload else {
+        panic!("slash table command must create a table payload");
+    };
+    assert_eq!(table.row_count(), 3);
+    assert_eq!(table.column_count(), 3);
+    assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some(""));
+
+    let projection = runtime.projection_for_window();
+    let table_view = projection.blocks[0]
+        .table_view
+        .as_ref()
+        .expect("slash-created table must be projected");
+    assert_eq!(table_view.row_count, 3);
+    assert_eq!(table_view.col_count, 3);
+    assert_eq!(table_view.visible_cells.len(), 9);
+    assert!(projection.blocks[0].layout.effective_height() >= table_view.height_px as f64);
+}
+
+#[test]
 fn convert_focused_block_kind_to_table_creates_default_3_by_3_grid() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "hello")]);
@@ -152,27 +184,24 @@ fn convert_focused_block_kind_to_whiteboard_creates_scene_payload() {
 }
 
 #[test]
-fn convert_focused_table_block_to_paragraph_exports_cell_plain_text() {
+fn convert_focused_table_block_to_paragraph_is_rejected_without_flattening_cells() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
     runtime.focus_block(10);
 
     assert!(
-        runtime
+        !runtime
             .convert_focused_block_kind(RichBlockKind::Paragraph)
             .unwrap()
     );
 
     let payload = runtime.block_payload_record(10).unwrap();
-    assert_eq!(payload.kind, RichBlockKind::Paragraph);
-    let BlockPayload::RichText { spans } = payload.payload else {
-        panic!("expected paragraph payload");
+    assert_eq!(payload.kind, RichBlockKind::Table);
+    let BlockPayload::Table(table) = payload.payload else {
+        panic!("rejected conversion must preserve the table payload");
     };
-    assert_eq!(
-        cditor_core::rich_text::plain_text_from_spans(&spans),
-        "A\tB\nC\tD"
-    );
-    assert!(runtime.table_runtime(10).is_none());
-    assert_eq!(runtime.focused_text(), Some("A\tB\nC\tD"));
+    assert_eq!(table.plain_text(), "A\tB\nC\tD");
+    assert!(runtime.table_runtime(10).is_some());
+    assert_eq!(runtime.focused_text(), None);
 }
 
 #[test]

@@ -25,6 +25,39 @@ fn table_cell_focus_is_projected_without_ui_entity_state() {
 }
 
 #[test]
+fn projection_repairs_stale_table_payload_before_rendering() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            10,
+            RichBlockKind::Table,
+            "cell",
+        )],
+        720.0,
+    );
+    // Simulate a host payload adapter that bypassed preparation and returned
+    // text for a block whose persisted kind is already Table.
+    runtime.document.table_runtimes.remove(&10);
+    runtime
+        .document
+        .payload_window
+        .insert_loaded(BlockPayloadRecord::rich_text(
+            10,
+            RichBlockKind::Table,
+            "cell",
+        ));
+
+    let projection = runtime.projection_for_window();
+    let block = &projection.blocks[0];
+    let table_view = block.table_view.as_ref().expect("table view state");
+
+    assert!(!table_view.visible_cells.is_empty());
+    assert!(table_view.width_px > 0.0);
+    assert!(table_view.height_px > 0.0);
+    assert!(block.layout.effective_height() >= table_view.height_px as f64);
+}
+
+#[test]
 fn blur_table_cell_exits_cell_editing_without_writing_old_cell() {
     let mut runtime = DocumentRuntime::from_payloads(1, vec![sample_table_payload()], 720.0);
 

@@ -30,8 +30,8 @@ const SLASH_MENU_VIEWPORT_MARGIN_PX: f32 = 8.0;
 const SLASH_MENU_ANCHOR_GAP_PX: f32 = 4.0;
 const SLASH_MENU_SVG_ICON_SIZE_PX: f32 = 20.0;
 
-const ICON_AI: &[u8] = include_bytes!("../../../../assets/icons/inline-ai.svg");
 const ICON_TEXT: &[u8] = include_bytes!("../../../../assets/icons/text.svg");
+const ICON_AI: &[u8] = include_bytes!("../../../../assets/icons/inline-ai.svg");
 const ICON_HEADING_1: &[u8] = include_bytes!("../../../../assets/icons/heading-1.svg");
 const ICON_HEADING_2: &[u8] = include_bytes!("../../../../assets/icons/heading-2.svg");
 const ICON_HEADING_3: &[u8] = include_bytes!("../../../../assets/icons/heading-3.svg");
@@ -152,14 +152,7 @@ impl SlashMenuState {
 }
 
 pub fn slash_menu_items() -> Vec<SlashMenuItem> {
-    let mut items = vec![SlashMenuItem {
-        icon: "AI",
-        label: "Ask AI",
-        description: "Write, improve, translate, or transform text.",
-        keywords: &["ai", "write", "rewrite", "translate"],
-        kind: RichBlockKind::Paragraph,
-        command: Some(SlashMenuCommand::AskAi),
-    }];
+    let mut items = Vec::new();
     items.extend(
         block_presentation_registry()
             .slash_presentations()
@@ -709,10 +702,10 @@ mod tests {
     #[test]
     fn slash_menu_contains_supported_block_kinds() {
         let items = slash_menu_items();
-        assert_eq!(items.len(), 16, "Ask AI plus 15 supported block entries");
-        assert_eq!(items[0].command, Some(SlashMenuCommand::AskAi));
-        assert_eq!(items[1].kind, RichBlockKind::Paragraph);
-        assert_eq!(items[15].kind, RichBlockKind::Divider);
+        assert_eq!(items.len(), 15, "15 supported block entries without AI");
+        assert!(items.iter().all(|item| item.command.is_none()));
+        assert_eq!(items[0].kind, RichBlockKind::Paragraph);
+        assert_eq!(items[14].kind, RichBlockKind::Divider);
         assert!(
             items
                 .iter()

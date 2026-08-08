@@ -9,6 +9,7 @@ use gpui::{
     ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
+use super::floating_toolbar::toolbar_content_width;
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::editor_view::CditorV2View;
 use crate::menu_metrics::{PRIMARY_MENU_HEIGHT_PX, PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
@@ -359,7 +360,7 @@ pub fn render_color_menu(
     let primary_width = if state.show_delete {
         GUTTER_MENU_WIDTH_PX
     } else {
-        PRIMARY_TOOLBAR_WIDTH_PX
+        toolbar_content_width(state)
     };
     div()
         .id("floating-toolbar-color-menu")
