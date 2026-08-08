@@ -35,6 +35,19 @@ struct PrimaryTextPrewarm {
 
 const MAX_SYNCHRONOUS_VISIBLE_LAYOUTS_PER_FRAME: usize = 64;
 
+fn must_shape_inline(request: TextLayoutCacheRequest) -> bool {
+    request.pin_surface
+}
+
+fn admit_primary_inline(
+    rank: u8,
+    visible_inline_slot: bool,
+    force_drag_visible: bool,
+    budget_admitted: bool,
+) -> bool {
+    rank == 0 || force_drag_visible || (visible_inline_slot && budget_admitted)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct TextLayoutPrewarmKey {
     surface_id: SurfaceId,
@@ -86,7 +99,8 @@ impl CditorV2View {
         };
         let bytes = input.text_len();
         let cost = text_shape_cost(bytes);
-        if self.scheduling.main_thread.try_admit_inline(kind, cost) {
+        let budget_admitted = self.scheduling.main_thread.try_admit_inline(kind, cost);
+        if must_shape_inline(request) || budget_admitted {
             let cached = cached_text_layout_with_request(&input, theme, &options, request);
             let stats = text_layout_cache_stats();
             trace_text_layout(
@@ -303,12 +317,17 @@ impl CditorV2View {
             // Shape the bounded physical viewport now; render-window overscan and
             // segmented long text continue through the normal budgeted path.
             let force_drag_visible = scrollbar_dragging && task.rank == 1 && visible_inline_slot;
-            let admitted = force_drag_visible
-                || (visible_inline_slot
-                    && self
-                        .scheduling
-                        .main_thread
-                        .try_admit_inline(task.kind, task.cost));
+            let budget_admitted = visible_inline_slot
+                && self
+                    .scheduling
+                    .main_thread
+                    .try_admit_inline(task.kind, task.cost);
+            let admitted = admit_primary_inline(
+                task.rank,
+                visible_inline_slot,
+                force_drag_visible,
+                budget_admitted,
+            );
             if admitted {
                 let cached = cached_text_layout_with_request(
                     &task.input,
@@ -447,6 +466,21 @@ fn text_shape_cost(bytes: usize) -> WorkCost {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn editing_layouts_bypass_the_shared_frame_budget() {
+        assert!(must_shape_inline(TextLayoutCacheRequest::editing()));
+        assert!(!must_shape_inline(TextLayoutCacheRequest::visible()));
+        assert!(admit_primary_inline(0, false, false, false));
+    }
+
+    #[test]
+    fn non_editing_layouts_still_obey_visibility_and_budget_policy() {
+        assert!(!admit_primary_inline(1, true, false, false));
+        assert!(admit_primary_inline(1, true, false, true));
+        assert!(admit_primary_inline(1, false, true, false));
+        assert!(!admit_primary_inline(2, false, false, true));
+    }
 
     #[test]
     fn shape_cost_is_bounded_and_scales_with_payload_size() {

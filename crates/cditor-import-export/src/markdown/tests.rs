@@ -147,6 +147,52 @@ fn parses_markdown_document_blocks_tables_and_code() {
 }
 
 #[test]
+fn parses_mermaid_fenced_markdown_as_a_mermaid_block() {
+    for source in [
+        "```mermaid\nflowchart TD\n  A --> B\n```",
+        "``` mermaid\nflowchart TD\n  A --> B\n```",
+    ] {
+        let parsed = parse_markdown_document(source, MarkdownImportOptions::default());
+        assert_eq!(parsed.blocks.len(), 1, "{source:?}");
+        let block = &parsed.blocks[0];
+        assert_eq!(block.kind, RichBlockKind::Mermaid, "{source:?}");
+        assert_eq!(block.payload.plain_text(), "flowchart TD\n  A --> B");
+    }
+}
+
+#[test]
+fn parses_mermaid_fenced_markdown_paste_as_a_mermaid_block() {
+    let source = "```mermaid\nflowchart TD\n  A --> B\n```";
+    let parsed = parse_markdown_paste_document(source, MarkdownImportOptions::default());
+    assert_eq!(parsed.blocks.len(), 1);
+    assert_eq!(parsed.blocks[0].kind, RichBlockKind::Mermaid);
+    assert_eq!(parsed.blocks[0].payload.plain_text(), "flowchart TD\n  A --> B");
+}
+
+#[test]
+fn parses_mermaid_fenced_markdown_incrementally() {
+    let source = "```MERMAID\nflowchart TD\n  A --> B\n```";
+    let block = import_markdown_block_incremental(source, MarkdownImportOptions::default())
+        .expect("complete fenced Mermaid should parse incrementally");
+    assert_eq!(block.kind, RichBlockKind::Mermaid);
+    assert_eq!(block.payload.plain_text(), "flowchart TD\n  A --> B");
+}
+
+#[test]
+fn exports_mermaid_as_a_mermaid_fence() {
+    let mut document = RichTextDocument::empty(1);
+    document.push_root_block(RichBlockRecord::rich_text(
+        1,
+        RichBlockKind::Mermaid,
+        "flowchart TD\n  A --> B",
+    ));
+    assert_eq!(
+        export_plain_markdown(&document),
+        "```mermaid\nflowchart TD\n  A --> B\n```"
+    );
+}
+
+#[test]
 fn export_plain_markdown_matches_v1_basic_boundary() {
     let mut document = RichTextDocument::empty(1);
     document.push_root_block(RichBlockRecord::heading(1, 2, "Title"));

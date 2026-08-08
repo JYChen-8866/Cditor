@@ -351,6 +351,37 @@ mod tests {
     }
 
     #[test]
+    fn agent_edit_canonicalizes_mermaid_code_language_to_mermaid_block() {
+        let handle = EditorSession::new(outline_runtime(), false).into_handle();
+        let before = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        let source = "flowchart TD\n  A --> B";
+        let outcome = handle
+            .agent_edit(AgentEditRequest {
+                expected_structure_version: Some(before.structure_version),
+                operations: vec![AgentEditOperation::InsertCodeBlockAfter {
+                    after_block_id: 1,
+                    language: Some(" Mermaid ".to_owned()),
+                    text: source.to_owned(),
+                }],
+            })
+            .unwrap();
+        assert_eq!(outcome.new_block_ids, vec![4]);
+
+        let after = handle
+            .agent_outline(AgentOutlineRequest { max_blocks: 100 })
+            .unwrap();
+        let inserted = after
+            .blocks
+            .iter()
+            .find(|block| block.block_id == 4)
+            .expect("inserted Mermaid block is visible in outline");
+        assert_eq!(inserted.kind, RichBlockKind::Mermaid);
+        assert_eq!(inserted.text, source);
+    }
+
+    #[test]
     fn agent_edit_inserts_gfm_table_as_table_block() {
         let handle = EditorSession::new(outline_runtime(), false).into_handle();
         let before = handle

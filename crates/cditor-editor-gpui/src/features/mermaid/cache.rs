@@ -42,6 +42,20 @@ struct MermaidRenderRequest {
     fallback: Option<Arc<RenderImage>>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RenderSyncAction {
+    Keep,
+    Refresh,
+}
+
+fn render_sync_action(source_visible: bool, current_entry_matches: bool) -> RenderSyncAction {
+    if source_visible || current_entry_matches {
+        RenderSyncAction::Keep
+    } else {
+        RenderSyncAction::Refresh
+    }
+}
+
 impl MermaidRenderEntry {
     fn new(
         request: MermaidRenderRequest,
@@ -168,6 +182,7 @@ impl MermaidRenderCache {
     pub(crate) fn sync_visible_window(
         &mut self,
         projection: &EditorViewProjection,
+        source_blocks: &HashSet<BlockId>,
         theme: GuiTheme,
         worker_admission: &EditorWorkerAdmission,
         cx: &mut Context<CditorV2View>,
@@ -211,10 +226,12 @@ impl MermaidRenderCache {
         }
 
         for (block_id, content_version, hash, source) in visible {
-            if self
+            let current_entry_matches = self
                 .entries
                 .get(&block_id)
-                .is_some_and(|entry| entry.matches(content_version, hash, theme))
+                .is_some_and(|entry| entry.matches(content_version, hash, theme));
+            if render_sync_action(source_blocks.contains(&block_id), current_entry_matches)
+                == RenderSyncAction::Keep
             {
                 continue;
             }
@@ -340,6 +357,21 @@ mod tests {
     fn source_hash_changes_with_content() {
         assert_eq!(source_hash("A --> B"), source_hash("A --> B"));
         assert_ne!(source_hash("A --> B"), source_hash("A --> C"));
+    }
+
+    #[test]
+    fn source_editor_retains_cached_render_when_source_changes() {
+        assert_eq!(
+            render_sync_action(true, false),
+            RenderSyncAction::Keep,
+            "source editing must not replace the cached render or its fallback"
+        );
+    }
+
+    #[test]
+    fn returning_to_preview_refreshes_only_stale_render() {
+        assert_eq!(render_sync_action(false, false), RenderSyncAction::Refresh);
+        assert_eq!(render_sync_action(false, true), RenderSyncAction::Keep);
     }
 
     #[test]

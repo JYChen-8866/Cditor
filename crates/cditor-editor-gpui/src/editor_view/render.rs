@@ -562,6 +562,7 @@ impl Render for CditorV2View {
                 );
                 self.cache.mermaid_renders.sync_visible_window(
                     &projection,
+                    &mermaid_source_blocks,
                     theme,
                     &self.scheduling.workers,
                     cx,

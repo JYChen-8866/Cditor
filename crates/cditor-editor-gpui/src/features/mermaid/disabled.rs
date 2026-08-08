@@ -1,6 +1,9 @@
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use cditor_core::ids::BlockId;
 use cditor_runtime::EditorViewProjection;
-use gpui::{AnyElement, App, Context, Entity};
+use gpui::{AnyElement, App, Context, Entity, RenderImage};
 
 use crate::app::worker_admission::EditorWorkerAdmission;
 use crate::editor_view::CditorV2View;
@@ -13,13 +16,16 @@ impl MermaidRenderCache {
     pub(crate) fn sync_visible_window(
         &mut self,
         _projection: &EditorViewProjection,
+        _source_blocks: &HashSet<BlockId>,
         _theme: GuiTheme,
         _worker_admission: &EditorWorkerAdmission,
         _cx: &mut Context<CditorV2View>,
     ) {
     }
 
-    pub(crate) fn clear(&mut self) {}
+    pub(crate) fn clear(&mut self) -> Vec<Arc<RenderImage>> {
+        Vec::new()
+    }
 }
 
 #[expect(

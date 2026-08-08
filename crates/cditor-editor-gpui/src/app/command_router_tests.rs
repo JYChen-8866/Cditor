@@ -665,6 +665,74 @@ fn mermaid_fence_enter_opens_the_new_block_in_source_edit_mode(cx: &mut TestAppC
     });
 }
 
+#[cfg(feature = "mermaid")]
+#[gpui::test]
+fn typed_mermaid_fence_newline_creates_mermaid_in_source_edit_mode(cx: &mut TestAppContext) {
+    let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            "",
+        )],
+        720.0,
+    );
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 0);
+    let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+    view.update(cx, |view, cx| {
+        let session = view.ready_session().unwrap().clone();
+        for character in "```mermaid".chars() {
+            session_realtime_replace(&session, &character.to_string());
+        }
+
+        let before_enter = session.focused_text_block_context().unwrap().unwrap();
+        assert_eq!(before_enter.kind, RichBlockKind::Paragraph);
+        assert_eq!(before_enter.text, "```mermaid");
+
+        view.handle_bound_input_action(BoundInputAction::Newline, cx);
+
+        let after_enter = session.focused_text_block_context().unwrap().unwrap();
+        assert_eq!(after_enter.block_id, 1);
+        assert_eq!(after_enter.kind, RichBlockKind::Mermaid);
+        assert_eq!(after_enter.text, "");
+        assert!(view.cache.mermaid_source_blocks.contains(&1));
+    });
+}
+
+#[cfg(feature = "mermaid")]
+#[gpui::test]
+fn slash_mermaid_opens_the_converted_block_in_source_edit_mode(cx: &mut TestAppContext) {
+    let marker = "/mermaid";
+    let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord::rich_text(
+            1,
+            RichBlockKind::Paragraph,
+            marker,
+        )],
+        720.0,
+    );
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, marker.len());
+    let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+    view.update(cx, |view, cx| {
+        view.sync_slash_menu_from_runtime(cx);
+        assert!(view.apply_selected_slash_menu_item(cx));
+
+        let context = view
+            .ready_session()
+            .unwrap()
+            .focused_text_block_context()
+            .unwrap()
+            .unwrap();
+        assert_eq!(context.block_id, 1);
+        assert_eq!(context.kind, RichBlockKind::Mermaid);
+        assert_eq!(context.text, "");
+        assert!(view.cache.mermaid_source_blocks.contains(&1));
+    });
+}
+
 #[test]
 fn only_keyboard_editing_commands_request_document_caret_reveal() {
     assert!(keyboard_command_reveals_focused_block(

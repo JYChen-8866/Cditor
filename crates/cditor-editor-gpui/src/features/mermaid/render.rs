@@ -71,7 +71,7 @@ pub(crate) fn render_mermaid_block(
     };
 
     let frame_background = (theme.text << 8) | 0x08;
-    let mut frame = div()
+    let frame = div()
         .id(("mermaid-block", block_id))
         .relative()
         .w_full()
@@ -80,9 +80,8 @@ pub(crate) fn render_mermaid_block(
         .border(px(MERMAID_FRAME_BORDER_WIDTH_PX))
         .border_color(rgb(theme.border))
         .bg(rgba(frame_background))
-        .overflow_hidden();
-    if show_source {
-        frame = frame.child(
+        .overflow_hidden()
+        .child(
             div()
                 .h(px(MERMAID_TOOLBAR_HEIGHT_PX))
                 .w_full()
@@ -110,7 +109,6 @@ pub(crate) fn render_mermaid_block(
                         }),
                 ),
         );
-    }
     frame
         .child(
             div()
@@ -222,7 +220,9 @@ fn mermaid_preview_geometry(image: &RenderImage) -> MermaidPreviewGeometry {
     let image_width_px = natural_width * scale;
     let image_height_px = natural_height * scale;
     let body_height_px = image_height_px + MERMAID_PREVIEW_PADDING_Y_PX * 2.0;
-    let block_height_px = f64::from(body_height_px + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32);
+    let block_height_px = f64::from(
+        MERMAID_TOOLBAR_HEIGHT_PX + body_height_px + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32,
+    );
     MermaidPreviewGeometry {
         image_width_px,
         image_height_px,
@@ -254,6 +254,19 @@ mod tests {
     }
 
     #[test]
+    fn mermaid_toolbar_height_is_part_of_source_and_preview_geometry() {
+        assert_eq!(MERMAID_TOOLBAR_HEIGHT_PX, 28.0);
+        assert_eq!(
+            default_mermaid_block_height_px(),
+            f64::from(
+                MERMAID_TOOLBAR_HEIGHT_PX
+                    + MERMAID_LOADING_BODY_HEIGHT_PX
+                    + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32
+            )
+        );
+    }
+
+    #[test]
     fn error_summary_uses_only_the_first_line() {
         assert_eq!(concise_error("parse failed\nstack detail"), "parse failed");
         assert_eq!(concise_error(""), "未知错误");
@@ -272,7 +285,7 @@ mod tests {
         assert!((geometry.image_width_px - 754.0).abs() < 0.001);
         assert!((geometry.image_height_px - 322.222_23).abs() < 0.001);
         assert!((geometry.body_height_px - 386.222_23).abs() < 0.001);
-        assert!((geometry.block_height_px - 402.222_23).abs() < 0.001);
+        assert!((geometry.block_height_px - 430.222_23).abs() < 0.001);
     }
 
     #[test]
@@ -283,7 +296,7 @@ mod tests {
         assert_eq!(geometry.image_width_px, 140.0);
         assert_eq!(geometry.image_height_px, 159.0);
         assert_eq!(geometry.body_height_px, 223.0);
-        assert_eq!(geometry.block_height_px, 239.0);
+        assert_eq!(geometry.block_height_px, 267.0);
     }
 
     #[test]
@@ -294,7 +307,7 @@ mod tests {
         assert_eq!(geometry.image_width_px, 200.0);
         assert_eq!(geometry.image_height_px, MERMAID_MAX_IMAGE_HEIGHT_PX);
         assert_eq!(geometry.image_height_px / geometry.image_width_px, 6.0);
-        assert_eq!(geometry.block_height_px, 1280.0);
+        assert_eq!(geometry.block_height_px, 1308.0);
     }
 
     #[test]

@@ -34,6 +34,7 @@ pub(crate) fn block_to_plain_markdown(block: &RichBlockRecord) -> String {
             language.as_deref().unwrap_or_default(),
             text
         ),
+        RichBlockKind::Mermaid => format!("```mermaid\n{text}\n```"),
         RichBlockKind::Separator | RichBlockKind::Divider => "---".to_owned(),
         RichBlockKind::Table => table_to_plain_markdown(&block.payload).unwrap_or(text),
         RichBlockKind::RawMarkdown => block.raw_fallback.clone().unwrap_or(text),

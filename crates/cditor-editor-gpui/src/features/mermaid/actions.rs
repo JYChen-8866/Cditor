@@ -19,15 +19,28 @@ pub(crate) fn show_focused_source_after_enter(
     view: &mut CditorV2View,
     cx: &mut Context<CditorV2View>,
 ) -> bool {
-    let Some((block_id, kind)) = view
+    let Some((block_id, _)) = view
         .ready_session()
         .and_then(|session| session.focused_block_kind().ok().flatten())
     else {
         return false;
     };
-    if !matches!(kind, cditor_core::rich_text::RichBlockKind::Mermaid)
-        || !view.cache.mermaid_source_blocks.insert(block_id)
-    {
+    show_source_after_creation(view, block_id, cx)
+}
+
+pub(crate) fn show_source_after_creation(
+    view: &mut CditorV2View,
+    block_id: BlockId,
+    cx: &mut Context<CditorV2View>,
+) -> bool {
+    let is_mermaid = view.ready_session().is_some_and(|session| {
+        session.text_block_context(block_id).is_ok_and(|context| {
+            context.is_some_and(|context| {
+                matches!(context.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
+            })
+        })
+    });
+    if !is_mermaid || !view.cache.mermaid_source_blocks.insert(block_id) {
         return false;
     }
 

@@ -249,6 +249,8 @@ impl CditorV2View {
     ) -> bool {
         #[cfg(feature = "whiteboard")]
         let opens_whiteboard = matches!(kind, cditor_core::rich_text::RichBlockKind::Whiteboard);
+        #[cfg(feature = "mermaid")]
+        let opens_mermaid_source = matches!(kind, cditor_core::rich_text::RichBlockKind::Mermaid);
         let caret = self
             .ready_session()
             .and_then(|session| {
@@ -275,6 +277,10 @@ impl CditorV2View {
                 #[cfg(feature = "whiteboard")]
                 if outcome.status == CommandOutcomeStatus::Applied && opens_whiteboard {
                     self.open_whiteboard_editor_from_gui(menu.block_id, cx);
+                }
+                #[cfg(feature = "mermaid")]
+                if outcome.status == CommandOutcomeStatus::Applied && opens_mermaid_source {
+                    crate::features::mermaid::show_source_after_creation(self, menu.block_id, cx);
                 }
                 cx.notify();
                 outcome.status == CommandOutcomeStatus::Applied

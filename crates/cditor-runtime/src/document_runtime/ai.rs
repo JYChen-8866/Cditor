@@ -943,6 +943,18 @@ impl DocumentRuntime {
         language: Option<&str>,
         text: &str,
     ) -> Result<BlockId, String> {
+        // Mermaid has its own block kind and renderer. Models commonly emit
+        // it through the generic code-block operation, so canonicalize at the
+        // runtime boundary instead of persisting Code(language="mermaid").
+        if language.is_some_and(|language| language.trim().eq_ignore_ascii_case("mermaid")) {
+            return self.agent_insert_block_payload_after(
+                after_block_id,
+                RichBlockKind::Mermaid,
+                BlockPayload::RichText {
+                    spans: vec![InlineSpan::plain(text)],
+                },
+            );
+        }
         let language = language.map(str::to_owned);
         self.agent_insert_block_payload_after(
             after_block_id,

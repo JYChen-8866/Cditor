@@ -322,15 +322,7 @@ impl MarkdownParser {
                 if content.ends_with('\n') {
                     content.pop();
                 }
-                document.push_root_block(self.new_block(
-                    RichBlockKind::Code {
-                        language: language.clone(),
-                    },
-                    BlockPayload::Code {
-                        language,
-                        text: content,
-                    },
-                ));
+                document.push_root_block(self.new_fenced_block(language, content));
                 continue;
             }
 
@@ -369,15 +361,33 @@ impl MarkdownParser {
         if !lines.last()?.trim_start().starts_with("```") {
             return None;
         }
-        Some(self.new_block(
+        Some(self.new_fenced_block(language, lines[1..lines.len() - 1].join("\n")))
+    }
+
+    /// Fenced Markdown blocks use the same language mapping as the editor's
+    /// Enter shortcut. Mermaid is a first-class block, not a generic code
+    /// block with a `mermaid` language attribute.
+    fn new_fenced_block(&mut self, language: Option<String>, content: String) -> RichBlockRecord {
+        if language
+            .as_deref()
+            .is_some_and(|language| language.eq_ignore_ascii_case("mermaid"))
+        {
+            return self.new_block(
+                RichBlockKind::Mermaid,
+                BlockPayload::RichText {
+                    spans: vec![InlineSpan::plain(content)],
+                },
+            );
+        }
+        self.new_block(
             RichBlockKind::Code {
                 language: language.clone(),
             },
             BlockPayload::Code {
                 language,
-                text: lines[1..lines.len() - 1].join("\n"),
+                text: content,
             },
-        ))
+        )
     }
 
     fn parse_incremental_table_block(&mut self, markdown: &str) -> Option<RichBlockRecord> {
