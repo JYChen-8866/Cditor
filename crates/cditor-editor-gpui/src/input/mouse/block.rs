@@ -3,10 +3,21 @@ use cditor_editor_protocol::command::{CditorCommand, CommandSource};
 use gpui::{Context, Pixels, Point, Window};
 
 use crate::editor_view::{CditorV2View, CditorViewState, block_focus_offset_after_missed_hit_test};
+use crate::input::platform_adapter::{
+    activate_mobile_text_input, retains_pointer_drag_after_text_activation,
+};
 use crate::input::trace::trace_input;
 use crate::interaction::selection_drag::GuiTextDragSelection;
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use crate::persistence::EditorSaveStatus;
+
+fn should_activate_mobile_text_input(
+    is_mobile: bool,
+    readonly: bool,
+    has_text_target: bool,
+) -> bool {
+    is_mobile && !readonly && has_text_target
+}
 
 impl CditorV2View {
     pub(crate) fn focus_block_from_gui_at_position(
@@ -25,6 +36,10 @@ impl CditorV2View {
         }
         self.clear_gutter_action();
         let position = position.into();
+        let has_text_target = self
+            .ready_session()
+            .and_then(|session| session.text_block_context(block_id).ok().flatten())
+            .is_some();
         let text_position = position
             .and_then(|position| self.text_position_for_block_at_position(block_id, position));
         let click_selection = if let Some(kind) =
@@ -95,12 +110,24 @@ impl CditorV2View {
                 cx,
             ) {
                 Ok(_) => {
+                    let is_mobile = cfg!(any(target_os = "ios", target_os = "android"));
+                    if should_activate_mobile_text_input(
+                        is_mobile,
+                        self.status.readonly,
+                        has_text_target,
+                    ) {
+                        self.input.cancel_focus_dismissal();
+                        activate_mobile_text_input(window);
+                    }
                     self.interaction.text_drag_selection =
-                        drag_anchor.map(|anchor_position| GuiTextDragSelection {
-                            anchor_block_id: block_id,
-                            anchor_position,
-                            pointer_position: position.unwrap_or_default(),
-                        });
+                        retains_pointer_drag_after_text_activation(is_mobile)
+                            .then_some(drag_anchor)
+                            .flatten()
+                            .map(|anchor_position| GuiTextDragSelection {
+                                anchor_block_id: block_id,
+                                anchor_position,
+                                pointer_position: position.unwrap_or_default(),
+                            });
                 }
                 Err(error) => {
                     self.interaction.text_drag_selection = None;
@@ -127,10 +154,10 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        window.focus(&self.focus.editor, cx);
         if self.status.readonly {
             return;
         }
+        window.focus(&self.focus.editor, cx);
         let result = self.dispatch_command(
             CditorCommand::EnsureTrailingParagraph,
             CommandSource::Toolbar,
@@ -140,6 +167,10 @@ impl CditorV2View {
             && let Some(session) = self.ready_session()
         {
             let _ = session.ensure_focused_block_visible();
+            if cfg!(any(target_os = "ios", target_os = "android")) {
+                self.input.cancel_focus_dismissal();
+                activate_mobile_text_input(window);
+            }
         }
         match result {
             Ok(_) => cx.notify(),
@@ -171,5 +202,18 @@ impl CditorV2View {
         if hover_changed || selection_changed {
             cx.notify();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_activate_mobile_text_input;
+
+    #[test]
+    fn completed_press_activates_only_editable_mobile_text_surfaces() {
+        assert!(should_activate_mobile_text_input(true, false, true));
+        assert!(!should_activate_mobile_text_input(true, true, true));
+        assert!(!should_activate_mobile_text_input(false, false, true));
+        assert!(!should_activate_mobile_text_input(true, false, false));
     }
 }

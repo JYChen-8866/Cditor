@@ -1,5 +1,5 @@
 use crate::layout::{HeightConfidence, HeightEstimate};
-use crate::rich_text::{plain_text_from_spans, BlockPayload, RichBlockKind};
+use crate::rich_text::{BlockPayload, RichBlockKind, plain_text_from_spans};
 
 pub const DEFAULT_LAYOUT_WIDTH_PX: f64 = super::BODY_BLOCK_CONTENT_WIDTH_PX;
 pub const COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX: f64 = 16.0;

@@ -8,7 +8,7 @@ use crate::document::{
     PageDecorationSnapshot,
 };
 use crate::editor_view::{
-    CditorV2View, CditorViewState, floating_toolbar_passes_selection_delay,
+    CditorV2View, CditorViewState, GuiPlatformInputTarget, floating_toolbar_passes_selection_delay,
     formatting_toolbar_context, formatting_toolbar_state,
 };
 use crate::image_preview::render_image_preview_overlay;
@@ -20,6 +20,9 @@ use crate::input::actions::{
     SelectDown, SelectLeft, SelectRight, SelectToDocumentEnd, SelectToDocumentStart,
     SelectToLineEnd, SelectToLineStart, SelectToNextWord, SelectToPreviousWord, SelectUp,
     SoftLineBreak, Tab, ToggleBold, ToggleInlineCode, ToggleItalic, ToggleUnderline, Undo,
+};
+use crate::input::platform_adapter::{
+    activate_mobile_text_input, finish_auxiliary_text_input, mobile_manual_focus,
 };
 use crate::input::routing::BoundInputAction;
 use crate::interaction::geometry::projected_block_rects_from_projection;
@@ -87,9 +90,42 @@ impl Render for CditorV2View {
         self.features.sync_code_theme_with_global(is_dark_mode(cx));
 
         let focus = self.focus.editor.clone();
-        if self.overlay.ai_prompt.is_some() {
-            if !self.focus.ai_prompt.is_focused(window) {
-                window.focus(&self.focus.ai_prompt, cx);
+        if self.input.take_focus_dismissal_request() {
+            finish_auxiliary_text_input(&focus, window, cx);
+        } else if let Some(target) = self.input.take_focus_request() {
+            let focus = match target {
+                GuiPlatformInputTarget::AiPrompt { block_id }
+                    if self
+                        .overlay
+                        .ai_prompt
+                        .as_ref()
+                        .is_some_and(|prompt| prompt.block_id == block_id) =>
+                {
+                    Some(self.focus.ai_prompt.clone())
+                }
+                GuiPlatformInputTarget::CodeLanguage { block_id }
+                    if self
+                        .overlay
+                        .code_language_edit
+                        .as_ref()
+                        .is_some_and(|edit| edit.block_id == block_id) =>
+                {
+                    Some(self.focus.code_language.clone())
+                }
+                GuiPlatformInputTarget::TableMenuQuery { block_id }
+                    if self
+                        .interaction
+                        .table_interaction_mode
+                        .axis_selection()
+                        .is_some_and(|selection| selection.block_id == block_id) =>
+                {
+                    Some(self.focus.editor.clone())
+                }
+                _ => None,
+            };
+            if let Some(focus) = focus {
+                window.focus(&focus, cx);
+                activate_mobile_text_input(window);
             }
         }
         self.set_caret_blink_enabled(focus.is_focused(window), cx);
@@ -132,277 +168,291 @@ impl Render for CditorV2View {
                         .is_some_and(|context| context.has_active_document_text_selection()))
         });
         let selection_toolbar_ready = self.sync_selection_toolbar_delay(cx);
-        let mut root = div()
-            .id("cditor-v2-root")
-            .font_family(editor_ui_font_family())
-            .relative()
-            .overflow_hidden()
-            .track_scroll(&self.interaction.editor_viewport_handle)
-            .key_context(CDITOR_KEY_CONTEXT)
-            .track_focus(&self.focus.editor)
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|view, _event, _window, _cx| {
-                    view.overlay.page_icon_menu_open = false;
-                }),
+        // Cditor owns the moment an editable session begins. Registering the
+        // native selection/IME handler must never open the iOS keyboard as a
+        // side effect of rendering or scrolling.
+        let mut root = mobile_manual_focus(
+            div()
+                .id("cditor-v2-root")
+                .font_family(editor_ui_font_family())
+                .relative()
+                .overflow_hidden()
+                .track_scroll(&self.interaction.editor_viewport_handle)
+                .key_context(CDITOR_KEY_CONTEXT)
+                .track_focus(&self.focus.editor),
+        )
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|view, _event, _window, _cx| {
+                view.overlay.page_icon_menu_open = false;
+            }),
+        )
+        .on_action(cx.listener(|view, _: &Newline, _window, cx| {
+            view.handle_bound_input_action(BoundInputAction::Newline, cx)
+        }))
+        .on_action(cx.listener(|view, _: &SoftLineBreak, _window, cx| {
+            view.handle_bound_input_action(BoundInputAction::SoftLineBreak, cx)
+        }))
+        .on_action(cx.listener(|view, _: &NewlineBelow, _window, cx| {
+            view.handle_bound_input_action(BoundInputAction::NewlineBelow, cx)
+        }))
+        .on_action(cx.listener(|view, _: &Tab, _window, cx| {
+            view.handle_bound_input_action(BoundInputAction::Tab { backwards: false }, cx)
+        }))
+        .on_action(cx.listener(|view, _: &Backtab, _window, cx| {
+            view.handle_bound_input_action(BoundInputAction::Tab { backwards: true }, cx)
+        }))
+        .on_action(cx.listener(|view, _: &Cancel, _window, cx| {
+            view.handle_bound_input_action(BoundInputAction::Cancel, cx)
+        }))
+        .on_action(cx.listener(|view, _: &MoveLeft, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveLeft {
+                    extend_selection: false,
+                },
+                cx,
             )
-            .on_action(cx.listener(|view, _: &Newline, _window, cx| {
-                view.handle_bound_input_action(BoundInputAction::Newline, cx)
-            }))
-            .on_action(cx.listener(|view, _: &SoftLineBreak, _window, cx| {
-                view.handle_bound_input_action(BoundInputAction::SoftLineBreak, cx)
-            }))
-            .on_action(cx.listener(|view, _: &NewlineBelow, _window, cx| {
-                view.handle_bound_input_action(BoundInputAction::NewlineBelow, cx)
-            }))
-            .on_action(cx.listener(|view, _: &Tab, _window, cx| {
-                view.handle_bound_input_action(BoundInputAction::Tab { backwards: false }, cx)
-            }))
-            .on_action(cx.listener(|view, _: &Backtab, _window, cx| {
-                view.handle_bound_input_action(BoundInputAction::Tab { backwards: true }, cx)
-            }))
-            .on_action(cx.listener(|view, _: &Cancel, _window, cx| {
-                view.handle_bound_input_action(BoundInputAction::Cancel, cx)
-            }))
-            .on_action(cx.listener(|view, _: &MoveLeft, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveLeft {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &MoveRight, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveRight {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &MoveUp, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveUp {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &MoveDown, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveDown {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectLeft, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveLeft {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectRight, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveRight {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectUp, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveUp {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectDown, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveDown {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &MoveToPreviousWord, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToPreviousWord {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &MoveToNextWord, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToNextWord {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectToPreviousWord, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToPreviousWord {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectToNextWord, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToNextWord {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &MoveToDocumentStart, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToDocumentStart {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &MoveToDocumentEnd, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToDocumentEnd {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectToDocumentStart, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToDocumentStart {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectToDocumentEnd, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToDocumentEnd {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &MoveToLineStart, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToLineStart {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &MoveToLineEnd, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToLineEnd {
-                        extend_selection: false,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectToLineStart, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToLineStart {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &SelectToLineEnd, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::MoveToLineEnd {
-                        extend_selection: true,
-                    },
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &Backspace, _window, cx| {
-                view.handle_bound_input_action(BoundInputAction::DeleteBackward, cx)
-            }))
-            .on_action(cx.listener(|view, _: &Delete, _window, cx| {
-                view.handle_bound_input_action(BoundInputAction::DeleteForward, cx)
-            }))
-            .on_action(cx.listener(|view, _: &Duplicate, _window, cx| {
-                view.handle_bound_input_action(BoundInputAction::Duplicate, cx)
-            }))
-            .on_action(cx.listener(|view, _: &SelectAll, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::SelectAllFocusedText),
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &Copy, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::CopySelection),
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &Cut, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::CutSelection),
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &Paste, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::PasteClipboard),
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &Undo, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::UndoFocusedBlock),
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &Redo, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::RedoFocusedBlock),
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &ToggleBold, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::ToggleBold),
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &ToggleItalic, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::ToggleItalic),
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &ToggleUnderline, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::ToggleUnderline),
-                    cx,
-                )
-            }))
-            .on_action(cx.listener(|view, _: &ToggleInlineCode, _window, cx| {
-                view.handle_bound_input_action(
-                    BoundInputAction::Command(GuiInputCommand::ToggleInlineCode),
-                    cx,
-                )
-            }))
-            .on_scroll_wheel(cx.listener(Self::on_scroll_wheel))
-            .on_mouse_move(cx.listener(Self::on_scrollbar_mouse_move))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::on_scrollbar_mouse_up))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_scrollbar_mouse_up))
-            .w_full()
-            .h_full()
-            .flex()
-            .flex_col()
-            .bg(rgb(theme.surface))
-            .text_color(rgb(theme.text));
+        }))
+        .on_action(cx.listener(|view, _: &MoveRight, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveRight {
+                    extend_selection: false,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &MoveUp, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveUp {
+                    extend_selection: false,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &MoveDown, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveDown {
+                    extend_selection: false,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectLeft, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveLeft {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectRight, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveRight {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectUp, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveUp {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectDown, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveDown {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &MoveToPreviousWord, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToPreviousWord {
+                    extend_selection: false,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &MoveToNextWord, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToNextWord {
+                    extend_selection: false,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectToPreviousWord, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToPreviousWord {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectToNextWord, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToNextWord {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &MoveToDocumentStart, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToDocumentStart {
+                    extend_selection: false,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &MoveToDocumentEnd, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToDocumentEnd {
+                    extend_selection: false,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectToDocumentStart, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToDocumentStart {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectToDocumentEnd, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToDocumentEnd {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &MoveToLineStart, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToLineStart {
+                    extend_selection: false,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &MoveToLineEnd, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToLineEnd {
+                    extend_selection: false,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectToLineStart, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToLineStart {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &SelectToLineEnd, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::MoveToLineEnd {
+                    extend_selection: true,
+                },
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &Backspace, _window, cx| {
+            view.handle_bound_input_action(BoundInputAction::DeleteBackward, cx)
+        }))
+        .on_action(cx.listener(|view, _: &Delete, _window, cx| {
+            view.handle_bound_input_action(BoundInputAction::DeleteForward, cx)
+        }))
+        .on_action(cx.listener(|view, _: &Duplicate, _window, cx| {
+            view.handle_bound_input_action(BoundInputAction::Duplicate, cx)
+        }))
+        .on_action(cx.listener(|view, _: &SelectAll, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::SelectAllFocusedText),
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &Copy, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::CopySelection),
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &Cut, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::CutSelection),
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &Paste, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::PasteClipboard),
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &Undo, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::UndoFocusedBlock),
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &Redo, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::RedoFocusedBlock),
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &ToggleBold, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::ToggleBold),
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &ToggleItalic, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::ToggleItalic),
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &ToggleUnderline, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::ToggleUnderline),
+                cx,
+            )
+        }))
+        .on_action(cx.listener(|view, _: &ToggleInlineCode, _window, cx| {
+            view.handle_bound_input_action(
+                BoundInputAction::Command(GuiInputCommand::ToggleInlineCode),
+                cx,
+            )
+        }))
+        .on_scroll_wheel(cx.listener(Self::on_scroll_wheel))
+        .on_mouse_move(cx.listener(Self::on_scrollbar_mouse_move))
+        .on_mouse_up(MouseButton::Left, cx.listener(Self::on_scrollbar_mouse_up))
+        .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_scrollbar_mouse_up))
+        .w_full()
+        .h_full()
+        .flex()
+        .flex_col()
+        .bg(rgb(theme.surface))
+        .text_color(rgb(theme.text));
+
+        #[cfg(feature = "mobile-text-session")]
+        let mut root = root.on_pointer_cancel(cx.listener(
+            |view, _event: &gpui::PointerCancelEvent, _window, cx| {
+                if view.interaction.cancel_document_drags() {
+                    cx.notify();
+                }
+            },
+        ));
 
         if measured_editor_viewport.is_some() {
             self.interaction.note_viewport_measured();

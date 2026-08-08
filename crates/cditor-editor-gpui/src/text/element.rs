@@ -2,8 +2,8 @@ use std::{cell::RefCell, ops::Range, rc::Rc, sync::Arc};
 
 use gpui::{
     App, Bounds, Element, ElementId, Entity, FocusHandle, FontWeight, GlobalElementId,
-    InspectorElementId, LayoutId, Pixels, ScrollHandle, Size, Style, Window, fill, point, px, rgb,
-    rgba,
+    HitboxBehavior, HitboxId, InspectorElementId, LayoutId, Pixels, ScrollHandle, Size, Style,
+    Window, fill, point, px, rgb, rgba,
 };
 
 use crate::editor_view::{CditorV2View, GuiPlatformInputTarget};
@@ -97,6 +97,7 @@ struct RichTextGpuiElement {
 }
 
 struct RichTextGpuiPrepaintState {
+    hitbox_id: Option<HitboxId>,
     layout: Option<TextLayoutSnapshot>,
     cursor: Option<gpui::PaintQuad>,
     inline_backgrounds: Vec<gpui::PaintQuad>,
@@ -246,7 +247,12 @@ impl Element for RichTextGpuiElement {
             .as_ref()
             .is_some_and(|handler| handler.focused);
         let caret_visible = self.input_handler.as_ref().is_some_and(|handler| {
-            handler.focused && handler.view.read(cx).caret_blink_visible(cx)
+            super::should_paint_custom_caret(
+                handler.focused,
+                handler.view.read(cx).caret_blink_visible(cx),
+                self.marked_range.is_some(),
+                super::platform_text_cursor_ownership(window),
+            )
         });
         let caret_bounds = if focused {
             self.caret_offset.and_then(|offset| {
@@ -269,7 +275,7 @@ impl Element for RichTextGpuiElement {
         {
             reveal_caret_in_scroll_handle(scroll_handle, caret_bounds, window);
         }
-        let cursor = if self.marked_range.is_none() && caret_visible {
+        let cursor = if caret_visible {
             caret_bounds.map(|bounds| fill(bounds, rgb(self.theme.focused)))
         } else {
             None
@@ -351,7 +357,9 @@ impl Element for RichTextGpuiElement {
         } else {
             Vec::new()
         };
+        let hitbox_id = focused.then(|| window.insert_hitbox(bounds, HitboxBehavior::Normal).id);
         RichTextGpuiPrepaintState {
+            hitbox_id,
             layout,
             cursor,
             inline_backgrounds,
@@ -394,6 +402,7 @@ impl Element for RichTextGpuiElement {
                     text_align: self.input.text_align,
                 },
                 bounds,
+                prepaint.hitbox_id,
                 window,
                 cx,
             );

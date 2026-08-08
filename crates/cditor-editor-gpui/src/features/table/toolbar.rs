@@ -1,5 +1,6 @@
 use crate::editor_view::CditorV2View;
 use crate::input::SingleLineTextInputElement;
+use crate::input::platform_adapter::{mobile_manual_focus, on_text_activation};
 use crate::menu_metrics::{MenuViewportBounds, SECONDARY_MENU_WIDTH_PX, secondary_menu_geometry};
 use crate::theme::GuiTheme;
 use cditor_runtime::TableViewState;
@@ -83,6 +84,7 @@ pub(crate) fn render_table_axis_toolbar(
         .shadow_lg()
         .occlude()
         .child(render_table_menu_search(
+            selection.block_id,
             menu_ui,
             theme,
             view.clone(),
@@ -178,36 +180,47 @@ pub(crate) fn render_table_axis_toolbar(
 }
 
 fn render_table_menu_search(
+    block_id: cditor_core::ids::BlockId,
     menu_ui: &TableMenuUiState,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
 ) -> AnyElement {
-    div()
-        .h(px(TABLE_MENU_SEARCH_HEIGHT_PX))
-        .w_full()
-        .px(px(8.0))
-        .flex_none()
-        .flex()
-        .items_center()
-        .rounded(px(6.0))
-        .border_1()
-        .border_color(rgb(theme.table_active_border))
-        .bg(rgb(theme.surface))
-        .track_focus(&focus)
-        .child(SingleLineTextInputElement {
-            handler: view,
-            focus,
-            value: menu_ui.query.clone(),
-            placeholder: Some("搜索操作...".to_owned()),
-            caret_offset: Some(menu_ui.caret_offset),
-            marked_range: menu_ui.marked_range.clone(),
-            text_color: theme.text,
-            placeholder_color: theme.muted,
-            caret_color: theme.focused,
-            font_size: px(TABLE_MENU_SEARCH_FONT_SIZE_PX),
-        })
-        .into_any_element()
+    let activate_view = view.clone();
+    let input = mobile_manual_focus(
+        div()
+            .id(("table-menu-search", block_id))
+            .h(px(TABLE_MENU_SEARCH_HEIGHT_PX))
+            .w_full()
+            .px(px(8.0))
+            .flex_none()
+            .flex()
+            .items_center()
+            .rounded(px(6.0))
+            .border_1()
+            .border_color(rgb(theme.table_active_border))
+            .bg(rgb(theme.surface))
+            .track_focus(&focus)
+            .child(SingleLineTextInputElement {
+                handler: view,
+                focus,
+                value: menu_ui.query.clone(),
+                placeholder: Some("搜索操作...".to_owned()),
+                caret_offset: Some(menu_ui.caret_offset),
+                marked_range: menu_ui.marked_range.clone(),
+                text_color: theme.text,
+                placeholder_color: theme.muted,
+                caret_color: theme.focused,
+                font_size: px(TABLE_MENU_SEARCH_FONT_SIZE_PX),
+            }),
+    );
+    on_text_activation(input, move |_event, _window, cx| {
+        activate_view.update(cx, |view, cx| {
+            view.request_table_menu_query_focus_from_gui(block_id, cx);
+        });
+        cx.stop_propagation();
+    })
+    .into_any_element()
 }
 
 #[allow(clippy::too_many_arguments)]

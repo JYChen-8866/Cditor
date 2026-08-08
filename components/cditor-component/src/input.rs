@@ -3,11 +3,15 @@
 
 use std::rc::Rc;
 
+#[cfg(not(feature = "mobile-text-session"))]
+use gpui::MouseDownEvent;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, ElementId, FocusHandle, Hsla, InteractiveElement, IntoElement, MouseButton,
     ParentElement, Pixels, RenderOnce, Styled, Window, div, px,
 };
+#[cfg(feature = "mobile-text-session")]
+use gpui::{PressEvent, StatefulInteractiveElement};
 
 use crate::SvgIcon;
 
@@ -17,6 +21,10 @@ const CLEAR_BUTTON_SIZE_PX: f32 = 24.0;
 const CLEAR_ICON_SIZE_PX: f32 = 16.0;
 
 type CleanHandler = Rc<dyn Fn(&mut Window, &mut App)>;
+#[cfg(feature = "mobile-text-session")]
+type PressHandler = Rc<dyn Fn(&PressEvent, &mut Window, &mut App)>;
+#[cfg(not(feature = "mobile-text-session"))]
+type PressHandler = Rc<dyn Fn(&MouseDownEvent, &mut Window, &mut App)>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct InputStyle {
@@ -40,6 +48,7 @@ pub struct Input {
     prefix: Option<AnyElement>,
     suffix: Option<AnyElement>,
     focus: Option<FocusHandle>,
+    manual_focus: bool,
     style: InputStyle,
     height: Pixels,
     appearance: bool,
@@ -49,6 +58,7 @@ pub struct Input {
     bordered: bool,
     focus_bordered: bool,
     on_clean: Option<CleanHandler>,
+    on_press: Option<PressHandler>,
 }
 
 impl Input {
@@ -59,6 +69,7 @@ impl Input {
             prefix: None,
             suffix: None,
             focus: None,
+            manual_focus: false,
             style,
             height: px(DEFAULT_HEIGHT_PX),
             appearance: true,
@@ -68,6 +79,7 @@ impl Input {
             bordered: true,
             focus_bordered: true,
             on_clean: None,
+            on_press: None,
         }
     }
 
@@ -83,6 +95,15 @@ impl Input {
 
     pub fn focus(mut self, focus: FocusHandle) -> Self {
         self.focus = Some(focus);
+        self
+    }
+
+    /// Prevent pointer-down from implicitly transferring focus.
+    ///
+    /// Direct-touch text surfaces use this so their gesture recognizer can
+    /// commit a tap before the owner explicitly starts a keyboard session.
+    pub fn manual_focus(mut self, manual_focus: bool) -> Self {
+        self.manual_focus = manual_focus;
         self
     }
 
@@ -126,6 +147,30 @@ impl Input {
         self
     }
 
+    /// Handle a completed pointer press on the input shell.
+    ///
+    /// Registering the paired long-press recognizer prevents a long press from
+    /// falling through as an ordinary activation when it ends.
+    #[cfg(feature = "mobile-text-session")]
+    pub fn on_press(
+        mut self,
+        handler: impl Fn(&PressEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_press = Some(Rc::new(handler));
+        self
+    }
+
+    /// Handles the desktop fallback at mouse-down when the mobile gesture API
+    /// is not part of the selected GPUI revision.
+    #[cfg(not(feature = "mobile-text-session"))]
+    pub fn on_press(
+        mut self,
+        handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_press = Some(Rc::new(handler));
+        self
+    }
+
     fn show_clear_button(&self) -> bool {
         self.cleanable && !self.disabled && !self.empty && self.on_clean.is_some()
     }
@@ -140,9 +185,11 @@ impl RenderOnce for Input {
         let show_clear_button = self.show_clear_button();
         let has_suffix = self.suffix.is_some() || show_clear_button;
         let focus = self.focus.clone();
+        let manual_focus = self.manual_focus;
+        let on_press = self.on_press.clone();
         let style = self.style;
 
-        div()
+        let input = div()
             .id(self.id)
             .h(self.height)
             .w_full()
@@ -156,7 +203,28 @@ impl RenderOnce for Input {
                 style.foreground
             })
             .when(self.disabled, |input| input.opacity(0.5))
-            .when_some(focus.clone(), |input, focus| input.track_focus(&focus))
+            .when_some(focus.clone(), |input, focus| input.track_focus(&focus));
+        #[cfg(feature = "mobile-text-session")]
+        let input = input.when(manual_focus, |input| input.manual_focus());
+        #[cfg(not(feature = "mobile-text-session"))]
+        let input = {
+            let _ = manual_focus;
+            input
+        };
+        #[cfg(feature = "mobile-text-session")]
+        let input = input.when_some(on_press, |input, handler| {
+            input
+                .on_press(move |event, window, cx| handler(event, window, cx))
+                .on_long_press(|_event, _window, _cx| {})
+        });
+        #[cfg(not(feature = "mobile-text-session"))]
+        let input = input.when_some(on_press, |input, handler| {
+            input.on_mouse_down(MouseButton::Left, move |event, window, cx| {
+                handler(event, window, cx)
+            })
+        });
+
+        input
             .when(self.appearance, |input| {
                 input
                     .bg(style.background)
@@ -244,5 +312,46 @@ mod tests {
     #[test]
     fn clear_icon_is_embedded_from_the_shared_asset_directory() {
         assert!(std::str::from_utf8(CLEAR_ICON).unwrap().starts_with("<svg"));
+    }
+
+    #[test]
+    fn manual_focus_is_an_explicit_opt_in() {
+        let style = InputStyle {
+            background: gpui::transparent_black(),
+            foreground: gpui::black(),
+            muted_foreground: gpui::black(),
+            border: gpui::black(),
+            focused_border: gpui::black(),
+            hover_background: gpui::transparent_black(),
+            radius: px(4.0),
+        };
+
+        assert!(!Input::new("automatic", div(), style).manual_focus);
+        assert!(
+            Input::new("manual", div(), style)
+                .manual_focus(true)
+                .manual_focus
+        );
+    }
+
+    #[test]
+    fn completed_press_handler_is_an_explicit_opt_in() {
+        let style = InputStyle {
+            background: gpui::transparent_black(),
+            foreground: gpui::black(),
+            muted_foreground: gpui::black(),
+            border: gpui::black(),
+            focused_border: gpui::black(),
+            hover_background: gpui::transparent_black(),
+            radius: px(4.0),
+        };
+
+        assert!(Input::new("plain", div(), style).on_press.is_none());
+        assert!(
+            Input::new("press", div(), style)
+                .on_press(|_, _, _| {})
+                .on_press
+                .is_some()
+        );
     }
 }

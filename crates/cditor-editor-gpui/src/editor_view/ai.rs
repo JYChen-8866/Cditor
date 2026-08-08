@@ -94,7 +94,8 @@ impl CditorV2View {
             px(y),
             presentation,
         ));
-        self.input.target = Some(GuiPlatformInputTarget::ai_prompt(block_id));
+        self.input
+            .request_focus(GuiPlatformInputTarget::ai_prompt(block_id));
         cx.notify();
         true
     }
@@ -108,6 +109,11 @@ impl CditorV2View {
             return false;
         }
         let instruction = instruction.into();
+        let prompt_target = self
+            .overlay
+            .ai_prompt
+            .as_ref()
+            .map(|prompt| GuiPlatformInputTarget::ai_prompt(prompt.block_id));
         let presentation = self
             .overlay
             .ai_prompt
@@ -143,6 +149,10 @@ impl CditorV2View {
             }
         };
         self.overlay.ai_prompt = None;
+        if let Some(prompt_target) = prompt_target {
+            self.input.clear_focus_request(prompt_target);
+            self.input.request_focus_dismissal();
+        }
         self.input.target = None;
 
         let provider = self.features.ai_provider.clone();
@@ -284,6 +294,25 @@ impl CditorV2View {
         true
     }
 
+    pub(crate) fn request_ai_prompt_focus_from_gui(
+        &mut self,
+        block_id: cditor_core::ids::BlockId,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if !self
+            .overlay
+            .ai_prompt
+            .as_ref()
+            .is_some_and(|prompt| prompt.block_id == block_id)
+        {
+            return false;
+        }
+        self.input
+            .request_focus(GuiPlatformInputTarget::ai_prompt(block_id));
+        cx.notify();
+        true
+    }
+
     pub(crate) fn apply_ai_prompt_action_from_gui(
         &mut self,
         action: AiPromptEditAction,
@@ -303,12 +332,16 @@ impl CditorV2View {
     }
 
     pub(crate) fn cancel_ai_prompt(&mut self, cx: &mut Context<Self>) -> bool {
-        let had_prompt = self.overlay.ai_prompt.take().is_some();
-        if had_prompt {
+        let prompt = self.overlay.ai_prompt.take();
+        if let Some(prompt) = prompt {
+            self.input
+                .clear_focus_request(GuiPlatformInputTarget::ai_prompt(prompt.block_id));
+            self.input.request_focus_dismissal();
             self.input.target = None;
             cx.notify();
+            return true;
         }
-        had_prompt
+        false
     }
 
     pub(crate) fn accept_ai_preview_from_gui(&mut self, cx: &mut Context<Self>) -> bool {

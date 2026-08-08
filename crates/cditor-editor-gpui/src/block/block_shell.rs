@@ -13,6 +13,7 @@ use crate::block::prefix::{
     FoldToggleHandler, TodoToggleHandler, render_block_content_prefix, render_block_prefix,
 };
 use crate::diagnostics::block_color::trace_render;
+use crate::input::platform_adapter::on_text_activation;
 use crate::theme::GuiTheme;
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
@@ -88,7 +89,7 @@ pub fn block_shell(
         content_background,
         action.action_active,
     );
-    div()
+    let shell = div()
         .id(("v2-block", block.block_id))
         .w_full()
         .border(px(BLOCK_SHELL_BORDER_WIDTH_PX))
@@ -97,8 +98,8 @@ pub fn block_shell(
         .text_color(rgb(chrome.text_color))
         .px(px(BLOCK_SHELL_OUTER_PADDING_X_PX))
         .pt(px(chrome.outer_padding_top_px))
-        .pb(px(chrome.outer_padding_bottom_px))
-        .on_mouse_down(MouseButton::Left, on_mouse_down)
+        .pb(px(chrome.outer_padding_bottom_px));
+    on_text_activation(shell, on_mouse_down)
         .when_some(on_mouse_move, |this, handler| this.on_mouse_move(handler))
         .child(
             div().pl(px(horizontal.indent_px)).child(

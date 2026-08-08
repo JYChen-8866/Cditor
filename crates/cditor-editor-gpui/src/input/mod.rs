@@ -6,6 +6,8 @@ pub mod command;
 pub mod ime;
 pub(crate) mod keyboard;
 pub mod mouse;
+#[cfg(feature = "mobile-text-session")]
+mod native_actions;
 pub mod platform_adapter;
 pub(crate) mod routing;
 pub mod single_line;

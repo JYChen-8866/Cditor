@@ -10,6 +10,7 @@ use cditor_runtime::TextSurfaceSnapshot;
 use cditor_session::SurfaceVersionSnapshot;
 
 use crate::editor_view::{CditorV2View, CditorViewState};
+use crate::input::platform_adapter::activate_mobile_text_input;
 use crate::input::trace::trace_input;
 use crate::interaction::geometry::{DocumentViewportOrigin, ProjectedTextPlacement};
 use crate::text::{
@@ -562,7 +563,13 @@ impl CditorV2View {
                     cditor_editor_protocol::command::CommandSource::Toolbar,
                 ));
             match focus_result {
-                Ok(_) => cx.notify(),
+                Ok(_) => {
+                    if cfg!(any(target_os = "ios", target_os = "android")) {
+                        self.input.cancel_focus_dismissal();
+                        activate_mobile_text_input(window);
+                    }
+                    cx.notify();
+                }
                 Err(error) => {
                     self.status.save_status =
                         crate::persistence::EditorSaveStatus::Failed(error.to_string());

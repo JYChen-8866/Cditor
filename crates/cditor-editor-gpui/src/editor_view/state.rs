@@ -249,9 +249,17 @@ pub(crate) struct PlatformInputState {
     pub(crate) session_identity: Option<cditor_runtime::InputSessionIdentity>,
     pub(crate) layout_identity: Option<TextPlatformLayoutIdentity>,
     pub(crate) element_bounds: Option<gpui::Bounds<gpui::Pixels>>,
+    pub(crate) hitbox_id: Option<gpui::HitboxId>,
     pub(crate) candidate_bounds: Option<PlatformImeCandidateBounds>,
     pub(crate) character_coordinates_identity: Option<PlatformCharacterCoordinatesIdentity>,
     pub(crate) preferred_navigation_x: Option<(cditor_core::ids::SurfaceId, f32)>,
+    pending_focus_target: Option<GuiPlatformInputTarget>,
+    pending_focus_dismissal: bool,
+    /// UIKit owns this range while native handles are being dragged. Keep it
+    /// separate from the document caret so UIKit does not collapse its own
+    /// selection on the next `selectedTextRange` query.
+    native_selection_range: Option<(GuiPlatformInputTarget, std::ops::Range<usize>, bool)>,
+    native_selection_candidate: Option<(GuiPlatformInputTarget, usize)>,
 }
 
 impl PlatformInputState {
@@ -259,11 +267,107 @@ impl PlatformInputState {
         self.session_identity = None;
         self.layout_identity = None;
         self.element_bounds = None;
+        self.hitbox_id = None;
         self.target = target;
+        if self
+            .pending_focus_target
+            .is_some_and(|pending| Some(pending) != target)
+        {
+            self.pending_focus_target = None;
+        }
     }
 
     pub(crate) fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    pub(crate) fn request_focus(&mut self, target: GuiPlatformInputTarget) {
+        self.target = Some(target);
+        self.set_native_selection_target(target);
+        self.pending_focus_dismissal = false;
+        self.pending_focus_target = Some(target);
+    }
+
+    pub(crate) fn take_focus_request(&mut self) -> Option<GuiPlatformInputTarget> {
+        self.pending_focus_target.take()
+    }
+
+    pub(crate) fn clear_focus_request(&mut self, target: GuiPlatformInputTarget) {
+        if self.pending_focus_target == Some(target) {
+            self.pending_focus_target = None;
+        }
+    }
+
+    pub(crate) fn request_focus_dismissal(&mut self) {
+        self.pending_focus_target = None;
+        self.pending_focus_dismissal = true;
+    }
+
+    pub(crate) fn cancel_focus_dismissal(&mut self) {
+        self.pending_focus_dismissal = false;
+    }
+
+    pub(crate) fn take_focus_dismissal_request(&mut self) -> bool {
+        std::mem::take(&mut self.pending_focus_dismissal)
+    }
+
+    pub(crate) fn set_native_selection(
+        &mut self,
+        target: GuiPlatformInputTarget,
+        range: std::ops::Range<usize>,
+        reversed: bool,
+    ) {
+        self.native_selection_range = Some((target, range, reversed));
+        self.native_selection_candidate = None;
+    }
+
+    pub(crate) fn native_selection_for(
+        &self,
+        target: Option<GuiPlatformInputTarget>,
+    ) -> Option<gpui::UTF16Selection> {
+        let (selection_target, range, reversed) = self.native_selection_range.as_ref()?;
+        (Some(*selection_target) == target).then(|| gpui::UTF16Selection {
+            range: range.clone(),
+            reversed: *reversed,
+        })
+    }
+
+    pub(crate) fn clear_native_selection(&mut self) {
+        self.native_selection_range = None;
+        self.native_selection_candidate = None;
+    }
+
+    pub(crate) fn set_native_selection_target(&mut self, target: GuiPlatformInputTarget) {
+        if self
+            .native_selection_range
+            .as_ref()
+            .is_some_and(|(selection_target, _, _)| *selection_target != target)
+        {
+            self.clear_native_selection();
+        }
+        if self
+            .native_selection_candidate
+            .as_ref()
+            .is_some_and(|(candidate_target, _)| *candidate_target != target)
+        {
+            self.native_selection_candidate = None;
+        }
+    }
+
+    pub(crate) fn set_native_selection_candidate(
+        &mut self,
+        target: GuiPlatformInputTarget,
+        offset_utf16: usize,
+    ) {
+        self.native_selection_candidate = Some((target, offset_utf16));
+    }
+
+    pub(crate) fn native_selection_candidate_for(
+        &self,
+        target: Option<GuiPlatformInputTarget>,
+    ) -> Option<usize> {
+        let (candidate_target, offset) = self.native_selection_candidate?;
+        (Some(candidate_target) == target).then_some(offset)
     }
 }
 
@@ -443,6 +547,165 @@ impl EditorStatusUiState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_selection_is_owned_by_the_registered_surface() {
+        let block = GuiPlatformInputTarget::BlockText { block_id: 7 };
+        let cell = GuiPlatformInputTarget::TableCell {
+            block_id: 7,
+            row: 0,
+            col: 0,
+        };
+        let mut input = PlatformInputState::default();
+
+        input.set_native_selection(block, 3..11, false);
+        assert_eq!(
+            input.native_selection_for(Some(block)).map(|s| s.range),
+            Some(3..11)
+        );
+        assert!(input.native_selection_for(Some(cell)).is_none());
+
+        input.begin_registration_frame(None);
+        assert_eq!(
+            input.native_selection_for(Some(block)).map(|s| s.range),
+            Some(3..11)
+        );
+
+        input.set_native_selection_target(cell);
+        assert!(input.native_selection_for(Some(block)).is_none());
+
+        input.set_native_selection_candidate(cell, 4);
+        assert_eq!(input.native_selection_candidate_for(Some(cell)), Some(4));
+        input.clear_native_selection();
+        assert!(input.native_selection_candidate_for(Some(cell)).is_none());
+    }
+
+    #[test]
+    fn native_selection_candidate_is_scoped_to_each_document_text_surface() {
+        let targets = [
+            GuiPlatformInputTarget::BlockText { block_id: 7 },
+            GuiPlatformInputTarget::TableCell {
+                block_id: 7,
+                row: 1,
+                col: 2,
+            },
+            GuiPlatformInputTarget::ImageCaption { block_id: 8 },
+            GuiPlatformInputTarget::CollectionTitle { block_id: 9 },
+        ];
+        let mut input = PlatformInputState::default();
+
+        for (index, target) in targets.into_iter().enumerate() {
+            let offset = index + 3;
+            input.set_native_selection_candidate(target, offset);
+
+            assert_eq!(
+                input.native_selection_candidate_for(Some(target)),
+                Some(offset)
+            );
+            for other_target in targets.into_iter().filter(|other| *other != target) {
+                assert!(
+                    input
+                        .native_selection_candidate_for(Some(other_target))
+                        .is_none()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn clearing_native_selection_does_not_change_document_registration() {
+        let block = GuiPlatformInputTarget::BlockText { block_id: 7 };
+        let mut input = PlatformInputState::default();
+        input.begin_registration_frame(Some(block));
+        input.set_native_selection(block, 2..5, true);
+        input.clear_native_selection();
+
+        assert_eq!(input.target, Some(block));
+        assert!(input.native_selection_for(Some(block)).is_none());
+    }
+
+    #[test]
+    fn auxiliary_target_switch_clears_document_native_selection_state() {
+        let block = GuiPlatformInputTarget::BlockText { block_id: 7 };
+        let auxiliary_targets = [
+            GuiPlatformInputTarget::ai_prompt(7),
+            GuiPlatformInputTarget::code_language(7),
+            GuiPlatformInputTarget::table_menu_query(7),
+        ];
+        let mut input = PlatformInputState::default();
+
+        for target in auxiliary_targets {
+            input.set_native_selection(block, 2..5, false);
+            input.set_native_selection_candidate(block, 3);
+            input.set_native_selection_target(target);
+
+            assert!(input.native_selection_for(Some(block)).is_none());
+            assert!(input.native_selection_candidate_for(Some(block)).is_none());
+            assert!(input.native_selection_for(Some(target)).is_none());
+            assert!(input.native_selection_candidate_for(Some(target)).is_none());
+        }
+    }
+
+    #[test]
+    fn registration_frame_discards_stale_surface_hitbox() {
+        let block = GuiPlatformInputTarget::BlockText { block_id: 7 };
+        let mut input = PlatformInputState::default();
+        input.target = Some(block);
+        input.hitbox_id = Some(gpui::HitboxId::placeholder());
+
+        input.begin_registration_frame(Some(block));
+
+        assert_eq!(input.target, Some(block));
+        assert!(input.hitbox_id.is_none());
+    }
+
+    #[test]
+    fn auxiliary_focus_request_is_consumed_once() {
+        let target = GuiPlatformInputTarget::ai_prompt(7);
+        let mut input = PlatformInputState::default();
+
+        input.request_focus(target);
+
+        assert_eq!(input.target, Some(target));
+        assert_eq!(input.take_focus_request(), Some(target));
+        assert_eq!(input.take_focus_request(), None);
+    }
+
+    #[test]
+    fn registration_target_change_discards_stale_focus_request() {
+        let prompt = GuiPlatformInputTarget::ai_prompt(7);
+        let code = GuiPlatformInputTarget::code_language(7);
+        let mut input = PlatformInputState::default();
+
+        input.request_focus(prompt);
+        input.begin_registration_frame(Some(code));
+
+        assert_eq!(input.target, Some(code));
+        assert_eq!(input.take_focus_request(), None);
+    }
+
+    #[test]
+    fn auxiliary_focus_dismissal_supersedes_activation_and_is_consumed_once() {
+        let prompt = GuiPlatformInputTarget::ai_prompt(7);
+        let mut input = PlatformInputState::default();
+
+        input.request_focus(prompt);
+        input.request_focus_dismissal();
+
+        assert_eq!(input.take_focus_request(), None);
+        assert!(input.take_focus_dismissal_request());
+        assert!(!input.take_focus_dismissal_request());
+    }
+
+    #[test]
+    fn completed_document_activation_cancels_stale_auxiliary_dismissal() {
+        let mut input = PlatformInputState::default();
+
+        input.request_focus_dismissal();
+        input.cancel_focus_dismissal();
+
+        assert!(!input.take_focus_dismissal_request());
+    }
 
     #[test]
     fn payload_cache_trim_requests_coalesce_until_the_wait_finishes() {

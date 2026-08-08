@@ -13,6 +13,7 @@ full = ["font-kit", "code-highlight", "mermaid", "whiteboard"]
 runtime-shaders = ["gpui_platform/runtime_shaders"]
 font-kit = ["gpui/font-kit"]
 test-support = ["gpui/test-support"]
+mobile-text-session = ["cditor-component/mobile-text-session"]
 code-highlight = ["dep:lumis"]
 mermaid = ["dep:mermaid_render"]
 whiteboard = ["dep:cditor-whiteboard", "dep:cditor-whiteboard-gpui"]
@@ -49,7 +50,6 @@ unicode-segmentation = "1.12"
 url = "2"
 web-time = "1.1"
 image = "0.25.10"
-rfd = "0.15"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 lumis = { version = "0.12.0", default-features = false, optional = true, features = [
     "lang-bash", "lang-c", "lang-cpp", "lang-csharp", "lang-css",
@@ -59,3 +59,6 @@ lumis = { version = "0.12.0", default-features = false, optional = true, feature
     "lang-sql", "lang-swift", "lang-toml",
     "lang-typescript", "lang-yaml",
 ] }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+rfd = "0.15"

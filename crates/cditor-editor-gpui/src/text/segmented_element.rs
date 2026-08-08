@@ -4,8 +4,9 @@ use std::{cell::RefCell, ops::Range, rc::Rc, sync::Arc};
 
 use cditor_core::{edit::TextAffinity, layout::normalize_text_inner_measured_height};
 use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Size, Style, Window, fill, point, px, rgb, rgba,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, HitboxBehavior, HitboxId,
+    InspectorElementId, IntoElement, LayoutId, Pixels, Size, Style, Window, fill, point, px, rgb,
+    rgba,
 };
 
 use super::element::RichTextInputHandler;
@@ -92,6 +93,7 @@ pub(crate) struct SegmentedRequestState {
 }
 
 pub(crate) struct SegmentedPrepaintState {
+    hitbox_id: Option<HitboxId>,
     request: Option<SegmentedRequestState>,
     cursor: Option<gpui::PaintQuad>,
     backgrounds: Vec<gpui::PaintQuad>,
@@ -264,7 +266,7 @@ impl Element for SegmentedRichTextElement {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
         let request = request_layout.borrow_mut().take();
@@ -289,9 +291,12 @@ impl Element for SegmentedRichTextElement {
                 )
             })
         });
-        let caret_visible = self.input_handler.focused
-            && self.input_handler.view.read(cx).caret_blink_visible(cx)
-            && self.marked_range.is_none();
+        let caret_visible = super::should_paint_custom_caret(
+            self.input_handler.focused,
+            self.input_handler.view.read(cx).caret_blink_visible(cx),
+            self.marked_range.is_some(),
+            super::platform_text_cursor_ownership(window),
+        );
         let cursor = caret_visible
             .then_some(caret_bounds)
             .flatten()
@@ -338,7 +343,12 @@ impl Element for SegmentedRichTextElement {
                 marked_underlines.push(fill(rect_to_bounds(bounds, rect), rgb(self.theme.focused)));
             }
         }
+        let hitbox_id = self
+            .input_handler
+            .focused
+            .then(|| window.insert_hitbox(bounds, HitboxBehavior::Normal).id);
         SegmentedPrepaintState {
+            hitbox_id,
             request,
             cursor,
             backgrounds,
@@ -371,6 +381,7 @@ impl Element for SegmentedRichTextElement {
                     text_align: self.input.text_align,
                 },
                 bounds,
+                prepaint.hitbox_id,
                 window,
                 cx,
             );

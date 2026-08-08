@@ -438,5 +438,4 @@ mod tests {
         assert!(!scene.is_empty());
         assert!(handle.whiteboard_scene(paragraph_id).unwrap().is_none());
     }
-
 }

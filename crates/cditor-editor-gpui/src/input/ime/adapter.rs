@@ -1,5 +1,10 @@
 use std::ops::Range;
 
+#[cfg(feature = "mobile-text-session")]
+use unicode_segmentation::UnicodeSegmentation;
+
+#[cfg(feature = "mobile-text-session")]
+use gpui::SelectionMenuPresentation;
 use gpui::{Bounds, Context, EntityInputHandler, Pixels, Point, UTF16Selection, Window, px};
 
 use crate::editor_view::{CditorV2View, CditorViewState};
@@ -11,6 +16,10 @@ use crate::input::trace::trace_input;
 use crate::input::{SINGLE_LINE_INPUT_FONT_SIZE_PX, single_line_text_offset_for_x};
 use crate::platform::{is_single_line_break_commit, normalize_external_line_endings};
 use crate::text::record_unavailable_geometry;
+#[cfg(feature = "mobile-text-session")]
+use cditor_core::edit::{DocumentSelection, TextAffinity, TextPosition};
+#[cfg(feature = "mobile-text-session")]
+use cditor_editor_protocol::command::{CditorCommand, CommandEnvelope, CommandSource};
 use cditor_runtime::InputTarget;
 
 use super::support::{
@@ -21,7 +30,272 @@ pub(crate) use super::support::{
     code_language_input_target_allows, platform_input_target_allows, platform_selected_text_range,
 };
 
+#[cfg(feature = "mobile-text-session")]
+fn native_selection_collapse_position(
+    has_cross_block_selection: bool,
+    block_id: Option<cditor_core::ids::BlockId>,
+    range: Option<Range<usize>>,
+) -> Option<TextPosition> {
+    if has_cross_block_selection {
+        return None;
+    }
+    Some(TextPosition::downstream(block_id?, range?.end))
+}
+
+#[cfg(feature = "mobile-text-session")]
+fn native_selection_target_supported(target: Option<InputTarget>) -> bool {
+    matches!(
+        target,
+        Some(
+            InputTarget::BlockText { .. }
+                | InputTarget::TableCell { .. }
+                | InputTarget::ImageCaption { .. }
+                | InputTarget::CollectionTitle { .. }
+        )
+    )
+}
+
+#[cfg(feature = "mobile-text-session")]
+fn word_range_utf16(text: &str, offset_utf16: usize) -> Range<usize> {
+    let offset_utf8 = utf16_range_to_utf8_range(text, &(offset_utf16..offset_utf16)).start;
+    let mut word_ending_at_offset = None;
+    for (start, word) in text.unicode_word_indices() {
+        let end = start + word.len();
+        if start <= offset_utf8 && offset_utf8 < end {
+            return utf8_range_to_utf16_range(text, &(start..end));
+        }
+        if end == offset_utf8 {
+            word_ending_at_offset = Some((start, end));
+        }
+    }
+    if let Some((start, end)) = word_ending_at_offset {
+        return utf8_range_to_utf16_range(text, &(start..end));
+    }
+    let Some((start, grapheme)) = text.grapheme_indices(true).find(|(start, grapheme)| {
+        let end = *start + grapheme.len();
+        *start <= offset_utf8 && offset_utf8 < end
+    }) else {
+        return offset_utf16..offset_utf16;
+    };
+    if grapheme.chars().all(char::is_whitespace) {
+        return offset_utf16..offset_utf16;
+    }
+    utf8_range_to_utf16_range(text, &(start..start + grapheme.len()))
+}
+
 impl EntityInputHandler for CditorV2View {
+    #[cfg(feature = "mobile-text-session")]
+    fn handles_native_selection(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> bool {
+        if self.focus.ai_prompt.is_focused(window)
+            || self.focus.code_language.is_focused(window)
+            || self
+                .interaction
+                .table_interaction_mode
+                .axis_selection()
+                .is_some()
+        {
+            return false;
+        }
+        let registered_target = self.input.target;
+        let registered_identity = self.input.session_identity;
+        let Some(session) = self.ready_session() else {
+            return false;
+        };
+        let Ok(context) = session.input_context() else {
+            return false;
+        };
+        native_selection_target_supported(context.target)
+            && context.focused_text.is_some()
+            && platform_input_target_allows(registered_target, registered_identity, &context)
+    }
+
+    #[cfg(feature = "mobile-text-session")]
+    fn native_selection_allowed_at(
+        &mut self,
+        point: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let handles_selection = self.handles_native_selection(window, cx);
+        let surface_reachable = self
+            .input
+            .hitbox_id
+            .is_none_or(|id| window.point_reaches_hitbox(id, point));
+        let character_index = (handles_selection && surface_reachable)
+            .then(|| self.character_index_for_point(point, window, cx))
+            .flatten();
+        trace_input(
+            "native_selection_allowed_at",
+            format_args!(
+                "point={point:?} handles_selection={handles_selection} surface_reachable={surface_reachable} character_index={character_index:?}"
+            ),
+        );
+        character_index.is_some()
+    }
+
+    #[cfg(feature = "mobile-text-session")]
+    fn selection_menu_presentation(
+        &mut self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> SelectionMenuPresentation {
+        SelectionMenuPresentation::SystemAndCustomActions
+    }
+
+    #[cfg(feature = "mobile-text-session")]
+    fn set_selected_text_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.handles_native_selection(window, cx) {
+            return;
+        }
+        let registered_target = self.input.target;
+        let Some(session) = self.ready_session() else {
+            return;
+        };
+        let Ok(context) = session.input_context() else {
+            return;
+        };
+        let Some(focused) = context.focused_text else {
+            return;
+        };
+        let range = utf16_range_to_utf8_range(&focused.text, &range_utf16);
+        trace_input(
+            "set_selected_text_range",
+            format_args!(
+                "block={} utf16={range_utf16:?} utf8={range:?} text_len={}",
+                focused.block_id,
+                focused.text.len()
+            ),
+        );
+        let command = match context.target {
+            Some(InputTarget::BlockText { .. }) => CditorCommand::SetDocumentSelection {
+                selection: DocumentSelection {
+                    anchor: TextPosition::downstream(focused.block_id, range.start),
+                    focus: TextPosition::downstream(focused.block_id, range.end),
+                },
+            },
+            Some(target) if target.surface_id().is_some() => {
+                CditorCommand::SetTextSurfaceSelection {
+                    surface_id: target.surface_id().expect("checked above"),
+                    anchor_offset: range.start,
+                    focus_offset: range.end,
+                    focus_affinity: TextAffinity::Downstream,
+                }
+            }
+            _ => return,
+        };
+        if session
+            .dispatch(CommandEnvelope::new(command, CommandSource::Ime))
+            .is_ok()
+        {
+            if let Some(target) = registered_target {
+                let candidate = self.input.native_selection_candidate_for(Some(target));
+                self.input.set_native_selection(target, range_utf16, false);
+                trace_input(
+                    "native_selection_candidate.cleared",
+                    format_args!(
+                        "target={target:?} candidate_utf16={candidate:?} reason=selection_committed"
+                    ),
+                );
+            }
+            cx.notify();
+        }
+    }
+
+    #[cfg(feature = "mobile-text-session")]
+    fn adjusted_native_selection_range(
+        &mut self,
+        range_utf16: Range<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Range<usize>> {
+        if !self.handles_native_selection(window, cx) || !range_utf16.is_empty() {
+            return None;
+        }
+        let candidate = self
+            .input
+            .native_selection_candidate_for(self.input.target)?;
+        let context = self.ready_session()?.input_context().ok()?;
+        let text = context.focused_text?.text;
+        let resolved = word_range_utf16(&text, candidate);
+        trace_input(
+            "native_selection_candidate.resolved",
+            format_args!(
+                "target={:?} candidate_utf16={candidate} expanded_utf16={resolved:?}",
+                self.input.target
+            ),
+        );
+        (!resolved.is_empty()).then_some(resolved)
+    }
+
+    #[cfg(feature = "mobile-text-session")]
+    fn clear_selected_text_range(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.handles_native_selection(window, cx) {
+            return;
+        }
+        let target = self.input.target;
+        let candidate = self.input.native_selection_candidate_for(target);
+        self.input.clear_native_selection();
+        trace_input(
+            "native_selection_candidate.cleared",
+            format_args!(
+                "target={target:?} candidate_utf16={candidate:?} reason=selection_dismissed"
+            ),
+        );
+        let Some(session) = self.ready_session() else {
+            return;
+        };
+        let Ok(context) = session.input_context() else {
+            return;
+        };
+        // UIKit selection dismissal is a local surface operation. A
+        // cross-block document selection remains owned by Cditor and is not
+        // silently truncated here.
+        let Some(focused) = context.focused_text.as_ref() else {
+            return;
+        };
+        let Some(range) = context.focused_text_selection_range.clone() else {
+            return;
+        };
+        let command = match context.target {
+            Some(InputTarget::BlockText { .. }) => {
+                let Some(position) = native_selection_collapse_position(
+                    context.has_cross_block_text_selection,
+                    Some(focused.block_id),
+                    Some(range.clone()),
+                ) else {
+                    return;
+                };
+                CditorCommand::SetDocumentSelection {
+                    selection: DocumentSelection::caret(position),
+                }
+            }
+            Some(target) if target.surface_id().is_some() => {
+                CditorCommand::SetTextSurfaceSelection {
+                    surface_id: target.surface_id().expect("checked above"),
+                    anchor_offset: range.end,
+                    focus_offset: range.end,
+                    focus_affinity: TextAffinity::Downstream,
+                }
+            }
+            _ => return,
+        };
+        trace_input(
+            "clear_selected_text_range",
+            format_args!("block={} offset={}", focused.block_id, range.end),
+        );
+        if session
+            .dispatch(CommandEnvelope::new(command, CommandSource::Ime))
+            .is_ok()
+        {
+            cx.notify();
+        }
+    }
+
     fn text_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -161,12 +435,28 @@ impl EntityInputHandler for CditorV2View {
             );
             return None;
         }
-        let selection = platform_selected_text_range(&context);
+        // UIKit first asks for the current range after a long-press hit test.
+        // Keep the hit-test candidate as a collapsed range until UIKit calls
+        // setSelectedTextRange; that callback is where the candidate is
+        // expanded to a word and committed to the document model. Returning
+        // the previous document caret here makes UIKit place the magnifier at
+        // the wrong anchor and never promote the interaction to a selection.
+        let candidate = self.input.native_selection_candidate_for(registered_target);
+        let selection = self
+            .input
+            .native_selection_for(registered_target)
+            .or_else(|| {
+                candidate.map(|offset| UTF16Selection {
+                    range: offset..offset,
+                    reversed: false,
+                })
+            })
+            .or_else(|| platform_selected_text_range(&context));
         trace_input(
             "selected_text_range",
             format_args!(
-                "focused={:?} selection={selection:?}",
-                context.focused_block_id
+                "focused={:?} candidate={candidate:?} selection={selection:?}",
+                context.focused_block_id,
             ),
         );
         selection
@@ -543,7 +833,7 @@ impl EntityInputHandler for CditorV2View {
         let target = context.target?;
         let surface_id = target.surface_id()?;
         let current = session.surface_version(surface_id).ok().flatten()?;
-        match target {
+        let resolved = match target {
             InputTarget::TableCell {
                 block_id: target_block_id,
                 row,
@@ -620,7 +910,36 @@ impl EntityInputHandler for CditorV2View {
                 text,
             ),
             _ => None,
+        };
+        if let (Some(registered_target), Some(offset_utf16)) = (self.input.target, resolved) {
+            self.input
+                .set_native_selection_candidate(registered_target, offset_utf16);
+            trace_input(
+                "native_selection_candidate.stored",
+                format_args!("target={registered_target:?} utf16={offset_utf16}"),
+            );
         }
+        resolved
+    }
+
+    #[cfg(feature = "mobile-text-session")]
+    fn allows_native_edit_action(
+        &mut self,
+        action: gpui::PlatformTextEditAction,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> bool {
+        CditorV2View::allows_native_edit_action(self, action)
+    }
+
+    #[cfg(feature = "mobile-text-session")]
+    fn perform_native_edit_action(
+        &mut self,
+        action: gpui::PlatformTextEditAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        CditorV2View::perform_native_edit_action(self, action, window, cx)
     }
 
     fn accepts_text_input(&self, _window: &mut Window, _cx: &mut Context<Self>) -> bool {
@@ -641,7 +960,8 @@ impl EntityInputHandler for CditorV2View {
                     code_language_input_target_allows(self.input.target, edit.block_id)
                 });
         }
-        !self.status.readonly
+        self.focus.editor.is_focused(_window)
+            && !self.status.readonly
             && matches!(self.state, CditorViewState::Ready(_))
             && self.ready_session().is_none_or(|session| {
                 let Ok(context) = session.input_context() else {
@@ -653,5 +973,161 @@ impl EntityInputHandler for CditorV2View {
                     &context,
                 )
             })
+    }
+}
+
+#[cfg(all(test, feature = "mobile-text-session"))]
+mod native_selection_tests {
+    use super::{
+        native_selection_collapse_position, native_selection_target_supported, word_range_utf16,
+    };
+    use cditor_runtime::InputTarget;
+
+    #[test]
+    fn local_native_selection_collapses_at_focus_end() {
+        let position = native_selection_collapse_position(false, Some(42), Some(3..11)).unwrap();
+        assert_eq!(position.block_id, 42);
+        assert_eq!(position.offset, 11);
+    }
+
+    #[test]
+    fn native_dismissal_does_not_truncate_cross_block_selection() {
+        assert!(native_selection_collapse_position(true, Some(42), Some(3..11)).is_none());
+    }
+
+    #[test]
+    fn native_selection_supports_document_text_surfaces_only() {
+        assert!(native_selection_target_supported(Some(
+            InputTarget::BlockText { block_id: 1 }
+        )));
+        assert!(native_selection_target_supported(Some(
+            InputTarget::TableCell {
+                block_id: 2,
+                row: 0,
+                col: 1,
+            }
+        )));
+        assert!(native_selection_target_supported(Some(
+            InputTarget::ImageCaption { block_id: 3 }
+        )));
+        assert!(native_selection_target_supported(Some(
+            InputTarget::CollectionTitle { block_id: 4 }
+        )));
+        assert!(!native_selection_target_supported(Some(
+            InputTarget::ComplexBlock { block_id: 5 }
+        )));
+        assert!(!native_selection_target_supported(Some(
+            InputTarget::BlockChrome { block_id: 6 }
+        )));
+        assert!(!native_selection_target_supported(None));
+    }
+
+    #[test]
+    fn collapsed_native_candidate_expands_to_unicode_word() {
+        let text = "hello, 世界 👩‍💻 rust";
+        assert_eq!(word_range_utf16(text, 2), 0..5);
+        assert_eq!(word_range_utf16(text, 5), 0..5);
+
+        let cjk_start = text[..text.find('世').unwrap()].encode_utf16().count();
+        assert!(!word_range_utf16(text, cjk_start).is_empty());
+
+        let emoji_start = text[..text.find('👩').unwrap()].encode_utf16().count();
+        assert_eq!(
+            word_range_utf16(text, emoji_start),
+            emoji_start..emoji_start + "👩‍💻".encode_utf16().count()
+        );
+        assert!(word_range_utf16(text, 6).is_empty());
+    }
+
+    #[test]
+    fn cjk_candidates_expand_without_splitting_utf16_offsets() {
+        let text = "A中文测试B";
+        for character in ['中', '文', '测', '试'] {
+            let byte_offset = text.find(character).unwrap();
+            let candidate = text[..byte_offset].encode_utf16().count();
+            let resolved = word_range_utf16(text, candidate);
+
+            assert!(resolved.start <= candidate);
+            assert!(resolved.end > candidate);
+            assert!(resolved.end <= text.encode_utf16().count());
+        }
+    }
+
+    #[test]
+    fn emoji_candidate_expands_to_the_entire_extended_grapheme() {
+        let text = "a👨‍👩‍👧‍👦b";
+        let emoji_start = "a".encode_utf16().count();
+        let emoji_len = "👨‍👩‍👧‍👦".encode_utf16().count();
+
+        assert_eq!(
+            word_range_utf16(text, emoji_start + 2),
+            emoji_start..emoji_start + emoji_len
+        );
+    }
+
+    #[gpui::test]
+    fn occluding_hitbox_blocks_native_selection_without_disabling_the_editor(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use gpui::{
+            AppContext as _, EntityInputHandler as _, InteractiveElement as _, ParentElement as _,
+            Render, Styled as _, point, px,
+        };
+
+        struct OccludedHost {
+            editor: gpui::Entity<crate::editor_view::CditorV2View>,
+        }
+
+        impl Render for OccludedHost {
+            fn render(
+                &mut self,
+                _: &mut gpui::Window,
+                _: &mut gpui::Context<Self>,
+            ) -> impl gpui::IntoElement {
+                gpui::div()
+                    .relative()
+                    .size_full()
+                    .child(self.editor.clone())
+                    .child(gpui::div().absolute().inset_0().occlude())
+            }
+        }
+
+        let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(
+            1,
+            vec![cditor_core::rich_text::BlockPayloadRecord::rich_text(
+                1,
+                cditor_core::rich_text::RichBlockKind::Paragraph,
+                "selectable text",
+            )],
+            720.0,
+        );
+        crate::test_support::focus_block_at_offset(&mut runtime, 1, 4);
+        let session = cditor_session::EditorSession::new(runtime, false).into_handle();
+        let (host, cx) = cx.add_window_view(|_, cx| {
+            let editor = cx.new(|cx| {
+                let mut editor = crate::editor_view::CditorV2View::loading("", false, cx);
+                editor.apply_loaded_session(session, cx);
+                editor
+            });
+            OccludedHost { editor }
+        });
+
+        cx.update(|window, cx| {
+            let editor = host.read(cx).editor.clone();
+            editor.update(cx, |view, cx| view.focus.editor.focus(window, cx));
+            let _ = window.draw(cx);
+        });
+
+        cx.update(|window, cx| {
+            let editor = host.read(cx).editor.clone();
+            editor.update(cx, |view, cx| {
+                assert!(view.handles_native_selection(window, cx));
+                let bounds = view.input.element_bounds.expect("input bounds registered");
+                let point = point(bounds.left() + px(2.0), bounds.top() + px(2.0));
+                let hitbox_id = view.input.hitbox_id.expect("input hitbox registered");
+                assert!(!window.point_reaches_hitbox(hitbox_id, point));
+                assert!(!view.native_selection_allowed_at(point, window, cx));
+            });
+        });
     }
 }

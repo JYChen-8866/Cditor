@@ -1,8 +1,111 @@
-use gpui::{App, Bounds, ElementInputHandler, Entity, FocusHandle, Pixels, Window};
+use gpui::{
+    App, Bounds, ElementInputHandler, Entity, FocusHandle, HitboxId, InteractiveElement,
+    MouseButton, MouseDownEvent, Pixels, StatefulInteractiveElement, Window,
+};
 
 use crate::editor_view::{CditorV2View, GuiPlatformInputTarget};
 use crate::input::trace::trace_input;
 use crate::text::TextPlatformLayoutIdentity;
+
+/// Activates an editable mobile text surface as one atomic transition.
+///
+/// Focus/selection placement remains owned by Cditor. This helper only changes
+/// the platform session after a completed press has selected the actual target.
+pub(crate) fn activate_mobile_text_input(_window: &Window) {
+    #[cfg(feature = "mobile-text-session")]
+    _window.show_soft_keyboard();
+}
+
+pub(crate) fn mobile_manual_focus<E: InteractiveElement>(element: E) -> E {
+    #[cfg(all(
+        feature = "mobile-text-session",
+        any(target_os = "ios", target_os = "android")
+    ))]
+    {
+        element.manual_focus()
+    }
+    #[cfg(not(all(
+        feature = "mobile-text-session",
+        any(target_os = "ios", target_os = "android")
+    )))]
+    {
+        element
+    }
+}
+
+pub(crate) const fn mobile_text_input_uses_manual_focus() -> bool {
+    cfg!(all(
+        feature = "mobile-text-session",
+        any(target_os = "ios", target_os = "android")
+    ))
+}
+
+pub(crate) fn finish_auxiliary_text_input(
+    _editor_focus: &FocusHandle,
+    _window: &mut Window,
+    _cx: &mut App,
+) {
+    #[cfg(all(
+        feature = "mobile-text-session",
+        any(target_os = "ios", target_os = "android")
+    ))]
+    _window.dismiss_text_input();
+
+    #[cfg(not(all(
+        feature = "mobile-text-session",
+        any(target_os = "ios", target_os = "android")
+    )))]
+    _window.focus(_editor_focus, _cx);
+}
+
+pub(crate) const fn retains_pointer_drag_after_text_activation(is_mobile: bool) -> bool {
+    !is_mobile
+}
+
+const fn text_activation_click_count(tap_count: usize) -> usize {
+    if tap_count == 0 { 1 } else { tap_count }
+}
+
+/// Binds text activation to the platform's correct gesture boundary.
+///
+/// Desktop selection starts on mouse-down so drag selection remains immediate.
+/// Direct-touch platforms commit on `on_press`, whose GPUI recognizer rejects a
+/// moved, cancelled, or long-held pointer. The no-op long-press listener is
+/// intentional: it marks the same recognizer as consumed by a long press while
+/// UIKit continues owning native text selection.
+pub(crate) fn on_text_activation<E>(
+    element: E,
+    listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> E
+where
+    E: StatefulInteractiveElement,
+{
+    #[cfg(all(
+        feature = "mobile-text-session",
+        any(target_os = "ios", target_os = "android")
+    ))]
+    {
+        element
+            .on_press(move |event, window, cx| {
+                let event = MouseDownEvent {
+                    button: MouseButton::Left,
+                    position: event.position(),
+                    modifiers: event.modifiers(),
+                    click_count: text_activation_click_count(event.tap_count()),
+                    first_mouse: false,
+                };
+                listener(&event, window, cx);
+            })
+            .on_long_press(|_event, _window, _cx| {})
+    }
+    #[cfg(not(all(
+        feature = "mobile-text-session",
+        any(target_os = "ios", target_os = "android")
+    )))]
+    {
+        element.on_mouse_down(MouseButton::Left, listener)
+    }
+}
 
 pub(crate) fn handle_registered_platform_input(
     view: &Entity<CditorV2View>,
@@ -10,6 +113,7 @@ pub(crate) fn handle_registered_platform_input(
     target: GuiPlatformInputTarget,
     layout_identity: TextPlatformLayoutIdentity,
     bounds: Bounds<Pixels>,
+    hitbox_id: Option<HitboxId>,
     window: &mut Window,
     cx: &mut App,
 ) -> bool {
@@ -17,6 +121,7 @@ pub(crate) fn handle_registered_platform_input(
         view.register_platform_input_target(target, layout_identity, bounds)
     });
     if registration.registered {
+        view.update(cx, |view, _| view.input.hitbox_id = hitbox_id);
         trace_input(
             "platform_input.registered",
             format_args!(
@@ -41,6 +146,20 @@ mod tests {
         TableRowPayload,
     };
     use cditor_runtime::DocumentRuntime;
+
+    #[test]
+    fn text_activation_preserves_double_and_triple_taps() {
+        assert_eq!(text_activation_click_count(0), 1);
+        assert_eq!(text_activation_click_count(1), 1);
+        assert_eq!(text_activation_click_count(2), 2);
+        assert_eq!(text_activation_click_count(3), 3);
+    }
+
+    #[test]
+    fn completed_mobile_activation_does_not_start_pointer_drag_selection() {
+        assert!(!retains_pointer_drag_after_text_activation(true));
+        assert!(retains_pointer_drag_after_text_activation(false));
+    }
 
     #[test]
     fn adapter_targets_match_runtime_block_and_table_sessions() {

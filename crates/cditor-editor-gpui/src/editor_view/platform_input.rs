@@ -188,6 +188,7 @@ impl CditorV2View {
         layout_identity: TextPlatformLayoutIdentity,
         element_bounds: gpui::Bounds<gpui::Pixels>,
     ) -> PlatformInputRegistration {
+        self.input.set_native_selection_target(target);
         let Some(session) = self.ready_session() else {
             return PlatformInputRegistration::default();
         };

@@ -1118,7 +1118,9 @@ fn render_custom_ai_button(
             .into_any_element();
     }
     if let Some(prompt) = prompt {
+        let prompt_block_id = prompt.block_id;
         let clear_view = view.clone();
+        let activate_view = view.clone();
         return Input::new(
             "gutter-ai-prompt-input",
             SingleLineTextInputElement {
@@ -1137,6 +1139,18 @@ fn render_custom_ai_button(
         )
         .height(px(AI_ACTION_ROW_HEIGHT_PX))
         .focus(prompt_focus)
+        .manual_focus(crate::input::platform_adapter::mobile_text_input_uses_manual_focus())
+        .when(
+            crate::input::platform_adapter::mobile_text_input_uses_manual_focus(),
+            |input| {
+                input.on_press(move |_event, _window, cx| {
+                    activate_view.update(cx, |view, cx| {
+                        view.request_ai_prompt_focus_from_gui(prompt_block_id, cx);
+                    });
+                    cx.stop_propagation();
+                })
+            },
+        )
         .cleanable(true)
         .empty(prompt.draft.is_empty())
         .on_clean(move |_window, cx| {

@@ -148,9 +148,11 @@ where
                 ));
             }
 
-            if single_line_should_paint_caret(
+            if crate::text::should_paint_custom_caret(
                 self.focus.is_focused(window),
-                self.marked_range.as_ref(),
+                true,
+                self.marked_range.is_some(),
+                crate::text::platform_text_cursor_ownership(window),
             ) {
                 let x = (single_line_text_x_for_offset(
                     &self.value,
@@ -173,10 +175,6 @@ where
             }
         });
     }
-}
-
-fn single_line_should_paint_caret(focused: bool, marked_range: Option<&Range<usize>>) -> bool {
-    focused && marked_range.is_none()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -346,13 +344,6 @@ mod tests {
             }),
             79.0
         );
-    }
-
-    #[test]
-    fn single_line_hides_custom_caret_while_ime_marked_range_is_active() {
-        assert!(single_line_should_paint_caret(true, None));
-        assert!(!single_line_should_paint_caret(true, Some(&(0..1))));
-        assert!(!single_line_should_paint_caret(false, None));
     }
 
     #[test]

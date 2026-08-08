@@ -23,7 +23,6 @@ pub(super) fn register_outline_fonts(font_cx: &mut FontContext, allow_system_han
     }
     #[cfg(not(target_os = "macos"))]
     let _ = allow_system_hanzipen;
-
 }
 
 #[cfg(target_os = "macos")]

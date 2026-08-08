@@ -13,6 +13,7 @@ use crate::block::divider::render_notion_divider;
 use crate::editor_view::CditorV2View;
 use crate::features::text::heading::render_heading;
 use crate::features::text::list::{render_bulleted, render_numbered, render_todo};
+use crate::input::platform_adapter::mobile_text_input_uses_manual_focus;
 use crate::input::{AiPromptState, SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement};
 use crate::menu_metrics::EditorViewport;
 use crate::presentation::rich_text::render_wrapped_payload_text;
@@ -58,7 +59,9 @@ pub(crate) fn render_ai_prompt(
         viewport.height,
     );
     let can_submit = ai_prompt_can_submit(&prompt.draft);
+    let prompt_block_id = prompt.block_id;
     let clear_view = view.clone();
+    let activate_view = view.clone();
     let prompt_input = Input::new(
         "ai-prompt-input",
         SingleLineTextInputElement {
@@ -79,6 +82,15 @@ pub(crate) fn render_ai_prompt(
     .appearance(false)
     .bordered(false)
     .focus(focus)
+    .manual_focus(mobile_text_input_uses_manual_focus())
+    .when(mobile_text_input_uses_manual_focus(), |input| {
+        input.on_press(move |_event, _window, cx| {
+            activate_view.update(cx, |view, cx| {
+                view.request_ai_prompt_focus_from_gui(prompt_block_id, cx);
+            });
+            cx.stop_propagation();
+        })
+    })
     .cleanable(true)
     .empty(prompt.draft.is_empty())
     .on_clean(move |_window, cx| {

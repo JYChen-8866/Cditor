@@ -282,7 +282,7 @@ impl DrafftBoardView {
             return;
         }
         self.file_menu_open = false;
-        #[cfg(not(target_family = "wasm"))]
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
             let task = cx.background_spawn(async move {
                 rfd::FileDialog::new()
@@ -321,7 +321,7 @@ impl DrafftBoardView {
 
     pub(super) fn open_document(&mut self, cx: &mut Context<Self>) {
         self.file_menu_open = false;
-        #[cfg(not(target_family = "wasm"))]
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
             let task = cx.background_spawn(async move {
                 rfd::FileDialog::new()
@@ -372,7 +372,7 @@ impl DrafftBoardView {
 
     fn open_library(&mut self, cx: &mut Context<Self>) {
         self.file_menu_open = false;
-        #[cfg(not(target_family = "wasm"))]
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
             let task = cx.background_spawn(async move {
                 rfd::FileDialog::new()
@@ -446,7 +446,7 @@ impl DrafftBoardView {
             cx.notify();
             return;
         }
-        #[cfg(not(target_family = "wasm"))]
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
             let task = cx.background_spawn(async move {
                 rfd::FileDialog::new()

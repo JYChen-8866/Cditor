@@ -246,8 +246,10 @@ pub(super) fn is_empty_line_ai_platform_input(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_platform_text_replacement, apply_platform_unmark, is_empty_line_ai_platform_input,
+        ai_prompt_input_target_allows, apply_platform_text_replacement, apply_platform_unmark,
+        code_language_input_target_allows, is_empty_line_ai_platform_input,
         platform_input_geometry_allows, platform_input_target_allows,
+        table_menu_input_target_allows,
     };
     use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
     use cditor_runtime::{DocumentRuntime, RealtimeInput, RealtimeInputRequest};
@@ -276,6 +278,33 @@ mod tests {
         assert!(is_empty_line_ai_platform_input(Some(&(0..0)), " "));
         assert!(!is_empty_line_ai_platform_input(Some(&(0..1)), " "));
         assert!(!is_empty_line_ai_platform_input(None, "x"));
+    }
+
+    #[test]
+    fn auxiliary_input_targets_are_isolated_from_document_selection() {
+        let prompt = Some(GuiPlatformInputTarget::ai_prompt(7));
+        let code = Some(GuiPlatformInputTarget::code_language(7));
+        let table_menu = Some(GuiPlatformInputTarget::table_menu_query(7));
+        let document = Some(GuiPlatformInputTarget::BlockText { block_id: 7 });
+
+        assert!(ai_prompt_input_target_allows(prompt, 7));
+        assert!(!ai_prompt_input_target_allows(None, 7));
+        assert!(!ai_prompt_input_target_allows(code, 7));
+        assert!(!ai_prompt_input_target_allows(document, 7));
+        assert!(!ai_prompt_input_target_allows(prompt, 8));
+
+        // Code-language editing may bootstrap before the first registration
+        // frame, but any registered owner must match exactly.
+        assert!(code_language_input_target_allows(None, 7));
+        assert!(code_language_input_target_allows(code, 7));
+        assert!(!code_language_input_target_allows(prompt, 7));
+        assert!(!code_language_input_target_allows(document, 7));
+        assert!(!code_language_input_target_allows(code, 8));
+
+        assert!(table_menu_input_target_allows(table_menu, 7));
+        assert!(!table_menu_input_target_allows(None, 7));
+        assert!(!table_menu_input_target_allows(prompt, 7));
+        assert!(!table_menu_input_target_allows(table_menu, 8));
     }
 
     #[test]

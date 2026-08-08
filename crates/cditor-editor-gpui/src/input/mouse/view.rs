@@ -10,6 +10,10 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // The platform touch router owns the text-session transition to and
+        // from Scrolling. Cditor consumes the resulting scroll stream only;
+        // duplicating that transition here lets fling and terminal events race
+        // the platform's responder teardown.
         self.pause_caret_blink(cx);
         self.interaction.last_wheel_delta_y = scroll_delta_y(event);
         if let CditorViewState::Ready(session) = &self.state {

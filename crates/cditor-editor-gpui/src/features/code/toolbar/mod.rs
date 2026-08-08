@@ -1,6 +1,7 @@
 //! Code-block language and copy controls.
 
 use crate::editor_view::CditorV2View;
+use crate::input::platform_adapter::{mobile_manual_focus, on_text_activation};
 use crate::input::{
     CODE_LANGUAGE_VISIBLE_SUGGESTIONS, CodeLanguageEditState, CodeLanguagePopupPlacement,
     SINGLE_LINE_INPUT_FONT_SIZE_PX, SingleLineTextInputElement,
@@ -219,6 +220,7 @@ fn render_language_editor(
     .placement(placement)
     .when_some(language_icon, |combobox, icon| combobox.trigger_icon(icon))
     .search(render_language_search_input(
+        block_id,
         theme,
         draft,
         caret_offset,
@@ -378,6 +380,7 @@ fn code_language_combobox_style(theme: GuiTheme) -> ComboboxStyle {
 }
 
 fn render_language_search_input(
+    block_id: BlockId,
     theme: GuiTheme,
     draft: String,
     caret_offset: Option<usize>,
@@ -386,38 +389,48 @@ fn render_language_search_input(
     view: Entity<CditorV2View>,
 ) -> AnyElement {
     const SEARCH: &[u8] = include_bytes!("../../../../../../assets/icons/search.svg");
-    div()
-        .h(px(V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX))
-        .px(px(8.0))
-        .border_b_1()
-        .border_color(rgb(theme.code_toolbar_border))
-        .child(
-            div()
-                .w_full()
-                .h_full()
-                .flex()
-                .items_center()
-                .gap(px(6.0))
-                .track_focus(&code_language_focus)
-                .child(
-                    SvgIcon::new("combobox-search", SEARCH)
-                        .color(rgb(theme.muted))
-                        .size(px(14.0)),
-                )
-                .child(SingleLineTextInputElement {
-                    handler: view,
-                    focus: code_language_focus,
-                    value: draft,
-                    placeholder: Some("搜索语言…".to_owned()),
-                    caret_offset,
-                    marked_range,
-                    text_color: theme.text,
-                    placeholder_color: theme.muted,
-                    caret_color: theme.focused,
-                    font_size: px(SINGLE_LINE_INPUT_FONT_SIZE_PX),
-                }),
-        )
-        .into_any_element()
+    let activate_view = view.clone();
+    let input = mobile_manual_focus(
+        div()
+            .id(("code-language-search", block_id))
+            .h(px(V1_CODE_LANGUAGE_SEARCH_HEIGHT_PX))
+            .px(px(8.0))
+            .border_b_1()
+            .border_color(rgb(theme.code_toolbar_border))
+            .child(
+                div()
+                    .w_full()
+                    .h_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .track_focus(&code_language_focus)
+                    .child(
+                        SvgIcon::new("combobox-search", SEARCH)
+                            .color(rgb(theme.muted))
+                            .size(px(14.0)),
+                    )
+                    .child(SingleLineTextInputElement {
+                        handler: view,
+                        focus: code_language_focus,
+                        value: draft,
+                        placeholder: Some("搜索语言…".to_owned()),
+                        caret_offset,
+                        marked_range,
+                        text_color: theme.text,
+                        placeholder_color: theme.muted,
+                        caret_color: theme.focused,
+                        font_size: px(SINGLE_LINE_INPUT_FONT_SIZE_PX),
+                    }),
+            ),
+    );
+    on_text_activation(input, move |_event, _window, cx| {
+        activate_view.update(cx, |view, cx| {
+            view.request_code_language_focus_from_gui(block_id, cx);
+        });
+        cx.stop_propagation();
+    })
+    .into_any_element()
 }
 
 fn code_language_popup_width() -> f32 {

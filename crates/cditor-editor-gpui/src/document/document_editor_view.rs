@@ -29,6 +29,7 @@ use crate::features::table::{
 };
 use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::CodeLanguageEditState;
+use crate::input::platform_adapter::on_text_activation;
 use crate::menu_metrics::MenuViewportBounds;
 use crate::overlays::render_editor_overlays;
 use crate::overlays::table::{
@@ -501,21 +502,21 @@ fn render_down_placer(
     _theme: GuiTheme,
     view: Entity<CditorV2View>,
 ) -> AnyElement {
-    div()
+    let placer = div()
         .id("cditor-down-placer")
         .absolute()
         .left_0()
         .right_0()
         .top(px(top as f32))
         .h(px(height as f32))
-        .cursor_text()
-        .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-            view.update(cx, |view, cx| {
-                view.focus_down_placer_from_gui(window, cx);
-            });
-            cx.stop_propagation();
-        })
-        .into_any_element()
+        .cursor_text();
+    on_text_activation(placer, move |_event, window, cx| {
+        view.update(cx, |view, cx| {
+            view.focus_down_placer_from_gui(window, cx);
+        });
+        cx.stop_propagation();
+    })
+    .into_any_element()
 }
 
 #[cfg(test)]

@@ -792,7 +792,7 @@ fn render_menu_scrollbar(
 
 impl CditorV2View {
     fn choose_page_cover(&mut self, cx: &mut gpui::Context<Self>) {
-        #[cfg(not(target_family = "wasm"))]
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
             let asset_provider = self.features.asset_provider.clone();
             let background = cx.background_executor().clone();

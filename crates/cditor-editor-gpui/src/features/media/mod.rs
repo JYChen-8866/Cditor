@@ -13,6 +13,7 @@ use crate::image_loader::{
     RasterImageElement, image_load_failed, load_render_image, retry_image_load,
 };
 use crate::image_preview::open_image_preview;
+use crate::input::platform_adapter::on_text_activation;
 use crate::surfaces::{TextSurfaceInteractionGeometry, TextSurfaceRenderState};
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
 use crate::theme::GuiTheme;
@@ -182,44 +183,44 @@ fn render_image_caption(
     };
     let bounds_handle = ScrollHandle::default();
     let interaction_bounds = bounds_handle.clone();
-    div()
+    let caption = div()
         .id(("image-caption", block_id))
         .mt(px(6.0))
         .w(px(width_px))
         .min_h(px(IMAGE_CAPTION_HEIGHT_PX))
         .track_scroll(&bounds_handle)
-        .cursor_text()
-        .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-            focus_view.update(cx, |view, cx| {
-                view.focus_text_surface_from_gui_at_position(
-                    surface_id,
-                    event.position,
-                    event.click_count,
-                    TextSurfaceInteractionGeometry::from_bounds(
-                        interaction_bounds.bounds(),
-                        f64::from(width_px),
-                        TextAlign::Center,
-                        typography,
-                    ),
-                    window,
-                    cx,
-                );
-            });
-            cx.stop_propagation();
-        })
-        .child(
-            RichTextElement::new(input, theme)
-                .with_caret(state.caret_offset)
-                .with_caret_affinity(state.caret_affinity)
-                .with_selection_range(state.selection_range)
-                .with_marked_range(state.marked_range)
-                .with_base_text_color(Some(theme.muted))
-                .with_typography(typography)
-                .with_placeholder(Some("添加说明"))
-                .with_input_handler(view, focus, state.focused)
-                .render(),
-        )
-        .into_any_element()
+        .cursor_text();
+    on_text_activation(caption, move |event, window, cx| {
+        focus_view.update(cx, |view, cx| {
+            view.focus_text_surface_from_gui_at_position(
+                surface_id,
+                event.position,
+                event.click_count,
+                TextSurfaceInteractionGeometry::from_bounds(
+                    interaction_bounds.bounds(),
+                    f64::from(width_px),
+                    TextAlign::Center,
+                    typography,
+                ),
+                window,
+                cx,
+            );
+        });
+        cx.stop_propagation();
+    })
+    .child(
+        RichTextElement::new(input, theme)
+            .with_caret(state.caret_offset)
+            .with_caret_affinity(state.caret_affinity)
+            .with_selection_range(state.selection_range)
+            .with_marked_range(state.marked_range)
+            .with_base_text_color(Some(theme.muted))
+            .with_typography(typography)
+            .with_placeholder(Some("添加说明"))
+            .with_input_handler(view, focus, state.focused)
+            .render(),
+    )
+    .into_any_element()
 }
 
 const MEDIA_HEIGHT_REPORT_CACHE_MAX_ENTRIES: usize = 4096;

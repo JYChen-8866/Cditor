@@ -4,6 +4,7 @@ use gpui::{
 };
 
 use crate::editor_view::CditorV2View;
+use crate::input::platform_adapter::on_text_activation;
 use crate::input::{
     begin_table_cell_text_selection_from_mouse, update_table_cell_text_selection_from_mouse,
 };
@@ -48,8 +49,12 @@ pub(super) fn render_table_cell(
         .top(px(cell.y_px))
         .w(px(cell.width_px))
         .h(px(cell.height_px))
-        .child(
-            div()
+        .child({
+            let cell_surface = div()
+                .id((
+                    "table-cell-text",
+                    row_index.wrapping_mul(1_048_576).wrapping_add(cell_index),
+                ))
                 .relative()
                 .group("table-cell-axis")
                 .w_full()
@@ -69,31 +74,31 @@ pub(super) fn render_table_cell(
                 .when(table_cell_hover_enabled(focused_cell, selected), |this| {
                     this.hover(move |style| style.bg(rgb(hover_background)))
                 })
-                .cursor_text()
-                .on_mouse_down(gpui::MouseButton::Left, move |event, window, cx| {
-                    begin_table_cell_text_selection_from_mouse(
-                        &focus_view,
-                        block_id,
-                        row_index,
-                        cell_index,
-                        event,
-                        window,
-                        cx,
-                    );
-                    cx.stop_propagation();
-                })
-                .on_mouse_move(move |event, _window, cx| {
-                    update_table_cell_text_selection_from_mouse(
-                        &range_hover_view,
-                        block_id,
-                        row_index,
-                        cell_index,
-                        event,
-                        cx,
-                    );
-                })
-                .child(content),
-        )
+                .cursor_text();
+            on_text_activation(cell_surface, move |event, window, cx| {
+                begin_table_cell_text_selection_from_mouse(
+                    &focus_view,
+                    block_id,
+                    row_index,
+                    cell_index,
+                    event,
+                    window,
+                    cx,
+                );
+                cx.stop_propagation();
+            })
+            .on_mouse_move(move |event, _window, cx| {
+                update_table_cell_text_selection_from_mouse(
+                    &range_hover_view,
+                    block_id,
+                    row_index,
+                    cell_index,
+                    event,
+                    cx,
+                );
+            })
+            .child(content)
+        })
         .into_any_element()
 }
 

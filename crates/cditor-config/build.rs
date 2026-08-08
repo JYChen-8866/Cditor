@@ -88,9 +88,18 @@ fn validate(config: &SourceConfig) {
         ("code", &typography.fonts.code),
         ("ui", &typography.fonts.ui),
     ] {
-        assert!(!font.macos.trim().is_empty(), "{name}.macos must not be empty");
-        assert!(!font.windows.trim().is_empty(), "{name}.windows must not be empty");
-        assert!(!font.linux.trim().is_empty(), "{name}.linux must not be empty");
+        assert!(
+            !font.macos.trim().is_empty(),
+            "{name}.macos must not be empty"
+        );
+        assert!(
+            !font.windows.trim().is_empty(),
+            "{name}.windows must not be empty"
+        );
+        assert!(
+            !font.linux.trim().is_empty(),
+            "{name}.linux must not be empty"
+        );
     }
     for (name, style) in [
         ("body", &typography.styles.body),

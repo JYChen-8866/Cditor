@@ -10,6 +10,9 @@ use crate::features::table::menu::{
 use crate::features::table::{
     TableAxis, TableAxisSelection, TableCellRangeSelection, TableCellSelection,
 };
+use crate::input::platform_adapter::{
+    activate_mobile_text_input, retains_pointer_drag_after_text_activation,
+};
 use crate::interaction::table_mode::GuiTableInteractionMode;
 use cditor_editor_protocol::command::{
     CditorCommand, CommandEnvelope, CommandOutcomeStatus, CommandSource,
@@ -33,6 +36,26 @@ impl CditorV2View {
             })
             .unwrap_or(GuiTableInteractionMode::Idle);
         self.overlay.table_menu_ui = Default::default();
+        self.input.request_focus_dismissal();
+        cx.notify();
+        true
+    }
+
+    pub(crate) fn request_table_menu_query_focus_from_gui(
+        &mut self,
+        block_id: BlockId,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if !self
+            .interaction
+            .table_interaction_mode
+            .axis_selection()
+            .is_some_and(|selection| selection.block_id == block_id)
+        {
+            return false;
+        }
+        self.input
+            .request_focus(crate::editor_view::GuiPlatformInputTarget::table_menu_query(block_id));
         cx.notify();
         true
     }
@@ -101,7 +124,7 @@ impl CditorV2View {
         position: Option<Point<Pixels>>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         window.focus(&self.focus.editor, cx);
         self.interaction.text_drag_selection = None;
         self.interaction.table_interaction_mode =
@@ -115,7 +138,7 @@ impl CditorV2View {
                 "block={block_id} row={row} col={col} position={position:?} resolved_position={text_position:?}"
             ),
         );
-        if let CditorViewState::Ready(session) = &self.state {
+        let focus_applied = if let CditorViewState::Ready(session) = &self.state {
             let command = if let Some(text_position) = text_position {
                 CditorCommand::FocusTableCell {
                     block_id,
@@ -133,33 +156,36 @@ impl CditorV2View {
                     affinity: cditor_core::edit::TextAffinity::Downstream,
                 }
             };
-            let _ = session.dispatch_with_snapshot(
-                cditor_editor_protocol::command::CommandEnvelope::new(
+            let focus_applied = session
+                .dispatch_with_snapshot(cditor_editor_protocol::command::CommandEnvelope::new(
                     command,
                     CommandSource::Toolbar,
-                ),
-            );
-            let Ok(snapshot) = session.table_interaction(Some(block_id)) else {
-                return;
-            };
-            let payload_state = snapshot
-                .requested_table
-                .map(|table| {
-                    format!(
-                        "table rows={} cols={} content_version={}",
-                        table.rows, table.cols, table.content_version
-                    )
-                })
-                .unwrap_or_else(|| "missing_or_non_table_payload".to_owned());
-            super::trace_table(
-                "focus_cell.gui.end",
-                format_args!(
-                    "block={block_id} row={row} col={col} focused_block={:?} focused_cell={:?} payload={payload_state}",
-                    snapshot.focused_block_id, snapshot.focused_cell
-                ),
-            );
-        }
+                ))
+                .is_ok();
+            if let Ok(snapshot) = session.table_interaction(Some(block_id)) {
+                let payload_state = snapshot
+                    .requested_table
+                    .map(|table| {
+                        format!(
+                            "table rows={} cols={} content_version={}",
+                            table.rows, table.cols, table.content_version
+                        )
+                    })
+                    .unwrap_or_else(|| "missing_or_non_table_payload".to_owned());
+                super::trace_table(
+                    "focus_cell.gui.end",
+                    format_args!(
+                        "block={block_id} row={row} col={col} focused_block={:?} focused_cell={:?} payload={payload_state}",
+                        snapshot.focused_block_id, snapshot.focused_cell
+                    ),
+                );
+            }
+            focus_applied
+        } else {
+            false
+        };
         cx.notify();
+        focus_applied
     }
 
     pub(crate) fn begin_table_cell_text_selection_from_gui(
@@ -171,10 +197,15 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.status.readonly {
+            return;
+        }
         self.pause_caret_blink(cx);
         let position = pointer.map(|(position, _)| position);
         let click_count = pointer.map(|(_, click_count)| click_count).unwrap_or(1);
-        self.focus_table_cell_from_gui(block_id, row, col, position, window, cx);
+        if !self.focus_table_cell_from_gui(block_id, row, col, position, window, cx) {
+            return;
+        }
         if let Some(kind) = crate::surfaces::text::selection_kind_for_click_count(click_count)
             && let Some(position) = position
             && let Some(selection) =
@@ -200,13 +231,23 @@ impl CditorV2View {
             .filter(|focused| (focused.block_id, focused.row, focused.col) == (block_id, row, col))
             .map(|focused| (focused.offset, focused.affinity))
             .unwrap_or((0, cditor_core::edit::TextAffinity::Downstream));
-        self.interaction.table_interaction_mode = GuiTableInteractionMode::SelectingCellText {
-            block_id,
-            row,
-            col,
-            anchor_offset: anchor_position.0,
-            anchor_affinity: anchor_position.1,
-        };
+        let is_mobile = cfg!(any(target_os = "ios", target_os = "android"));
+        if retains_pointer_drag_after_text_activation(is_mobile) {
+            self.interaction.table_interaction_mode = GuiTableInteractionMode::SelectingCellText {
+                block_id,
+                row,
+                col,
+                anchor_offset: anchor_position.0,
+                anchor_affinity: anchor_position.1,
+            };
+        } else {
+            self.interaction.table_interaction_mode =
+                GuiTableInteractionMode::EditingCell { block_id, row, col };
+        }
+        if is_mobile {
+            self.input.cancel_focus_dismissal();
+            activate_mobile_text_input(window);
+        }
     }
 
     pub(crate) fn update_table_cell_text_selection_from_gui(

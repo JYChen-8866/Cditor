@@ -25,7 +25,6 @@ impl CditorV2View {
             .is_some_and(|edit| edit.block_id == block_id)
         {
             self.cancel_code_language_edit(cx);
-            window.focus(&self.focus.editor, cx);
         } else {
             self.start_code_language_edit_from_gui(block_id, language, pointer_y_px, window, cx);
         }
@@ -37,9 +36,7 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) -> bool {
         let dismissed = self.cancel_code_language_edit(cx);
-        if dismissed {
-            window.focus(&self.focus.editor, cx);
-        }
+        let _ = window;
         dismissed
     }
 
@@ -55,8 +52,6 @@ impl CditorV2View {
         if !self.commit_document_composition_before_external_focus(cx) {
             return;
         }
-        window.focus(&self.focus.code_language, cx);
-        self.input.target = Some(GuiPlatformInputTarget::code_language(block_id));
         let viewport = EditorViewport::from_measurement(
             self.interaction.editor_viewport_handle.bounds(),
             window.viewport_size(),
@@ -65,6 +60,8 @@ impl CditorV2View {
         self.overlay.code_language_edit = Some(CodeLanguageEditState::new_dropdown_with_placement(
             block_id, language, placement,
         ));
+        self.input
+            .request_focus(GuiPlatformInputTarget::code_language(block_id));
         cx.notify();
     }
 
@@ -72,6 +69,9 @@ impl CditorV2View {
         let Some(edit) = self.overlay.code_language_edit.take() else {
             return false;
         };
+        self.input
+            .clear_focus_request(GuiPlatformInputTarget::code_language(edit.block_id));
+        self.input.request_focus_dismissal();
         if self.input.target == Some(GuiPlatformInputTarget::code_language(edit.block_id)) {
             self.input.target = None;
         }
@@ -134,9 +134,31 @@ impl CditorV2View {
         }
     }
 
+    pub(crate) fn request_code_language_focus_from_gui(
+        &mut self,
+        block_id: BlockId,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if !self
+            .overlay
+            .code_language_edit
+            .as_ref()
+            .is_some_and(|edit| edit.block_id == block_id)
+        {
+            return false;
+        }
+        self.input
+            .request_focus(GuiPlatformInputTarget::code_language(block_id));
+        cx.notify();
+        true
+    }
+
     pub(crate) fn cancel_code_language_edit(&mut self, cx: &mut Context<Self>) -> bool {
-        let had_edit = self.overlay.code_language_edit.take().is_some();
-        if had_edit {
+        let edit = self.overlay.code_language_edit.take();
+        if let Some(edit) = edit {
+            self.input
+                .clear_focus_request(GuiPlatformInputTarget::code_language(edit.block_id));
+            self.input.request_focus_dismissal();
             if self
                 .input
                 .target
@@ -145,8 +167,9 @@ impl CditorV2View {
                 self.input.target = None;
             }
             cx.notify();
+            return true;
         }
-        had_edit
+        false
     }
 
     pub(crate) fn scroll_code_language_suggestions_from_gui(
