@@ -86,13 +86,26 @@ pub(super) fn apply_block_operation(
                 record.payload = after_payload.clone();
             }
             let next_kind_tag = kind_tag_for_rich_block_kind(after_kind);
-            let height_estimate = estimate_block_height(
-                after_kind,
-                after_payload,
-                cditor_core::layout::layout_width_for_kind(after_kind),
-            );
             let layout = &mut staging.records[position].layout_meta;
-            layout.estimated_height = height_estimate.height;
+            // A same-kind text replacement (Enter split, formatting rewrite)
+            // scales the real measured height by line count instead of
+            // re-estimating at the synthetic layout width, so following blocks
+            // don't jump for the frames before the GUI re-measures.
+            layout.estimated_height = super::split_height::replacement_height_estimate(
+                before_kind,
+                after_kind,
+                before_payload,
+                after_payload,
+                layout.measured_height,
+            )
+            .unwrap_or_else(|| {
+                estimate_block_height(
+                    after_kind,
+                    after_payload,
+                    cditor_core::layout::layout_width_for_kind(after_kind),
+                )
+                .height
+            });
             layout.measured_height = None;
             layout.dirty = true;
             if staging.records[position].kind_tag != next_kind_tag {

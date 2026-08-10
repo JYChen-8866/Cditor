@@ -45,13 +45,26 @@ impl TextLayoutApplyKey {
                 hasher.finish()
             },
             bounds_bits: [
-                f32::from(layout.bounds.origin.x).to_bits(),
-                f32::from(layout.bounds.origin.y).to_bits(),
-                f32::from(layout.bounds.size.width).to_bits(),
-                f32::from(layout.bounds.size.height).to_bits(),
+                quantized_px_bits(f32::from(layout.bounds.origin.x)),
+                quantized_px_bits(f32::from(layout.bounds.origin.y)),
+                quantized_px_bits(f32::from(layout.bounds.size.width)),
+                quantized_px_bits(f32::from(layout.bounds.size.height)),
             ],
         }
     }
+}
+
+/// Key equality must survive sub-pixel paint jitter: `f32` accumulation order
+/// and platform shaping produce bounds that differ by fractions of a pixel
+/// for the same logical placement, and a raw bit-pattern key re-enters
+/// `accept_text_layout` (and schedules a correction frame) for every such
+/// non-change. An eighth of a logical pixel is finer than one physical pixel
+/// at any supported scale factor, so real movement still changes the key.
+fn quantized_px_bits(value: f32) -> u32 {
+    if !value.is_finite() {
+        return value.to_bits();
+    }
+    ((value * 8.0).round() / 8.0).to_bits()
 }
 
 fn current_layout<'a>(
@@ -265,6 +278,65 @@ mod tests {
             publish_text_layout(view, moved);
             assert_eq!(view.cache.text_layouts[&1].bounds, moved_bounds);
             assert_eq!(view.scheduling.main_thread.pending_len(), 0);
+        });
+    }
+
+    #[gpui::test]
+    fn sub_pixel_bounds_jitter_does_not_reenter_the_layout_cache(cx: &mut TestAppContext) {
+        let runtime = DocumentRuntime::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                "jittered geometry",
+            )],
+            720.0,
+        );
+        let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+        view.update(cx, |view, _cx| {
+            let current = view
+                .ready_session()
+                .unwrap()
+                .surface_version(SurfaceId::Block(1))
+                .unwrap()
+                .unwrap();
+            let initial_bounds = Bounds::new(point(px(20.0), px(40.0)), size(px(320.0), px(24.0)));
+            let mut layout = crate::text::test_platform_layout(
+                1,
+                current.content_version,
+                "jittered geometry",
+                initial_bounds,
+                None,
+            );
+            layout.layout_version = current.layout_version;
+            assert!(publish_text_layout(view, layout));
+
+            // f32 accumulation-order jitter well below one physical pixel must
+            // not look like a new placement.
+            let jittered_bounds =
+                Bounds::new(point(px(20.004), px(40.006)), size(px(320.0), px(23.996)));
+            let mut jittered = crate::text::test_platform_layout(
+                1,
+                current.content_version,
+                "jittered geometry",
+                jittered_bounds,
+                None,
+            );
+            jittered.layout_version = current.layout_version;
+            assert!(!publish_text_layout(view, jittered));
+
+            // A real move (a quarter pixel and beyond) still updates the cache.
+            let moved_bounds = Bounds::new(point(px(20.0), px(41.0)), size(px(320.0), px(24.0)));
+            let mut moved = crate::text::test_platform_layout(
+                1,
+                current.content_version,
+                "jittered geometry",
+                moved_bounds,
+                None,
+            );
+            moved.layout_version = current.layout_version;
+            assert!(publish_text_layout(view, moved));
         });
     }
 

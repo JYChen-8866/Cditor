@@ -545,7 +545,10 @@ impl Element for RichTextGpuiElement {
                 bounds,
                 measured_height: normalize_text_inner_measured_height(
                     &self.input.kind,
-                    f64::from(bounds.size.height),
+                    super::platform::quantize_measured_height_to_physical_pixels(
+                        f64::from(bounds.size.height),
+                        window.scale_factor(),
+                    ),
                 )
                 .height,
                 table_cell_position: input_handler.table_cell_position,

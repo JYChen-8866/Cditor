@@ -8,12 +8,23 @@ const WARNING_RENDER_OVERSCAN_VIEWPORTS: f64 = 0.5;
 // geometry resident even under critical pressure so the render window can be
 // positioned above the viewport instead of exposing that offset as blank UI.
 const MIN_RENDER_LEADING_GUARD_PX: f64 = 384.0;
+// Maximum per-edge drift (in blocks) that height-correction feedback may move
+// the desired window before planning accepts the new ranges. Windows text
+// metrics re-measure the edited block with small deltas on every keystroke;
+// without hysteresis each delta shifts the block boundaries, changes the
+// desired window identity, bumps the generation, and discards in-flight
+// payload loads. Scrolls and structure edits bypass this entirely.
+const WINDOW_PLAN_HYSTERESIS_BLOCKS: usize = 8;
+const WINDOW_PLAN_SCROLL_EPSILON_PX: f64 = 0.5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ViewportWindowRanges {
     pub(super) page_range: Range<usize>,
     pub(super) block_range: Range<usize>,
     pub(super) visible_block_range: Range<usize>,
+    /// Blocks physically intersecting the viewport, without overscan. Used by
+    /// planning hysteresis to prove a previous window still covers the screen.
+    pub(super) viewport_core_range: Range<usize>,
 }
 
 impl DocumentRuntime {
@@ -49,6 +60,7 @@ impl DocumentRuntime {
                 page_range: 0..0,
                 block_range: 0..0,
                 visible_block_range: 0..0,
+                viewport_core_range: 0..0,
             };
         }
         let current = self
@@ -112,15 +124,69 @@ impl DocumentRuntime {
             .saturating_add(1)
             .min(self.layout.page_layout.page_count());
         let block_range = start..end;
+        let viewport_core_range = current..visible_end.max(current + 1);
         ViewportWindowRanges {
             page_range: start_page..end_page.max(start_page.saturating_add(1)),
-            // The complete bounded render window is the atomic readiness unit.
-            // This prevents a committed frame from mixing loaded viewport rows
-            // with placeholder overscan rows, without depending on total document
-            // size: the range is always capped by MAX_RENDER_WINDOW_BLOCKS.
-            visible_block_range: block_range.clone(),
+            // Readiness is judged on the physical viewport core only. Overscan
+            // rows belong to the render window for geometry, but a missing
+            // overscan payload must not veto presenting a fully loaded screen
+            // — the GUI reserves missing overscan rows silently and the
+            // prefetch lane fills them. Scrollbar drags override this with the
+            // complete render window (see projection.rs), because a long jump
+            // has no adjacent resident content to reserve space with.
+            visible_block_range: viewport_core_range.clone(),
+            viewport_core_range,
             block_range,
         }
+    }
+
+    /// Viewport window ranges with height-correction hysteresis applied.
+    ///
+    /// Text re-measurement moves block boundaries by fractions of a block on
+    /// every keystroke (Windows metrics especially). Re-planning the window
+    /// for those micro-shifts changes the desired window identity, bumps the
+    /// projection generation, and discards in-flight payload loads while the
+    /// user types. When nothing but heights changed — same structure, same
+    /// folding, same scroll offset — and the previously planned window still
+    /// covers the physical viewport within a small per-edge drift, planning
+    /// keeps the previous ranges. Scrolling, scrollbar drags, folding, and
+    /// structure edits all bypass the reuse and re-plan immediately.
+    pub(super) fn viewport_window_ranges_planned(&mut self) -> ViewportWindowRanges {
+        let current = self.viewport_window_ranges();
+        let visibility_version = self.document.visible_index.visibility_version;
+        let reused = self.layout.scrollbar_drag.is_none() && {
+            let window = &self.layout.projection.window;
+            window.desired.as_ref().is_some_and(|previous| {
+                previous.structure_version == self.document.visible_index.source_structure_version
+                    && window.desired_visibility_version == Some(visibility_version)
+                    && (previous.presented_scroll_top - self.layout.scroll.global_scroll_top).abs()
+                        < WINDOW_PLAN_SCROLL_EPSILON_PX
+                    && previous.block_range != current.block_range
+                    && range_edge_drift(&previous.block_range, &current.block_range)
+                        <= WINDOW_PLAN_HYSTERESIS_BLOCKS
+                    && previous.block_range.start <= current.viewport_core_range.start
+                    && current.viewport_core_range.end <= previous.block_range.end
+            })
+        };
+        let ranges = if reused {
+            let previous = self
+                .layout
+                .projection
+                .window
+                .desired
+                .as_ref()
+                .expect("hysteresis reuse requires a previous desired window");
+            ViewportWindowRanges {
+                page_range: previous.page_range.clone(),
+                block_range: previous.block_range.clone(),
+                visible_block_range: previous.visible_block_range.clone(),
+                viewport_core_range: current.viewport_core_range,
+            }
+        } else {
+            current
+        };
+        self.layout.projection.window.desired_visibility_version = Some(visibility_version);
+        ranges
     }
 
     pub(super) fn ensure_demo_payload_window(&mut self, block_range: &Range<usize>) {
@@ -179,5 +245,24 @@ impl DocumentRuntime {
             .block_end()
             .min(total_visible);
         start..end.max(start)
+    }
+}
+
+fn range_edge_drift(previous: &Range<usize>, current: &Range<usize>) -> usize {
+    previous
+        .start
+        .abs_diff(current.start)
+        .max(previous.end.abs_diff(current.end))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn range_edge_drift_is_the_larger_per_edge_shift() {
+        assert_eq!(range_edge_drift(&(10..50), &(10..50)), 0);
+        assert_eq!(range_edge_drift(&(10..50), &(12..49)), 2);
+        assert_eq!(range_edge_drift(&(10..50), &(4..70)), 20);
     }
 }

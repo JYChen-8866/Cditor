@@ -54,7 +54,7 @@ impl DocumentRuntime {
         // still maintained for layout and scroll geometry, but must not decide how
         // many block entities are created in a frame. This is the same bounded
         // path used by the synthetic 100k fixture and by resident/PG documents.
-        let desired_ranges = self.viewport_window_ranges();
+        let desired_ranges = self.viewport_window_ranges_planned();
         self.preheat_page_local_cache(desired_ranges.page_range.clone());
         layout_prefetch_page_range.start = layout_prefetch_page_range
             .start
@@ -85,6 +85,27 @@ impl DocumentRuntime {
             && self.payloads_resident_for_prefetch_cached(&payload_prefetch_block_range);
         let desired_failed = self.payload_terminal_failure_for(&desired.visible_block_range);
         let stable = self.layout.projection.publication.stable.clone();
+        // A stale frame may only substitute for a placeholder when the viewport
+        // has not moved away from it: a structure edit keeps the scroll offset
+        // in place, a scrollbar jump does not, and replaying far-away content
+        // at the wrong offset would be worse than a skeleton.
+        let fallback_scroll_near = |target: &ProjectionWindowTarget| {
+            (target.presented_scroll_top - self.layout.scroll.global_scroll_top).abs()
+                < self.layout.scroll.viewport_height.max(1.0) * 0.5
+        };
+        let fallback_allowed = self.layout.scrollbar_drag.is_none()
+            && (stable
+                .as_ref()
+                .map(|snapshot| &snapshot.target)
+                .is_some_and(fallback_scroll_near)
+                || self
+                    .layout
+                    .projection
+                    .publication
+                    .stale_fallback
+                    .as_ref()
+                    .map(|snapshot| &snapshot.target)
+                    .is_some_and(fallback_scroll_near));
         let decision = self.layout.projection.reconcile(
             desired,
             desired_ready,
@@ -94,6 +115,7 @@ impl DocumentRuntime {
                     && stable.target.block_range == stable.projection.render_window.block_range
             }),
             desired_failed,
+            fallback_allowed,
         );
         let mut projection = match decision {
             ProjectionWindowDecision::Stable(stable_target) => {
@@ -131,6 +153,20 @@ impl DocumentRuntime {
                 desired.block_range,
                 desired.visible_block_range,
             ),
+            ProjectionWindowDecision::StaleFallback(_) => {
+                let snapshot = self
+                    .layout
+                    .projection
+                    .publication
+                    .stale_fallback
+                    .as_ref()
+                    .expect("StaleFallback decisions require a retained snapshot");
+                // Replay the last published frame while the edited window's
+                // payloads finish loading. The payload scheduler still targets
+                // the new desired ranges (set below), so this state converges
+                // to a fresh Stable publication instead of persisting.
+                snapshot.projection.clone()
+            }
             ProjectionWindowDecision::FailedTarget {
                 target,
                 stable: Some(stable_target),

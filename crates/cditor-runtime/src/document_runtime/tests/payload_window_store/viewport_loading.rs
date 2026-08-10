@@ -186,16 +186,27 @@ fn incremental_scroll_keeps_resident_blocks_and_only_placeholds_missing_edges() 
 
     assert!(!preparing.render_window.is_placeholder());
     assert!(preparing.placeholder_window_height.is_none());
-    assert!(preparing.blocks.iter().all(|block| !block.placeholder));
-    assert_eq!(
-        preparing.render_window.block_range, stable.render_window.block_range,
-        "an incomplete adjacent target must retain the complete stable frame"
+    // The viewport core is resident, so the window advances immediately; only
+    // overscan edges beyond the resident payloads appear as placeholders and
+    // are reserved silently by the GUI while the prefetch lane fills them.
+    assert!(
+        preparing
+            .blocks
+            .iter()
+            .filter(|block| preparing
+                .payload_visible_block_range
+                .contains(&block.visible_index))
+            .all(|block| !block.placeholder)
     );
-    let desired_range = runtime.current_foreground_payload_range();
+    assert!(
+        preparing.blocks.iter().any(|block| block.placeholder),
+        "edges past the resident range placehold instead of blocking the commit"
+    );
     assert!(
         runtime
-            .plan_payload_window_load_if_needed(desired_range)
-            .is_some()
+            .plan_payload_prefetch_load_if_needed(preparing.payload_prefetch_block_range.clone())
+            .is_some(),
+        "the prefetch lane must pick up the missing overscan edge"
     );
 }
 

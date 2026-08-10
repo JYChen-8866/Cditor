@@ -39,6 +39,10 @@ pub(super) struct ProjectionState {
 pub(super) struct ProjectionWindowState {
     pub(super) generation: u64,
     pub(super) desired: Option<ProjectionWindowTarget>,
+    /// Visibility version the current `desired` was planned against. Window
+    /// planning hysteresis may only reuse `desired` while folding state is
+    /// unchanged; a fold remaps visible indices without a structure bump.
+    pub(super) desired_visibility_version: Option<u64>,
     pub(super) preparing: Option<ProjectionWindowTarget>,
     pub(super) load_state: ProjectionWindowLoadState,
 }
@@ -47,6 +51,11 @@ pub(super) struct ProjectionWindowState {
 pub(super) enum ProjectionWindowDecision {
     Stable(ProjectionWindowTarget),
     ColdPlaceholder(ProjectionWindowTarget),
+    /// The stable snapshot was invalidated (structure edit) and the desired
+    /// window is not resident yet: replay the last published frame instead of
+    /// degrading to a placeholder window. The caller reads the frame from
+    /// `publication.stale_fallback`.
+    StaleFallback(ProjectionWindowTarget),
     FailedTarget {
         target: ProjectionWindowTarget,
         stable: Option<ProjectionWindowTarget>,
@@ -57,6 +66,12 @@ pub(super) enum ProjectionWindowDecision {
 pub(super) struct ProjectionPublicationState {
     pub(super) next_frame_id: u64,
     pub(super) stable: Option<StableProjectionSnapshot>,
+    /// The most recent stable snapshot whose target was invalidated by a
+    /// structure change. A local edit (Enter split, delete, move) republishes
+    /// a fresh snapshot within a frame when payloads are resident; when they
+    /// are not, this frame keeps the screen populated instead of a skeleton.
+    /// Cleared on successful publication and on terminal load failure.
+    pub(super) stale_fallback: Option<StableProjectionSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -89,12 +104,14 @@ impl Default for ProjectionState {
             window: ProjectionWindowState {
                 generation: 0,
                 desired: None,
+                desired_visibility_version: None,
                 preparing: None,
                 load_state: ProjectionWindowLoadState::ColdPlaceholder,
             },
             publication: ProjectionPublicationState {
                 next_frame_id: 0,
                 stable: None,
+                stale_fallback: None,
             },
         }
     }
@@ -111,10 +128,14 @@ impl ProjectionState {
         desired_ready: bool,
         stable_valid: bool,
         desired_failed: bool,
+        fallback_allowed: bool,
     ) -> ProjectionWindowDecision {
         let invalidated_stable = self.publication.stable.is_some() && !stable_valid;
-        if !stable_valid {
-            self.publication.stable = None;
+        if !stable_valid && let Some(snapshot) = self.publication.stable.take() {
+            // Keep the invalidated frame around: a local structure edit whose
+            // payloads are not resident this frame replays it instead of a
+            // full-window skeleton.
+            self.publication.stale_fallback = Some(snapshot);
         }
 
         let desired_changed = self
@@ -130,6 +151,7 @@ impl ProjectionState {
         if desired_ready {
             self.window.preparing = None;
             self.window.load_state = ProjectionWindowLoadState::CurrentStable;
+            self.publication.stale_fallback = None;
             return ProjectionWindowDecision::Stable(desired);
         }
 
@@ -142,6 +164,10 @@ impl ProjectionState {
         if desired_failed {
             self.window.preparing = None;
             self.window.load_state = ProjectionWindowLoadState::Failed;
+            // The failure surface must be visible; masking it with an old
+            // frame would leave the user typing into a window that can never
+            // catch up.
+            self.publication.stale_fallback = None;
             return ProjectionWindowDecision::FailedTarget {
                 target: desired,
                 stable,
@@ -151,6 +177,9 @@ impl ProjectionState {
         if let Some(stable) = stable {
             self.window.load_state = ProjectionWindowLoadState::PreparingNext;
             ProjectionWindowDecision::Stable(stable)
+        } else if fallback_allowed && self.publication.stale_fallback.is_some() {
+            self.window.load_state = ProjectionWindowLoadState::PreparingNext;
+            ProjectionWindowDecision::StaleFallback(desired)
         } else {
             self.window.load_state = ProjectionWindowLoadState::ColdPlaceholder;
             ProjectionWindowDecision::ColdPlaceholder(desired)
@@ -239,7 +268,7 @@ mod tests {
         let mut state = ProjectionState::default();
         let stable = projection_target(0, 0.0);
         assert_eq!(
-            state.reconcile(stable.clone(), true, false, false),
+            state.reconcile(stable.clone(), true, false, false, false),
             ProjectionWindowDecision::Stable(stable.clone())
         );
         state.publication.stable = Some(StableProjectionSnapshot {
@@ -250,7 +279,7 @@ mod tests {
 
         let desired = projection_target(100, 3_200.0);
         assert_eq!(
-            state.reconcile(desired.clone(), false, true, false),
+            state.reconcile(desired.clone(), false, true, false, false),
             ProjectionWindowDecision::Stable(stable)
         );
         assert_eq!(state.window.preparing, Some(desired));
@@ -258,5 +287,59 @@ mod tests {
             state.window.load_state,
             ProjectionWindowLoadState::PreparingNext
         );
+    }
+
+    #[test]
+    fn invalidated_stable_replays_as_stale_fallback_instead_of_placeholder() {
+        let mut state = ProjectionState::default();
+        let stable = projection_target(0, 0.0);
+        state.publication.stable = Some(StableProjectionSnapshot {
+            frame_id: 0,
+            target: stable.clone(),
+            projection: DocumentRuntime::demo().projection_for_window(),
+        });
+
+        // A structure edit invalidates the snapshot; the desired window is not
+        // resident yet, but the retained frame substitutes for the skeleton.
+        let desired = projection_target(0, 0.0);
+        assert_eq!(
+            state.reconcile(desired.clone(), false, false, false, true),
+            ProjectionWindowDecision::StaleFallback(desired.clone())
+        );
+        assert!(state.publication.stable.is_none());
+        assert!(state.publication.stale_fallback.is_some());
+        assert_eq!(
+            state.window.load_state,
+            ProjectionWindowLoadState::PreparingNext
+        );
+
+        // Once the desired window is resident, the fallback is dropped.
+        assert_eq!(
+            state.reconcile(desired.clone(), true, false, false, true),
+            ProjectionWindowDecision::Stable(desired.clone())
+        );
+        assert!(state.publication.stale_fallback.is_none());
+
+        // Without permission (scroll moved away / scrollbar drag) the same
+        // situation still degrades to the cold placeholder.
+        state.publication.stale_fallback = Some(StableProjectionSnapshot {
+            frame_id: 1,
+            target: stable,
+            projection: DocumentRuntime::demo().projection_for_window(),
+        });
+        assert_eq!(
+            state.reconcile(desired.clone(), false, false, false, false),
+            ProjectionWindowDecision::ColdPlaceholder(desired.clone())
+        );
+
+        // A terminal failure surfaces the error instead of masking it.
+        assert_eq!(
+            state.reconcile(desired.clone(), false, false, true, true),
+            ProjectionWindowDecision::FailedTarget {
+                target: desired,
+                stable: None,
+            }
+        );
+        assert!(state.publication.stale_fallback.is_none());
     }
 }

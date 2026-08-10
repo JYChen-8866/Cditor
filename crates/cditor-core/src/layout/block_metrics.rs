@@ -452,6 +452,22 @@ pub fn text_line_height_for_kind(kind: &RichBlockKind) -> f64 {
     }
 }
 
+/// Tolerance for treating a re-measured block height as actually changed.
+///
+/// Platform text engines re-measure the same logical layout with sub-pixel
+/// differences (DirectWrite under fractional display scaling especially).
+/// Accepting those as real changes re-plans the render window on every
+/// keystroke. Text-like blocks therefore tolerate a small fraction of their
+/// line height — far below one wrapped line, the smallest real change —
+/// while non-text blocks (images under continuous resize) keep the tight
+/// absolute tolerance.
+pub fn measured_height_tolerance_px(kind: &RichBlockKind) -> f64 {
+    match height_rule_for_kind(kind) {
+        BlockHeightRule::TextLike(metrics) => (metrics.line_height * 0.05).max(0.5),
+        _ => 0.5,
+    }
+}
+
 pub fn normalize_text_inner_measured_height(
     kind: &RichBlockKind,
     text_inner_height: f64,

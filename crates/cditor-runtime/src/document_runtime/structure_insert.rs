@@ -241,6 +241,23 @@ impl DocumentRuntime {
             kind: new_kind.clone(),
             payload: trailing_payload,
         };
+        // Estimate the trailing block from the source block's real measured
+        // height when available; the synthetic-width estimate mispredicts the
+        // wrap count of soft-wrapped text and makes following blocks jump.
+        let trailing_height_estimate = self.document.index.layout_meta[current_index]
+            .measured_height
+            .filter(|_| new_kind == before_current_payload.kind)
+            .and_then(|measured| {
+                let total_len = editable_text_len_for_payload(&before_current_payload.payload)?;
+                let trailing_len = editable_text_len_for_payload(&new_payload.payload)?;
+                split_height::scaled_split_height_estimate(
+                    &new_kind,
+                    measured,
+                    total_len,
+                    trailing_len,
+                )
+            })
+            .unwrap_or_else(|| estimate_payload_height(&new_payload, insert_at));
         let record = BlockIndexRecord::new(
             new_block_id,
             parent_id,
@@ -250,7 +267,7 @@ impl DocumentRuntime {
         )
         .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(
             new_block_id,
-            estimate_payload_height(&new_payload, insert_at),
+            trailing_height_estimate,
         ));
         let after_selection = Some(DocumentSelection::caret(TextPosition {
             block_id: new_block_id,

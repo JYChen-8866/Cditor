@@ -156,6 +156,8 @@ mod height_anchor_property;
 mod inline_color;
 #[path = "tests/inline_markdown_incremental.rs"]
 mod inline_markdown_incremental;
+#[path = "tests/input_flash_regression.rs"]
+mod input_flash_regression;
 #[path = "tests/large_window.rs"]
 mod large_window;
 #[path = "tests/list_structure.rs"]

@@ -47,6 +47,7 @@ mod selection_state;
 mod selection_transaction;
 mod selection_unified;
 mod slash_command;
+mod split_height;
 mod state;
 mod structure_delete;
 mod structure_edit;

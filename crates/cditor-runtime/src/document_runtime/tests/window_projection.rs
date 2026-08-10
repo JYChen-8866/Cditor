@@ -8,10 +8,14 @@ fn small_document_requires_the_complete_render_window_before_commit() {
     let projection = runtime.projection_for_window_planned();
 
     assert_eq!(projection.render_window.block_range, 0..24);
-    assert_eq!(
-        projection.payload_visible_block_range,
-        projection.render_window.block_range
+    // Readiness is judged on the viewport core; the render window may carry
+    // additional overscan rows that reserve geometry silently.
+    assert!(
+        projection.payload_visible_block_range.start >= projection.render_window.block_range.start
+            && projection.payload_visible_block_range.end
+                <= projection.render_window.block_range.end
     );
+    assert!(!projection.payload_visible_block_range.is_empty());
 }
 
 #[test]
@@ -21,10 +25,12 @@ fn large_document_uses_a_bounded_atomic_render_window() {
     let projection = runtime.projection_for_window_planned();
 
     assert!(projection.render_window.block_range.len() <= 320);
-    assert_eq!(
-        projection.payload_visible_block_range,
-        projection.render_window.block_range
+    assert!(
+        projection.payload_visible_block_range.start >= projection.render_window.block_range.start
+            && projection.payload_visible_block_range.end
+                <= projection.render_window.block_range.end
     );
+    assert!(!projection.payload_visible_block_range.is_empty());
 }
 
 fn assert_loaded_versions_do_not_regress(
@@ -899,7 +905,17 @@ fn terminal_failure_in_atomic_render_window_blocks_cold_commit() {
     let committed = runtime.projection_for_window_planned();
     assert!(!committed.render_window.is_placeholder());
     assert!(committed.placeholder_window_failure.is_none());
-    assert!(committed.blocks.iter().all(|block| !block.placeholder));
+    // Overscan rows beyond the loaded visible core may remain placeholders;
+    // they reserve geometry silently and load through the prefetch lane.
+    assert!(
+        committed
+            .blocks
+            .iter()
+            .filter(|block| committed
+                .payload_visible_block_range
+                .contains(&block.visible_index))
+            .all(|block| !block.placeholder)
+    );
 }
 
 #[test]

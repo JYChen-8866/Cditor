@@ -427,7 +427,10 @@ impl Element for SegmentedRichTextElement {
                 bounds,
                 measured_height: normalize_text_inner_measured_height(
                     &self.input.kind,
-                    f64::from(request.total_height_px),
+                    super::platform::quantize_measured_height_to_physical_pixels(
+                        f64::from(request.total_height_px),
+                        window.scale_factor(),
+                    ),
                 )
                 .height,
                 table_cell_position: self.input_handler.table_cell_position,

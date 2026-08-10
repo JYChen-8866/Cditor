@@ -25,7 +25,8 @@ pub use block_metrics::{
     V1_CODE_FRAME_BORDER_WIDTH_PX, V1_CODE_INNER_MIN_HEIGHT_PX, V1_CODE_SURFACE_GAP_PX,
     V1_CODE_TEXT_LINE_HEIGHT_PX, V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX, estimate_block_height,
     estimate_kind_fallback_height, estimate_rich_spans_height, estimate_text_payload_height,
-    estimate_wrapped_line_count, normalize_text_inner_measured_height, text_line_height_for_kind,
+    estimate_wrapped_line_count, measured_height_tolerance_px,
+    normalize_text_inner_measured_height, text_line_height_for_kind,
 };
 pub use block_provider::{
     BlockLayoutProvider, CodeBlockLayoutProvider, ImageLayoutProvider, ParagraphLayoutProvider,

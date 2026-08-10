@@ -33,6 +33,7 @@ impl DocumentRuntime {
             );
             return Ok(false);
         };
+        let tolerance = cditor_core::layout::measured_height_tolerance_px(&payload.kind);
         if payload.content_version != content_version {
             trace_image_resize(
                 "height.reject",
@@ -53,8 +54,9 @@ impl DocumentRuntime {
             .visible_index_of(block_id)
             .and_then(|visible_index| self.layout.height_index.heights.get(visible_index).copied());
         let metadata_height = self.document.index.layout_meta[document_index].effective_height();
-        let index_matches = indexed_height.is_none_or(|previous| (previous - height).abs() < 0.5);
-        let metadata_matches = (metadata_height - height).abs() < 0.5;
+        let index_matches =
+            indexed_height.is_none_or(|previous| (previous - height).abs() < tolerance);
+        let metadata_matches = (metadata_height - height).abs() < tolerance;
         if index_matches && metadata_matches {
             self.layout.pending_measured_heights.remove(&block_id);
             trace_image_resize(
@@ -121,6 +123,7 @@ impl DocumentRuntime {
             if payload.content_version != pending_height.content_version {
                 continue;
             }
+            let tolerance = cditor_core::layout::measured_height_tolerance_px(&payload.kind);
             let Some(document_index) = self.document.index.index_of(block_id) else {
                 continue;
             };
@@ -143,8 +146,8 @@ impl DocumentRuntime {
                 });
             let metadata_height =
                 self.document.index.layout_meta[document_index].effective_height();
-            let index_matches = (indexed_height - pending_height.height).abs() < 0.5;
-            let metadata_matches = (metadata_height - pending_height.height).abs() < 0.5;
+            let index_matches = (indexed_height - pending_height.height).abs() < tolerance;
+            let metadata_matches = (metadata_height - pending_height.height).abs() < tolerance;
             if index_matches && metadata_matches {
                 continue;
             }

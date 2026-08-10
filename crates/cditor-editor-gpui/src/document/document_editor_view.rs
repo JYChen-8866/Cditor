@@ -190,6 +190,22 @@ impl DocumentEditorView {
                     );
                 }
                 block_y += height;
+                if block.placeholder
+                    && !projection
+                        .payload_visible_block_range
+                        .contains(&block.visible_index)
+                {
+                    // Overscan rows whose payload has not arrived reserve their
+                    // geometry silently; skeletons are reserved for the visible
+                    // core (cold jumps and scrollbar drags).
+                    return div()
+                        .absolute()
+                        .left(px(block_geometry.shell_left_px))
+                        .w(px(block_geometry.shell_width_px))
+                        .top(px(top as f32))
+                        .h(px(height as f32))
+                        .into_any_element();
+                }
                 let text_viewport = DocumentTextViewport::for_block(
                     top,
                     text_geometry.origin_y_px,

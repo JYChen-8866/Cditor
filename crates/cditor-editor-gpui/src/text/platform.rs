@@ -49,7 +49,28 @@ impl RichTextPlatformLayout {
             text_align: self.text_align,
         }
     }
+}
 
+/// Snaps a measured height to the physical pixel grid of the current display.
+///
+/// Platform text engines re-measure the same logical layout with sub-physical
+/// jitter (DirectWrite under fractional scale factors especially). Heights are
+/// only meaningful at physical pixel resolution, and feeding raw values into
+/// the runtime makes every keystroke look like a layout change and re-plans
+/// the render window. Values below one physical pixel apart quantize to the
+/// same height.
+pub(crate) fn quantize_measured_height_to_physical_pixels(
+    height_px: f64,
+    scale_factor: f32,
+) -> f64 {
+    let scale = f64::from(scale_factor);
+    if !(scale > 0.0) || !height_px.is_finite() {
+        return height_px;
+    }
+    (height_px * scale).round() / scale
+}
+
+impl RichTextPlatformLayout {
     /// Returns whether this snapshot was shaped under the supplied text
     /// constraints. Both sides are represented as `f32` because GPUI and the
     /// text layout engine shape in logical `f32` pixels.
@@ -228,6 +249,35 @@ mod tests {
         TextStyleConfig, build_text_layout,
     };
     use crate::theme::GuiTheme;
+
+    #[test]
+    fn measured_heights_quantize_to_the_physical_pixel_grid() {
+        for scale in [1.0_f32, 1.25, 1.5, 2.0] {
+            let scale_f64 = f64::from(scale);
+            // Round-trip: a value already on the physical grid is unchanged.
+            let on_grid = (72.0 * scale_f64).round() / scale_f64;
+            assert_eq!(
+                quantize_measured_height_to_physical_pixels(on_grid, scale),
+                on_grid,
+                "scale={scale}"
+            );
+            // Sub-physical jitter collapses onto the same grid point.
+            let jitter = 0.2 / scale_f64;
+            assert_eq!(
+                quantize_measured_height_to_physical_pixels(on_grid + jitter, scale),
+                on_grid,
+                "scale={scale}"
+            );
+            assert_eq!(
+                quantize_measured_height_to_physical_pixels(on_grid - jitter, scale),
+                on_grid,
+                "scale={scale}"
+            );
+        }
+        // Degenerate inputs pass through untouched.
+        assert_eq!(quantize_measured_height_to_physical_pixels(72.4, 0.0), 72.4);
+        assert!(quantize_measured_height_to_physical_pixels(f64::NAN, 2.0).is_nan());
+    }
 
     #[test]
     fn range_and_point_geometry_round_trip_through_the_same_text_layout_snapshot() {
