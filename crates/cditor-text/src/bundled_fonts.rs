@@ -14,6 +14,18 @@ pub fn set_document_body_font_family(family: impl Into<String>) {
     crate::cache::clear_text_layout_cache();
 }
 
+/// The family appended to every font stack for per-cluster glyph fallback.
+/// Defaults to the document body family; hosts set it explicitly to pin the
+/// CJK face used inside monospace surfaces (code blocks, inline code).
+pub fn document_fallback_font_family() -> String {
+    cditor_config::fallback_font_family()
+}
+
+pub fn set_document_fallback_font_family(family: impl Into<String>) {
+    cditor_config::set_fallback_font_family(family);
+    crate::cache::clear_text_layout_cache();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

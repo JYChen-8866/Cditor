@@ -104,6 +104,14 @@ impl DocumentRuntime {
             self.document.index.structure_version.saturating_add(1),
         )
         .map_err(|error| error.to_string())?;
+        trace_flash(
+            "structure.rebuild",
+            format_args!(
+                "sv={} blocks={}",
+                self.document.index.structure_version,
+                self.document.index.block_ids.len()
+            ),
+        );
         self.document.visible_index =
             VisibleDocumentIndex::from_document_index(&self.document.index);
         self.document.list_projection_cache = ListProjectionCache::build(&self.document.index);

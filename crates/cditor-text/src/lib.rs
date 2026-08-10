@@ -25,16 +25,17 @@ pub use accessibility::{
     TextAccessibilityProjection, accessibility_node_ids, build_text_accessibility_projection,
 };
 pub use bundled_fonts::{
-    DOCUMENT_BODY_FONT_FAMILY, document_body_font_family, set_document_body_font_family,
+    DOCUMENT_BODY_FONT_FAMILY, document_body_font_family, document_fallback_font_family,
+    set_document_body_font_family, set_document_fallback_font_family,
 };
 pub use cache::{
     CachedTextLayout, TextLayoutCachePolicy, TextLayoutCachePriority, TextLayoutCacheRequest,
     TextLayoutCacheStats, TextLayoutCacheTrimReport, TextLayoutKey, TextLayoutMemoryPressure,
-    TextRelayoutFallbackReason, TextRelayoutStrategy, TextShapeKey,
+    TextLayoutMissDiagnosis, TextRelayoutFallbackReason, TextRelayoutStrategy, TextShapeKey,
     apply_text_layout_memory_pressure, cached_text_layout, cached_text_layout_with_request,
-    set_text_layout_cache_policy, set_text_layout_surface_pin, sync_automatic_text_layout_pins,
-    text_layout_cache_stats, try_cached_text_layout_with_request,
-    try_compatible_text_layout_with_request,
+    diagnose_text_layout_miss, set_text_layout_cache_policy, set_text_layout_surface_pin,
+    sync_automatic_text_layout_pins, text_layout_cache_stats, try_cached_text_layout_with_request,
+    try_compatible_text_layout_with_request, try_stale_text_layout_for_surface,
 };
 pub use engine::{
     FontRegistrationError, InlineBoxKind, InlineBoxSpec, RegisteredFontFamily, TextAlignment,

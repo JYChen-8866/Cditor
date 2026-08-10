@@ -4,6 +4,7 @@ use std::io::{self, Write};
 pub(crate) fn write(line: fmt::Arguments<'_>) {
     let stderr = io::stderr();
     write_line(&mut stderr.lock(), line);
+    cditor_runtime::append_log_line(line);
 }
 
 pub(super) fn write_line(writer: &mut impl Write, line: fmt::Arguments<'_>) {

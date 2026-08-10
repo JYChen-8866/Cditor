@@ -69,6 +69,34 @@ fn resolve_proportional_font_family(override_family: Option<&str>, configured: &
     override_family.unwrap_or(configured).to_owned()
 }
 
+static FALLBACK_FONT_FAMILY_OVERRIDE: OnceLock<RwLock<Option<String>>> = OnceLock::new();
+
+/// Overrides the glyph-fallback family appended to every text font stack.
+///
+/// Fonts like monospace code faces rarely carry CJK glyphs; the shaper falls
+/// back per cluster to this family before consulting system fallback. Unset,
+/// it follows the proportional (body) family so CJK inside code blocks uses
+/// the same face as document prose.
+pub fn set_fallback_font_family(family: impl Into<String>) {
+    let family = family.into();
+    let family = (!family.trim().is_empty()).then_some(family);
+    *FALLBACK_FONT_FAMILY_OVERRIDE
+        .get_or_init(|| RwLock::new(None))
+        .write()
+        .expect("fallback font override lock poisoned") = family;
+}
+
+pub fn fallback_font_family() -> String {
+    let override_family = FALLBACK_FONT_FAMILY_OVERRIDE
+        .get_or_init(|| RwLock::new(None))
+        .read()
+        .expect("fallback font override lock poisoned");
+    match override_family.as_deref() {
+        Some(family) => family.to_owned(),
+        None => proportional_font_family(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DocumentTextStylesConfig {
     pub body: TextStyleConfig,

@@ -292,3 +292,65 @@ fn overscan_gap_does_not_block_the_visible_core_commit() {
         "overscan rows beyond the resident range reserve geometry as placeholders"
     );
 }
+
+#[test]
+fn composition_preview_is_projected_for_code_and_mermaid_blocks() {
+    for kind in [
+        RichBlockKind::Code {
+            language: Some("rust".to_owned()),
+        },
+        RichBlockKind::Mermaid,
+    ] {
+        let record = BlockIndexRecord::new(1, None, 0, kind_tag_for_rich_block_kind(&kind), 0)
+            .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(1, 32.0));
+        let payload = BlockPayloadRecord {
+            block_id: 1,
+            content_version: 1,
+            kind: kind.clone(),
+            payload: BlockPayload::Code {
+                language: match &kind {
+                    RichBlockKind::Code { language } => language.clone(),
+                    _ => Some("mermaid".to_owned()),
+                },
+                text: "fn main".to_owned(),
+            },
+        };
+        let mut runtime =
+            DocumentRuntime::from_index_records(1, vec![record], vec![payload], 1, 720.0);
+        runtime.focus_block_at_offset(1, 7).unwrap();
+        let expected = runtime.input_session_identity().unwrap();
+
+        runtime
+            .apply_realtime_input(RealtimeInputRequest {
+                expected,
+                input: RealtimeInput::UpdateComposition {
+                    range: 7..7,
+                    text: "nihao",
+                    selected_range: Some(5..5),
+                },
+            })
+            .unwrap();
+
+        let projection = runtime.projection_for_window_planned();
+        let block = projection
+            .blocks
+            .iter()
+            .find(|block| block.block_id == 1)
+            .expect("composition block is projected");
+        let BlockPayloadView::Loaded(record) = &block.payload else {
+            panic!("{kind:?}: composition block payload must be loaded");
+        };
+        let BlockPayload::Code { text, .. } = &record.payload else {
+            panic!("{kind:?}: payload must stay a code payload");
+        };
+        assert_eq!(
+            text, "fn mainnihao",
+            "{kind:?}: the projected payload must contain the composition preview"
+        );
+        assert_eq!(
+            block.marked_range,
+            Some(7..12),
+            "{kind:?}: the projected block must carry the marked range"
+        );
+    }
+}

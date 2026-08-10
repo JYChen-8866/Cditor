@@ -99,6 +99,10 @@ struct RichTextGpuiElement {
 struct RichTextGpuiPrepaintState {
     hitbox_id: Option<HitboxId>,
     layout: Option<TextLayoutSnapshot>,
+    /// The painted snapshot's shape identity no longer matches the input (a
+    /// queued re-shape is pending). Paint it, but never publish it as
+    /// interaction geometry or measured-height feedback.
+    stale_layout: bool,
     cursor: Option<gpui::PaintQuad>,
     inline_backgrounds: Vec<gpui::PaintQuad>,
     marked_backgrounds: Vec<gpui::PaintQuad>,
@@ -109,7 +113,7 @@ struct RichTextGpuiPrepaintState {
 }
 
 impl Element for RichTextGpuiElement {
-    type RequestLayoutState = Rc<RefCell<Option<Option<TextLayoutSnapshot>>>>;
+    type RequestLayoutState = Rc<RefCell<Option<Option<layout_resolution::MeasuredLayout>>>>;
     type PrepaintState = RichTextGpuiPrepaintState;
 
     fn id(&self) -> Option<ElementId> {
@@ -158,11 +162,11 @@ impl Element for RichTextGpuiElement {
             .input_handler
             .as_ref()
             .map(|handler| handler.view.clone());
-        let cache_request = if self
+        let editing_focused = self
             .input_handler
             .as_ref()
-            .is_some_and(|handler| handler.focused)
-        {
+            .is_some_and(|handler| handler.focused);
+        let cache_request = if editing_focused {
             TextLayoutCacheRequest::editing()
         } else {
             TextLayoutCacheRequest::visible()
@@ -173,7 +177,22 @@ impl Element for RichTextGpuiElement {
         style.max_size.width = gpui::relative(1.0).into();
         let layout_id =
             window.request_measured_layout(style, move |known, available, _window, cx| {
-                let wrap_width = measured_wrap_width(known.width, available.width, input.width_px);
+                // Document blocks are sized by the projection's own geometry
+                // (`DocumentTextGeometry`), so shaping follows that single
+                // canonical width. Trusting taffy's fed-back constraints lets
+                // the element's natural width from one frame become the wrap
+                // width of the next (a code card's flex measure caches it);
+                // that width then alternates with the prewarm width and the
+                // two shapes evict each other in the one-geometry-per-surface
+                // layout cache every frame. Non-block surfaces (table cells,
+                // captions, overlays) are genuinely container-sized and keep
+                // the measured constraints.
+                let wrap_width =
+                    if matches!(input.surface_id, crate::text::TextLayoutSurfaceId::Block(_)) {
+                        px(input.width_px.max(1.0) as f32)
+                    } else {
+                        measured_wrap_width(known.width, available.width, input.width_px)
+                    };
                 let options = text_layout_options(
                     &input,
                     theme,
@@ -186,16 +205,20 @@ impl Element for RichTextGpuiElement {
                     typography,
                     inline_boxes.clone(),
                 );
+                // The focused editing surface always shapes synchronously:
+                // IME composition preview and caret geometry must be correct
+                // in the same frame — never deferred behind scheduler budgets
+                // and never substituted with a stale snapshot.
+                let require_prewarmed = require_prewarmed_layout && !editing_focused;
                 let mut layout = resolve_measured_layout(
                     &input,
                     theme,
                     &options,
                     cache_request,
-                    require_prewarmed_layout,
+                    require_prewarmed,
                 );
-                if layout.is_none()
-                    && let Some(view) = prewarm_view.as_ref()
-                {
+                let needs_fresh_shape = layout.as_ref().is_none_or(|resolved| resolved.stale);
+                if needs_fresh_shape && let Some(view) = prewarm_view.as_ref() {
                     view.update(cx, |view, cx| {
                         view.ensure_text_layout_prewarm(
                             input.clone(),
@@ -205,24 +228,33 @@ impl Element for RichTextGpuiElement {
                             cx,
                         );
                     });
-                    layout = resolve_measured_layout(
+                    if let Some(fresh) = resolve_measured_layout(
                         &input,
                         theme,
                         &options,
                         cache_request,
-                        require_prewarmed_layout,
-                    );
+                        require_prewarmed,
+                    )
+                    .filter(|resolved| !resolved.stale)
+                    {
+                        layout = Some(fresh);
+                    }
                 }
                 let line_height = line_height_for(&input.kind, typography);
+                // The box reports its natural size exactly as before: only the
+                // SHAPING width is pinned to the runtime-projected width above.
+                // The cache key never sees the box size, so the width feedback
+                // loop stays dead, while flex containers (the code card) keep
+                // laying out against real content bounds.
                 let total_size = Size {
                     width: layout
                         .as_ref()
-                        .map(|layout| px(layout.width()))
+                        .map(|layout| px(layout.snapshot.width()))
                         .or(known.width)
                         .unwrap_or(wrap_width),
                     height: layout
                         .as_ref()
-                        .map(|layout| px(layout.height()))
+                        .map(|layout| px(layout.snapshot.height()))
                         .unwrap_or(line_height)
                         .max(line_height),
                 };
@@ -241,7 +273,9 @@ impl Element for RichTextGpuiElement {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let layout = request_layout.borrow_mut().take().flatten();
+        let resolved = request_layout.borrow_mut().take().flatten();
+        let stale_layout = resolved.as_ref().is_some_and(|resolved| resolved.stale);
+        let layout = resolved.map(|resolved| resolved.snapshot);
         let focused = self
             .input_handler
             .as_ref()
@@ -353,6 +387,18 @@ impl Element for RichTextGpuiElement {
             .map(|layout| text_background_quads(layout, bounds.origin))
             .unwrap_or_default();
         let deferred_placeholders = if layout.is_none() {
+            crate::diagnostics::flash::trace(
+                "text.deferred-placeholder",
+                format_args!(
+                    "surface={:?} kind={:?} content_v={} layout_v={} focused={} bounds_h={:.0} — painting skeleton bars this frame (prewarmed layout unavailable)",
+                    self.input.surface_id,
+                    self.input.kind,
+                    self.input.content_version,
+                    self.input.layout_version,
+                    focused,
+                    f32::from(bounds.size.height),
+                ),
+            );
             deferred_placeholder_quads(bounds, &self.input.kind, self.typography, self.theme)
         } else {
             Vec::new()
@@ -361,6 +407,7 @@ impl Element for RichTextGpuiElement {
         RichTextGpuiPrepaintState {
             hitbox_id,
             layout,
+            stale_layout,
             cursor,
             inline_backgrounds,
             marked_backgrounds,
@@ -381,6 +428,28 @@ impl Element for RichTextGpuiElement {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // Document blocks shape at the runtime-projected width, and every
+        // wrap-width consumer must agree on that single value: the projected
+        // block rects (IME geometry gate), the registered platform-input
+        // identity, and the published layout below all compare wrap widths
+        // bit-for-bit. Publishing the GPUI box width instead (the natural
+        // text width for a short code block) makes those comparisons fail,
+        // the precise IME geometry becomes unavailable, and the candidate
+        // window falls back to the element's top-left corner — covering the
+        // text being composed. Non-block surfaces are container-sized and
+        // keep the painted bounds width.
+        let identity_wrap_width = if matches!(
+            self.input.surface_id,
+            crate::text::TextLayoutSurfaceId::Block(_)
+        ) && self
+            .input_handler
+            .as_ref()
+            .is_none_or(|handler| handler.table_cell_position.is_none())
+        {
+            px(self.input.width_px.max(1.0) as f32)
+        } else {
+            bounds.size.width
+        };
         if let Some(input_handler) = self
             .input_handler
             .as_ref()
@@ -398,7 +467,7 @@ impl Element for RichTextGpuiElement {
                     surface_id: self.input.surface_id,
                     content_version: self.input.content_version,
                     layout_version: self.input.layout_version,
-                    wrap_width_bits: f32::from(bounds.size.width).to_bits(),
+                    wrap_width_bits: f32::from(identity_wrap_width).to_bits(),
                     text_align: self.input.text_align,
                 },
                 bounds,
@@ -479,6 +548,13 @@ impl Element for RichTextGpuiElement {
             window.paint_quad(cursor);
         }
 
+        if prepaint.stale_layout {
+            // A stale snapshot keeps the pixels on screen while the queued
+            // re-shape lands, but it must not become interaction geometry,
+            // accessibility state, or measured-height feedback: its text no
+            // longer matches the current content/layout versions.
+            return;
+        }
         if let (Some(input_handler), Some(layout)) =
             (self.input_handler.as_ref(), prepaint.layout.as_ref())
         {
@@ -501,7 +577,7 @@ impl Element for RichTextGpuiElement {
                 surface_id: self.input.surface_id,
                 content_version: self.input.content_version,
                 layout_version: self.input.layout_version,
-                wrap_width_px: f32::from(bounds.size.width),
+                wrap_width_px: f32::from(identity_wrap_width),
                 text_align: self.input.text_align,
                 input_session_identity: None,
                 snapshot: interaction_layout.clone().into(),

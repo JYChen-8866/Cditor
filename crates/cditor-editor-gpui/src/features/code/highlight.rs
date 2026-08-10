@@ -232,6 +232,23 @@ impl CodeHighlightCache {
             .iter()
             .map(|(block_id, _, _)| *block_id)
             .collect::<HashSet<_>>();
+        if crate::diagnostics::flash::enabled() {
+            let evicted = self
+                .entries
+                .keys()
+                .filter(|block_id| !visible_ids.contains(block_id))
+                .copied()
+                .collect::<Vec<_>>();
+            if !evicted.is_empty() {
+                crate::diagnostics::flash::trace(
+                    "code.highlight-evict",
+                    format_args!(
+                        "evicted={evicted:?} (code block left the projection or its payload \
+                         is not loaded this frame; re-highlight needed when it returns)"
+                    ),
+                );
+            }
+        }
         self.entries
             .retain(|block_id, _| visible_ids.contains(block_id));
 
@@ -244,6 +261,13 @@ impl CodeHighlightCache {
                 continue;
             }
             let Some(permit) = worker_admission.try_acquire(WorkerTaskKind::SyntaxHighlight) else {
+                crate::diagnostics::flash::trace(
+                    "code.highlight-permit-denied",
+                    format_args!(
+                        "block={block_id} content_version={} stays unhighlighted this frame",
+                        source.content_version
+                    ),
+                );
                 continue;
             };
             let source_text = code_source(&source);
@@ -264,6 +288,15 @@ impl CodeHighlightCache {
             } else {
                 None
             };
+            crate::diagnostics::flash::trace(
+                "code.highlight-request",
+                format_args!(
+                    "block={block_id} content_version={} source_len={} synchronous_fallback={}",
+                    source.content_version,
+                    source_text.len(),
+                    fallback.is_some()
+                ),
+            );
             self.entries.insert(
                 block_id,
                 CodeHighlightEntry::new(

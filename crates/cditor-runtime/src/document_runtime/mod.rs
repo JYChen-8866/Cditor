@@ -212,6 +212,28 @@ fn trace_image_resize(event: &str, details: impl std::fmt::Display) {
     }
 }
 
+fn flash_trace_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("CDITOR_TRACE_FLASH")
+            .map(|value| {
+                matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn trace_flash(event: &str, details: impl std::fmt::Display) {
+    if flash_trace_enabled() {
+        crate::diagnostics::write_stderr(format_args!(
+            "[cditor][flash][runtime][{event}] {details}"
+        ));
+    }
+}
+
 fn table_trace_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {

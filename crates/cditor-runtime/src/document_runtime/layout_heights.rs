@@ -256,6 +256,13 @@ impl DocumentRuntime {
                 self.layout.scroll.displayed_total_height, self.layout.scroll.global_scroll_top,
             ),
         );
+        trace_flash(
+            "height.flush",
+            format_args!(
+                "global_change=true total={total_height:.2} scroll_top={:.2} restore_anchor={should_restore_anchor}",
+                self.layout.scroll.global_scroll_top,
+            ),
+        );
 
         Ok(true)
     }

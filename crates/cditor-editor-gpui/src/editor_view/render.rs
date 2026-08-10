@@ -462,6 +462,13 @@ impl Render for CditorV2View {
             // window here makes embedded editors paint wide and then contract
             // into their dock on the next frame. Paint only the stable root on
             // this pass and project the document once its own bounds exist.
+            crate::diagnostics::flash::trace(
+                "frame.skipped",
+                format_args!(
+                    "reason=viewport-not-measured window_size={:?} — document area renders BLANK this frame",
+                    window.viewport_size()
+                ),
+            );
             crate::text::sync_automatic_text_layout_pins(&[]);
             if self.interaction.request_initial_viewport_frame() {
                 cx.on_next_frame(window, |_view, _window, cx| cx.notify());
@@ -479,6 +486,13 @@ impl Render for CditorV2View {
             // A split-pane resize can expose a transient 1px-wide editor. Do
             // not turn that host-layout artifact into exact layouts for every
             // visible block; the next usable resize frame will project them.
+            crate::diagnostics::flash::trace(
+                "frame.skipped",
+                format_args!(
+                    "reason=viewport-width-unusable width={:?} — document area renders BLANK this frame",
+                    editor_viewport.width
+                ),
+            );
             crate::text::sync_automatic_text_layout_pins(&[]);
             self.record_frame_telemetry(
                 window.window_handle().window_id(),
@@ -705,6 +719,10 @@ impl Render for CditorV2View {
                 }
             }
             CditorViewState::Loading { message, progress } => {
+                crate::diagnostics::flash::trace(
+                    "frame.skipped",
+                    format_args!("reason=state-loading message={message:?}"),
+                );
                 crate::text::sync_automatic_text_layout_pins(&[]);
                 root = root.child(render_load_state(
                     &EditorLoadStateLabel::Loading {
@@ -715,6 +733,10 @@ impl Render for CditorV2View {
                 ));
             }
             CditorViewState::LoadFailed { message } => {
+                crate::diagnostics::flash::trace(
+                    "frame.skipped",
+                    format_args!("reason=state-load-failed message={message:?}"),
+                );
                 crate::text::sync_automatic_text_layout_pins(&[]);
                 root = root.child(render_load_state(
                     &EditorLoadStateLabel::Failed(message.clone()),

@@ -10,6 +10,33 @@ use crate::TextTheme;
 
 pub const NOTION_BOLD_FONT_WEIGHT: f32 = 600.0;
 
+/// Turns a configured family into the Parley font stack, appending the
+/// document fallback family for per-cluster glyph fallback.
+///
+/// This is the single point where family strings become shaping font stacks.
+/// Monospace code faces rarely carry CJK glyphs; without an explicit stack the
+/// shaper drifts to whatever the system fallback offers, which differs per
+/// platform and made CJK inside code blocks render inconsistently. Appending
+/// the fallback here covers every consumer — code blocks, inline code marks,
+/// body text, table cells — with one rule instead of per-surface patches.
+fn font_stack_with_document_fallback(primary: &str) -> FontFamily<'_> {
+    let fallback = crate::document_fallback_font_family();
+    let fallback = fallback.trim();
+    if fallback.is_empty() || family_list_contains(primary, fallback) {
+        return FontFamily::Source(Cow::Borrowed(primary));
+    }
+    FontFamily::Source(Cow::Owned(format!("{primary}, \"{fallback}\"")))
+}
+
+fn family_list_contains(list: &str, family: &str) -> bool {
+    list.split(',').any(|entry| {
+        entry
+            .trim()
+            .trim_matches(['"', '\''])
+            .eq_ignore_ascii_case(family)
+    })
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TextBrush {
     pub foreground: u32,
@@ -120,7 +147,7 @@ impl TextStyleConfig {
             FontFeatures::Source(Cow::Borrowed(self.font_features.as_str()))
         };
         TextStyle {
-            font_family: FontFamily::Source(Cow::Borrowed(self.font_family.as_str())),
+            font_family: font_stack_with_document_fallback(self.font_family.as_str()),
             font_size: self.font_size,
             font_width: FontWidth::from_ratio(self.font_width),
             font_style: match self.font_slant {
@@ -281,4 +308,41 @@ fn parse_hex_color(color: &str) -> Option<u32> {
     (value.len() == 6)
         .then(|| u32::from_str_radix(value, 16).ok())
         .flatten()
+}
+
+#[cfg(test)]
+mod font_stack_tests {
+    use super::*;
+
+    #[test]
+    fn mono_family_gains_the_document_fallback_for_cjk_glyphs() {
+        // The default fallback follows the body family; with a distinct mono
+        // primary the stack must chain into the fallback face.
+        let fallback = crate::document_fallback_font_family();
+        let FontFamily::Source(stack) = font_stack_with_document_fallback("monospace") else {
+            panic!("stack must stay a parsed source list");
+        };
+        assert_eq!(stack.as_ref(), format!("monospace, \"{fallback}\""));
+    }
+
+    #[test]
+    fn a_primary_already_containing_the_fallback_is_left_borrowed() {
+        let fallback = crate::document_fallback_font_family();
+        let list = format!("{fallback}, monospace");
+        let FontFamily::Source(stack) = font_stack_with_document_fallback(&list) else {
+            panic!("stack must stay a parsed source list");
+        };
+        assert!(matches!(stack, Cow::Borrowed(_)));
+        assert_eq!(stack.as_ref(), list);
+    }
+
+    #[test]
+    fn family_list_matching_ignores_quotes_and_case() {
+        assert!(family_list_contains(
+            "monospace, \"Alibaba PuHuiTi 3.0\"",
+            "alibaba puhuiti 3.0"
+        ));
+        assert!(family_list_contains("'Menlo', monospace", "menlo"));
+        assert!(!family_list_contains("monospace", "Alibaba PuHuiTi 3.0"));
+    }
 }

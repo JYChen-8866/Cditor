@@ -254,6 +254,29 @@ impl TextLayoutCache {
         })
     }
 
+    fn newest_surface_snapshot(
+        &self,
+        surface_id: TextLayoutSurfaceId,
+    ) -> Option<(TextLayoutKey, TextLayoutSnapshot)> {
+        self.order.iter().rev().find_map(|candidate| {
+            (candidate.shape.surface_id == surface_id)
+                .then(|| {
+                    self.entries
+                        .get(candidate)
+                        .map(|entry| (candidate.clone(), entry.layout.clone()))
+                })
+                .flatten()
+        })
+    }
+
+    fn newest_surface_key(&self, surface_id: TextLayoutSurfaceId) -> Option<TextLayoutKey> {
+        self.order
+            .iter()
+            .rev()
+            .find(|candidate| candidate.shape.surface_id == surface_id)
+            .cloned()
+    }
+
     fn full_build_reason(&self, key: &TextLayoutKey) -> TextRelayoutFallbackReason {
         let Some(previous) = self
             .order
@@ -498,6 +521,65 @@ pub fn try_compatible_text_layout_with_request(
             estimated_bytes,
             strategy: TextRelayoutStrategy::CacheHit,
         })
+    })
+}
+
+/// Returns the newest snapshot for the surface regardless of shape identity.
+/// This is the stale-frame fallback of last resort while a scheduler-admitted
+/// shape is pending: painting one frame of slightly stale text or styling
+/// beats painting skeleton bars over content the user is reading. Callers
+/// must still enqueue the real shape, and must reject incompatible paint
+/// geometry via the returned key.
+pub fn try_stale_text_layout_for_surface(
+    input: &TextLayoutInput,
+    options: &TextLayoutOptions,
+    request: TextLayoutCacheRequest,
+) -> Option<CachedTextLayout> {
+    let key = TextLayoutKey::from_input(input, options);
+    TEXT_LAYOUT_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.prepare_request(input.surface_id, request);
+        let (source_key, layout) = cache.newest_surface_snapshot(key.shape.surface_id)?;
+        let estimated_bytes = layout.estimated_bytes();
+        Some(CachedTextLayout {
+            key: source_key,
+            layout,
+            cache_hit: true,
+            reflowed: false,
+            estimated_bytes,
+            strategy: TextRelayoutStrategy::CacheHit,
+        })
+    })
+}
+
+/// Diagnostic snapshot of why a paint-time lookup found nothing usable.
+/// Intended for opt-in tracing, not for control flow.
+#[derive(Debug, Clone, Copy)]
+pub struct TextLayoutMissDiagnosis {
+    /// Comparison against the newest cached key for the same surface, or
+    /// `NoPreviousSnapshot` when the surface has no cached entry at all
+    /// (never shaped, or evicted).
+    pub reason: TextRelayoutFallbackReason,
+    pub newest_same_surface_width: Option<f32>,
+    pub newest_same_surface_alignment: Option<TextAlignment>,
+}
+
+pub fn diagnose_text_layout_miss(
+    input: &TextLayoutInput,
+    options: &TextLayoutOptions,
+) -> TextLayoutMissDiagnosis {
+    let key = TextLayoutKey::from_input(input, options);
+    TEXT_LAYOUT_CACHE.with(|cache| {
+        let cache = cache.borrow();
+        let newest = cache.newest_surface_key(key.shape.surface_id);
+        TextLayoutMissDiagnosis {
+            reason: cache.full_build_reason(&key),
+            newest_same_surface_width: newest
+                .as_ref()
+                .and_then(|key| key.width_bits)
+                .map(f32::from_bits),
+            newest_same_surface_alignment: newest.map(|key| key.alignment),
+        }
     })
 }
 

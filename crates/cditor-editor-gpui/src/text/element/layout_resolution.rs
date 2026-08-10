@@ -1,11 +1,20 @@
 use super::super::{
     RichTextLayoutInput, TextLayoutCacheRequest, TextLayoutOptions, TextLayoutSnapshot,
     cached_text_layout_with_request, try_cached_text_layout_with_request,
-    try_compatible_text_layout_with_request,
+    try_compatible_text_layout_with_request, try_stale_text_layout_for_surface,
 };
 use crate::diagnostics::text_layout::{ResolutionOutcome, ResolutionState, trace_resolution};
 use crate::text::text_layout_cache_stats;
 use crate::theme::GuiTheme;
+
+/// A snapshot usable for this paint pass. `stale` marks a last-resort reuse of
+/// a snapshot whose shape identity no longer matches the input (old content or
+/// styling): it may be painted, but must not be published as interaction
+/// geometry or measured-height feedback.
+pub(super) struct MeasuredLayout {
+    pub(super) snapshot: TextLayoutSnapshot,
+    pub(super) stale: bool,
+}
 
 pub(super) fn resolve_measured_layout(
     input: &RichTextLayoutInput,
@@ -13,9 +22,12 @@ pub(super) fn resolve_measured_layout(
     options: &TextLayoutOptions,
     request: TextLayoutCacheRequest,
     require_prewarmed: bool,
-) -> Option<TextLayoutSnapshot> {
+) -> Option<MeasuredLayout> {
     if !require_prewarmed {
-        return Some(cached_text_layout_with_request(input, theme, options, request).layout);
+        return Some(MeasuredLayout {
+            snapshot: cached_text_layout_with_request(input, theme, options, request).layout,
+            stale: false,
+        });
     }
     let requested_width_bits = options.width.map(f32::to_bits);
     if let Some(cached) = try_cached_text_layout_with_request(input, options, request) {
@@ -28,7 +40,10 @@ pub(super) fn resolve_measured_layout(
                 text_layout_cache_stats(),
             ),
         );
-        return Some(cached.layout);
+        return Some(MeasuredLayout {
+            snapshot: cached.layout,
+            stale: false,
+        });
     }
     let compatible = try_compatible_text_layout_with_request(input, options, request);
     let source_width_bits = compatible.as_ref().and_then(|cached| cached.key.width_bits);
@@ -36,13 +51,56 @@ pub(super) fn resolve_measured_layout(
         cached.key.alignment == options.alignment
             && wrap_widths_are_compatible(cached.key.width_bits, requested_width_bits)
     });
+    if let Some(accepted) = accepted {
+        trace_resolution(
+            input.surface_id,
+            ResolutionState::new(
+                requested_width_bits,
+                source_width_bits,
+                ResolutionOutcome::CompatibleAccepted,
+                text_layout_cache_stats(),
+            ),
+        );
+        return Some(MeasuredLayout {
+            snapshot: accepted.layout,
+            stale: false,
+        });
+    }
+    // Last resort: the newest snapshot for this surface, whatever its shape
+    // identity. Content or styling may lag by a frame (a code block whose
+    // async highlight just landed, an edited block whose re-shape is queued),
+    // which is strictly better than flashing skeleton bars over text the user
+    // is reading. The caller has already enqueued the real shape; the next
+    // admitted frame converges. Geometry must still match, or the stale text
+    // would paint at the wrong wrap width.
+    let stale = try_stale_text_layout_for_surface(input, options, request).filter(|cached| {
+        cached.key.alignment == options.alignment
+            && wrap_widths_are_compatible(cached.key.width_bits, requested_width_bits)
+    });
+    if stale.is_none() && crate::diagnostics::flash::enabled() {
+        let diagnosis =
+            cditor_text::diagnose_text_layout_miss(&input.to_text_layout_input(), options);
+        crate::diagnostics::flash::trace(
+            "text.resolve-miss",
+            format_args!(
+                "surface={:?} content_v={} layout_v={} requested_width={:?} reason={:?} newest_same_surface_width={:?} newest_alignment={:?}",
+                input.surface_id,
+                input.content_version,
+                input.layout_version,
+                options.width,
+                diagnosis.reason,
+                diagnosis.newest_same_surface_width,
+                diagnosis.newest_same_surface_alignment,
+            ),
+        );
+    }
     trace_resolution(
         input.surface_id,
         ResolutionState::new(
             requested_width_bits,
             source_width_bits,
-            if accepted.is_some() {
-                ResolutionOutcome::CompatibleAccepted
+            if stale.is_some() {
+                ResolutionOutcome::StaleAccepted
             } else if source_width_bits.is_some() {
                 ResolutionOutcome::CompatibleRejected
             } else {
@@ -51,7 +109,10 @@ pub(super) fn resolve_measured_layout(
             text_layout_cache_stats(),
         ),
     );
-    accepted.map(|cached| cached.layout)
+    stale.map(|cached| MeasuredLayout {
+        snapshot: cached.layout,
+        stale: true,
+    })
 }
 
 fn wrap_widths_are_compatible(source: Option<u32>, requested: Option<u32>) -> bool {
@@ -106,7 +167,38 @@ mod tests {
         cached_text_layout_with_request(&input, GuiTheme::light(), &options, request);
         let resolved = resolve_measured_layout(&input, GuiTheme::light(), &options, request, true)
             .expect("scheduler-populated exact layout should be paintable");
-        assert_eq!(resolved.text(), "scheduler-owned shaping");
+        assert!(!resolved.stale);
+        assert_eq!(resolved.snapshot.text(), "scheduler-owned shaping");
+    }
+
+    #[test]
+    fn prewarmed_mode_paints_a_stale_snapshot_while_a_reshape_is_pending() {
+        let input = input();
+        let options = TextLayoutOptions {
+            width: Some(420.0),
+            ..TextLayoutOptions::default()
+        };
+        let request = TextLayoutCacheRequest::visible();
+        cached_text_layout_with_request(&input, GuiTheme::light(), &options, request);
+
+        // The block was edited (or its async syntax highlight landed): the
+        // shape identity changes while the re-shape sits in the scheduler
+        // queue. The previous snapshot substitutes instead of skeleton bars.
+        let mut edited = super::tests::input();
+        edited.content_version = 78;
+        let resolved = resolve_measured_layout(&edited, GuiTheme::light(), &options, request, true)
+            .expect("the previous snapshot substitutes while the re-shape is pending");
+        assert!(resolved.stale);
+        assert_eq!(resolved.snapshot.text(), "scheduler-owned shaping");
+
+        // A surface with no history still paints nothing: skeleton bars are
+        // reserved for true cold starts.
+        let mut cold = super::tests::input();
+        cold.block_id = 9_900_002;
+        cold.surface_id = TextLayoutSurfaceId::Block(9_900_002);
+        assert!(
+            resolve_measured_layout(&cold, GuiTheme::light(), &options, request, true).is_none()
+        );
     }
 
     #[test]
@@ -138,7 +230,7 @@ mod tests {
         cached_text_layout_with_request(&input, GuiTheme::light(), &narrow, request);
         let exact = resolve_measured_layout(&input, GuiTheme::light(), &narrow, request, true)
             .expect("the exact narrow layout should become paintable");
-        assert!(exact.line_count() > 1);
+        assert!(exact.snapshot.line_count() > 1);
     }
 
     #[test]

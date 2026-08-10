@@ -36,7 +36,7 @@ pub use layout_adapter::{
     TextLayoutSnapshot, TextLayoutSurfaceId, TextLineHeight, TextStyleConfig,
     accessibility_node_ids, build_text_accessibility_projection, cached_text_layout_with_request,
     sync_automatic_text_layout_pins, text_layout_cache_stats, try_cached_text_layout_with_request,
-    try_compatible_text_layout_with_request,
+    try_compatible_text_layout_with_request, try_stale_text_layout_for_surface,
 };
 #[cfg(test)]
 pub(crate) use platform::test_platform_layout;

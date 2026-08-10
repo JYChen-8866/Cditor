@@ -495,3 +495,27 @@ fn assert_full_build_reason(
     assert_eq!(result.strategy, TextRelayoutStrategy::FullBuild(expected));
     assert!(!result.reflowed);
 }
+
+#[test]
+fn stale_surface_lookup_returns_the_newest_snapshot_across_shape_changes() {
+    let surface = TextLayoutSurfaceId::Block(981);
+    let visible = request(TextLayoutCachePriority::Visible, false);
+    let first = input(surface, "stale fallback source");
+    cached_text_layout_with_request(&first, theme(), &options(200.0), visible);
+
+    // A shape-identity change (edit or restyle) misses both the exact and
+    // compatible lookups but still finds the previous snapshot for the
+    // surface.
+    let mut edited = input(surface, "stale fallback source edited");
+    edited.content_version = 2;
+    assert!(try_cached_text_layout_with_request(&edited, &options(200.0), visible).is_none());
+    assert!(try_compatible_text_layout_with_request(&edited, &options(200.0), visible).is_none());
+    let stale = try_stale_text_layout_for_surface(&edited, &options(200.0), visible)
+        .expect("previous surface snapshot is the last-resort fallback");
+    assert_eq!(stale.layout.text(), "stale fallback source");
+    assert_eq!(stale.key.shape.content_version, 1);
+
+    // Other surfaces never leak in.
+    let other = input(TextLayoutSurfaceId::Block(982), "unrelated");
+    assert!(try_stale_text_layout_for_surface(&other, &options(200.0), visible).is_none());
+}

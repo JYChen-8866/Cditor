@@ -1,5 +1,7 @@
 pub mod content;
 mod diagnostics;
+
+pub use diagnostics::append_log_line;
 pub mod document_runtime;
 pub mod editing;
 pub mod projection;

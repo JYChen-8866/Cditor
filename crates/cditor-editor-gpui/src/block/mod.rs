@@ -5,6 +5,7 @@ pub mod chrome;
 pub mod divider;
 pub mod drag_overlay;
 pub mod gutter;
+pub mod layout_input;
 pub mod placeholder;
 pub mod prefix;
 pub mod skeleton;

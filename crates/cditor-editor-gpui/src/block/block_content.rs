@@ -124,19 +124,52 @@ pub(crate) fn render_block_content(
                     view,
                 );
             }
-            if let Some(mut input) =
-                RichTextLayoutInput::from_snapshot(block, text_layout_width_px, 1, 1)
-            {
+            if let Some(built) = crate::block::layout_input::document_block_layout_input(
+                block,
+                text_layout_width_px,
+                code_highlights,
+            ) {
+                let input = built.input;
+                if built.code_spans == crate::block::layout_input::CodeSpansSource::Plain {
+                    crate::diagnostics::flash::trace(
+                        "code.highlight-miss",
+                        format_args!(
+                            "block={} visible_index={} content_version={} rendering plain spans this frame",
+                            block.block_id, block.visible_index, input.content_version
+                        ),
+                    );
+                }
+                let code_spans_source = match built.code_spans {
+                    crate::block::layout_input::CodeSpansSource::NotCode => "not-code",
+                    crate::block::layout_input::CodeSpansSource::Highlight => "highlight",
+                    crate::block::layout_input::CodeSpansSource::Plain => "plain",
+                    crate::block::layout_input::CodeSpansSource::SkippedMarked => "skipped-marked",
+                };
+                let text_len = input.text_len();
                 if matches!(
                     block.kind,
                     cditor_core::rich_text::RichBlockKind::Code { .. }
-                ) && block.marked_range.is_none()
-                    && let Some(spans) =
-                        code_highlights.spans(block.block_id, input.content_version)
-                {
-                    input.spans = spans;
+                ) {
+                    // One line per code block whenever any render-relevant
+                    // state flips between frames; a one-frame visual flash
+                    // shows up as a state line followed by its reversal.
+                    crate::diagnostics::flash::trace_state(
+                        "code.render-state",
+                        block.block_id,
+                        format_args!(
+                            "block={} visible_index={} content_v={} layout_v={} spans={} segmented={} focused={} width={:.1} local_top={:.0}",
+                            block.block_id,
+                            block.visible_index,
+                            input.content_version,
+                            input.layout_version,
+                            code_spans_source,
+                            cditor_text::requires_segmentation(text_len),
+                            block.focused,
+                            text_layout_width_px,
+                            text_viewport.local_top_px,
+                        ),
+                    );
                 }
-                let text_len = input.text_len();
                 let search_ranges = search_decorations.ranges_for(
                     block.block_id,
                     input.content_version,
@@ -238,8 +271,26 @@ pub(crate) fn render_block_content(
                 render_payload_text(payload, theme)
             }
         }
-        BlockPayloadView::Placeholder { .. } => render_placeholder(block, theme),
-        BlockPayloadView::Loading { .. } => render_loading(block, theme),
+        BlockPayloadView::Placeholder { .. } => {
+            crate::diagnostics::flash::trace(
+                "block.skeleton",
+                format_args!(
+                    "block={} kind={:?} visible_index={} focused={} payload=placeholder",
+                    block.block_id, block.kind, block.visible_index, block.focused
+                ),
+            );
+            render_placeholder(block, theme)
+        }
+        BlockPayloadView::Loading { .. } => {
+            crate::diagnostics::flash::trace(
+                "block.skeleton",
+                format_args!(
+                    "block={} kind={:?} visible_index={} focused={} payload=loading",
+                    block.block_id, block.kind, block.visible_index, block.focused
+                ),
+            );
+            render_loading(block, theme)
+        }
         BlockPayloadView::Error { message } => render_error(message, theme),
     }
 }

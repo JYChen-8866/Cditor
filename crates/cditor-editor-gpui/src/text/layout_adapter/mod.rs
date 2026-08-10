@@ -61,6 +61,14 @@ pub fn try_compatible_text_layout_with_request(
     )
 }
 
+pub fn try_stale_text_layout_for_surface(
+    input: &RichTextLayoutInput,
+    options: &TextLayoutOptions,
+    request: TextLayoutCacheRequest,
+) -> Option<CachedTextLayout> {
+    cditor_text::try_stale_text_layout_for_surface(&input.to_text_layout_input(), options, request)
+}
+
 fn text_theme(theme: GuiTheme) -> cditor_text::TextTheme {
     cditor_text::TextTheme {
         link_text: theme.inline_code_text,

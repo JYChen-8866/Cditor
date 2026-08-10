@@ -236,19 +236,18 @@ impl CditorV2View {
             let intersects_viewport = block_bottom >= viewport_top && block_top <= viewport_bottom;
             block_top = block_bottom;
             let text_geometry = DocumentTextGeometry::for_block(block, theme, document_layout);
-            let Some(mut input) =
-                RichTextLayoutInput::from_snapshot(block, text_geometry.width_px, 1, 1)
-            else {
+            // Shared with the paint path: prewarm must shape the exact input
+            // paint will request (including the composition gate on code
+            // highlights), or the two populate diverging shapes for the same
+            // surface and the on-screen block stops matching the projection.
+            let Some(built) = crate::block::layout_input::document_block_layout_input(
+                block,
+                text_geometry.width_px,
+                &self.cache.code_highlights,
+            ) else {
                 continue;
             };
-            if matches!(block.kind, RichBlockKind::Code { .. })
-                && let Some(spans) = self
-                    .cache
-                    .code_highlights
-                    .spans(block.block_id, input.content_version)
-            {
-                input.spans = spans;
-            }
+            let input = built.input;
             let text_len = input.text_len();
             if requires_segmentation(text_len) {
                 continue;

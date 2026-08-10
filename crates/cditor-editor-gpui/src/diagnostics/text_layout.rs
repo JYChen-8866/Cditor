@@ -10,6 +10,10 @@ pub(crate) enum ResolutionOutcome {
     Exact,
     CompatibleAccepted,
     CompatibleRejected,
+    /// No snapshot matched the current shape identity; a stale snapshot for
+    /// the same surface was painted for this frame while the real shape is
+    /// pending in the scheduler queue.
+    StaleAccepted,
     Missing,
 }
 

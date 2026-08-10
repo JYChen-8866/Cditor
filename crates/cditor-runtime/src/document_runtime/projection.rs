@@ -106,17 +106,24 @@ impl DocumentRuntime {
                     .as_ref()
                     .map(|snapshot| &snapshot.target)
                     .is_some_and(fallback_scroll_near));
+        let stable_valid = stable.as_ref().is_some_and(|stable| {
+            stable.target.structure_version == self.document.visible_index.source_structure_version
+                && stable.target.block_range == stable.projection.render_window.block_range
+        });
         let decision = self.layout.projection.reconcile(
             desired,
             desired_ready,
-            stable.as_ref().is_some_and(|stable| {
-                stable.target.structure_version
-                    == self.document.visible_index.source_structure_version
-                    && stable.target.block_range == stable.projection.render_window.block_range
-            }),
+            stable_valid,
             desired_failed,
             fallback_allowed,
         );
+        let decision_label = match &decision {
+            ProjectionWindowDecision::Stable(_) if desired_ready => "stable-fresh",
+            ProjectionWindowDecision::Stable(_) => "stable-replay",
+            ProjectionWindowDecision::ColdPlaceholder(_) => "cold-placeholder",
+            ProjectionWindowDecision::StaleFallback(_) => "stale-fallback",
+            ProjectionWindowDecision::FailedTarget { .. } => "failed",
+        };
         let mut projection = match decision {
             ProjectionWindowDecision::Stable(stable_target) => {
                 self.document.payload_window.block_range = stable_target.block_range.clone();
@@ -196,6 +203,32 @@ impl DocumentRuntime {
         projection.payload_prefetch_block_range = payload_prefetch_block_range;
         projection.payload_prefetch_resident = payload_prefetch_resident;
         projection.layout_prefetch_page_range = layout_prefetch_page_range;
+        if flash_trace_enabled() {
+            let placeholders = projection
+                .blocks
+                .iter()
+                .filter(|block| block.placeholder)
+                .map(|block| (block.block_id, block.visible_index))
+                .take(16)
+                .collect::<Vec<_>>();
+            trace_flash(
+                "frame",
+                format_args!(
+                    "decision={decision_label} gen={} sv={} ready={} stable_valid={} fallback_allowed={} \
+                     scroll={:.1} window={:?} core={:?} blocks={} placeholder_window_h={:?} placeholders={placeholders:?}",
+                    self.layout.projection.generation(),
+                    self.document.visible_index.source_structure_version,
+                    desired_ready,
+                    stable_valid,
+                    fallback_allowed,
+                    self.layout.scroll.global_scroll_top,
+                    projection.render_window.block_range,
+                    projection.payload_visible_block_range,
+                    projection.blocks.len(),
+                    projection.placeholder_window_height,
+                ),
+            );
+        }
         log_runtime_timing(
             "runtime.projection_for_window_planned",
             total_start,
