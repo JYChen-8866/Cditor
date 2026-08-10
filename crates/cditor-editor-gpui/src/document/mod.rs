@@ -10,4 +10,4 @@ pub use document_editor_view::{DocumentBlockActionProjection, DocumentEditorView
 pub use document_surface::DocumentSurface;
 pub use layout_metrics::DocumentLayoutMetrics;
 pub(crate) use page_chrome::{PageDecorationSnapshot, render_page_chrome};
-mod block_tracks;
+pub(crate) mod block_tracks;

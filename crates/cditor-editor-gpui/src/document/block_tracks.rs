@@ -113,29 +113,41 @@ impl DocumentTextGeometry {
         let chrome = BlockChromeStyle::from_snapshot(block, theme);
         let horizontal = chrome.horizontal_geometry();
         let block_geometry = DocumentBlockGeometry::for_block(block, document);
-        let is_code = matches!(block.kind, RichBlockKind::Code { .. });
-        let code_x = if is_code {
-            f64::from(V1_CODE_TEXT_OFFSET_X_PX)
-        } else {
-            0.0
-        };
-        let code_y = if is_code {
-            f64::from(V1_CODE_TEXT_OFFSET_TOP_PX)
-        } else {
-            0.0
+        // Framed text kinds render their editable text inside kind-specific
+        // chrome (toolbar, frame border, inner padding). The projected text
+        // geometry is the single authority for IME candidate placement, hit
+        // testing, and shaping width, so every framed kind must be modeled
+        // here — a missing entry anchors the IME candidate window on top of
+        // the text it should sit under.
+        let (kind_x, kind_y) = match &block.kind {
+            RichBlockKind::Code { .. } => (
+                f64::from(V1_CODE_TEXT_OFFSET_X_PX),
+                f64::from(V1_CODE_TEXT_OFFSET_TOP_PX),
+            ),
+            RichBlockKind::Mermaid => (
+                f64::from(MERMAID_SOURCE_TEXT_OFFSET_X_PX),
+                f64::from(MERMAID_SOURCE_TEXT_OFFSET_TOP_PX),
+            ),
+            _ => (0.0, 0.0),
         };
         Self {
-            origin_x_px: f64::from(block_geometry.shell_left_px + horizontal.text_left_px) + code_x,
+            origin_x_px: f64::from(block_geometry.shell_left_px + horizontal.text_left_px) + kind_x,
             origin_y_px: f64::from(chrome.outer_padding_top_px + BLOCK_SHELL_BORDER_WIDTH_PX)
                 + f64::from(chrome.content_padding_y_px)
-                + code_y,
+                + kind_y,
             width_px: (f64::from(block_geometry.shell_width_px - horizontal.text_left_px)
                 - f64::from(horizontal.content_right_inset_px)
-                - code_x * 2.0)
+                - kind_x * 2.0)
                 .max(1.0),
         }
     }
 }
+
+/// Mermaid source text offsets inside the block: frame border + toolbar +
+/// source padding (vertical), frame border + source padding (horizontal).
+/// `features::mermaid::render` asserts these against its frame constants.
+pub(crate) const MERMAID_SOURCE_TEXT_OFFSET_X_PX: f32 = 9.0;
+pub(crate) const MERMAID_SOURCE_TEXT_OFFSET_TOP_PX: f32 = 37.0;
 
 #[cfg(test)]
 mod tests {

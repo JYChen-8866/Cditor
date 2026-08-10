@@ -366,6 +366,18 @@ impl Element for SegmentedRichTextElement {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // Segmented elements only render document blocks: wrap-width identity
+        // follows the runtime-projected width, matching the non-segmented
+        // element, the projected block rects, and the published layout below.
+        let identity_wrap_width = if matches!(
+            self.input.surface_id,
+            crate::text::TextLayoutSurfaceId::Block(_)
+        ) && self.input_handler.table_cell_position.is_none()
+        {
+            px(self.input.width_px.max(1.0) as f32)
+        } else {
+            bounds.size.width
+        };
         if self.input_handler.focused
             && let Some(target) = GuiPlatformInputTarget::from_surface_id(self.input.surface_id)
         {
@@ -377,7 +389,7 @@ impl Element for SegmentedRichTextElement {
                     surface_id: self.input.surface_id,
                     content_version: self.input.content_version,
                     layout_version: self.input.layout_version,
-                    wrap_width_bits: f32::from(bounds.size.width).to_bits(),
+                    wrap_width_bits: f32::from(identity_wrap_width).to_bits(),
                     text_align: self.input.text_align,
                 },
                 bounds,
@@ -413,7 +425,7 @@ impl Element for SegmentedRichTextElement {
                 surface_id: self.input.surface_id,
                 content_version: self.input.content_version,
                 layout_version: self.input.layout_version,
-                wrap_width_px: f32::from(bounds.size.width),
+                wrap_width_px: f32::from(identity_wrap_width),
                 text_align: self.input.text_align,
                 input_session_identity: None,
                 snapshot: super::PlatformTextLayoutSnapshot::Segmented(

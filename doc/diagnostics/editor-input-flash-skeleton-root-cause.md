@@ -413,3 +413,24 @@ GPUI 层（`cditor-editor-gpui`）：
 `composition_preview_is_projected_for_code_and_mermaid_blocks`（Code 与
 Mermaid kind 的投影 payload 必须含预览文本且携带 marked_range）；GPUI 侧
 `layout_input.rs` 单元测试锁定"组合态保留预览文本、提交态套用高亮/纯文本"。
+
+## 附加根因：特殊 block IME 候选框遮挡文字（宽度真相分裂的第三次发作）
+
+**现象**：代码块等特殊 block 中文输入时，候选框覆盖正在输入的文字。
+
+**根因**：候选框位置来自精确几何链
+`bounds_for_range → projected_text_geometry_for_block → layout_cache_is_current`，
+其中 wrap 宽度按位比较（`matches_text_constraints`）。三个宽度消费者不一致：
+投影 rect 用 runtime 权威宽度（如代码块 766），而 paint 发布的平台布局与注册
+的输入 identity 用 **GPUI 盒子宽度**（短代码块 = 自然文本宽度，如 374）。
+位比较失败 → 布局缓存被判不新鲜 → 精确几何不可用 →
+`ime_candidate_fallback_bounds` 把候选框锚在**文本元素左上角**——正好压在
+正在输入的文字上。段落不受影响（盒宽 = 排版宽），特殊 block（代码/Mermaid
+源码，自然宽 < 投影宽）必现。
+
+**修复**：`SurfaceId::Block` 的文档文本在 paint 时，发布的
+`RichTextPlatformLayout.wrap_width_px` 与注册的
+`TextPlatformLayoutIdentity.wrap_width_bits` 一律使用 runtime 投影宽度
+（`input.width_px`，与 shaping 宽度同源），普通元素与 segmented 元素同步修改；
+表格单元格等容器定宽 surface 保持盒宽。至此宽度真相在
+shaping、投影 rect、发布布局、输入 identity 四处完全统一。

@@ -315,3 +315,26 @@ mod tests {
         assert_eq!(default_mermaid_block_height_px(), 232.0);
     }
 }
+
+#[cfg(test)]
+mod source_geometry_tests {
+    use super::*;
+    use crate::document::block_tracks::{
+        MERMAID_SOURCE_TEXT_OFFSET_TOP_PX, MERMAID_SOURCE_TEXT_OFFSET_X_PX,
+    };
+
+    #[test]
+    fn projected_source_text_offsets_match_the_frame_chrome() {
+        // The projected text geometry (IME candidate placement, hit testing,
+        // shaping width) must model exactly the chrome this renderer draws
+        // around the source text.
+        assert_eq!(
+            MERMAID_SOURCE_TEXT_OFFSET_X_PX,
+            MERMAID_FRAME_BORDER_WIDTH_PX + MERMAID_SOURCE_PADDING_PX
+        );
+        assert_eq!(
+            MERMAID_SOURCE_TEXT_OFFSET_TOP_PX,
+            MERMAID_FRAME_BORDER_WIDTH_PX + MERMAID_TOOLBAR_HEIGHT_PX + MERMAID_SOURCE_PADDING_PX
+        );
+    }
+}
