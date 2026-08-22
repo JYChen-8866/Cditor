@@ -6,7 +6,9 @@ pub(crate) mod ai;
 mod block_actions;
 mod folding;
 mod formatting;
+mod host_element;
 mod lifecycle;
+mod link_actions;
 mod platform_input;
 mod render;
 mod slash_menu;
@@ -27,6 +29,7 @@ pub(crate) use formatting::{
     SelectionToolbarDelay, floating_toolbar_passes_selection_delay, formatting_toolbar_context,
     formatting_toolbar_state,
 };
+pub use host_element::CditorHostElement;
 pub(crate) use platform_input::GuiPlatformInputTarget;
 #[cfg(test)]
 pub(crate) use platform_input::platform_input_registration_allows;

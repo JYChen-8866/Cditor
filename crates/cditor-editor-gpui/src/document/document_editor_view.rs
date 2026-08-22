@@ -27,6 +27,7 @@ use crate::features::table::{
     table_content_editor_origin, table_content_viewport_height_px,
     table_projected_viewport_width_px, table_toolbar_editor_origin,
 };
+use crate::features::video::VideoPlaybackCache;
 use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::CodeLanguageEditState;
 use crate::input::platform_adapter::on_text_activation;
@@ -143,6 +144,7 @@ impl DocumentEditorView {
         search_decorations: &SearchDecorationState,
         mermaid_renders: &MermaidRenderCache,
         mermaid_source_blocks: &std::collections::HashSet<BlockId>,
+        video_playbacks: &VideoPlaybackCache,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
         page_icon_menu_open: bool,
         page_icon_menu_custom_tab: bool,
@@ -382,6 +384,7 @@ impl DocumentEditorView {
                             search_decorations,
                             mermaid_renders,
                             mermaid_source_blocks.contains(&block.block_id),
+                            video_playbacks,
                             whiteboard_thumbnails,
                             cx,
                         )
@@ -413,6 +416,7 @@ impl DocumentEditorView {
                 projection,
                 self.theme,
                 document_layout,
+                action.action_block_id,
             ))
             .children(table_overlay_elements)
             .when_some(drag_overlay, |this, overlay| {

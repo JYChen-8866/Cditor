@@ -42,6 +42,7 @@ fn block_conversion_capability_rejects_asset_flattening_but_keeps_text_exports()
 
     let rich = runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "text")]);
     assert!(rich.can_convert_block_kind(1, &RichBlockKind::Whiteboard));
+    assert!(rich.can_convert_block_kind(1, &RichBlockKind::Video));
     assert!(!rich.can_convert_block_kind(1, &RichBlockKind::Image));
     assert!(!rich.can_convert_block_kind(1, &RichBlockKind::Custom("plugin".to_owned())));
 }

@@ -18,6 +18,7 @@ pub enum RichBlockKind {
     ColumnsGroup,
     Column,
     Image,
+    Video,
     File,
     Attachment,
     Whiteboard,
@@ -68,6 +69,7 @@ impl RichBlockKind {
             | Self::Comment => LayoutBehavior::TextLike,
             Self::Code { .. } | Self::Table | Self::Database => LayoutBehavior::InternalVirtualized,
             Self::Image
+            | Self::Video
             | Self::File
             | Self::Attachment
             | Self::Whiteboard
@@ -104,6 +106,7 @@ impl RichBlockKind {
             Self::Divider
                 | Self::Separator
                 | Self::Image
+                | Self::Video
                 | Self::File
                 | Self::Attachment
                 | Self::Whiteboard
@@ -148,6 +151,7 @@ pub fn kind_tag_for_rich_block_kind(kind: &RichBlockKind) -> u16 {
         RichBlockKind::RawMarkdown => 25,
         RichBlockKind::ColumnsGroup => 31,
         RichBlockKind::Column => 32,
+        RichBlockKind::Video => 33,
         RichBlockKind::Custom(_) => u16::MAX,
     }
 }
@@ -187,6 +191,7 @@ pub fn rich_block_kind_from_tag(tag: u16) -> RichBlockKind {
         25 => RichBlockKind::RawMarkdown,
         31 => RichBlockKind::ColumnsGroup,
         32 => RichBlockKind::Column,
+        33 => RichBlockKind::Video,
         _ => RichBlockKind::Paragraph,
     }
 }
@@ -214,5 +219,16 @@ mod tests {
             kind_tag_for_rich_block_kind(&RichBlockKind::ColumnsGroup),
             kind_tag_for_rich_block_kind(&RichBlockKind::Column)
         );
+    }
+
+    #[test]
+    fn video_has_a_stable_round_trip_tag() {
+        assert_eq!(kind_tag_for_rich_block_kind(&RichBlockKind::Video), 33);
+        assert_eq!(rich_block_kind_from_tag(33), RichBlockKind::Video);
+        assert_eq!(
+            RichBlockKind::Video.layout_behavior(),
+            LayoutBehavior::StableBox
+        );
+        assert!(!RichBlockKind::Video.supports_rich_text_title());
     }
 }

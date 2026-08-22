@@ -1,5 +1,5 @@
 use crate::layout::{HeightConfidence, HeightEstimate};
-use crate::rich_text::{BlockPayload, RichBlockKind, plain_text_from_spans};
+use crate::rich_text::{BlockPayload, RichBlockKind, VideoPayload, plain_text_from_spans};
 
 pub const DEFAULT_LAYOUT_WIDTH_PX: f64 = super::BODY_BLOCK_CONTENT_WIDTH_PX;
 pub const COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX: f64 = 16.0;
@@ -66,6 +66,10 @@ pub const V1_CODE_BASE_HEIGHT_PX: f64 = V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX
     + V1_CODE_CONTENT_PADDING_BOTTOM_PX;
 pub const V1_CODE_INNER_MIN_HEIGHT_PX: f64 = V1_CODE_BASE_HEIGHT_PX + V1_CODE_TEXT_LINE_HEIGHT_PX;
 pub const IMAGE_BLOCK_ESTIMATED_HEIGHT_PX: f64 = 260.0;
+pub const VIDEO_DEFAULT_ASPECT_RATIO: f64 = 16.0 / 9.0;
+pub const VIDEO_BLOCK_CHROME_HEIGHT_PX: f64 = COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX + 6.0 + 26.0;
+pub const VIDEO_BLOCK_ESTIMATED_HEIGHT_PX: f64 =
+    DEFAULT_LAYOUT_WIDTH_PX / VIDEO_DEFAULT_ASPECT_RATIO + VIDEO_BLOCK_CHROME_HEIGHT_PX;
 pub const NOTION_DIVIDER_BLOCK_HEIGHT_PX: f64 = 13.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -312,6 +316,10 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
         },
         RichBlockKind::Column => BlockHeightRule::Fixed(0.0),
         RichBlockKind::Image => BlockHeightRule::Media,
+        RichBlockKind::Video => BlockHeightRule::StableBox {
+            estimated_height: VIDEO_BLOCK_ESTIMATED_HEIGHT_PX,
+            max_error_hint: 160.0,
+        },
         RichBlockKind::File => BlockHeightRule::Fixed(56.0),
         RichBlockKind::Attachment => BlockHeightRule::Fixed(64.0),
         RichBlockKind::Whiteboard => BlockHeightRule::StableBox {
@@ -357,6 +365,13 @@ pub fn estimate_block_height(
     payload: &BlockPayload,
     width_px: f64,
 ) -> HeightEstimate {
+    if matches!(kind, RichBlockKind::Video) {
+        return HeightEstimate::new(
+            video_block_height_px(payload, width_px),
+            HeightConfidence::Predictive,
+            32.0,
+        );
+    }
     match height_rule_for_kind(kind) {
         BlockHeightRule::TextLike(metrics) => {
             let text = payload.plain_text();
@@ -385,6 +400,27 @@ pub fn estimate_block_height(
             HeightEstimate::new(360.0, HeightConfidence::Predictive, 160.0)
         }
     }
+}
+
+/// Returns the stable layout height used by both the runtime and the GPUI
+/// video surface. Video controls are overlaid, so the total includes the
+/// surface, stable block shell, caption gap, and caption row.
+pub fn video_block_height_px(payload: &BlockPayload, width_px: f64) -> f64 {
+    match payload {
+        BlockPayload::Video(video) => video_payload_block_height_px(video, width_px),
+        _ => width_px.max(1.0) / VIDEO_DEFAULT_ASPECT_RATIO + VIDEO_BLOCK_CHROME_HEIGHT_PX,
+    }
+}
+
+pub fn video_payload_block_height_px(video: &VideoPayload, width_px: f64) -> f64 {
+    let aspect_ratio = video
+        .intrinsic_width
+        .map(f64::from)
+        .zip(video.intrinsic_height.map(f64::from))
+        .filter(|(width, height)| *width > 0.0 && *height > 0.0)
+        .map(|(width, height)| width / height)
+        .unwrap_or(VIDEO_DEFAULT_ASPECT_RATIO);
+    width_px.max(1.0) / aspect_ratio + VIDEO_BLOCK_CHROME_HEIGHT_PX
 }
 
 pub fn estimate_kind_fallback_height(kind: &RichBlockKind) -> HeightEstimate {
@@ -677,6 +713,30 @@ mod tests {
         );
         assert!(estimate_kind_fallback_height(&RichBlockKind::Whiteboard).height >= 240.0);
         assert!(estimate_kind_fallback_height(&RichBlockKind::Database).height >= 160.0);
+    }
+
+    #[test]
+    fn video_height_uses_payload_aspect_ratio_and_stable_chrome() {
+        let payload = BlockPayload::Video(VideoPayload {
+            intrinsic_width: Some(1920),
+            intrinsic_height: Some(1080),
+            ..Default::default()
+        });
+
+        let estimate = estimate_block_height(&RichBlockKind::Video, &payload, 800.0);
+
+        assert_eq!(estimate.height, 450.0 + VIDEO_BLOCK_CHROME_HEIGHT_PX);
+        assert_eq!(estimate.confidence, HeightConfidence::Predictive);
+    }
+
+    #[test]
+    fn video_height_without_metadata_uses_default_aspect_ratio() {
+        let payload = BlockPayload::Video(VideoPayload::default());
+
+        assert_eq!(
+            video_block_height_px(&payload, 640.0),
+            360.0 + VIDEO_BLOCK_CHROME_HEIGHT_PX
+        );
     }
 
     #[test]

@@ -23,10 +23,12 @@ pub use block_metrics::{
     TABLE_HORIZONTAL_SCROLLBAR_CHROME_HEIGHT_PX, TextLikeMetrics,
     V1_CODE_CONTENT_PADDING_BOTTOM_PX, V1_CODE_CONTENT_PADDING_TOP_PX,
     V1_CODE_FRAME_BORDER_WIDTH_PX, V1_CODE_INNER_MIN_HEIGHT_PX, V1_CODE_SURFACE_GAP_PX,
-    V1_CODE_TEXT_LINE_HEIGHT_PX, V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX, estimate_block_height,
+    V1_CODE_TEXT_LINE_HEIGHT_PX, V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX, VIDEO_BLOCK_CHROME_HEIGHT_PX,
+    VIDEO_BLOCK_ESTIMATED_HEIGHT_PX, VIDEO_DEFAULT_ASPECT_RATIO, estimate_block_height,
     estimate_kind_fallback_height, estimate_rich_spans_height, estimate_text_payload_height,
     estimate_wrapped_line_count, measured_height_tolerance_px,
-    normalize_text_inner_measured_height, text_line_height_for_kind,
+    normalize_text_inner_measured_height, text_line_height_for_kind, video_block_height_px,
+    video_payload_block_height_px,
 };
 pub use block_provider::{
     BlockLayoutProvider, CodeBlockLayoutProvider, ImageLayoutProvider, ParagraphLayoutProvider,

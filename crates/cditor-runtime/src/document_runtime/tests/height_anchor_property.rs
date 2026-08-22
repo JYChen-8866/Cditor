@@ -85,3 +85,39 @@ fn randomized_measured_height_stale_result_and_anchor_property() {
         );
     }
 }
+
+#[test]
+fn stable_video_height_report_does_not_restore_an_old_scroll_position() {
+    let video_payload = BlockPayload::Video(VideoPayload {
+        source: "assets/demo.mp4".into(),
+        title: "demo.mp4".into(),
+        intrinsic_width: Some(1920),
+        intrinsic_height: Some(1080),
+        ..Default::default()
+    });
+    let video_height = cditor_core::layout::video_block_height_px(
+        &video_payload,
+        cditor_core::layout::BODY_BLOCK_CONTENT_WIDTH_PX,
+    );
+    let payloads = vec![
+        BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "before"),
+        BlockPayloadRecord {
+            block_id: 2,
+            content_version: 1,
+            kind: RichBlockKind::Video,
+            payload: video_payload,
+        },
+        BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "after"),
+    ];
+    let mut runtime = DocumentRuntime::from_payloads(1, payloads, 200.0);
+    runtime
+        .layout
+        .scroll
+        .scroll_to_global_offset(320.0, ScrollOrigin::UserWheel)
+        .unwrap();
+    let scrolled_position = runtime.layout.scroll.global_scroll_top;
+
+    assert!(!runtime.queue_measured_height(2, 1, video_height).unwrap());
+    assert!(!runtime.flush_pending_height_corrections().unwrap());
+    assert_eq!(runtime.layout.scroll.global_scroll_top, scrolled_position);
+}

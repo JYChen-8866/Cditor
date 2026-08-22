@@ -543,6 +543,7 @@ impl CditorV2View {
             .ready_session()
             .and_then(|session| session.diagnostics_snapshot().ok())
             .ok_or(CditorError::NotReady)?;
+        let video = self.cache.video_playbacks.diagnostics();
         Ok(CditorDiagnostics {
             storage_backend: self
                 .ready_session()
@@ -564,9 +565,12 @@ impl CditorV2View {
                     .saturating_add(crate::text::text_layout_cache_stats().estimated_bytes)
                     .saturating_add(self.cache.text_layouts.estimated_metadata_bytes())
                     .saturating_add(self.cache.table_cell_layouts.estimated_metadata_bytes())
-                    .saturating_add(self.cache.text_surface_layouts.estimated_metadata_bytes()),
+                    .saturating_add(self.cache.text_surface_layouts.estimated_metadata_bytes())
+                    .saturating_add(video.resident_cpu_frame_bytes)
+                    .saturating_add(video.resident_render_image_bytes),
             )
             .unwrap_or(u64::MAX),
+            video,
         })
     }
 

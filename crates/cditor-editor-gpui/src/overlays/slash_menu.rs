@@ -45,6 +45,7 @@ const ICON_MATH: &[u8] = include_bytes!("../../../../assets/icons/math.svg");
 const ICON_MERMAID: &[u8] = include_bytes!("../../../../assets/icons/mermaid.svg");
 const ICON_TABLE: &[u8] = include_bytes!("../../../../assets/icons/table.svg");
 const ICON_WHITEBOARD: &[u8] = include_bytes!("../../../../assets/icons/whiteboard.svg");
+const ICON_VIDEO: &[u8] = include_bytes!("../../../../assets/icons/video.svg");
 const ICON_DIVIDER: &[u8] = include_bytes!("../../../../assets/icons/divider.svg");
 const ICON_SUBMENU_ARROW: &[u8] = include_bytes!("../../../../assets/icons/jiantou.svg");
 
@@ -622,6 +623,7 @@ fn slash_menu_svg_icon(item: &SlashMenuItem) -> Option<(&'static str, &'static [
         RichBlockKind::Mermaid => Some(("slash-menu-mermaid", ICON_MERMAID)),
         RichBlockKind::Table => Some(("slash-menu-table", ICON_TABLE)),
         RichBlockKind::Whiteboard => Some(("slash-menu-whiteboard", ICON_WHITEBOARD)),
+        RichBlockKind::Video => Some(("slash-menu-video", ICON_VIDEO)),
         RichBlockKind::Divider => Some(("slash-menu-divider", ICON_DIVIDER)),
         _ => None,
     }

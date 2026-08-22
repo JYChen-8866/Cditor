@@ -131,7 +131,7 @@ pub fn plan_markdown_import(
             .filter(|block| {
                 matches!(
                     block.payload,
-                    BlockPayload::Image(_) | BlockPayload::File(_)
+                    BlockPayload::Image(_) | BlockPayload::Video(_) | BlockPayload::File(_)
                 )
             })
             .count(),
@@ -190,7 +190,7 @@ fn accumulate_content_counts(
             .filter(|block| {
                 matches!(
                     block.payload,
-                    BlockPayload::Image(_) | BlockPayload::File(_)
+                    BlockPayload::Image(_) | BlockPayload::Video(_) | BlockPayload::File(_)
                 )
             })
             .count();
@@ -233,6 +233,14 @@ fn unsafe_payload_resource_count(payload: &BlockPayload) -> usize {
         BlockPayload::Image(image) => {
             usize::from(!safe_resource(&image.source))
                 + unsafe_span_resource_count(&image.caption.spans)
+        }
+        BlockPayload::Video(video) => {
+            usize::from(!safe_resource(&video.source))
+                + video
+                    .poster
+                    .as_deref()
+                    .map_or(0, |poster| usize::from(!safe_resource(poster)))
+                + unsafe_span_resource_count(&video.caption.spans)
         }
         BlockPayload::Collection(collection) => unsafe_span_resource_count(&collection.title.spans),
         BlockPayload::File(file) => usize::from(!safe_resource(&file.source)),

@@ -248,6 +248,55 @@ pub fn export_plain_markdown(document: &RichTextDocument) -> String {
         .join("\n")
 }
 
+/// Exports the editor's document-owned clipboard snapshot without consulting
+/// rendered block entities. Partial text selections keep their inline marks;
+/// complete blocks additionally retain their block-level Markdown syntax.
+#[must_use]
+pub fn export_clipboard_selection_markdown(
+    selection: &cditor_core::clipboard::ClipboardSelection,
+) -> String {
+    use cditor_core::clipboard::ClipboardSelection;
+
+    match selection {
+        ClipboardSelection::Inline { spans } => export::spans_to_markdown(spans),
+        ClipboardSelection::DocumentLink { label, href } => {
+            export::spans_to_markdown(&[InlineSpan {
+                text: label.clone(),
+                marks: vec![cditor_core::rich_text::InlineMark::DocumentLink {
+                    href: href.clone(),
+                }],
+            }])
+        }
+        ClipboardSelection::TextFragments { fragments } => fragments
+            .iter()
+            .map(|fragment| {
+                if fragment.starts_at_block_start && fragment.ends_at_block_end {
+                    export::block_parts_to_plain_markdown(
+                        &fragment.kind,
+                        &BlockPayload::RichText {
+                            spans: fragment.spans.clone(),
+                        },
+                        None,
+                    )
+                } else {
+                    export::spans_to_markdown(&fragment.spans)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        ClipboardSelection::Blocks { blocks } => blocks
+            .iter()
+            .map(|block| export::block_parts_to_plain_markdown(&block.kind, &block.payload, None))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        ClipboardSelection::Table { table } => export::block_parts_to_plain_markdown(
+            &RichBlockKind::Table,
+            &BlockPayload::Table(table.clone()),
+            None,
+        ),
+    }
+}
+
 struct MarkdownParser {
     document_id: DocumentId,
     next_block_id: BlockId,

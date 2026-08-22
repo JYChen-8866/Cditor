@@ -4954,6 +4954,20 @@ viewport 附近 decode 当前显示尺寸所需的 thumbnail。
 内存压力下可释放 decoded resource，但不能丢失 block payload 和 layout box。
 ```
 
+视频实现约束：
+
+```text
+文档投影可以包含任意数量的视频 block，但每个编辑器只允许有限数量的活跃 VideoSession。
+解码预算必须在创建后台任务前原子预留；预算不足时进入 Deferred，禁止创建轮询等待线程。
+桌面端默认最多 4 个活跃会话、64 MiB 解码预留；移动端默认最多 2 个、24 MiB。
+poster 使用独立的有界图片 LRU；没有 poster 的离屏视频仍保留 intrinsic size 或 16:9 stable box。
+首帧生成后立即终止一次性 FFmpeg；只有用户点击播放才创建实时解码进程和音频流。
+BGRA 帧上传为 RenderImage 后立即释放 CPU 像素；缓存中每个会话至多保留一个 RenderImage。
+新视频开始播放时暂停同一编辑器内其他视频，显式播放请求优先获得解码槽位。
+离开投影视口、隐藏宿主或关闭文档时必须取消 resolve/probe/decode，并在非 UI reaper 线程回收进程和 worker。
+诊断快照必须暴露 Loading/Deferred/Ready/Playing/Failed、CPU frame bytes、RenderImage bytes 和全局预留。
+```
+
 
 建议增加全局内存压力策略：
 

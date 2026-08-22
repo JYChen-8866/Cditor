@@ -18,6 +18,7 @@ use crate::features::table::{
 };
 use crate::features::text::heading::render_heading;
 use crate::features::text::paragraph::render_paragraph;
+use crate::features::video::VideoPlaybackCache;
 use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::{
     CodeLanguageEditState, focus_block_from_mouse, gutter_mouse_down_from_mouse,
@@ -72,6 +73,7 @@ impl BlockView {
         search_decorations: &SearchDecorationState,
         mermaid_renders: &MermaidRenderCache,
         mermaid_show_source: bool,
+        video_playbacks: &VideoPlaybackCache,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
         cx: &mut App,
     ) -> AnyElement {
@@ -107,6 +109,7 @@ impl BlockView {
             search_decorations,
             mermaid_renders,
             mermaid_show_source,
+            video_playbacks,
             whiteboard_thumbnails,
             cx,
         );
@@ -212,6 +215,7 @@ fn render_kind_content(
     search_decorations: &SearchDecorationState,
     mermaid_renders: &MermaidRenderCache,
     mermaid_show_source: bool,
+    video_playbacks: &VideoPlaybackCache,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
 ) -> AnyElement {
@@ -242,6 +246,7 @@ fn render_kind_content(
         code_highlights,
         search_decorations,
         code_highlight_theme,
+        video_playbacks,
         whiteboard_thumbnails,
         cx,
     );

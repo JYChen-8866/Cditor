@@ -31,6 +31,14 @@ pub(crate) enum GuiPlatformInputTarget {
     TableMenuQuery {
         block_id: BlockId,
     },
+    /// Link popup label field.
+    LinkText {
+        block_id: BlockId,
+    },
+    /// Link popup destination field.
+    LinkUrl {
+        block_id: BlockId,
+    },
     /// Complex block or block chrome focus (no platform text input)
     None,
 }
@@ -59,6 +67,14 @@ impl GuiPlatformInputTarget {
         Self::TableMenuQuery { block_id }
     }
 
+    pub(crate) fn link_text(block_id: BlockId) -> Self {
+        Self::LinkText { block_id }
+    }
+
+    pub(crate) fn link_url(block_id: BlockId) -> Self {
+        Self::LinkUrl { block_id }
+    }
+
     pub(crate) fn block_id(self) -> BlockId {
         match self {
             Self::BlockText { block_id }
@@ -67,7 +83,9 @@ impl GuiPlatformInputTarget {
             | Self::CollectionTitle { block_id }
             | Self::CodeLanguage { block_id }
             | Self::AiPrompt { block_id }
-            | Self::TableMenuQuery { block_id } => block_id,
+            | Self::TableMenuQuery { block_id }
+            | Self::LinkText { block_id }
+            | Self::LinkUrl { block_id } => block_id,
             Self::None => BlockId::default(),
         }
     }
@@ -82,6 +100,10 @@ impl GuiPlatformInputTarget {
 
     pub(crate) fn is_table_menu_query_for(self, block_id: BlockId) -> bool {
         self == Self::TableMenuQuery { block_id }
+    }
+
+    pub(crate) fn is_link_edit_for(self, block_id: BlockId) -> bool {
+        self == Self::LinkText { block_id } || self == Self::LinkUrl { block_id }
     }
 
     pub(crate) fn matches_runtime_target(self, target: InputTarget) -> bool {
@@ -158,9 +180,22 @@ impl CditorV2View {
     pub(crate) fn begin_platform_input_registration_frame(&mut self) {
         let target = self
             .overlay
-            .ai_prompt
+            .link_edit
             .as_ref()
-            .map(|prompt| GuiPlatformInputTarget::ai_prompt(prompt.block_id))
+            .map(|edit| match edit.focused_field {
+                crate::input::link_edit::LinkEditField::Text => {
+                    GuiPlatformInputTarget::link_text(edit.block_id)
+                }
+                crate::input::link_edit::LinkEditField::Url => {
+                    GuiPlatformInputTarget::link_url(edit.block_id)
+                }
+            })
+            .or_else(|| {
+                self.overlay
+                    .ai_prompt
+                    .as_ref()
+                    .map(|prompt| GuiPlatformInputTarget::ai_prompt(prompt.block_id))
+            })
             .or_else(|| {
                 self.overlay
                     .code_language_edit
@@ -256,6 +291,16 @@ pub(crate) fn platform_input_registration_allows<S: InputContextSource + ?Sized>
         GuiPlatformInputTarget::AiPrompt { .. } | GuiPlatformInputTarget::TableMenuQuery { .. }
     ) {
         return current.is_none_or(|current| current == target);
+    }
+    if matches!(
+        target,
+        GuiPlatformInputTarget::LinkText { .. } | GuiPlatformInputTarget::LinkUrl { .. }
+    ) {
+        // The popup's two fields share one focus surface; Tab retargets the
+        // registration between them without a teardown frame.
+        return current.is_none_or(|current| {
+            current == target || current.is_link_edit_for(target.block_id())
+        });
     }
     if current.is_some_and(|current| current != target) {
         return false;

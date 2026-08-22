@@ -151,6 +151,33 @@ impl CditorV2View {
                 },
             });
         }
+        if self.focus.link_edit.is_focused(window) {
+            let registered_target = self.input.target;
+            let edit = self.overlay.link_edit.as_ref()?;
+            if !super::support::link_edit_input_target_allows(registered_target, edit.block_id) {
+                return None;
+            }
+            let draft = edit.active_draft();
+            let range = utf16_range_to_utf8_range(draft, &range_utf16);
+            let x_range = single_line_visible_range_x(
+                draft,
+                range,
+                edit.caret_offset,
+                px(SINGLE_LINE_INPUT_FONT_SIZE_PX),
+                element_bounds,
+                window,
+            );
+            return Some(Bounds {
+                origin: Point {
+                    x: element_bounds.origin.x + px(x_range.start),
+                    y: element_bounds.origin.y,
+                },
+                size: Size {
+                    width: px((x_range.end - x_range.start).max(1.0)),
+                    height: element_bounds.size.height.max(px(22.0)),
+                },
+            });
+        }
         if self.focus.code_language.is_focused(window) {
             let registered_target = self.input.target;
             let edit = self.overlay.code_language_edit.as_ref()?;

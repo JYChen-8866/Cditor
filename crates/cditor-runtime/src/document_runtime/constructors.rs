@@ -177,13 +177,22 @@ impl DocumentRuntime {
                 _ => None,
             })
             .collect::<HashMap<_, _>>();
+        let loaded_video_heights = payloads
+            .iter()
+            .filter_map(|payload| {
+                matches!(payload.kind, RichBlockKind::Video)
+                    .then(|| (payload.block_id, estimate_payload_height(payload, 0)))
+            })
+            .collect::<HashMap<_, _>>();
         for record in &mut records {
             normalize_whiteboard_layout(record);
+            let loaded_video_height = loaded_video_heights.get(&record.id).copied();
             if let Some(height) = loaded_table_heights.get(&record.id).copied() {
                 record.layout_meta.estimated_height = height;
                 record.layout_meta.measured_height = Some(height);
                 record.layout_meta.dirty = false;
             }
+            normalize_video_layout(record, loaded_video_height);
         }
         let start = Instant::now();
         let index = DocumentIndex::new(document_id, records, structure_version)
@@ -314,6 +323,28 @@ fn normalize_whiteboard_layout(record: &mut BlockIndexRecord) {
     record.layout_meta.dirty = true;
 }
 
+fn normalize_video_layout(record: &mut BlockIndexRecord, loaded_height: Option<f64>) {
+    if !matches!(
+        rich_block_kind_from_tag(record.kind_tag),
+        RichBlockKind::Video
+    ) {
+        return;
+    }
+    let height = loaded_height.unwrap_or(cditor_core::layout::VIDEO_BLOCK_ESTIMATED_HEIGHT_PX);
+    if (record.layout_meta.effective_height() - height).abs() < 0.5
+        && record.layout_meta.measured_height == Some(height)
+    {
+        return;
+    }
+
+    // Older builds persisted a fixed 360px box, then replaced it only after
+    // the video entered the viewport. Normalize before constructing the height
+    // index so scroll planning never observes that stale geometry.
+    record.layout_meta.estimated_height = height;
+    record.layout_meta.measured_height = Some(height);
+    record.layout_meta.dirty = false;
+}
+
 #[cfg(test)]
 mod whiteboard_layout_tests {
     use super::*;
@@ -341,6 +372,42 @@ mod whiteboard_layout_tests {
         assert_eq!(record.layout_meta.effective_height(), 480.0);
         assert_eq!(record.layout_meta.measured_height, None);
         assert!(record.layout_meta.dirty);
+    }
+}
+
+#[cfg(test)]
+mod video_layout_tests {
+    use super::*;
+
+    #[test]
+    fn reopening_discards_the_legacy_fixed_video_height() {
+        let mut record = BlockIndexRecord::new(
+            7,
+            None,
+            0,
+            kind_tag_for_rich_block_kind(&RichBlockKind::Video),
+            0,
+        )
+        .with_layout_meta(BlockLayoutMeta {
+            block_id: 7,
+            estimated_height: 360.0,
+            measured_height: Some(360.0),
+            width_bucket: 800,
+            layout_version: 1,
+            dirty: false,
+        });
+
+        normalize_video_layout(&mut record, None);
+
+        assert_eq!(
+            record.layout_meta.effective_height(),
+            cditor_core::layout::VIDEO_BLOCK_ESTIMATED_HEIGHT_PX
+        );
+        assert_eq!(
+            record.layout_meta.measured_height,
+            Some(cditor_core::layout::VIDEO_BLOCK_ESTIMATED_HEIGHT_PX)
+        );
+        assert!(!record.layout_meta.dirty);
     }
 }
 

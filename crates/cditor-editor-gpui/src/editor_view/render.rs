@@ -1,6 +1,7 @@
 use gpui::{
-    Context, DismissEvent, InteractiveElement, IntoElement, MouseButton, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Window, div, rgb,
+    Context, DismissEvent, ExternalPaths, InteractiveElement, IntoElement, MouseButton,
+    MouseDownEvent, ParentElement, Render, StatefulInteractiveElement, Styled, Window, canvas, div,
+    rgb,
 };
 
 use crate::document::{
@@ -33,8 +34,9 @@ use crate::overlays::render_whiteboard_editor;
 use crate::overlays::{
     GUTTER_MENU_WIDTH_PX, build_block_transform_popup_menu, build_slash_callout_popup_menu,
     build_slash_popup_menu, gutter_popup_menu_style, render_ai_preview_overlay, render_ai_prompt,
-    render_floating_toolbar, render_gutter_popup_menu, render_slash_menu, render_toast,
-    update_gutter_popup_menu, update_slash_popup_menu,
+    render_editor_context_menu, render_floating_toolbar, render_gutter_popup_menu,
+    render_slash_menu, render_toast, show_editor_context_menu, update_gutter_popup_menu,
+    update_slash_popup_menu,
 };
 use crate::persistence::{EditorLoadStateLabel, render_load_state};
 use crate::platform::editor_ui_font_family;
@@ -112,6 +114,16 @@ impl Render for CditorV2View {
                 {
                     Some(self.focus.code_language.clone())
                 }
+                GuiPlatformInputTarget::LinkText { block_id }
+                | GuiPlatformInputTarget::LinkUrl { block_id }
+                    if self
+                        .overlay
+                        .link_edit
+                        .as_ref()
+                        .is_some_and(|edit| edit.block_id == block_id) =>
+                {
+                    Some(self.focus.link_edit.clone())
+                }
                 GuiPlatformInputTarget::TableMenuQuery { block_id }
                     if self
                         .interaction
@@ -148,10 +160,17 @@ impl Render for CditorV2View {
                 .into_any_element();
         }
 
-        let measured_editor_viewport =
-            EditorViewport::from_bounds(self.interaction.editor_viewport_handle.bounds());
+        let measured_editor_viewport_bounds = self
+            .interaction
+            .take_pending_editor_viewport_bounds()
+            .unwrap_or_else(|| self.interaction.editor_viewport_handle.bounds());
+        let measured_editor_viewport = EditorViewport::from_bounds(measured_editor_viewport_bounds);
         let editor_viewport = measured_editor_viewport
             .unwrap_or_else(|| EditorViewport::from_size(window.viewport_size()));
+        let editor_viewport_origin = measured_editor_viewport_bounds.origin;
+        self.interaction.note_editor_viewport_rendered(
+            measured_editor_viewport.map(|_| measured_editor_viewport_bounds),
+        );
 
         let view = cx.entity();
         let code_language_edit = self.overlay.code_language_edit.clone();
@@ -168,6 +187,7 @@ impl Render for CditorV2View {
                         .is_some_and(|context| context.has_active_document_text_selection()))
         });
         let selection_toolbar_ready = self.sync_selection_toolbar_delay(cx);
+        let accepts_external_video_drop = self.state.is_ready() && !self.status.readonly;
         // Cditor owns the moment an editable session begins. Registering the
         // native selection/IME handler must never open the iOS keyboard as a
         // side effect of rendering or scrolling.
@@ -187,6 +207,32 @@ impl Render for CditorV2View {
                 view.overlay.page_icon_menu_open = false;
             }),
         )
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(move |view, event: &MouseDownEvent, window, cx| {
+                window.prevent_default();
+                cx.stop_propagation();
+                show_editor_context_menu(
+                    view,
+                    f32::from(event.position.x - editor_viewport_origin.x),
+                    f32::from(event.position.y - editor_viewport_origin.y),
+                    editor_viewport.width,
+                    editor_viewport.height,
+                    theme,
+                    window,
+                    cx,
+                );
+            }),
+        )
+        .can_drop(move |value, _window, _cx| {
+            accepts_external_video_drop
+                && value
+                    .downcast_ref::<ExternalPaths>()
+                    .is_some_and(crate::features::video::accepts_external_video_paths)
+        })
+        .on_drop::<ExternalPaths>(cx.listener(|view, paths, window, cx| {
+            view.handle_external_video_drop(paths, window.mouse_position(), cx);
+        }))
         .on_action(cx.listener(|view, _: &Newline, _window, cx| {
             view.handle_bound_input_action(BoundInputAction::Newline, cx)
         }))
@@ -202,8 +248,12 @@ impl Render for CditorV2View {
         .on_action(cx.listener(|view, _: &Backtab, _window, cx| {
             view.handle_bound_input_action(BoundInputAction::Tab { backwards: true }, cx)
         }))
-        .on_action(cx.listener(|view, _: &Cancel, _window, cx| {
-            view.handle_bound_input_action(BoundInputAction::Cancel, cx)
+        .on_action(cx.listener(|view, _: &Cancel, window, cx| {
+            if view.overlay.fullscreen_video_block_id.is_some() {
+                view.exit_fullscreen_video(window, cx);
+            } else {
+                view.handle_bound_input_action(BoundInputAction::Cancel, cx)
+            }
         }))
         .on_action(cx.listener(|view, _: &MoveLeft, _window, cx| {
             view.handle_bound_input_action(
@@ -445,6 +495,27 @@ impl Render for CditorV2View {
         .bg(rgb(theme.surface))
         .text_color(rgb(theme.text));
 
+        // GPUI writes ScrollHandle bounds during prepaint. A cached embedded
+        // view can therefore render once with the previous host width after a
+        // dock or split-pane changes size. Observe the final root bounds and
+        // invalidate exactly once so the next frame projects the document
+        // against the new viewport instead of waiting for unrelated input.
+        let viewport_observer = cx.entity();
+        root = root.child(
+            canvas(
+                move |bounds, _, cx| {
+                    viewport_observer.update(cx, |view, cx| {
+                        if view.interaction.request_editor_viewport_refresh(bounds) {
+                            cx.notify();
+                        }
+                    });
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        );
+
         #[cfg(feature = "mobile-text-session")]
         let mut root = root.on_pointer_cancel(cx.listener(
             |view, _event: &gpui::PointerCancelEvent, _window, cx| {
@@ -454,9 +525,7 @@ impl Render for CditorV2View {
             },
         ));
 
-        if measured_editor_viewport.is_some() {
-            self.interaction.note_viewport_measured();
-        } else if self.state.is_ready() {
+        if measured_editor_viewport.is_none() && self.state.is_ready() {
             // A fresh ScrollHandle receives its bounds during prepaint, after
             // this render pass. Laying out a ready document against the whole
             // window here makes embedded editors paint wide and then contract
@@ -470,9 +539,6 @@ impl Render for CditorV2View {
                 ),
             );
             crate::text::sync_automatic_text_layout_pins(&[]);
-            if self.interaction.request_initial_viewport_frame() {
-                cx.on_next_frame(window, |_view, _window, cx| cx.notify());
-            }
             self.record_frame_telemetry(
                 window.window_handle().window_id(),
                 frame_started.elapsed(),
@@ -581,6 +647,11 @@ impl Render for CditorV2View {
                     &self.scheduling.workers,
                     cx,
                 );
+                self.cache.video_playbacks.sync_visible_window(
+                    &projection,
+                    self.features.asset_provider.clone(),
+                    cx,
+                );
                 let deferred_whiteboard_entities = {
                     let scheduler = &mut self.scheduling.main_thread;
                     self.cache.whiteboard_thumbnails.sync_visible_window(
@@ -681,6 +752,7 @@ impl Render for CditorV2View {
                         &self.features.search_decorations,
                         &self.cache.mermaid_renders,
                         &mermaid_source_blocks,
+                        &self.cache.video_playbacks,
                         &self.cache.whiteboard_thumbnails,
                         self.overlay.page_icon_menu_open,
                         self.overlay.page_icon_menu_custom_tab,
@@ -756,6 +828,7 @@ impl Render for CditorV2View {
             formatting_text_selection_bounds,
             self.status.readonly,
             self.overlay.slash_menu.is_some()
+                || self.overlay.link_edit.is_some()
                 || code_language_edit.is_some()
                 || code_theme_menu_block_id.is_some()
                 || (self.overlay.ai_prompt.is_some() && !embedded_ai_prompt),
@@ -974,6 +1047,16 @@ impl Render for CditorV2View {
                 editor_viewport,
             ));
         }
+        if let Some(link_edit) = self.overlay.link_edit.as_ref() {
+            root = root.child(crate::overlays::render_link_edit_popup(
+                link_edit,
+                theme,
+                cx.entity(),
+                self.focus.link_edit.clone(),
+                editor_viewport.width,
+                editor_viewport.height,
+            ));
+        }
         if let Some(toast) = self
             .overlay
             .toast
@@ -981,6 +1064,29 @@ impl Render for CditorV2View {
             .filter(|toast| toast.is_alive(web_time::Instant::now()))
         {
             root = root.child(render_toast(toast, theme));
+        }
+        self.reconcile_fullscreen_video_window(window);
+        if let Some(block_id) = self.overlay.fullscreen_video_block_id {
+            let window_viewport = window.viewport_size();
+            if let Some(overlay) = crate::features::video::render_fullscreen_video_overlay(
+                block_id,
+                &self.cache.video_playbacks,
+                theme,
+                cx.entity(),
+                window_viewport.width.as_f32(),
+                window_viewport.height.as_f32(),
+                cx,
+            ) {
+                root = root.child(overlay);
+            } else {
+                self.exit_fullscreen_video(window, cx);
+            }
+        }
+        if let (Some(menu), Some(position)) = (
+            self.overlay.editor_context_menu.clone(),
+            self.overlay.editor_context_menu_position,
+        ) {
+            root = root.child(render_editor_context_menu(position, menu));
         }
         self.record_frame_telemetry(window.window_handle().window_id(), frame_started.elapsed());
 

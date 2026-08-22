@@ -4,7 +4,7 @@ use std::{
 };
 
 use cditor_session::EditorSessionHandle;
-use gpui::{App, AppContext, Context, Entity, FocusHandle, Subscription, Window};
+use gpui::{App, AppContext, Bounds, Context, Entity, FocusHandle, Pixels, Subscription, Window};
 
 use cditor_component::PopupMenu;
 
@@ -99,6 +99,7 @@ pub(crate) struct OverlayUiState {
     pub(crate) ai_prompt: Option<AiPromptState>,
     pub(crate) ai_preview_scroll_handle: gpui::ScrollHandle,
     pub(crate) code_language_edit: Option<CodeLanguageEditState>,
+    pub(crate) link_edit: Option<crate::input::link_edit::LinkEditState>,
     pub(crate) code_theme_menu_block_id: Option<BlockId>,
     pub(crate) code_copy_feedback_block_id: Option<BlockId>,
     pub(crate) code_copy_feedback_generation: u64,
@@ -116,6 +117,9 @@ pub(crate) struct OverlayUiState {
     pub(crate) gutter_popup_menu_dismiss_subscription: Option<Subscription>,
     pub(crate) block_transform_popup_menu: Option<Entity<PopupMenu>>,
     pub(crate) block_transform_popup_menu_dismiss_subscription: Option<Subscription>,
+    pub(crate) editor_context_menu: Option<Entity<PopupMenu>>,
+    pub(crate) editor_context_menu_position: Option<(f32, f32)>,
+    pub(crate) editor_context_menu_dismiss_subscription: Option<Subscription>,
     pub(crate) selection_toolbar_delay: SelectionToolbarDelay,
     pub(crate) block_transform_menu_open: bool,
     pub(crate) color_menu_open: bool,
@@ -126,6 +130,9 @@ pub(crate) struct OverlayUiState {
     pub(crate) page_icon_menu_open: bool,
     pub(crate) page_icon_menu_custom_tab: bool,
     pub(crate) page_icon_menu_scroll_handle: gpui::ScrollHandle,
+    pub(crate) fullscreen_video_block_id: Option<BlockId>,
+    pub(crate) fullscreen_video_requested_window: bool,
+    pub(crate) fullscreen_video_observed_window: bool,
 }
 
 impl OverlayUiState {
@@ -134,6 +141,11 @@ impl OverlayUiState {
     }
 
     pub(crate) fn dismiss_topmost_formatting_layer(&mut self) -> bool {
+        if self.editor_context_menu.take().is_some() {
+            self.editor_context_menu_position = None;
+            self.editor_context_menu_dismiss_subscription = None;
+            return true;
+        }
         if self.color_menu_open {
             self.color_menu_open = false;
             self.color_menu_hover_generation = self.color_menu_hover_generation.wrapping_add(1);
@@ -158,6 +170,7 @@ impl OverlayUiState {
 pub(crate) struct FocusUiState {
     pub(crate) editor: FocusHandle,
     pub(crate) code_language: FocusHandle,
+    pub(crate) link_edit: FocusHandle,
     pub(crate) ai_prompt: FocusHandle,
     pub(crate) caret_blink: Entity<CaretBlink>,
     pub(crate) sdk_observers_registered: bool,
@@ -225,6 +238,7 @@ impl FocusUiState {
         Self {
             editor: cx.focus_handle(),
             code_language: cx.focus_handle(),
+            link_edit: cx.focus_handle(),
             ai_prompt: cx.focus_handle(),
             caret_blink,
             sdk_observers_registered: false,
@@ -393,7 +407,10 @@ pub(crate) struct InteractionUiState {
     pub(crate) last_wheel_delta_y: f64,
     pub(crate) scroll_accumulator: ScrollAccumulator,
     wheel_frame_scheduled: bool,
-    initial_viewport_frame_requested: bool,
+    rendered_editor_viewport_bounds: Option<Bounds<Pixels>>,
+    pending_editor_viewport_bounds: Option<Bounds<Pixels>>,
+    #[cfg(test)]
+    editor_viewport_correction_requests: usize,
     pub(crate) editor_viewport_handle: gpui::ScrollHandle,
     pub(crate) code_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
     pub(crate) code_caret_reveal_after_line_break: HashSet<BlockId>,
@@ -429,7 +446,10 @@ impl Default for InteractionUiState {
             last_wheel_delta_y: 0.0,
             scroll_accumulator: Default::default(),
             wheel_frame_scheduled: false,
-            initial_viewport_frame_requested: false,
+            rendered_editor_viewport_bounds: None,
+            pending_editor_viewport_bounds: None,
+            #[cfg(test)]
+            editor_viewport_correction_requests: 0,
             editor_viewport_handle: Default::default(),
             code_scroll_handles: Default::default(),
             code_caret_reveal_after_line_break: Default::default(),
@@ -455,16 +475,49 @@ impl Default for InteractionUiState {
 }
 
 impl InteractionUiState {
-    pub(crate) fn request_initial_viewport_frame(&mut self) -> bool {
-        if self.initial_viewport_frame_requested {
-            return false;
-        }
-        self.initial_viewport_frame_requested = true;
-        true
+    /// Supplies the final host bounds before Cditor builds the current frame.
+    /// Unlike the post-layout observer path, this never requests another
+    /// frame: the pending measurement is consumed by the render that follows
+    /// immediately in `CditorHostElement::prepaint`.
+    pub(crate) fn prepare_editor_viewport_for_render(&mut self, bounds: Bounds<Pixels>) {
+        self.pending_editor_viewport_bounds = Some(bounds);
     }
 
-    pub(crate) fn note_viewport_measured(&mut self) {
-        self.initial_viewport_frame_requested = false;
+    #[cfg(test)]
+    pub(crate) fn rendered_editor_viewport_bounds(&self) -> Option<Bounds<Pixels>> {
+        self.rendered_editor_viewport_bounds
+    }
+
+    #[cfg(test)]
+    pub(crate) fn editor_viewport_correction_requests(&self) -> usize {
+        self.editor_viewport_correction_requests
+    }
+
+    pub(crate) fn note_editor_viewport_rendered(&mut self, bounds: Option<Bounds<Pixels>>) {
+        self.rendered_editor_viewport_bounds = bounds;
+        self.pending_editor_viewport_bounds = None;
+    }
+
+    pub(crate) fn take_pending_editor_viewport_bounds(&mut self) -> Option<Bounds<Pixels>> {
+        self.pending_editor_viewport_bounds.take()
+    }
+
+    /// Returns true once for each host layout that differs from the viewport
+    /// used to build the current document projection.
+    pub(crate) fn request_editor_viewport_refresh(&mut self, bounds: Bounds<Pixels>) -> bool {
+        if self.rendered_editor_viewport_bounds == Some(bounds) {
+            self.pending_editor_viewport_bounds = None;
+            return false;
+        }
+        if self.pending_editor_viewport_bounds == Some(bounds) {
+            return false;
+        }
+        self.pending_editor_viewport_bounds = Some(bounds);
+        #[cfg(test)]
+        {
+            self.editor_viewport_correction_requests += 1;
+        }
+        true
     }
 
     pub(crate) fn note_input(&mut self) {
@@ -935,6 +988,7 @@ mod tests {
     fn overlay_reset_discards_document_bound_transient_state() {
         let mut overlay = OverlayUiState {
             code_theme_menu_block_id: Some(7),
+            fullscreen_video_block_id: Some(9),
             collapsed_code_blocks: std::iter::once(7).collect(),
             collapsed_code_block_heights: HashMap::from([(7, 386.0)]),
             gutter_toolbar_block_id: Some(8),
@@ -953,6 +1007,9 @@ mod tests {
         assert!(overlay.collapsed_code_blocks.is_empty());
         assert!(overlay.collapsed_code_block_heights.is_empty());
         assert!(overlay.gutter_toolbar_block_id.is_none());
+        assert!(overlay.fullscreen_video_block_id.is_none());
+        assert!(!overlay.fullscreen_video_requested_window);
+        assert!(!overlay.fullscreen_video_observed_window);
         assert!(!overlay.block_transform_menu_open);
         assert!(!overlay.color_menu_open);
         assert_eq!(overlay.color_menu_hover_generation, 0);
@@ -1019,14 +1076,59 @@ mod tests {
     }
 
     #[test]
-    fn initial_viewport_retry_is_single_shot_until_a_measurement_arrives() {
+    fn host_viewport_refresh_is_single_shot_until_the_new_bounds_are_rendered() {
         let mut interaction = InteractionUiState::default();
+        let initial = gpui::Bounds::new(
+            gpui::point(gpui::px(20.0), gpui::px(40.0)),
+            gpui::size(gpui::px(900.0), gpui::px(700.0)),
+        );
+        let resized = gpui::Bounds::new(
+            gpui::point(gpui::px(20.0), gpui::px(40.0)),
+            gpui::size(gpui::px(620.0), gpui::px(700.0)),
+        );
 
-        assert!(interaction.request_initial_viewport_frame());
-        assert!(!interaction.request_initial_viewport_frame());
+        assert!(interaction.request_editor_viewport_refresh(initial));
+        assert!(!interaction.request_editor_viewport_refresh(initial));
+        assert_eq!(
+            interaction.take_pending_editor_viewport_bounds(),
+            Some(initial)
+        );
 
-        interaction.note_viewport_measured();
-        assert!(interaction.request_initial_viewport_frame());
+        interaction.note_editor_viewport_rendered(Some(initial));
+        assert!(!interaction.request_editor_viewport_refresh(initial));
+        assert!(interaction.request_editor_viewport_refresh(resized));
+        assert!(!interaction.request_editor_viewport_refresh(resized));
+
+        interaction.note_editor_viewport_rendered(Some(resized));
+        assert!(!interaction.request_editor_viewport_refresh(resized));
+
+        assert_eq!(interaction.take_pending_editor_viewport_bounds(), None);
+    }
+
+    #[test]
+    fn prepared_host_viewport_is_consumed_before_the_resize_frame_is_rendered() {
+        let mut interaction = InteractionUiState::default();
+        let previous = gpui::Bounds::new(
+            gpui::point(gpui::px(20.0), gpui::px(40.0)),
+            gpui::size(gpui::px(620.0), gpui::px(700.0)),
+        );
+        let resized = gpui::Bounds::new(
+            gpui::point(gpui::px(20.0), gpui::px(40.0)),
+            gpui::size(gpui::px(900.0), gpui::px(700.0)),
+        );
+
+        interaction.note_editor_viewport_rendered(Some(previous));
+        interaction.prepare_editor_viewport_for_render(resized);
+
+        assert_eq!(
+            interaction.take_pending_editor_viewport_bounds(),
+            Some(resized)
+        );
+        interaction.note_editor_viewport_rendered(Some(resized));
+
+        // The compatibility observer sees the same final bounds in prepaint,
+        // so it must not schedule the correction frame that caused the flash.
+        assert!(!interaction.request_editor_viewport_refresh(resized));
     }
 }
 

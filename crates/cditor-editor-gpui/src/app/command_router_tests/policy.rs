@@ -4,6 +4,9 @@ use super::*;
 fn readonly_policy_allows_query_and_clipboard_without_allowing_mutation() {
     assert!(!command_mutates_document(&CditorCommand::SelectAll));
     assert!(!command_mutates_document(&CditorCommand::CopySelection));
+    assert!(!command_mutates_document(
+        &CditorCommand::CopySelectionAsMarkdown
+    ));
     assert!(!command_mutates_document(&CditorCommand::MoveCaret {
         direction: CaretDirection::NextVisual,
         extend_selection: false,
@@ -16,6 +19,7 @@ fn readonly_policy_allows_query_and_clipboard_without_allowing_mutation() {
 fn selection_payload_materialization_covers_all_selection_consumers() {
     for command in [
         CditorCommand::CopySelection,
+        CditorCommand::CopySelectionAsMarkdown,
         CditorCommand::CutSelection,
         CditorCommand::DeleteSelection,
         CditorCommand::DeleteBackward,

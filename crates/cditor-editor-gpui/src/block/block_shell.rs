@@ -19,9 +19,6 @@ use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
 
 const NOTION_QUOTE_BAR_WIDTH_PX: f32 = 3.0;
-const BLOCK_SELECTION_EXPAND_X_PX: f32 = 2.0;
-const BLOCK_SELECTION_EXPAND_Y_PX: f32 = 3.0;
-const BLOCK_SELECTION_RADIUS_PX: f32 = 4.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BlockActionState {
@@ -168,9 +165,6 @@ pub fn block_shell(
                                     .py(px(chrome.content_padding_y_px))
                                     .flex()
                                     .items_start()
-                                    .when(action.action_active, |this| {
-                                        this.child(render_block_selection_decoration(theme))
-                                    })
                                     .when_some(chrome.quote_bar, |this, color| {
                                         this.child(render_quote_bar(color))
                                     })
@@ -206,33 +200,18 @@ fn heading_level(kind: &RichBlockKind) -> Option<u8> {
     }
 }
 
-fn render_block_selection_decoration(theme: GuiTheme) -> AnyElement {
-    div()
-        .absolute()
-        .left(px(-BLOCK_SELECTION_EXPAND_X_PX))
-        .right(px(-BLOCK_SELECTION_EXPAND_X_PX))
-        .top(px(-BLOCK_SELECTION_EXPAND_Y_PX))
-        .bottom(px(-BLOCK_SELECTION_EXPAND_Y_PX))
-        .rounded(px(BLOCK_SELECTION_RADIUS_PX))
-        .bg(rgb(theme.action_background))
-        .into_any_element()
-}
-
 pub fn should_show_gutter(hovered: bool, action_root: bool) -> bool {
     action_root || hovered
 }
 
 pub fn content_background_for_action(
     default_content_background: u32,
-    theme: GuiTheme,
-    action: BlockActionState,
-    has_custom_background: bool,
+    _theme: GuiTheme,
+    _action: BlockActionState,
+    _has_custom_background: bool,
 ) -> u32 {
-    if action.action_active && !has_custom_background {
-        theme.action_background
-    } else {
-        default_content_background
-    }
+    // Subtree action highlighting is painted once by the document overlay.
+    default_content_background
 }
 
 pub fn outer_background_for_action(
@@ -292,13 +271,6 @@ mod tests {
     }
 
     #[test]
-    fn selection_decoration_is_symmetric_and_does_not_change_layout() {
-        assert_eq!(BLOCK_SELECTION_EXPAND_X_PX, 2.0);
-        assert_eq!(BLOCK_SELECTION_EXPAND_Y_PX, 3.0);
-        assert_eq!(BLOCK_SELECTION_RADIUS_PX, 4.0);
-    }
-
-    #[test]
     fn heading_gutter_centers_on_the_first_line_without_moving_other_blocks() {
         assert_eq!(
             gutter_control_top_px(&RichBlockKind::Heading { level: 1 }, 39.0),
@@ -338,17 +310,16 @@ mod tests {
     }
 
     #[test]
-    fn action_active_uses_v1_action_background_without_height_change() {
+    fn action_active_preserves_content_background_for_group_overlay() {
         let theme = GuiTheme::light();
         let action = BlockActionState {
             action_active: true,
             action_root: false,
             dragging: true,
         };
-        // Content background changes on action_active
         assert_eq!(
             content_background_for_action(0x123456, theme, action, false),
-            theme.action_background
+            0x123456
         );
         // Once a block has an explicit background, keep it visible while its
         // gutter menu is active instead of immediately painting over it with

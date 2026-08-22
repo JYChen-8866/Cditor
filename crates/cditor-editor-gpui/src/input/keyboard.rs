@@ -390,7 +390,7 @@ pub(super) fn mermaid_preview_blocks_command(command: GuiInputCommand) -> bool {
     )
 }
 
-fn selected_table_axis_range(
+pub(crate) fn selected_table_axis_range(
     session: &EditorSessionHandle,
     selection: Option<TableAxisSelection>,
 ) -> Option<(BlockId, cditor_core::rich_text::TableRange)> {

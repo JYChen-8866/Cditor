@@ -112,6 +112,29 @@ impl CditorV2View {
                 .map(|changed| CommandOutcome::from_document_change(changed, None));
         }
 
+        if matches!(command, CditorCommand::CopySelectionAsMarkdown) {
+            let session = self.ready_session().ok_or(CditorError::NotReady)?;
+            let selection = if let Some((block_id, range)) =
+                crate::input::keyboard::selected_table_axis_range(
+                    session,
+                    self.projected_table_axis_selection(),
+                ) {
+                session
+                    .table_clipboard_selection(block_id, range)
+                    .map_err(protocol_command_error)?
+            } else {
+                session
+                    .clipboard_snapshot()
+                    .map_err(protocol_command_error)?
+                    .selection
+            }
+            .ok_or(CditorError::InvalidSelection)?;
+            let markdown =
+                cditor_import_export::markdown::export_clipboard_selection_markdown(&selection);
+            cx.write_to_clipboard(ClipboardItem::new_string(markdown));
+            return Ok(CommandOutcome::applied_side_effect(false));
+        }
+
         if let Some(session) = self.ready_session() {
             let _ = session.end_input_batch();
         }
@@ -319,6 +342,7 @@ fn command_requires_selection_materialization(command: &CditorCommand) -> bool {
     matches!(
         command,
         CditorCommand::CopySelection
+            | CditorCommand::CopySelectionAsMarkdown
             | CditorCommand::CutSelection
             | CditorCommand::DeleteSelection
             | CditorCommand::DeleteBackward
@@ -341,6 +365,8 @@ fn runtime_dispatches(command: &CditorCommand) -> bool {
             | CditorCommand::DeleteSelection
             | CditorCommand::ApplyClipboardData { .. }
             | CditorCommand::InsertImageAsset { .. }
+            | CditorCommand::InsertVideoAsset { .. }
+            | CditorCommand::SetVideoSource { .. }
             | CditorCommand::SetPageCover { .. }
             | CditorCommand::SetPageIconEmoji { .. }
             | CditorCommand::SetPageIconAsset { .. }
@@ -425,6 +451,8 @@ fn gui_handler_for_command(command: &CditorCommand) -> Option<GuiInputCommand> {
         CditorCommand::Redo => GuiInputCommand::RedoFocusedBlock,
         CditorCommand::SelectAll => GuiInputCommand::SelectAllFocusedText,
         CditorCommand::CopySelection => GuiInputCommand::CopySelection,
+        CditorCommand::CutSelection => GuiInputCommand::CutSelection,
+        CditorCommand::PasteClipboard => GuiInputCommand::PasteClipboard,
         CditorCommand::DeleteSelection => GuiInputCommand::DeleteBackward,
         CditorCommand::ToggleBold => GuiInputCommand::ToggleBold,
         CditorCommand::ToggleItalic => GuiInputCommand::ToggleItalic,
@@ -489,6 +517,7 @@ fn command_mutates_document(command: &CditorCommand) -> bool {
             | CditorCommand::NavigateTableCell { .. }
             | CditorCommand::SetTextSurfaceSelection { .. }
             | CditorCommand::CopySelection
+            | CditorCommand::CopySelectionAsMarkdown
             | CditorCommand::CopyBlockText { .. }
             | CditorCommand::CopyBlockLink { .. }
             | CditorCommand::MoveCaret { .. }

@@ -310,6 +310,16 @@ const BUILTIN_PRESENTATIONS: &[BlockPresentationDescriptor] = &[
         transform: None,
     },
     BlockPresentationDescriptor {
+        kind: RichBlockKind::Video,
+        slash: slash(
+            "Video",
+            "Video",
+            "Add a playable video block.",
+            &["video", "movie", "media"],
+        ),
+        transform: None,
+    },
+    BlockPresentationDescriptor {
         kind: RichBlockKind::Divider,
         slash: slash("---", "Divider", "Visually divide blocks.", &["hr", "line"]),
         transform: None,
@@ -356,10 +366,10 @@ mod tests {
         let slash = registry.slash_presentations();
         let transforms = registry.transform_presentations();
 
-        assert_eq!(slash.len(), 21);
+        assert_eq!(slash.len(), 22);
         assert_eq!(transforms.len(), 13);
         assert_eq!(slash[0].kind, RichBlockKind::Paragraph);
-        assert_eq!(slash[20].kind, RichBlockKind::RawMarkdown);
+        assert_eq!(slash[21].kind, RichBlockKind::RawMarkdown);
         assert_eq!(transforms[0].kind, RichBlockKind::Paragraph);
         assert_eq!(transforms[12].kind, RichBlockKind::Mermaid);
         assert!(slash.iter().all(|item| {

@@ -30,6 +30,20 @@ fn editor_command_invocation_keeps_source_and_catalog_contract() {
 }
 
 #[test]
+fn copy_as_markdown_is_a_registered_read_only_command() {
+    let command = EditorCommand::CopySelectionAsMarkdown;
+    let invocation = command.invocation(CommandSource::ContextMenu);
+    assert_eq!(invocation.id.as_str(), builtin::EDIT_COPY_AS_MARKDOWN);
+    assert_eq!(invocation.args, CommandArgs::None);
+    let catalog = CommandCatalog::builtin();
+    assert_eq!(catalog.validate_invocation(&invocation), Ok(()));
+    assert_eq!(
+        catalog.definition(&invocation.id).unwrap().mutability,
+        CommandMutability::ReadOnly
+    );
+}
+
+#[test]
 fn envelope_keeps_optimistic_revision_and_request_identity() {
     let envelope = CommandEnvelope::new(EditorCommand::Undo, CommandSource::Sdk)
         .expecting_revision(9)

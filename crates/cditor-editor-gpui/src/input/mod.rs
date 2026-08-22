@@ -5,6 +5,7 @@ pub mod code_language;
 pub mod command;
 pub mod ime;
 pub(crate) mod keyboard;
+pub mod link_edit;
 pub mod mouse;
 #[cfg(feature = "mobile-text-session")]
 mod native_actions;

@@ -17,6 +17,7 @@ members = [
     "crates/cditor-test-support",
     "crates/cditor-text",
     "components/cditor-component",
+    "components/cditor-video",
     "components/cditor-whiteboard",
     "components/cditor-whiteboard-gpui",
     "apps/cditor-web",

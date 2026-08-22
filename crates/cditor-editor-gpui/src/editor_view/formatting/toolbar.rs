@@ -179,6 +179,7 @@ pub(crate) fn formatting_toolbar_state(
             underline,
             strike,
             code,
+            link: false,
             block_transform,
             callout_variant,
             block_transform_availability,
@@ -225,6 +226,7 @@ pub(crate) fn formatting_toolbar_state(
             underline: false,
             strike: false,
             code: false,
+            link: false,
             block_transform: None,
             callout_variant: None,
             block_transform_availability: BlockTransformAvailability::default(),
@@ -275,6 +277,7 @@ pub(crate) fn formatting_toolbar_state(
         underline: selected_spans_have_mark(spans, range.clone(), InlineFormatAction::Underline),
         strike: selected_spans_have_mark(spans, range.clone(), InlineFormatAction::Strike),
         code: selected_spans_have_mark(spans, range.clone(), InlineFormatAction::Code),
+        link: selected_spans_have_mark(spans, range.clone(), InlineFormatAction::Link),
         block_transform: None,
         callout_variant: None,
         block_transform_availability: BlockTransformAvailability::default(),
@@ -394,6 +397,8 @@ fn mark_matches_action(mark: &InlineMark, action: InlineFormatAction) -> bool {
             | (InlineMark::Underline, InlineFormatAction::Underline)
             | (InlineMark::Strike, InlineFormatAction::Strike)
             | (InlineMark::Code, InlineFormatAction::Code)
+            | (InlineMark::Link { .. }, InlineFormatAction::Link)
+            | (InlineMark::DocumentLink { .. }, InlineFormatAction::Link)
     )
 }
 

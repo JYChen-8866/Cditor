@@ -692,6 +692,94 @@ fn imported_image_and_asset_attachment_commit_in_one_transaction() {
 }
 
 #[test]
+fn dropped_video_inserts_video_and_trailing_paragraph_in_one_transaction() {
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "start")]);
+    runtime.focus_block_at_offset(1, 5).unwrap();
+    let asset = cditor_core::edit::AssetSnapshot {
+        asset_id: 88,
+        file_name: "clip.mp4".into(),
+        media_type: "video/mp4".into(),
+        size_bytes: 24,
+        source: "assets/clip.mp4".into(),
+        checksum: Some("b".repeat(64)),
+        state: cditor_core::edit::AssetState::Ready,
+    };
+    let outcome = dispatch(
+        &mut runtime,
+        EditorCommand::InsertVideoAsset {
+            payload: cditor_core::rich_text::VideoPayload {
+                source: asset.source.clone(),
+                title: asset.file_name.clone(),
+                media_type: Some(asset.media_type.clone()),
+                intrinsic_width: Some(1920),
+                intrinsic_height: Some(1080),
+                ..Default::default()
+            },
+            asset: Some(asset.clone()),
+            after_block_id: Some(1),
+        },
+    );
+    let video_block = outcome.affected_blocks[0];
+    assert_eq!(outcome.transaction_ids.len(), 1);
+    assert_eq!(runtime.block_kind(video_block), Some(RichBlockKind::Video));
+    let video_height = runtime
+        .projection(cditor_editor_protocol::projection::ProjectionRequest {
+            viewport_revision: runtime.revision(),
+            include_diagnostics: false,
+        })
+        .blocks
+        .into_iter()
+        .find(|block| block.block_id == video_block)
+        .expect("inserted video projection")
+        .layout
+        .effective_height();
+    assert_eq!(
+        video_height,
+        cditor_core::layout::BODY_BLOCK_CONTENT_WIDTH_PX * 9.0 / 16.0
+            + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
+    );
+    assert_eq!(
+        runtime.attached_asset_ids(video_block),
+        vec![asset.asset_id]
+    );
+    assert_eq!(runtime.asset_snapshot(asset.asset_id), Some(&asset));
+    assert_eq!(
+        runtime.block_kind(outcome.affected_blocks[1]),
+        Some(RichBlockKind::Paragraph)
+    );
+
+    let undo = dispatch(&mut runtime, EditorCommand::Undo);
+    assert!(undo.changed());
+    assert_eq!(runtime.block_kind(video_block), None);
+    assert!(runtime.attached_asset_ids(video_block).is_empty());
+
+    let redo = dispatch(&mut runtime, EditorCommand::Redo);
+    assert!(redo.changed());
+    assert_eq!(runtime.block_kind(video_block), Some(RichBlockKind::Video));
+    assert_eq!(
+        runtime.attached_asset_ids(video_block),
+        vec![asset.asset_id]
+    );
+}
+
+#[test]
+fn dropped_video_with_an_explicit_anchor_does_not_require_text_focus() {
+    let runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "start")]);
+    assert_eq!(runtime.focused_block_id(), None);
+
+    let command = |after_block_id| EditorCommand::InsertVideoAsset {
+        payload: cditor_core::rich_text::VideoPayload::default(),
+        asset: None,
+        after_block_id,
+    };
+    assert!(runtime.query_editor_command(&command(Some(1))).enabled);
+    assert!(!runtime.query_editor_command(&command(Some(999))).enabled);
+    assert!(runtime.query_editor_command(&command(None)).enabled);
+}
+
+#[test]
 fn imported_image_uses_the_paste_time_block_anchor_after_focus_moves() {
     let mut runtime = runtime_with_kind_depths_and_text(vec![
         (RichBlockKind::Paragraph, 0, None, "first"),

@@ -43,7 +43,7 @@ pub fn render_code_block(
     language_edit: Option<&CodeLanguageEditState>,
     code_theme_menu_open: bool,
     code_highlight_theme: &'static str,
-    action_active: bool,
+    _action_active: bool,
     view: Entity<CditorV2View>,
     code_language_focus: FocusHandle,
     collapsed: bool,
@@ -52,11 +52,7 @@ pub fn render_code_block(
     let code_viewport = if collapsed {
         None
     } else {
-        let content_background = if action_active {
-            blend_rgb(code_theme.background, theme.focused, 0.12)
-        } else {
-            code_theme.background
-        };
+        let content_background = code_theme.background;
         Some(
             div()
                 .relative()
@@ -127,16 +123,6 @@ pub fn render_code_block(
         .into_any_element()
 }
 
-fn blend_rgb(background: u32, accent: u32, accent_alpha: f32) -> u32 {
-    let alpha = accent_alpha.clamp(0.0, 1.0);
-    let channel = |shift: u32| {
-        let background = ((background >> shift) & 0xff_u32) as f32;
-        let accent = ((accent >> shift) & 0xff_u32) as f32;
-        (background * (1.0 - alpha) + accent * alpha).round() as u32
-    };
-    (channel(16) << 16) | (channel(8) << 8) | channel(0)
-}
-
 fn render_code_content(content: AnyElement, text_color: u32) -> AnyElement {
     div()
         .w_full()
@@ -162,12 +148,5 @@ mod tests {
         assert_eq!(V1_CODE_CONTENT_PADDING_BOTTOM, 16.0);
         assert_eq!(V1_CODE_TEXT_OFFSET_TOP_PX, 52.0);
         assert_eq!(V1_CODE_TEXT_OFFSET_X_PX, 17.0);
-    }
-
-    #[test]
-    fn action_tint_preserves_most_of_the_code_theme_background() {
-        assert_eq!(blend_rgb(0x000000, 0xffffff, 0.0), 0x000000);
-        assert_eq!(blend_rgb(0x000000, 0xffffff, 1.0), 0xffffff);
-        assert_eq!(blend_rgb(0x282a36, 0x2383e2, 0.12), 0x27354b);
     }
 }

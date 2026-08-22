@@ -122,6 +122,7 @@ impl CditorV2View {
         pins.extend(self.interaction.action_block_id);
         pins.extend(self.overlay.gutter_toolbar_block_id);
         pins.extend(self.overlay.code_theme_menu_block_id);
+        pins.extend(self.overlay.link_edit.as_ref().map(|edit| edit.block_id));
         pins.extend(
             self.overlay
                 .ai_prompt

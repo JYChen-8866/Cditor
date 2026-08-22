@@ -348,6 +348,7 @@ pub mod builtin {
     pub const EDIT_REDO: &str = "edit.redo";
     pub const EDIT_SELECT_ALL: &str = "edit.select_all";
     pub const EDIT_COPY: &str = "edit.copy";
+    pub const EDIT_COPY_AS_MARKDOWN: &str = "edit.copy_as_markdown";
     pub const EDIT_CUT: &str = "edit.cut";
     pub const EDIT_PASTE: &str = "edit.paste";
     pub const EDIT_DELETE_SELECTION: &str = "edit.delete_selection";
@@ -428,8 +429,10 @@ pub mod builtin {
     pub const ASSET_REPLACE: &str = "asset.replace";
     pub const ASSET_UPDATE: &str = "asset.update";
     pub const ASSET_INSERT_IMAGE_PAYLOAD: &str = "asset.insert_image_payload";
+    pub const ASSET_INSERT_VIDEO_PAYLOAD: &str = "asset.insert_video_payload";
     pub const MEDIA_SET_WIDTH_RATIO: &str = "media.set_width_ratio";
     pub const WHITEBOARD_UPDATE_SCENE: &str = "whiteboard.update_scene";
+    pub const VIDEO_SET_SOURCE: &str = "video.set_source";
     pub const AI_APPLY: &str = "ai.apply";
 }
 

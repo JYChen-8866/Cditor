@@ -48,6 +48,7 @@ const ICON_BOLD: &[u8] = include_bytes!("../../../../assets/icons/bold.svg");
 const ICON_ITALIC: &[u8] = include_bytes!("../../../../assets/icons/itaic.svg");
 const ICON_UNDERLINE: &[u8] = include_bytes!("../../../../assets/icons/underline.svg");
 const ICON_STRIKETHROUGH: &[u8] = include_bytes!("../../../../assets/icons/strikethrough.svg");
+const ICON_LINK: &[u8] = include_bytes!("../../../../assets/icons/link.svg");
 const ICON_INLINE_CODE: &[u8] = include_bytes!("../../../../assets/icons/inlie-code.svg");
 const ICON_SUBMENU_ARROW: &[u8] = include_bytes!("../../../../assets/icons/jiantou.svg");
 const ICON_AI_IMPROVE: &[u8] = include_bytes!("../../../../assets/icons/ai-improve.svg");
@@ -73,6 +74,7 @@ pub enum InlineFormatAction {
     Underline,
     Strike,
     Code,
+    Link,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -96,6 +98,7 @@ pub struct FloatingToolbarState {
     pub underline: bool,
     pub strike: bool,
     pub code: bool,
+    pub link: bool,
     pub block_transform: Option<BlockTransformAction>,
     pub callout_variant: Option<CalloutVariant>,
     pub block_transform_availability: BlockTransformAvailability,
@@ -119,6 +122,7 @@ impl FloatingToolbarState {
             InlineFormatAction::Underline => self.underline,
             InlineFormatAction::Strike => self.strike,
             InlineFormatAction::Code => self.code,
+            InlineFormatAction::Link => self.link,
         }
     }
 
@@ -192,7 +196,7 @@ pub(crate) fn toolbar_content_width(state: FloatingToolbarState) -> f32 {
 }
 
 fn inline_format_row_width() -> f32 {
-    let button_count = 5usize;
+    let button_count = 6usize;
     FORMAT_BUTTON_SIZE_PX * button_count as f32
         + TOOLBAR_ACTION_GAP_PX * button_count.saturating_sub(1) as f32
 }
@@ -836,6 +840,14 @@ fn render_inline_format_row(
                 "<>",
                 state,
                 theme,
+                view.clone(),
+                use_svg_icons,
+            ),
+            render_format_button(
+                InlineFormatAction::Link,
+                "L",
+                state,
+                theme,
                 view,
                 use_svg_icons,
             ),
@@ -904,19 +916,36 @@ fn render_format_button(
                 .hover(|style| style.bg(rgb(theme.hover_surface)))
                 .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
                     view.update(cx, |view, cx| {
-                        view.apply_inline_format_from_toolbar(
-                            action,
-                            state.has_text_selection,
-                            state.text_selection,
-                            cx,
-                        );
+                        if action == InlineFormatAction::Link {
+                            if let Some((block_id, anchor, focus)) = state.text_selection {
+                                view.open_link_edit_from_toolbar(
+                                    block_id, anchor, focus, state.x, state.y, cx,
+                                );
+                            }
+                        } else {
+                            view.apply_inline_format_from_toolbar(
+                                action,
+                                state.has_text_selection,
+                                state.text_selection,
+                                cx,
+                            );
+                        }
                     });
                     cx.stop_propagation();
                 })
         })
         .child(
             format_icon_source(action)
-                .filter(|_| use_svg_icon)
+                .filter(|_| {
+                    // Strike and Link render their SVG glyph in both toolbar
+                    // variants: the compact text fallback ("T\u{02e3}") never
+                    // matched the icon used by the gutter menu.
+                    use_svg_icon
+                        || matches!(
+                            action,
+                            InlineFormatAction::Strike | InlineFormatAction::Link
+                        )
+                })
                 .map(|(key, source)| {
                     SvgIcon::new(key, source)
                         .color(rgb(foreground))
@@ -935,6 +964,7 @@ fn format_icon_source(action: InlineFormatAction) -> Option<(&'static str, &'sta
         InlineFormatAction::Underline => Some(("gutter-format-underline", ICON_UNDERLINE)),
         InlineFormatAction::Strike => Some(("gutter-format-strikethrough", ICON_STRIKETHROUGH)),
         InlineFormatAction::Code => Some(("gutter-format-inline-code", ICON_INLINE_CODE)),
+        InlineFormatAction::Link => Some(("gutter-format-link", ICON_LINK)),
     }
 }
 
@@ -1209,6 +1239,7 @@ const fn action_index(action: InlineFormatAction) -> usize {
         InlineFormatAction::Underline => 2,
         InlineFormatAction::Strike => 3,
         InlineFormatAction::Code => 4,
+        InlineFormatAction::Link => 5,
     }
 }
 

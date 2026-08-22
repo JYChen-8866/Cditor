@@ -90,7 +90,9 @@ impl CditorV2View {
                 return false;
             }
         }
-        let command = command_for_inline_format(action);
+        let Some(command) = command_for_inline_format(action) else {
+            return false;
+        };
         matches!(
             self.dispatch_command(command, CommandSource::Toolbar, cx),
             Ok(outcome) if outcome.status == CommandOutcomeStatus::Applied
@@ -167,16 +169,22 @@ pub(super) fn inline_mark_for_toolbar_action(action: InlineFormatAction) -> Inli
         InlineFormatAction::Underline => InlineMark::Underline,
         InlineFormatAction::Strike => InlineMark::Strike,
         InlineFormatAction::Code => InlineMark::Code,
+        InlineFormatAction::Link => InlineMark::Link {
+            href: "https://example.com".to_owned(),
+        },
     }
 }
 
-fn command_for_inline_format(action: InlineFormatAction) -> CditorCommand {
+fn command_for_inline_format(action: InlineFormatAction) -> Option<CditorCommand> {
     match action {
-        InlineFormatAction::Bold => CditorCommand::ToggleBold,
-        InlineFormatAction::Italic => CditorCommand::ToggleItalic,
-        InlineFormatAction::Underline => CditorCommand::ToggleUnderline,
-        InlineFormatAction::Strike => CditorCommand::ToggleStrike,
-        InlineFormatAction::Code => CditorCommand::ToggleInlineCode,
+        InlineFormatAction::Bold => Some(CditorCommand::ToggleBold),
+        InlineFormatAction::Italic => Some(CditorCommand::ToggleItalic),
+        InlineFormatAction::Underline => Some(CditorCommand::ToggleUnderline),
+        InlineFormatAction::Strike => Some(CditorCommand::ToggleStrike),
+        InlineFormatAction::Code => Some(CditorCommand::ToggleInlineCode),
+        // Link opens the popup instead of dispatching a toggle; the toolbar
+        // click handler routes it to `open_link_edit_from_toolbar`.
+        InlineFormatAction::Link => None,
     }
 }
 
@@ -188,11 +196,12 @@ mod command_tests {
     fn toolbar_actions_map_to_the_same_commands_as_keyboard_and_sdk() {
         assert_eq!(
             command_for_inline_format(InlineFormatAction::Bold),
-            CditorCommand::ToggleBold
+            Some(CditorCommand::ToggleBold)
         );
         assert_eq!(
             command_for_inline_format(InlineFormatAction::Strike),
-            CditorCommand::ToggleStrike
+            Some(CditorCommand::ToggleStrike)
         );
+        assert_eq!(command_for_inline_format(InlineFormatAction::Link), None);
     }
 }

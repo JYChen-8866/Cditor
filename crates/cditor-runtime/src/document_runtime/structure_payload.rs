@@ -12,6 +12,9 @@ pub(super) fn payload_for_converted_kind(kind: &RichBlockKind, text: String) -> 
         },
         RichBlockKind::Table => default_table_payload(text),
         RichBlockKind::Whiteboard => default_whiteboard_payload(),
+        RichBlockKind::Video => {
+            BlockPayload::Video(cditor_core::rich_text::VideoPayload::default())
+        }
         RichBlockKind::Divider | RichBlockKind::Separator => BlockPayload::Empty,
         RichBlockKind::Image
         | RichBlockKind::File

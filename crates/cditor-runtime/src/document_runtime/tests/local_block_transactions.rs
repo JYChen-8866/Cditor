@@ -1,4 +1,4 @@
-use cditor_core::edit::{BlockEditOperation, ChangeOrigin};
+use cditor_core::edit::{AssetSnapshot, AssetState, BlockEditOperation, ChangeOrigin};
 
 use super::*;
 
@@ -33,6 +33,100 @@ fn whiteboard_runtime() -> DocumentRuntime {
         }],
         720.0,
     )
+}
+
+fn video_runtime() -> DocumentRuntime {
+    DocumentRuntime::from_payloads(
+        1,
+        vec![BlockPayloadRecord {
+            block_id: 1,
+            content_version: 1,
+            kind: RichBlockKind::Video,
+            payload: BlockPayload::Video(cditor_core::rich_text::VideoPayload::default()),
+        }],
+        720.0,
+    )
+}
+
+#[test]
+fn video_source_update_is_replayable_and_undoable() {
+    let mut runtime = video_runtime();
+    assert!(
+        runtime
+            .set_video_source(
+                1,
+                "/tmp/demo.mp4".into(),
+                "demo.mp4".into(),
+                Some("video/mp4".into()),
+                None,
+            )
+            .unwrap()
+    );
+    let BlockPayload::Video(video) = runtime.block_payload_record(1).unwrap().payload else {
+        panic!("video payload");
+    };
+    assert_eq!(video.source, "/tmp/demo.mp4");
+    assert_eq!(video.title, "demo.mp4");
+    assert_eq!(video.media_type.as_deref(), Some("video/mp4"));
+    assert_eq!(runtime.drain_pending_structure_transactions().len(), 1);
+
+    assert!(runtime.undo_focused_block().unwrap());
+    let BlockPayload::Video(video) = runtime.block_payload_record(1).unwrap().payload else {
+        panic!("video payload");
+    };
+    assert!(video.source.is_empty());
+    assert!(runtime.redo_focused_block().unwrap());
+    let BlockPayload::Video(video) = runtime.block_payload_record(1).unwrap().payload else {
+        panic!("video payload");
+    };
+    assert_eq!(video.source, "/tmp/demo.mp4");
+}
+
+#[test]
+fn video_source_update_rejects_non_video_blocks() {
+    let mut runtime = image_runtime();
+    assert_eq!(
+        runtime
+            .set_video_source(1, "/tmp/demo.mp4".into(), "demo".into(), None, None)
+            .unwrap_err(),
+        "video source can only be set on a video block"
+    );
+}
+
+#[test]
+fn video_source_asset_attachment_round_trips_with_undo_and_redo() {
+    let mut runtime = video_runtime();
+    let asset = AssetSnapshot {
+        asset_id: 71,
+        file_name: "demo.mp4".into(),
+        media_type: "video/mp4".into(),
+        size_bytes: 42,
+        source: "assets/demo.mp4".into(),
+        checksum: Some("demo".into()),
+        state: AssetState::Ready,
+    };
+
+    assert!(
+        runtime
+            .set_video_source(
+                1,
+                asset.source.clone(),
+                asset.file_name.clone(),
+                Some(asset.media_type.clone()),
+                Some(asset.clone()),
+            )
+            .unwrap()
+    );
+    assert_eq!(runtime.attached_asset_ids(1), vec![asset.asset_id]);
+    assert_eq!(runtime.asset_snapshot(asset.asset_id), Some(&asset));
+
+    assert!(runtime.undo_focused_block().unwrap());
+    assert!(runtime.attached_asset_ids(1).is_empty());
+    assert_eq!(runtime.asset_snapshot(asset.asset_id), Some(&asset));
+
+    assert!(runtime.redo_focused_block().unwrap());
+    assert_eq!(runtime.attached_asset_ids(1), vec![asset.asset_id]);
+    assert_eq!(runtime.asset_snapshot(asset.asset_id), Some(&asset));
 }
 
 #[test]

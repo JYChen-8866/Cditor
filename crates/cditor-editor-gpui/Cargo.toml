@@ -21,11 +21,11 @@ whiteboard = ["dep:cditor-whiteboard", "dep:cditor-whiteboard-gpui"]
 [dev-dependencies]
 cditor-test-support = { path = "../cditor-test-support" }
 async-trait = "0.1"
-futures-lite = "2"
 tokio = { version = "1", features = ["rt", "time"] }
 
 [dependencies]
 async-channel = "2"
+futures-lite = "2"
 cditor-ai = { path = "../cditor-ai" }
 cditor-config = { path = "../cditor-config" }
 cditor-sdk = { path = "../cditor-sdk" }
@@ -38,6 +38,7 @@ cditor-runtime = { path = "../cditor-runtime" }
 cditor-session = { path = "../cditor-session" }
 cditor-theme = { path = "../cditor-theme" }
 cditor-component = { path = "../../components/cditor-component" }
+cditor-video = { path = "../../components/cditor-video" }
 cditor-whiteboard = { path = "../../components/cditor-whiteboard", optional = true }
 cditor-whiteboard-gpui = { path = "../../components/cditor-whiteboard-gpui", optional = true }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false }

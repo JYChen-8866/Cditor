@@ -265,6 +265,7 @@ fn builtin_descriptors() -> Vec<BlockDescriptor> {
                         | Kind::Html
                         | Kind::Table
                         | Kind::Whiteboard
+                        | Kind::Video
                         | Kind::Divider
                         | Kind::Separator
                         | Kind::FootnoteDefinition
@@ -385,6 +386,16 @@ fn builtin_descriptors() -> Vec<BlockDescriptor> {
         describe(
             &Kind::Image,
             "image",
+            BlockCapabilities {
+                caption: true,
+                resizable: true,
+                full_width: true,
+                ..media
+            },
+        ),
+        describe(
+            &Kind::Video,
+            "video",
             BlockCapabilities {
                 caption: true,
                 resizable: true,

@@ -25,6 +25,8 @@ mod history_state;
 mod import_plan;
 mod inline_color;
 mod inline_format;
+mod inline_link;
+mod inline_link_selection;
 mod layout_heights;
 mod layout_state;
 mod local_transaction;
@@ -159,9 +161,9 @@ use cditor_core::rich_text::{
     AssetRef, BlockAttrs, BlockPayload, BlockPayloadRecord, BlockPayloadView, CoverPositionY,
     DocumentMetadata, ImagePayload, InlineColorTarget, InlineMark, InlineSpan, PageCover, PageIcon,
     RichBlockKind, RichBlockRecord, RichTextDocument, TableCellMerge, TableRange, TableTrackSize,
-    block_kind_shortcut_with_marker_len, code_fence_shortcut, kind_tag_for_rich_block_kind,
-    markdown_inline_shortcut_spans, parse_callout_marker, plain_text_from_spans,
-    rich_block_kind_from_tag,
+    VideoPayload, block_kind_shortcut_with_marker_len, code_fence_shortcut,
+    kind_tag_for_rich_block_kind, markdown_inline_shortcut_spans, parse_callout_marker,
+    plain_text_from_spans, rich_block_kind_from_tag,
 };
 use cditor_viewport::debug_overlay::DebugOverlaySnapshot;
 use cditor_viewport::scroll::{
@@ -273,6 +275,7 @@ pub use state::{DocumentRuntime, GlobalScrollTarget};
 pub use table::TableClipboardSnapshot;
 
 use inline_color::set_color_mark_for_range;
+use inline_link::{replace_range_with_linked_text, set_link_mark_for_range};
 use local_transaction::{LocalBlockOperationsTransaction, LocalInsertBlocksTransaction};
 use table::{default_table_payload, ensure_table_payload_for_kind};
 use text_payload::{

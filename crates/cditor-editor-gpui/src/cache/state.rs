@@ -6,6 +6,7 @@ use gpui::RenderImage;
 use crate::app::text_layout_prewarm::{TextLayoutPrewarmGenerationState, TextLayoutPrewarmKey};
 use crate::features::code::highlight::CodeHighlightCache;
 use crate::features::mermaid::MermaidRenderCache;
+use crate::features::video::VideoPlaybackCache;
 use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::surfaces::table_cell::TableCellLayoutKey;
 
@@ -21,6 +22,7 @@ pub(crate) struct RenderCacheState {
     pub(crate) code_highlights: CodeHighlightCache,
     pub(crate) mermaid_renders: MermaidRenderCache,
     pub(crate) mermaid_source_blocks: HashSet<BlockId>,
+    pub(crate) video_playbacks: VideoPlaybackCache,
     pub(crate) whiteboard_thumbnails: WhiteboardThumbnailCache,
     pub(crate) pending_text_layout_prewarms: HashSet<TextLayoutPrewarmKey>,
     pub(crate) text_layout_prewarm_generations: TextLayoutPrewarmGenerationState,
@@ -35,6 +37,7 @@ impl Default for RenderCacheState {
             code_highlights: Default::default(),
             mermaid_renders: Default::default(),
             mermaid_source_blocks: Default::default(),
+            video_playbacks: Default::default(),
             whiteboard_thumbnails: Default::default(),
             pending_text_layout_prewarms: Default::default(),
             text_layout_prewarm_generations: Default::default(),
@@ -48,8 +51,9 @@ impl RenderCacheState {
         self.table_cell_layouts.clear();
         self.text_surface_layouts.clear();
         self.code_highlights.clear();
-        let retired_images = self.mermaid_renders.clear();
+        let mut retired_images = self.mermaid_renders.clear();
         self.mermaid_source_blocks.clear();
+        retired_images.extend(self.video_playbacks.clear());
         self.whiteboard_thumbnails.clear();
         self.pending_text_layout_prewarms.clear();
         self.text_layout_prewarm_generations.clear();

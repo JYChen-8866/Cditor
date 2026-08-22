@@ -138,6 +138,15 @@ pub fn render_payload_text(payload: &BlockPayloadRecord, theme: GuiTheme) -> Any
                     .child(format!("{} {}", image.alt, image.caption.plain_text())),
             )
             .into_any_element(),
+        BlockPayload::Video(video) => render_embedded_surface(
+            if video.title.is_empty() {
+                "Video".to_owned()
+            } else {
+                video.title.clone()
+            },
+            fallback_inner_height_px(&payload.kind),
+            theme,
+        ),
         BlockPayload::Collection(collection) => render_embedded_surface(
             collection.title.plain_text(),
             fallback_inner_height_px(&payload.kind),
@@ -283,6 +292,7 @@ fn render_embedded_surface(
 fn render_empty_payload(kind: &RichBlockKind, theme: GuiTheme) -> AnyElement {
     match kind {
         RichBlockKind::Image
+        | RichBlockKind::Video
         | RichBlockKind::Whiteboard
         | RichBlockKind::MindMap
         | RichBlockKind::Embed
@@ -298,6 +308,7 @@ fn render_empty_payload(kind: &RichBlockKind, theme: GuiTheme) -> AnyElement {
 fn embedded_surface_label(kind: &RichBlockKind) -> &'static str {
     match kind {
         RichBlockKind::Image => "Image",
+        RichBlockKind::Video => "Video",
         RichBlockKind::MindMap => "Mind map",
         RichBlockKind::Embed => "Embed",
         RichBlockKind::Database => "Database",

@@ -23,8 +23,8 @@ use cditor_editor_protocol::command::{CditorCommand, CommandEnvelope, CommandSou
 use cditor_runtime::InputTarget;
 
 use super::support::{
-    ai_prompt_input_target_allows, apply_platform_unmark, platform_input_geometry_allows,
-    table_menu_input_target_allows,
+    ai_prompt_input_target_allows, apply_platform_unmark, link_edit_input_target_allows,
+    platform_input_geometry_allows, table_menu_input_target_allows,
 };
 pub(crate) use super::support::{
     code_language_input_target_allows, platform_input_target_allows, platform_selected_text_range,
@@ -88,6 +88,7 @@ impl EntityInputHandler for CditorV2View {
     fn handles_native_selection(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> bool {
         if self.focus.ai_prompt.is_focused(window)
             || self.focus.code_language.is_focused(window)
+            || self.focus.link_edit.is_focused(window)
             || self
                 .interaction
                 .table_interaction_mode
@@ -328,6 +329,18 @@ impl EntityInputHandler for CditorV2View {
             actual_range.replace(actual);
             return prompt.draft.get(range).map(ToOwned::to_owned);
         }
+        if self.focus.link_edit.is_focused(_window) {
+            let registered_target = self.input.target;
+            let edit = self.overlay.link_edit.as_ref()?;
+            if !link_edit_input_target_allows(registered_target, edit.block_id) {
+                return None;
+            }
+            let draft = edit.active_draft();
+            let range = utf16_range_to_utf8_range(draft, &range_utf16);
+            let actual = utf8_range_to_utf16_range(draft, &range);
+            actual_range.replace(actual);
+            return draft.get(range).map(ToOwned::to_owned);
+        }
         if self.focus.code_language.is_focused(_window) {
             let registered_target = self.input.target;
             let edit = self.overlay.code_language_edit.as_ref()?;
@@ -399,6 +412,18 @@ impl EntityInputHandler for CditorV2View {
                 return None;
             }
             let caret = utf8_to_utf16_offset(&prompt.draft, prompt.caret_offset);
+            return Some(UTF16Selection {
+                range: caret..caret,
+                reversed: false,
+            });
+        }
+        if self.focus.link_edit.is_focused(_window) {
+            let registered_target = self.input.target;
+            let edit = self.overlay.link_edit.as_ref()?;
+            if !link_edit_input_target_allows(registered_target, edit.block_id) {
+                return None;
+            }
+            let caret = utf8_to_utf16_offset(edit.active_draft(), edit.caret_offset);
             return Some(UTF16Selection {
                 range: caret..caret,
                 reversed: false,
@@ -489,6 +514,17 @@ impl EntityInputHandler for CditorV2View {
                 .as_ref()
                 .map(|range| utf8_range_to_utf16_range(&prompt.draft, range));
         }
+        if self.focus.link_edit.is_focused(_window) {
+            let registered_target = self.input.target;
+            let edit = self.overlay.link_edit.as_ref()?;
+            if !link_edit_input_target_allows(registered_target, edit.block_id) {
+                return None;
+            }
+            return edit
+                .marked_range
+                .as_ref()
+                .map(|range| utf8_range_to_utf16_range(edit.active_draft(), range));
+        }
         if self.focus.code_language.is_focused(_window) {
             let registered_target = self.input.target;
             let edit = self.overlay.code_language_edit.as_ref()?;
@@ -548,6 +584,18 @@ impl EntityInputHandler for CditorV2View {
                 && ai_prompt_input_target_allows(registered_target, prompt.block_id)
             {
                 prompt.unmark();
+                window.invalidate_character_coordinates();
+                cx.notify();
+            }
+            return;
+        }
+        if self.focus.link_edit.is_focused(window) {
+            let registered_target = self.input.target;
+            if let Some(edit) = self.overlay.link_edit.as_mut() {
+                if !link_edit_input_target_allows(registered_target, edit.block_id) {
+                    return;
+                }
+                edit.unmark();
                 window.invalidate_character_coordinates();
                 cx.notify();
             }
@@ -648,6 +696,28 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
+        if self.focus.link_edit.is_focused(window) {
+            if is_single_line_break_commit(text) {
+                self.commit_link_edit(cx);
+                window.invalidate_character_coordinates();
+                cx.notify();
+                return;
+            }
+            let registered_target = self.input.target;
+            if let Some(edit) = self.overlay.link_edit.as_mut() {
+                if !link_edit_input_target_allows(registered_target, edit.block_id) {
+                    return;
+                }
+                let range = range_utf16
+                    .map(|range| utf16_range_to_utf8_range(edit.active_draft(), &range))
+                    .unwrap_or_else(|| edit.input_replacement_range());
+                let text = normalize_external_line_endings(text);
+                edit.replace_range(range, text.as_ref());
+                window.invalidate_character_coordinates();
+                cx.notify();
+            }
+            return;
+        }
         if self.focus.code_language.is_focused(window) {
             if is_single_line_break_commit(text) {
                 self.commit_code_language_edit(cx);
@@ -729,6 +799,23 @@ impl EntityInputHandler for CditorV2View {
             }
             return;
         }
+        if self.focus.link_edit.is_focused(window) {
+            let registered_target = self.input.target;
+            if let Some(edit) = self.overlay.link_edit.as_mut() {
+                if !link_edit_input_target_allows(registered_target, edit.block_id) {
+                    return;
+                }
+                let range = range_utf16
+                    .map(|range| utf16_range_to_utf8_range(edit.active_draft(), &range))
+                    .unwrap_or_else(|| edit.input_replacement_range());
+                let selected_range =
+                    new_selected_range.map(|range| utf16_range_to_utf8_range(new_text, &range));
+                edit.replace_and_mark_range(range, new_text, selected_range);
+                window.invalidate_character_coordinates();
+                cx.notify();
+            }
+            return;
+        }
         if self.focus.code_language.is_focused(window) {
             let registered_target = self.input.target;
             if let Some(edit) = self.overlay.code_language_edit.as_mut() {
@@ -797,6 +884,21 @@ impl EntityInputHandler for CditorV2View {
                 _window,
             );
             return Some(utf8_to_utf16_offset(&prompt.draft, utf8));
+        }
+        if self.focus.link_edit.is_focused(_window) {
+            let registered_target = self.input.target;
+            let edit = self.overlay.link_edit.as_ref()?;
+            if !link_edit_input_target_allows(registered_target, edit.block_id) {
+                return None;
+            }
+            let draft = edit.active_draft();
+            let utf8 = single_line_text_offset_for_x(
+                draft,
+                point.x,
+                px(SINGLE_LINE_INPUT_FONT_SIZE_PX),
+                _window,
+            );
+            return Some(utf8_to_utf16_offset(draft, utf8));
         }
         if self.focus.code_language.is_focused(_window) {
             let registered_target = self.input.target;
@@ -949,6 +1051,11 @@ impl EntityInputHandler for CditorV2View {
         if self.focus.ai_prompt.is_focused(_window) {
             return self.overlay.ai_prompt.as_ref().is_some_and(|prompt| {
                 ai_prompt_input_target_allows(self.input.target, prompt.block_id)
+            });
+        }
+        if self.focus.link_edit.is_focused(_window) {
+            return self.overlay.link_edit.as_ref().is_some_and(|edit| {
+                link_edit_input_target_allows(self.input.target, edit.block_id)
             });
         }
         if self.focus.code_language.is_focused(_window) {

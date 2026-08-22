@@ -12,6 +12,7 @@ binary_path="target/${target_triple}/release/cditor-desktop"
 bundle_root="dist/${architecture}/${product_name}.app"
 contents_dir="${bundle_root}/Contents"
 macos_dir="${contents_dir}/MacOS"
+resources_dir="${contents_dir}/Resources/binaries"
 dmg_root="dist/${architecture}/dmg-root"
 output_path="dist/${output_name}"
 
@@ -25,8 +26,12 @@ if [[ -e "${bundle_root}" || -e "${dmg_root}" || -e "${output_path}" ]]; then
   exit 1
 fi
 
-install -d "${macos_dir}" "${dmg_root}"
+install -d "${macos_dir}" "${resources_dir}" "${dmg_root}"
 install -m 755 "${binary_path}" "${macos_dir}/${product_name}"
+install -m 755 \
+  "components/cditor-video/resources/binaries/ffmpeg-${target_triple}" \
+  "components/cditor-video/resources/binaries/ffprobe-${target_triple}" \
+  "${resources_dir}/"
 
 cat > "${contents_dir}/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

@@ -120,6 +120,7 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(EDIT_REDO, Args::None, Document),
         definition(EDIT_SELECT_ALL, Args::None, ReadOnly),
         definition(EDIT_COPY, Args::None, ReadOnly),
+        definition(EDIT_COPY_AS_MARKDOWN, Args::None, ReadOnly),
         definition(EDIT_CUT, Args::None, Document),
         definition(EDIT_PASTE, Args::None, Document),
         definition(EDIT_DELETE_SELECTION, Args::None, Document),
@@ -202,7 +203,9 @@ fn builtin_definitions() -> Vec<CommandDefinition> {
         definition(TABLE_MOVE_AXIS, Args::TableAxisMove, Document),
         definition(MEDIA_SET_WIDTH_RATIO, Args::MediaWidthRatio, Document),
         definition(WHITEBOARD_UPDATE_SCENE, Args::WhiteboardScene, Document),
+        definition(VIDEO_SET_SOURCE, Args::VideoSource, Document),
         definition(ASSET_INSERT_IMAGE_PAYLOAD, Args::ImageAsset, Document),
+        definition(ASSET_INSERT_VIDEO_PAYLOAD, Args::VideoAsset, Document),
         definition(AI_APPLY, Args::AiApply, Document),
     ]
 }

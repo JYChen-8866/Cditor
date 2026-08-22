@@ -383,13 +383,16 @@ pub(super) fn split_payload_for_enter(
             BlockPayload::Empty,
             payload_for_kind_from_plain_text(new_kind, String::new()),
         )),
-        // Complex blocks (Whiteboard, Image, File, Embed) cannot be split
+        // Complex blocks (Whiteboard, Image, Video, File, Embed) cannot be split
         // This should not be reached if handle_enter() properly checks input capability
         BlockPayload::Whiteboard(_) => {
             Err("Cannot split whiteboard payload - Enter should insert paragraph after".to_owned())
         }
         BlockPayload::Image(_) => {
             Err("Cannot split image payload - Enter should insert paragraph after".to_owned())
+        }
+        BlockPayload::Video(_) => {
+            Err("Cannot split video payload - Enter should insert paragraph after".to_owned())
         }
         BlockPayload::File(_) => {
             Err("Cannot split file payload - Enter should insert paragraph after".to_owned())
@@ -420,6 +423,9 @@ pub(super) fn payload_for_kind_from_plain_or_spans(
             sanitized: true,
         },
         RichBlockKind::Whiteboard => default_whiteboard_payload(),
+        RichBlockKind::Video => {
+            BlockPayload::Video(cditor_core::rich_text::VideoPayload::default())
+        }
         _ => BlockPayload::RichText { spans },
     }
 }
@@ -436,6 +442,9 @@ pub(super) fn payload_for_kind_from_plain_text(kind: &RichBlockKind, text: Strin
         },
         RichBlockKind::Table => default_table_payload(text),
         RichBlockKind::Whiteboard => default_whiteboard_payload(),
+        RichBlockKind::Video => {
+            BlockPayload::Video(cditor_core::rich_text::VideoPayload::default())
+        }
         _ => BlockPayload::RichText {
             spans: vec![InlineSpan::plain(text)],
         },

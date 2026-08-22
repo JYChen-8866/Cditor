@@ -58,6 +58,7 @@ fn toolbar_state() -> FloatingToolbarState {
         underline: true,
         strike: false,
         code: false,
+        link: false,
         block_transform: None,
         callout_variant: None,
         block_transform_availability: BlockTransformAvailability::default(),
@@ -77,7 +78,7 @@ fn toolbar_state() -> FloatingToolbarState {
 #[test]
 fn floating_toolbar_width_tracks_visible_control_groups() {
     let state = toolbar_state();
-    assert_eq!(toolbar_content_width(state), 272.0);
+    assert_eq!(toolbar_content_width(state), 306.0);
 
     let color_only = FloatingToolbarState {
         show_inline_format: false,
@@ -89,7 +90,7 @@ fn floating_toolbar_width_tracks_visible_control_groups() {
         show_color: false,
         ..state
     };
-    assert_eq!(toolbar_content_width(format_only), 182.0);
+    assert_eq!(toolbar_content_width(format_only), 216.0);
 }
 
 #[test]

@@ -4,11 +4,26 @@ use cditor_core::rich_text::{
 };
 
 pub(crate) fn block_to_plain_markdown(block: &RichBlockRecord) -> String {
-    let text = match &block.payload {
+    block_parts_to_plain_markdown(&block.kind, &block.payload, block.raw_fallback.as_deref())
+}
+
+pub(crate) fn block_parts_to_plain_markdown(
+    kind: &RichBlockKind,
+    payload: &BlockPayload,
+    raw_fallback: Option<&str>,
+) -> String {
+    if let BlockPayload::Video(video) = payload {
+        return format!(
+            "<video src=\"{}\" controls title=\"{}\"></video>",
+            escape_html_attribute(&video.source),
+            escape_html_attribute(&video.title),
+        );
+    }
+    let text = match payload {
         BlockPayload::RichText { spans } => spans_to_markdown(spans),
-        _ => block.payload.plain_text(),
+        _ => payload.plain_text(),
     };
-    match &block.kind {
+    match kind {
         RichBlockKind::Heading { level } => format!("{} {}", "#".repeat(usize::from(*level)), text),
         RichBlockKind::BulletedList => format!("- {text}"),
         RichBlockKind::NumberedList => format!("1. {text}"),
@@ -36,13 +51,21 @@ pub(crate) fn block_to_plain_markdown(block: &RichBlockRecord) -> String {
         ),
         RichBlockKind::Mermaid => format!("```mermaid\n{text}\n```"),
         RichBlockKind::Separator | RichBlockKind::Divider => "---".to_owned(),
-        RichBlockKind::Table => table_to_plain_markdown(&block.payload).unwrap_or(text),
-        RichBlockKind::RawMarkdown => block.raw_fallback.clone().unwrap_or(text),
+        RichBlockKind::Table => table_to_plain_markdown(payload).unwrap_or(text),
+        RichBlockKind::RawMarkdown => raw_fallback.map(str::to_owned).unwrap_or(text),
         _ => text,
     }
 }
 
-fn spans_to_markdown(spans: &[InlineSpan]) -> String {
+fn escape_html_attribute(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+pub(crate) fn spans_to_markdown(spans: &[InlineSpan]) -> String {
     spans.iter().map(span_to_markdown).collect()
 }
 

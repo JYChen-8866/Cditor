@@ -18,6 +18,7 @@ use crate::features::table::{
     TableResizePreview,
 };
 use crate::features::text::collection::render_collection_block;
+use crate::features::video::{VideoPlaybackCache, render_video_block};
 use crate::features::whiteboard::WhiteboardThumbnailCache;
 #[cfg(feature = "whiteboard")]
 use crate::features::whiteboard::render_whiteboard_thumbnail;
@@ -28,7 +29,7 @@ use crate::text::{
 };
 use crate::{presentation::rich_text::render_payload_text, theme::GuiTheme};
 use cditor_core::edit::SelectionRange;
-use cditor_core::rich_text::{BlockPayload, BlockPayloadView};
+use cditor_core::rich_text::{BlockPayload, BlockPayloadView, RichBlockKind, VideoPayload};
 use cditor_runtime::ViewBlockSnapshot;
 
 const EMPTY_PAGE_TITLE_PLACEHOLDER: &str = "新页面";
@@ -60,11 +61,48 @@ pub(crate) fn render_block_content(
     code_highlights: &CodeHighlightCache,
     search_decorations: &SearchDecorationState,
     code_highlight_theme: &'static str,
+    video_playbacks: &VideoPlaybackCache,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
 ) -> AnyElement {
     #[cfg(not(feature = "whiteboard"))]
     let _ = whiteboard_thumbnails;
+
+    // A freshly converted block can be projected with an empty or placeholder
+    // payload for one frame while the payload window catches up. Keep the
+    // Video surface visible based on the block kind instead of rendering a
+    // blank generic block during that transition.
+    if matches!(block.kind, RichBlockKind::Video) {
+        let video = match &block.payload {
+            BlockPayloadView::Loaded(payload) => match &payload.payload {
+                BlockPayload::Video(video) => video.clone(),
+                _ => VideoPayload::default(),
+            },
+            BlockPayloadView::Placeholder { .. }
+            | BlockPayloadView::Loading { .. }
+            | BlockPayloadView::Error { .. } => VideoPayload::default(),
+        };
+        let content_version = match &block.payload {
+            BlockPayloadView::Loaded(payload) => payload.content_version,
+            BlockPayloadView::Placeholder { .. }
+            | BlockPayloadView::Loading { .. }
+            | BlockPayloadView::Error { .. } => 0,
+        };
+        return render_video_block(
+            block.block_id,
+            content_version,
+            &video,
+            text_layout_width_px,
+            video_playbacks,
+            workers,
+            asset_provider,
+            theme,
+            view,
+            focus,
+            cx,
+        );
+    }
+
     match &block.payload {
         BlockPayloadView::Loaded(payload) => {
             if let Some(table_view) = &block.table_view {

@@ -30,7 +30,7 @@ pub use markdown_shortcuts::{
 pub use payload::{
     BlockPayload, BlockPayloadRecord, BlockPayloadView, CollectionPayload, CollectionPropertyKind,
     CollectionPropertyPayload, CollectionViewLayout, CollectionViewPayload, ColumnsGroupPayload,
-    EmbedPayload, FilePayload, ImagePayload, RichTextContent, WhiteboardPayload,
+    EmbedPayload, FilePayload, ImagePayload, RichTextContent, VideoPayload, WhiteboardPayload,
 };
 pub use span_splice::{DelimiterPairDetection, detect_delimiter_at_caret, splice_spans_at_range};
 pub use table::{

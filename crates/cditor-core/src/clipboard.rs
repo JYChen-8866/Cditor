@@ -230,6 +230,7 @@ fn kind_accepts_rich_text_payload(kind: &RichBlockKind) -> bool {
             | RichBlockKind::Html
             | RichBlockKind::Table
             | RichBlockKind::Image
+            | RichBlockKind::Video
             | RichBlockKind::File
             | RichBlockKind::Attachment
             | RichBlockKind::Whiteboard
@@ -294,6 +295,12 @@ fn valid_block(block: &ClipboardBlock, budget: &mut ValidationBudget) -> bool {
                 && valid_spans(&image.caption.spans)
                 && safe_resource(&image.source)
         }
+        BlockPayload::Video(video) => {
+            budget.add_spans(video.caption.spans.len())
+                && valid_spans(&video.caption.spans)
+                && safe_resource(&video.source)
+                && video.poster.as_deref().is_none_or(safe_resource)
+        }
         BlockPayload::File(file) => safe_resource(&file.source),
         BlockPayload::Embed(embed) => safe_resource(&embed.url),
         BlockPayload::Opaque { envelope, .. } => {
@@ -325,6 +332,7 @@ fn kind_matches_payload(kind: &RichBlockKind, payload: &BlockPayload) -> bool {
         ),
         RichBlockKind::Table => matches!(payload, BlockPayload::Table(_)),
         RichBlockKind::Image => matches!(payload, BlockPayload::Image(_) | BlockPayload::Empty),
+        RichBlockKind::Video => matches!(payload, BlockPayload::Video(_) | BlockPayload::Empty),
         RichBlockKind::File | RichBlockKind::Attachment => {
             matches!(payload, BlockPayload::File(_) | BlockPayload::Empty)
         }

@@ -123,6 +123,16 @@ pub(crate) fn code_language_input_target_allows(
     registered.is_code_language_for(block_id)
 }
 
+pub(crate) fn link_edit_input_target_allows(
+    registered: Option<GuiPlatformInputTarget>,
+    block_id: BlockId,
+) -> bool {
+    let Some(registered) = registered else {
+        return true;
+    };
+    registered.is_link_edit_for(block_id)
+}
+
 pub(crate) fn ai_prompt_input_target_allows(
     registered: Option<GuiPlatformInputTarget>,
     block_id: BlockId,

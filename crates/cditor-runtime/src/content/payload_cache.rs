@@ -143,6 +143,16 @@ fn estimated_payload_heap_bytes(payload: &BlockPayload) -> usize {
                 &image.caption.spans,
                 image.caption.spans.capacity(),
             )),
+        BlockPayload::Video(video) => video
+            .source
+            .capacity()
+            .saturating_add(video.title.capacity())
+            .saturating_add(video.poster.as_ref().map_or(0, String::capacity))
+            .saturating_add(video.media_type.as_ref().map_or(0, String::capacity))
+            .saturating_add(estimated_spans_bytes(
+                &video.caption.spans,
+                video.caption.spans.capacity(),
+            )),
         BlockPayload::Collection(collection) => collection
             .title
             .spans

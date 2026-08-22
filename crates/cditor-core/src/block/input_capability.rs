@@ -70,6 +70,7 @@ impl BlockKeyboardPolicy {
             RichBlockKind::Whiteboard
             | RichBlockKind::MindMap
             | RichBlockKind::Image
+            | RichBlockKind::Video
             | RichBlockKind::File
             | RichBlockKind::Attachment
             | RichBlockKind::Divider
@@ -124,6 +125,7 @@ impl BlockInputCapability {
             }
 
             RichBlockKind::Image
+            | RichBlockKind::Video
             | RichBlockKind::File
             | RichBlockKind::Attachment
             | RichBlockKind::Divider

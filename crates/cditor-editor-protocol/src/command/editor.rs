@@ -60,6 +60,7 @@ pub enum EditorCommand {
     Redo,
     SelectAll,
     CopySelection,
+    CopySelectionAsMarkdown,
     CutSelection,
     PasteClipboard,
     #[doc(hidden)]
@@ -76,6 +77,20 @@ pub enum EditorCommand {
         payload: cditor_core::rich_text::ImagePayload,
         asset: Option<cditor_core::edit::AssetSnapshot>,
         after_block_id: Option<cditor_core::ids::BlockId>,
+    },
+    #[doc(hidden)]
+    InsertVideoAsset {
+        payload: cditor_core::rich_text::VideoPayload,
+        asset: Option<cditor_core::edit::AssetSnapshot>,
+        after_block_id: Option<cditor_core::ids::BlockId>,
+    },
+    #[doc(hidden)]
+    SetVideoSource {
+        block_id: cditor_core::ids::BlockId,
+        source: String,
+        title: String,
+        media_type: Option<String>,
+        asset: Option<cditor_core::edit::AssetSnapshot>,
     },
     #[doc(hidden)]
     SetPageCover {
@@ -99,6 +114,12 @@ pub enum EditorCommand {
     SetInlineColor {
         target: InlineColorTarget,
         color: Option<String>,
+    },
+    /// Sets, re-targets, or clears (`href: None`) the inline link on the
+    /// focused selection; `text: Some(_)` also replaces the selected label.
+    SetInlineLink {
+        href: Option<String>,
+        text: Option<String>,
     },
     SetBlockColor {
         block_id: cditor_core::ids::BlockId,
@@ -303,11 +324,14 @@ impl EditorCommand {
             Self::Redo => "edit.redo",
             Self::SelectAll => "edit.select_all",
             Self::CopySelection => "edit.copy",
+            Self::CopySelectionAsMarkdown => builtin::EDIT_COPY_AS_MARKDOWN,
             Self::CutSelection => "edit.cut",
             Self::PasteClipboard => "edit.paste",
             Self::ApplyClipboardData { .. } => builtin::EDIT_APPLY_CLIPBOARD_DATA,
             Self::ApplyMarkdownImport { .. } => builtin::EDIT_APPLY_MARKDOWN_IMPORT,
             Self::InsertImageAsset { .. } => builtin::ASSET_INSERT_IMAGE_PAYLOAD,
+            Self::InsertVideoAsset { .. } => builtin::ASSET_INSERT_VIDEO_PAYLOAD,
+            Self::SetVideoSource { .. } => builtin::VIDEO_SET_SOURCE,
             Self::SetPageCover { .. } => builtin::DOCUMENT_SET_COVER,
             Self::SetPageIconEmoji { .. } => builtin::DOCUMENT_SET_ICON,
             Self::SetPageIconAsset { .. } => builtin::DOCUMENT_SET_ICON,
@@ -318,6 +342,7 @@ impl EditorCommand {
             Self::ToggleStrike => "format.toggle_strike",
             Self::ToggleInlineCode => "format.toggle_inline_code",
             Self::SetInlineColor { .. } => builtin::FORMAT_SET_COLOR,
+            Self::SetInlineLink { .. } => "format.set_link",
             Self::SetBlockColor { .. } => builtin::BLOCK_SET_COLOR,
             Self::InsertParagraphAfterBlock { .. } => builtin::BLOCK_INSERT_AFTER,
             Self::DeleteBlock { .. } => builtin::BLOCK_DELETE,
@@ -399,6 +424,28 @@ impl EditorCommand {
                 asset: asset.clone(),
                 after_block_id: *after_block_id,
             },
+            Self::InsertVideoAsset {
+                payload,
+                asset,
+                after_block_id,
+            } => CommandArgs::VideoAsset {
+                payload: payload.clone(),
+                asset: asset.clone(),
+                after_block_id: *after_block_id,
+            },
+            Self::SetVideoSource {
+                block_id,
+                source,
+                title,
+                media_type,
+                asset,
+            } => CommandArgs::VideoSource {
+                block_id: *block_id,
+                source: source.clone(),
+                title: title.clone(),
+                media_type: media_type.clone(),
+                asset: asset.clone(),
+            },
             Self::SetPageCover {
                 source,
                 position_y_milli,
@@ -425,6 +472,10 @@ impl EditorCommand {
             Self::SetInlineColor { target, color } => CommandArgs::InlineColor {
                 target: *target,
                 color: color.clone(),
+            },
+            Self::SetInlineLink { href, text } => CommandArgs::InlineLink {
+                href: href.clone(),
+                text: text.clone(),
             },
             Self::SetBlockColor {
                 block_id,

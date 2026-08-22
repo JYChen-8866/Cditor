@@ -34,12 +34,21 @@ impl DocumentRuntime {
                 self.text_surface_snapshot(*surface_id).is_some()
             }
             EditorCommand::CopySelection
+            | EditorCommand::CopySelectionAsMarkdown
             | EditorCommand::CutSelection
             | EditorCommand::DeleteSelection => self.has_active_selection(),
             EditorCommand::PasteClipboard
             | EditorCommand::ApplyClipboardData { .. }
-            | EditorCommand::ApplyMarkdownImport { .. }
-            | EditorCommand::InsertImageAsset { .. } => self.focused_block_id().is_some(),
+            | EditorCommand::ApplyMarkdownImport { .. } => self.focused_block_id().is_some(),
+            EditorCommand::InsertImageAsset { after_block_id, .. }
+            | EditorCommand::InsertVideoAsset { after_block_id, .. } => after_block_id.map_or_else(
+                || {
+                    self.focused_block_id()
+                        .or_else(|| self.document.index.block_ids.last().copied())
+                        .is_some()
+                },
+                |block_id| self.has_block(block_id),
+            ),
             EditorCommand::SetPageCover { .. }
             | EditorCommand::SetPageIconEmoji { .. }
             | EditorCommand::SetPageIconAsset { .. } => true,
@@ -49,6 +58,7 @@ impl DocumentRuntime {
             | EditorCommand::ToggleStrike
             | EditorCommand::ToggleInlineCode => self.selected_focused_rich_text().is_some(),
             EditorCommand::SetInlineColor { .. } => self.focused_text_selection_range().is_some(),
+            EditorCommand::SetInlineLink { .. } => self.focused_text_selection_range().is_some(),
             EditorCommand::SetBlockColor { block_id, .. }
             | EditorCommand::InsertParagraphAfterBlock { block_id }
             | EditorCommand::CopyBlockText { block_id } => {
@@ -149,6 +159,9 @@ impl DocumentRuntime {
             }
             EditorCommand::SetMediaWidthRatio { block_id, .. } => {
                 matches!(self.block_kind(*block_id), Some(RichBlockKind::Image))
+            }
+            EditorCommand::SetVideoSource { block_id, .. } => {
+                matches!(self.block_kind(*block_id), Some(RichBlockKind::Video))
             }
             EditorCommand::UpdateWhiteboardScene { block_id, .. } => {
                 matches!(self.block_kind(*block_id), Some(RichBlockKind::Whiteboard))

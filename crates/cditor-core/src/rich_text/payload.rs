@@ -116,6 +116,7 @@ pub enum BlockPayload {
     Table(TablePayload),
     Columns(ColumnsGroupPayload),
     Image(ImagePayload),
+    Video(VideoPayload),
     Collection(CollectionPayload),
     File(FilePayload),
     Whiteboard(WhiteboardPayload),
@@ -148,6 +149,12 @@ impl BlockPayload {
             Self::Image(image) => {
                 [image.alt.as_str(), image.caption.plain_text().as_str()].join(" ")
             }
+            Self::Video(video) => [
+                video.title.as_str(),
+                video.caption.plain_text().as_str(),
+                video.source.as_str(),
+            ]
+            .join(" "),
             Self::Collection(collection) => collection.title.plain_text(),
             Self::File(file) => file.name.clone(),
             Self::Whiteboard(_) => "whiteboard".to_owned(),
@@ -235,6 +242,50 @@ pub struct ImagePayload {
     /// User-selected display width as a fraction of the editor image max width.
     /// 1000 means full image column width; None uses the Notion-like default.
     pub display_width_ratio_milli: Option<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct VideoPayload {
+    /// Local path or host-resolvable asset source.
+    pub source: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub caption: RichTextContent,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poster: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intrinsic_width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intrinsic_height: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_millis: Option<u64>,
+    pub display_width_ratio_milli: Option<u16>,
+}
+
+#[cfg(test)]
+mod video_payload_tests {
+    use super::*;
+
+    #[test]
+    fn video_payload_round_trips_and_contributes_search_text() {
+        let payload = BlockPayload::Video(VideoPayload {
+            source: "/videos/demo.mp4".into(),
+            title: "Demo".into(),
+            caption: RichTextContent::plain("Walkthrough"),
+            media_type: Some("video/mp4".into()),
+            intrinsic_width: Some(1920),
+            intrinsic_height: Some(1080),
+            duration_millis: Some(12_500),
+            ..VideoPayload::default()
+        });
+        let encoded = serde_json::to_string(&payload).unwrap();
+        let decoded: BlockPayload = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, payload);
+        assert_eq!(decoded.plain_text(), "Demo Walkthrough /videos/demo.mp4");
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

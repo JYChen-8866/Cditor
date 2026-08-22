@@ -3,7 +3,7 @@ use cditor_core::{
     ids::BlockId,
     rich_text::{
         BlockAttrs, BlockPayload, ImagePayload, InlineColorTarget, InlineMark, RichBlockKind,
-        TableCellAlign, TableRange,
+        TableCellAlign, TableRange, VideoPayload,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -86,6 +86,18 @@ pub enum CommandArgs {
         asset: Option<cditor_core::edit::AssetSnapshot>,
         after_block_id: Option<BlockId>,
     },
+    VideoAsset {
+        payload: VideoPayload,
+        asset: Option<cditor_core::edit::AssetSnapshot>,
+        after_block_id: Option<BlockId>,
+    },
+    VideoSource {
+        block_id: BlockId,
+        source: String,
+        title: String,
+        media_type: Option<String>,
+        asset: Option<cditor_core::edit::AssetSnapshot>,
+    },
     MoveCaret {
         direction: CaretDirection,
         extend_selection: bool,
@@ -124,6 +136,10 @@ pub enum CommandArgs {
     InlineColor {
         target: InlineColorTarget,
         color: Option<String>,
+    },
+    InlineLink {
+        href: Option<String>,
+        text: Option<String>,
     },
     BlockColor {
         block_id: BlockId,
@@ -225,6 +241,8 @@ impl CommandArgs {
             Self::ClipboardData { .. } => CommandArgumentKind::ClipboardData,
             Self::Markdown { .. } => CommandArgumentKind::Markdown,
             Self::ImageAsset { .. } => CommandArgumentKind::ImageAsset,
+            Self::VideoAsset { .. } => CommandArgumentKind::VideoAsset,
+            Self::VideoSource { .. } => CommandArgumentKind::VideoSource,
             Self::MoveCaret { .. } => CommandArgumentKind::MoveCaret,
             Self::DocumentSelection(_) => CommandArgumentKind::DocumentSelection,
             Self::BlockSelectionRange { .. } => CommandArgumentKind::BlockSelectionRange,
@@ -234,6 +252,7 @@ impl CommandArgs {
             Self::TextSurfaceSelection { .. } => CommandArgumentKind::TextSurfaceSelection,
             Self::InlineMark(_) => CommandArgumentKind::InlineMark,
             Self::InlineColor { .. } => CommandArgumentKind::InlineColor,
+            Self::InlineLink { .. } => CommandArgumentKind::InlineLink,
             Self::BlockColor { .. } => CommandArgumentKind::BlockColor,
             Self::CodeLanguage { .. } => CommandArgumentKind::CodeLanguage,
             Self::AiApply { .. } => CommandArgumentKind::AiApply,
@@ -267,6 +286,8 @@ pub enum CommandArgumentKind {
     ClipboardData,
     Markdown,
     ImageAsset,
+    VideoAsset,
+    VideoSource,
     MoveCaret,
     DocumentSelection,
     BlockSelectionRange,
@@ -276,6 +297,7 @@ pub enum CommandArgumentKind {
     TextSurfaceSelection,
     InlineMark,
     InlineColor,
+    InlineLink,
     BlockColor,
     CodeLanguage,
     AiApply,

@@ -55,6 +55,16 @@ impl CditorV2View {
             ),
         );
 
+        if matches!(action, BoundInputAction::Cancel)
+            && self.overlay.fullscreen_video_block_id.take().is_some()
+        {
+            self.overlay.fullscreen_video_requested_window = false;
+            self.overlay.fullscreen_video_observed_window = false;
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
+
         if matches!(action, BoundInputAction::Cancel) && self.interaction.cancel_document_drags() {
             cx.stop_propagation();
             cx.notify();
@@ -63,6 +73,24 @@ impl CditorV2View {
 
         if self.overlay.ai_prompt.is_some() {
             self.handle_bound_ai_prompt_action(action, cx);
+            cx.stop_propagation();
+            return;
+        }
+        if self.overlay.link_edit.is_some() {
+            if action == BoundInputAction::Command(GuiInputCommand::PasteClipboard) {
+                if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+                    if let Some(edit) = self.overlay.link_edit.as_mut() {
+                        let range = edit.input_replacement_range();
+                        edit.replace_range(
+                            range,
+                            crate::platform::normalize_external_line_endings(&text).as_ref(),
+                        );
+                        cx.notify();
+                    }
+                }
+            } else {
+                self.apply_link_edit_key(action, cx);
+            }
             cx.stop_propagation();
             return;
         }

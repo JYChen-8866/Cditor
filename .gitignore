@@ -36,6 +36,10 @@ node_modules/
 # ── Minimal editor assets (temp) ──
 /minimal-editor-assets/
 
+# Downloaded and checksum-verified release media tools.
+/components/cditor-video/resources/binaries/ffmpeg-*
+/components/cditor-video/resources/binaries/ffprobe-*
+
 # ── Documentation prototype dependencies & caches ──
 /doc/prototypes/**/node_modules/
 /doc/prototypes/**/.npm-cache/

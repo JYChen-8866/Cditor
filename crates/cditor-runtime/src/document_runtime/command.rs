@@ -85,6 +85,28 @@ impl DocumentRuntime {
                     affected_blocks.extend([image, trailing]);
                     true
                 }
+                EditorCommand::InsertVideoAsset {
+                    payload,
+                    asset,
+                    after_block_id,
+                } => {
+                    let (video, trailing) = self
+                        .insert_video_asset_after_focused_with_asset(payload, asset, after_block_id)
+                        .map_err(apply_error)?;
+                    affected_blocks.extend([video, trailing]);
+                    true
+                }
+                EditorCommand::SetVideoSource {
+                    block_id,
+                    source,
+                    title,
+                    media_type,
+                    asset,
+                } => {
+                    affected_blocks.push(block_id);
+                    self.set_video_source(block_id, source, title, media_type, asset)
+                        .map_err(apply_error)?
+                }
                 EditorCommand::SetPageCover {
                     source,
                     position_y_milli,
@@ -148,6 +170,9 @@ impl DocumentRuntime {
                     .map_err(apply_error)?,
                 EditorCommand::SetInlineColor { target, color } => self
                     .set_inline_color_on_selection(target, color.as_deref())
+                    .map_err(apply_error)?,
+                EditorCommand::SetInlineLink { href, text } => self
+                    .set_inline_link_on_selection(href.as_deref(), text.as_deref())
                     .map_err(apply_error)?,
                 EditorCommand::SetBlockColor {
                     block_id,
@@ -634,6 +659,34 @@ mod tests {
             Some(RichBlockKind::Heading { level: 2 })
         );
         assert_eq!(runtime.block_payload_record(1).unwrap().plain_text(), "");
+    }
+
+    #[test]
+    fn slash_command_creates_an_empty_video_payload() {
+        let mut runtime = DocumentRuntime::empty();
+        runtime.focus_block_at_offset(1, 0).unwrap();
+        for ch in "/video".chars() {
+            runtime.insert_char(ch).unwrap();
+        }
+
+        let outcome = runtime
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::ApplySlashBlock {
+                    block_id: 1,
+                    trigger_range: 0..6,
+                    kind: RichBlockKind::Video,
+                },
+                CommandSource::SlashMenu,
+            ))
+            .unwrap();
+
+        assert!(outcome.changed());
+        assert_eq!(runtime.block_kind(1), Some(RichBlockKind::Video));
+        assert!(matches!(
+            runtime.block_payload_record(1).unwrap().payload,
+            BlockPayload::Video(cditor_core::rich_text::VideoPayload { ref source, .. })
+                if source.is_empty()
+        ));
     }
 
     #[test]

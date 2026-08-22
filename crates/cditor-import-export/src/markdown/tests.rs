@@ -166,7 +166,10 @@ fn parses_mermaid_fenced_markdown_paste_as_a_mermaid_block() {
     let parsed = parse_markdown_paste_document(source, MarkdownImportOptions::default());
     assert_eq!(parsed.blocks.len(), 1);
     assert_eq!(parsed.blocks[0].kind, RichBlockKind::Mermaid);
-    assert_eq!(parsed.blocks[0].payload.plain_text(), "flowchart TD\n  A --> B");
+    assert_eq!(
+        parsed.blocks[0].payload.plain_text(),
+        "flowchart TD\n  A --> B"
+    );
 }
 
 #[test]
@@ -189,6 +192,24 @@ fn exports_mermaid_as_a_mermaid_fence() {
     assert_eq!(
         export_plain_markdown(&document),
         "```mermaid\nflowchart TD\n  A --> B\n```"
+    );
+}
+
+#[test]
+fn exports_video_as_safe_html_that_preserves_the_source() {
+    let mut document = RichTextDocument::empty(1);
+    document.push_root_block(RichBlockRecord::new(
+        1,
+        RichBlockKind::Video,
+        BlockPayload::Video(cditor_core::rich_text::VideoPayload {
+            source: "/tmp/a&b\".mp4".to_owned(),
+            title: "A <video>".to_owned(),
+            ..Default::default()
+        }),
+    ));
+    assert_eq!(
+        export_plain_markdown(&document),
+        r#"<video src="/tmp/a&amp;b&quot;.mp4" controls title="A &lt;video&gt;"></video>"#
     );
 }
 
@@ -437,5 +458,102 @@ fn export_multi_mark_spans_wrap_in_lute_order() {
     assert_eq!(
         export_plain_markdown(&document),
         "**bold*****both***~~strike~~"
+    );
+}
+
+#[test]
+fn clipboard_selection_exports_rich_inline_markdown() {
+    let selection = cditor_core::clipboard::ClipboardSelection::Inline {
+        spans: vec![
+            InlineSpan {
+                text: "bold".to_owned(),
+                marks: vec![InlineMark::Bold],
+            },
+            InlineSpan::plain(" and "),
+            InlineSpan {
+                text: "link".to_owned(),
+                marks: vec![InlineMark::Link {
+                    href: "https://example.com".to_owned(),
+                }],
+            },
+        ],
+    };
+
+    assert_eq!(
+        export_clipboard_selection_markdown(&selection),
+        "**bold** and [link](https://example.com)"
+    );
+}
+
+#[test]
+fn clipboard_selection_exports_complete_blocks_with_block_syntax() {
+    use cditor_core::clipboard::{ClipboardBlock, ClipboardSelection};
+
+    let selection = ClipboardSelection::Blocks {
+        blocks: vec![
+            ClipboardBlock {
+                source_id: 1,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Heading { level: 2 },
+                payload: BlockPayload::RichText {
+                    spans: vec![InlineSpan::plain("Title")],
+                },
+            },
+            ClipboardBlock {
+                source_id: 2,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Todo { checked: true },
+                payload: BlockPayload::RichText {
+                    spans: vec![InlineSpan::plain("Done")],
+                },
+            },
+        ],
+    };
+
+    assert_eq!(
+        export_clipboard_selection_markdown(&selection),
+        "## Title\n- [x] Done"
+    );
+}
+
+#[test]
+fn clipboard_selection_does_not_add_block_markers_to_partial_fragments() {
+    use cditor_core::clipboard::{
+        ClipboardBlockFragment, ClipboardFragmentBoundary, ClipboardSelection,
+    };
+
+    let selection = ClipboardSelection::TextFragments {
+        fragments: vec![
+            ClipboardBlockFragment {
+                source_id: 1,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Heading { level: 1 },
+                spans: vec![InlineSpan::plain("tle")],
+                boundary: ClipboardFragmentBoundary::StartPartial,
+                starts_at_block_start: false,
+                ends_at_block_end: true,
+            },
+            ClipboardBlockFragment {
+                source_id: 2,
+                parent_source_id: None,
+                depth: 0,
+                kind: RichBlockKind::Quote,
+                spans: vec![InlineSpan {
+                    text: "quo".to_owned(),
+                    marks: vec![InlineMark::Italic],
+                }],
+                boundary: ClipboardFragmentBoundary::EndPartial,
+                starts_at_block_start: true,
+                ends_at_block_end: false,
+            },
+        ],
+    };
+
+    assert_eq!(
+        export_clipboard_selection_markdown(&selection),
+        "tle\n*quo*"
     );
 }

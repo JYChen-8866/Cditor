@@ -49,6 +49,52 @@ fn managed_image_load_does_not_read_the_editor_during_entity_update(cx: &mut Tes
     });
 }
 
+#[gpui::test]
+fn copy_as_markdown_writes_block_and_inline_syntax_to_the_system_clipboard(
+    cx: &mut TestAppContext,
+) {
+    let runtime = cditor_runtime::DocumentRuntime::from_payloads(
+        7,
+        vec![BlockPayloadRecord {
+            block_id: 1,
+            content_version: 1,
+            kind: RichBlockKind::Heading { level: 2 },
+            payload: BlockPayload::RichText {
+                spans: vec![InlineSpan {
+                    text: "Title".to_owned(),
+                    marks: vec![InlineMark::Bold],
+                }],
+            },
+        }],
+        720.0,
+    );
+    let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+    view.update(cx, |view, cx| {
+        view.dispatch_command(
+            CditorCommand::SetBlockSelectionRange {
+                anchor_block_id: 1,
+                focus_block_id: 1,
+            },
+            CommandSource::ContextMenu,
+            cx,
+        )
+        .unwrap();
+        let outcome = view
+            .dispatch_command(
+                CditorCommand::CopySelectionAsMarkdown,
+                CommandSource::ContextMenu,
+                cx,
+            )
+            .unwrap();
+        assert_eq!(outcome.status, CommandOutcomeStatus::Applied);
+        assert_eq!(
+            cx.read_from_clipboard().and_then(|item| item.text()),
+            Some("## **Title**".to_owned())
+        );
+    });
+}
+
 /// P4-015：每个 command variant 一个代表性实例（参数只需类型合法）。
 fn representative_commands() -> Vec<CditorCommand> {
     use cditor_editor_protocol::command::BlockTransform;
@@ -58,6 +104,7 @@ fn representative_commands() -> Vec<CditorCommand> {
         CditorCommand::Redo,
         CditorCommand::SelectAll,
         CditorCommand::CopySelection,
+        CditorCommand::CopySelectionAsMarkdown,
         CditorCommand::CutSelection,
         CditorCommand::PasteClipboard,
         CditorCommand::ApplyClipboardData {
@@ -66,6 +113,11 @@ fn representative_commands() -> Vec<CditorCommand> {
         },
         CditorCommand::InsertImageAsset {
             payload: cditor_core::rich_text::ImagePayload::default(),
+            asset: None,
+            after_block_id: None,
+        },
+        CditorCommand::InsertVideoAsset {
+            payload: cditor_core::rich_text::VideoPayload::default(),
             asset: None,
             after_block_id: None,
         },
