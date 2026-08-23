@@ -41,9 +41,11 @@ const VIDEO_CONTROLS_HIDE_UNTIL_HOVER: bool = !cfg!(any(target_os = "ios", targe
 
 mod controls;
 mod import;
+mod layout_cache;
 mod window_overlay;
 
 pub(crate) use import::accepts_external_video_paths;
+use layout_cache::VideoLayoutCache;
 
 struct VideoEntry {
     source: String,
@@ -129,6 +131,7 @@ enum VideoEntryState {
 #[derive(Default)]
 pub(crate) struct VideoPlaybackCache {
     entries: Mutex<HashMap<BlockId, VideoEntry>>,
+    layout_dimensions: Mutex<VideoLayoutCache>,
     imports: Mutex<HashMap<BlockId, String>>,
     uploads: Mutex<HashMap<BlockId, Entity<Upload>>>,
     requested: Mutex<HashSet<BlockId>>,
@@ -181,6 +184,10 @@ impl VideoPlaybackCache {
 
     pub(crate) fn clear(&self) -> Vec<Arc<gpui::RenderImage>> {
         let retired = self.clear_playback_entries();
+        self.layout_dimensions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clear();
         self.imports
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -542,14 +549,53 @@ impl VideoPlaybackCache {
         }
     }
 
-    fn dimensions(&self, block_id: BlockId) -> Option<cditor_video::VideoDimensions> {
-        let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
-        let entry = entries.get(&block_id)?;
-        let state = entry.state.lock().unwrap_or_else(|e| e.into_inner());
-        match &*state {
-            VideoEntryState::Ready { session, .. } => Some(session.dimensions()),
-            _ => None,
+    fn dimensions_for_source(
+        &self,
+        block_id: BlockId,
+        source: &str,
+    ) -> Option<cditor_video::VideoDimensions> {
+        let decoded = {
+            let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+            entries.get(&block_id).and_then(|entry| {
+                if entry.source != source {
+                    return None;
+                }
+                let state = entry.state.lock().unwrap_or_else(|e| e.into_inner());
+                match &*state {
+                    VideoEntryState::Ready { session, .. } => Some(session.dimensions()),
+                    _ => None,
+                }
+            })
+        };
+        if let Some(dimensions) = decoded {
+            self.layout_dimensions
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .insert(block_id, source.to_owned(), dimensions);
+            return Some(dimensions);
         }
+        self.layout_dimensions
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(block_id, source)
+    }
+
+    fn dimensions(&self, block_id: BlockId) -> Option<cditor_video::VideoDimensions> {
+        let source = self
+            .entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(&block_id)
+            .map(|entry| entry.source.clone());
+        source.map_or_else(
+            || {
+                self.layout_dimensions
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .get_any(block_id)
+            },
+            |source| self.dimensions_for_source(block_id, &source),
+        )
     }
 
     fn failed(&self, block_id: BlockId) -> bool {
@@ -681,7 +727,11 @@ pub(crate) fn render_video_block(
     // The video owns the width offered by its host block. Capping this at the
     // note column width left unused space in wide and immersive layouts.
     let width = (available_width_px as f32).max(240.0);
-    let block_height = cditor_core::layout::video_payload_block_height_px(video, f64::from(width));
+    // The payload may not carry dimensions for newly imported videos. Once
+    // ffprobe has opened the source, prefer the decoder's dimensions so the
+    // layout and the rendered frame use the same aspect ratio.
+    let decoded_dimensions = cache.dimensions_for_source(block_id, &video.source);
+    let block_height = video_block_height_px(video, decoded_dimensions, f64::from(width));
     let height = (block_height - cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX) as f32;
     crate::features::media::schedule_rendered_media_height_report(
         view.clone(),
@@ -744,15 +794,15 @@ pub(crate) fn render_video_block(
     } else if let Some(image) = cache.render_image(block_id, cx) {
         surface = surface.child(crate::image_loader::RasterImageElement::new(
             image,
-            // A video surface is a player, not a thumbnail: crop the excess
-            // frame rather than painting letterbox gaps inside the container.
-            gpui::ObjectFit::Cover,
+            // Preserve the complete frame. The player surface may contain
+            // letterbox space, but a video must never be cropped or stretched.
+            gpui::ObjectFit::Contain,
             px(0.0),
         ));
     } else if let Some(poster) = poster {
         surface = surface.child(crate::image_loader::RasterImageElement::new(
             poster,
-            gpui::ObjectFit::Cover,
+            gpui::ObjectFit::Contain,
             px(0.0),
         ));
     } else if let Some(status) = cache.status(block_id) {
@@ -852,7 +902,9 @@ pub(crate) fn render_fullscreen_video_overlay(
     if let Some(image) = image {
         surface = surface.child(crate::image_loader::RasterImageElement::new(
             image,
-            gpui::ObjectFit::Cover,
+            // Fullscreen fills the window's surface, while the image itself
+            // remains aspect-correct and fully visible inside it.
+            gpui::ObjectFit::Contain,
             px(0.0),
         ));
     }
@@ -970,6 +1022,21 @@ fn fullscreen_video_size(
     (viewport_width.max(1.0), viewport_height.max(1.0))
 }
 
+fn video_block_height_px(
+    payload: &VideoPayload,
+    decoded_dimensions: Option<cditor_video::VideoDimensions>,
+    width_px: f64,
+) -> f64 {
+    if let Some(dimensions) = decoded_dimensions {
+        let aspect_ratio = f64::from(dimensions.width) / f64::from(dimensions.height.max(1));
+        if aspect_ratio.is_finite() && aspect_ratio > 0.0 {
+            return width_px.max(1.0) / aspect_ratio
+                + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX;
+        }
+    }
+    cditor_core::layout::video_payload_block_height_px(payload, width_px)
+}
+
 const fn video_controls_idle_opacity() -> f32 {
     if VIDEO_CONTROLS_HIDE_UNTIL_HOVER {
         0.0
@@ -1031,9 +1098,39 @@ mod tests {
     }
 
     #[test]
-    fn fullscreen_size_uses_the_entire_window_viewport() {
+    fn fullscreen_surface_uses_the_entire_window_viewport() {
         let (width, height) = fullscreen_video_size(1920, 1080, 1200.0, 800.0);
         assert_eq!((width, height), (1200.0, 800.0));
+    }
+
+    #[test]
+    fn decoded_dimensions_drive_block_height_for_non_16_by_9_video() {
+        let payload = VideoPayload::default();
+        let height = video_block_height_px(
+            &payload,
+            Some(cditor_video::VideoDimensions {
+                width: 720,
+                height: 1280,
+            }),
+            640.0,
+        );
+        assert_eq!(
+            height,
+            640.0 * 1280.0 / 720.0 + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
+        );
+    }
+
+    #[test]
+    fn payload_dimensions_remain_the_fallback_before_decode() {
+        let payload = VideoPayload {
+            intrinsic_width: Some(1920),
+            intrinsic_height: Some(1080),
+            ..Default::default()
+        };
+        assert_eq!(
+            video_block_height_px(&payload, None, 640.0),
+            360.0 + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
+        );
     }
 
     #[test]
@@ -1092,7 +1189,7 @@ mod tests {
     }
 
     #[test]
-    fn fullscreen_size_uses_the_entire_viewport_for_portrait_video() {
+    fn fullscreen_surface_uses_the_entire_viewport_for_portrait_video() {
         let (width, height) = fullscreen_video_size(720, 1280, 1200.0, 800.0);
         assert_eq!((width, height), (1200.0, 800.0));
     }

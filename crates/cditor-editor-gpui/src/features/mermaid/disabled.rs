@@ -35,6 +35,7 @@ impl MermaidRenderCache {
 pub(crate) fn render_mermaid_block(
     _block_id: BlockId,
     _content_version: u64,
+    _layout_height_px: f64,
     source_content: AnyElement,
     _show_source: bool,
     _cache: &MermaidRenderCache,

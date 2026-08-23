@@ -288,6 +288,7 @@ fn render_kind_content(
                 }
                 _ => 0,
             },
+            block.layout.effective_height(),
             content,
             mermaid_show_source,
             mermaid_renders,

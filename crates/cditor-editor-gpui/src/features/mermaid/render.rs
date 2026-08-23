@@ -12,6 +12,7 @@ use crate::features::media::schedule_rendered_media_height_report;
 use crate::image_preview::open_image_preview;
 use crate::theme::GuiTheme;
 
+use super::cache::MermaidRenderDimensions;
 use super::{MermaidRenderCache, MermaidRenderStatus};
 
 const MERMAID_TOOLBAR_HEIGHT_PX: f32 = 28.0;
@@ -38,6 +39,7 @@ struct MermaidPreviewGeometry {
 pub(crate) fn render_mermaid_block(
     block_id: BlockId,
     content_version: u64,
+    layout_height_px: f64,
     source_content: AnyElement,
     show_source: bool,
     cache: &MermaidRenderCache,
@@ -48,17 +50,15 @@ pub(crate) fn render_mermaid_block(
     let toggle_view = view.clone();
     let status = cache.status(block_id);
     let geometry = (!show_source)
-        .then(|| status.as_ref().and_then(preview_geometry_for_status))
+        .then(|| {
+            cache
+                .preview_dimensions(block_id, content_version, theme)
+                .map(mermaid_preview_geometry_for_dimensions)
+        })
         .flatten();
-    schedule_rendered_media_height_report(
-        view,
-        block_id,
-        content_version,
-        geometry
-            .map(|geometry| geometry.block_height_px)
-            .unwrap_or_else(default_mermaid_block_height_px),
-        cx,
-    );
+    if let Some(measured_height) = mermaid_height_report(show_source, geometry) {
+        schedule_rendered_media_height_report(view, block_id, content_version, measured_height, cx);
+    }
     let (body, body_height) = if show_source {
         (source_content, MERMAID_LOADING_BODY_HEIGHT_PX)
     } else {
@@ -66,7 +66,7 @@ pub(crate) fn render_mermaid_block(
             render_preview(status, source_content, theme, geometry),
             geometry
                 .map(|geometry| geometry.body_height_px)
-                .unwrap_or(MERMAID_LOADING_BODY_HEIGHT_PX),
+                .unwrap_or_else(|| mermaid_body_height_for_layout(layout_height_px)),
         )
     };
 
@@ -198,22 +198,20 @@ fn clickable_preview(
         .into_any_element()
 }
 
-fn preview_geometry_for_status(status: &MermaidRenderStatus) -> Option<MermaidPreviewGeometry> {
-    match status {
-        MermaidRenderStatus::Ready(image)
-        | MermaidRenderStatus::Rendering {
-            fallback: Some(image),
-        } => Some(mermaid_preview_geometry(image)),
-        MermaidRenderStatus::Rendering { fallback: None } | MermaidRenderStatus::Failed { .. } => {
-            None
-        }
-    }
-}
-
+#[cfg(test)]
 fn mermaid_preview_geometry(image: &RenderImage) -> MermaidPreviewGeometry {
     let size = image.size(0);
-    let natural_width = i32::from(size.width).max(1) as f32;
-    let natural_height = i32::from(size.height).max(1) as f32;
+    mermaid_preview_geometry_for_dimensions(MermaidRenderDimensions {
+        width: i32::from(size.width).max(1) as u32,
+        height: i32::from(size.height).max(1) as u32,
+    })
+}
+
+fn mermaid_preview_geometry_for_dimensions(
+    dimensions: MermaidRenderDimensions,
+) -> MermaidPreviewGeometry {
+    let natural_width = dimensions.width.max(1) as f32;
+    let natural_height = dimensions.height.max(1) as f32;
     let scale = (MERMAID_MAX_IMAGE_WIDTH_PX / natural_width)
         .min(MERMAID_MAX_IMAGE_HEIGHT_PX / natural_height)
         .min(1.0);
@@ -237,6 +235,22 @@ fn default_mermaid_block_height_px() -> f64 {
             + MERMAID_LOADING_BODY_HEIGHT_PX
             + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32,
     )
+}
+
+fn mermaid_body_height_for_layout(layout_height_px: f64) -> f32 {
+    (layout_height_px - f64::from(MERMAID_TOOLBAR_HEIGHT_PX) - COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX)
+        .max(1.0) as f32
+}
+
+fn mermaid_height_report(
+    show_source: bool,
+    geometry: Option<MermaidPreviewGeometry>,
+) -> Option<f64> {
+    if show_source {
+        Some(default_mermaid_block_height_px())
+    } else {
+        geometry.map(|geometry| geometry.block_height_px)
+    }
 }
 
 fn concise_error(message: &str) -> &str {
@@ -311,8 +325,30 @@ mod tests {
     }
 
     #[test]
-    fn loading_preview_height_matches_the_rendered_fixed_box() {
+    fn source_mode_height_matches_the_rendered_fixed_box() {
         assert_eq!(default_mermaid_block_height_px(), 232.0);
+    }
+
+    #[test]
+    fn loading_preview_preserves_the_existing_layout_without_reporting_an_estimate() {
+        assert_eq!(mermaid_height_report(false, None), None);
+        assert_eq!(mermaid_body_height_for_layout(430.0), 386.0);
+    }
+
+    #[test]
+    fn only_source_mode_or_completed_preview_reports_a_height() {
+        let geometry = MermaidPreviewGeometry {
+            image_width_px: 320.0,
+            image_height_px: 180.0,
+            body_height_px: 244.0,
+            block_height_px: 288.0,
+        };
+
+        assert_eq!(
+            mermaid_height_report(true, None),
+            Some(default_mermaid_block_height_px())
+        );
+        assert_eq!(mermaid_height_report(false, Some(geometry)), Some(288.0));
     }
 }
 

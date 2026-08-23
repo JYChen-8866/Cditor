@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
@@ -14,8 +14,61 @@ use crate::theme::GuiTheme;
 use super::theme::build_mermaid_theme;
 
 const MAX_MERMAID_SOURCE_BYTES: usize = 256 * 1024;
+const MAX_MERMAID_LAYOUT_ENTRIES: usize = 4096;
 
 type RenderResult = Result<Arc<RenderImage>, Arc<str>>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct MermaidRenderDimensions {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+}
+
+#[derive(Clone, Copy)]
+struct MermaidLayoutEntry {
+    content_version: u64,
+    theme: GuiTheme,
+    dimensions: MermaidRenderDimensions,
+}
+
+#[derive(Default)]
+struct MermaidLayoutCache {
+    entries: HashMap<BlockId, MermaidLayoutEntry>,
+    insertion_order: VecDeque<BlockId>,
+}
+
+impl MermaidLayoutCache {
+    fn insert(&mut self, block_id: BlockId, entry: MermaidLayoutEntry) {
+        if self.entries.contains_key(&block_id) {
+            self.entries.insert(block_id, entry);
+            return;
+        }
+        if self.entries.len() >= MAX_MERMAID_LAYOUT_ENTRIES
+            && let Some(oldest) = self.insertion_order.pop_front()
+        {
+            self.entries.remove(&oldest);
+        }
+        self.entries.insert(block_id, entry);
+        self.insertion_order.push_back(block_id);
+    }
+
+    fn get(
+        &self,
+        block_id: BlockId,
+        content_version: u64,
+        theme: GuiTheme,
+    ) -> Option<MermaidRenderDimensions> {
+        self.entries.get(&block_id).and_then(|entry| {
+            (entry.content_version == content_version && entry.theme == theme)
+                .then_some(entry.dimensions)
+        })
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.insertion_order.clear();
+    }
+}
 
 #[derive(Clone)]
 pub(crate) enum MermaidRenderStatus {
@@ -134,6 +187,18 @@ impl MermaidRenderEntry {
         }
     }
 
+    fn render_dimensions(&self) -> Option<MermaidRenderDimensions> {
+        let image = match self.result.get() {
+            Some(Ok(image)) => Some(image),
+            Some(Err(_)) | None => self.fallback.as_ref(),
+        }?;
+        let size = image.size(0);
+        Some(MermaidRenderDimensions {
+            width: i32::from(size.width).max(1) as u32,
+            height: i32::from(size.height).max(1) as u32,
+        })
+    }
+
     fn take_completed_fallback(&mut self) -> Option<Arc<RenderImage>> {
         let result = self.result.get()?;
         let fallback = self.fallback.take()?;
@@ -176,6 +241,7 @@ impl MermaidRenderEntry {
 #[derive(Default)]
 pub(crate) struct MermaidRenderCache {
     entries: HashMap<BlockId, MermaidRenderEntry>,
+    layouts: MermaidLayoutCache,
 }
 
 impl MermaidRenderCache {
@@ -187,6 +253,7 @@ impl MermaidRenderCache {
         worker_admission: &EditorWorkerAdmission,
         cx: &mut Context<CditorV2View>,
     ) {
+        self.remember_rendered_layouts();
         let mut retired = self
             .entries
             .values_mut()
@@ -266,7 +333,46 @@ impl MermaidRenderCache {
         self.entries.get(&block_id).map(MermaidRenderEntry::status)
     }
 
+    pub(crate) fn preview_dimensions(
+        &self,
+        block_id: BlockId,
+        content_version: u64,
+        theme: GuiTheme,
+    ) -> Option<MermaidRenderDimensions> {
+        if let Some(entry) = self.entries.get(&block_id)
+            && entry.content_version == content_version
+            && entry.theme == theme
+            && let Some(dimensions) = entry.render_dimensions()
+        {
+            return Some(dimensions);
+        }
+        self.layouts.get(block_id, content_version, theme)
+    }
+
+    fn remember_rendered_layouts(&mut self) {
+        let layouts = self
+            .entries
+            .iter()
+            .filter_map(|(block_id, entry)| {
+                entry.render_dimensions().map(|dimensions| {
+                    (
+                        *block_id,
+                        MermaidLayoutEntry {
+                            content_version: entry.content_version,
+                            theme: entry.theme,
+                            dimensions,
+                        },
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        for (block_id, layout) in layouts {
+            self.layouts.insert(block_id, layout);
+        }
+    }
+
     pub(crate) fn clear(&mut self) -> Vec<Arc<RenderImage>> {
+        self.layouts.clear();
         self.entries
             .drain()
             .flat_map(|(_, entry)| entry.into_retired_images())
@@ -399,5 +505,47 @@ mod tests {
         assert!(next_fallback.is_some_and(|image| Arc::ptr_eq(&image, &current)));
         assert_eq!(retired.len(), 1);
         assert!(Arc::ptr_eq(&retired[0], &fallback));
+    }
+
+    #[test]
+    fn rendered_dimensions_survive_image_eviction() {
+        let block_id = 7;
+        let image = Arc::new(RenderImage::new([image::Frame::new(
+            image::RgbaImage::new(640, 360),
+        )]));
+        let mut cache = MermaidRenderCache::default();
+        cache
+            .entries
+            .insert(block_id, completed_entry(Ok(image), None));
+
+        cache.remember_rendered_layouts();
+        cache.entries.remove(&block_id);
+
+        assert_eq!(
+            cache.preview_dimensions(block_id, 1, GuiTheme::light()),
+            Some(MermaidRenderDimensions {
+                width: 640,
+                height: 360,
+            })
+        );
+    }
+
+    #[test]
+    fn cached_dimensions_are_rejected_after_content_or_theme_changes() {
+        let mut cache = MermaidRenderCache::default();
+        cache.layouts.insert(
+            7,
+            MermaidLayoutEntry {
+                content_version: 3,
+                theme: GuiTheme::light(),
+                dimensions: MermaidRenderDimensions {
+                    width: 640,
+                    height: 360,
+                },
+            },
+        );
+
+        assert!(cache.preview_dimensions(7, 4, GuiTheme::light()).is_none());
+        assert!(cache.preview_dimensions(7, 3, GuiTheme::dark()).is_none());
     }
 }
