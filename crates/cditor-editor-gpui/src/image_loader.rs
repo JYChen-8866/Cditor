@@ -5,7 +5,7 @@
 //! use the same vertical crop positioning semantics as V1.
 
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Cursor, Read};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -30,6 +30,12 @@ pub trait RemoteImageDataSource: Send + Sync + 'static {
 const REMOTE_IMAGE_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const REMOTE_IMAGE_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const REMOTE_IMAGE_MAX_BYTES: u64 = 32 * 1024 * 1024;
+// Compressed size is not a safe proxy for decoded memory: a tiny PNG can
+// expand into a multi-gigabyte bitmap. Reject pathological dimensions and
+// decoder allocations before `image` creates the pixel buffer.
+const MAX_DECODED_IMAGE_WIDTH: u32 = 8192;
+const MAX_DECODED_IMAGE_HEIGHT: u32 = 8192;
+const MAX_DECODED_IMAGE_ALLOC_BYTES: u64 = 64 * 1024 * 1024;
 
 struct BuiltinRemoteImageDataSource {
     client: reqwest::blocking::Client,
@@ -410,10 +416,14 @@ fn parse_local_path(src: &str) -> PathBuf {
 }
 
 fn decode_render_image(bytes: &[u8]) -> Option<Arc<RenderImage>> {
-    let format = image::guess_format(bytes).ok()?;
-    let mut data = image::load_from_memory_with_format(bytes, format)
-        .ok()?
-        .into_rgba8();
+    let mut reader = image::ImageReader::new(Cursor::new(bytes));
+    reader = reader.with_guessed_format().ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_DECODED_IMAGE_WIDTH);
+    limits.max_image_height = Some(MAX_DECODED_IMAGE_HEIGHT);
+    limits.max_alloc = Some(MAX_DECODED_IMAGE_ALLOC_BYTES);
+    reader.limits(limits);
+    let mut data = reader.decode().ok()?.into_rgba8();
     // gpui paints premultiplied BGRA; V1 swaps R/B after decoding to RGBA.
     for pixel in data.chunks_exact_mut(4) {
         pixel.swap(0, 2);
@@ -629,6 +639,29 @@ mod tests {
             Some(REMOTE_IMAGE_MAX_BYTES + 1),
         );
         assert_eq!(result.unwrap_err(), "remote image exceeds the 32 MiB limit");
+    }
+
+    fn png_bytes(width: u32, height: u32) -> Vec<u8> {
+        let image = image::DynamicImage::ImageRgba8(image::RgbaImage::new(width, height));
+        let mut bytes = Cursor::new(Vec::new());
+        image
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        bytes.into_inner()
+    }
+
+    #[test]
+    fn decoded_image_accepts_normal_raster() {
+        let image = decode_render_image(&png_bytes(2, 3)).unwrap();
+
+        assert_eq!(image.size(0), size(DevicePixels(2), DevicePixels(3)));
+    }
+
+    #[test]
+    fn decoded_image_rejects_pathological_dimensions_before_rgba_conversion() {
+        let bytes = png_bytes(MAX_DECODED_IMAGE_WIDTH + 1, 1);
+
+        assert!(decode_render_image(&bytes).is_none());
     }
 
     #[test]
