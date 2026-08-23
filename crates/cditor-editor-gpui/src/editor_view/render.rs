@@ -12,7 +12,7 @@ use crate::editor_view::{
     CditorV2View, CditorViewState, GuiPlatformInputTarget, floating_toolbar_passes_selection_delay,
     formatting_toolbar_context, formatting_toolbar_state,
 };
-use crate::image_preview::render_image_preview_overlay;
+use crate::image_preview::{close_active_preview_if_open, render_image_preview_canvas};
 use crate::input::GuiInputCommand;
 use crate::input::actions::{
     Backspace, Backtab, CDITOR_KEY_CONTEXT, Cancel, Copy, Cut, Delete, Duplicate, MoveDown,
@@ -249,7 +249,10 @@ impl Render for CditorV2View {
             view.handle_bound_input_action(BoundInputAction::Tab { backwards: true }, cx)
         }))
         .on_action(cx.listener(|view, _: &Cancel, window, cx| {
-            if view.overlay.fullscreen_video_block_id.is_some() {
+            if close_active_preview_if_open(cx) {
+                cx.stop_propagation();
+                cx.notify();
+            } else if view.overlay.fullscreen_video_block_id.is_some() {
                 view.exit_fullscreen_video(window, cx);
             } else {
                 view.handle_bound_input_action(BoundInputAction::Cancel, cx)
@@ -560,6 +563,20 @@ impl Render for CditorV2View {
                 ),
             );
             crate::text::sync_automatic_text_layout_pins(&[]);
+            self.record_frame_telemetry(
+                window.window_handle().window_id(),
+                frame_started.elapsed(),
+            );
+            return root.into_any_element();
+        }
+
+        if let Some(preview_canvas) = render_image_preview_canvas(
+            window,
+            self.interaction.rendered_editor_viewport_bounds(),
+            cx,
+        ) {
+            crate::text::sync_automatic_text_layout_pins(&[]);
+            root = root.child(preview_canvas);
             self.record_frame_telemetry(
                 window.window_handle().window_id(),
                 frame_started.elapsed(),
@@ -966,9 +983,6 @@ impl Render for CditorV2View {
             self.overlay.gutter_popup_menu_dismiss_subscription = None;
         }
         root = root.children(self.render_status_overlays(theme, cx.entity()));
-        if let Some(preview_overlay) = render_image_preview_overlay(window, cx) {
-            root = root.child(preview_overlay);
-        }
         let slash_state = self.overlay.slash_menu.clone();
         let slash_callout_popup_menu = if slash_state
             .as_ref()

@@ -483,7 +483,6 @@ impl InteractionUiState {
         self.pending_editor_viewport_bounds = Some(bounds);
     }
 
-    #[cfg(test)]
     pub(crate) fn rendered_editor_viewport_bounds(&self) -> Option<Bounds<Pixels>> {
         self.rendered_editor_viewport_bounds
     }

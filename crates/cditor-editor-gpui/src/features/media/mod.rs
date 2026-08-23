@@ -106,7 +106,7 @@ pub fn render_image_block(
             .cursor_pointer()
             .hover(|s| s.opacity(0.96))
             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                open_image_preview(preview_image.clone(), true, true, cx);
+                open_image_preview(preview_image.clone(), cx);
                 cx.stop_propagation();
             })
             .child(

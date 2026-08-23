@@ -37,7 +37,9 @@ pub(super) fn build_mermaid_theme(theme: GuiTheme) -> MermaidTheme {
     MermaidTheme {
         dark_mode: false,
         font_family: "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif".to_owned(),
-        background: color(theme.code_background),
+        // Keep the canvas RGB for theme-aware color blending, but let the
+        // editor canvas show through the rasterized SVG itself.
+        background: color(theme.surface).opacity(0.0),
         primary_color: color(theme.code_background),
         primary_text_color: color(theme.text),
         primary_border_color: color(theme.strong_border),
@@ -71,27 +73,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cditor_theme_maps_editor_text_and_background() {
-        let gui = GuiTheme::light();
-        let mermaid = build_mermaid_theme(gui);
+    fn cditor_theme_uses_a_transparent_canvas_background() {
+        for gui in [GuiTheme::light(), GuiTheme::dark()] {
+            let mermaid = build_mermaid_theme(gui);
+            let background = Rgba::from(mermaid.background);
+            let canvas = Rgba::from(color(gui.surface));
 
-        assert_eq!(
-            Rgba::from(mermaid.background),
-            Rgba::from(color(gui.code_background))
-        );
-        assert_eq!(Rgba::from(mermaid.text_color), Rgba::from(color(gui.text)));
-        assert_eq!(mermaid.git_branch_colors.len(), 8);
-        assert!(!mermaid.accent_colors.is_empty());
+            assert_eq!(
+                (background.r, background.g, background.b),
+                (canvas.r, canvas.g, canvas.b)
+            );
+            assert_eq!(background.a, 0.0);
+            assert_eq!(Rgba::from(mermaid.text_color), Rgba::from(color(gui.text)));
+            assert_eq!(mermaid.git_branch_colors.len(), 8);
+            assert!(!mermaid.accent_colors.is_empty());
+        }
     }
 
     #[test]
     fn zed_renderer_produces_raster_safe_svg() {
-        let theme = build_mermaid_theme(GuiTheme::light());
         let source = "flowchart LR\n  A[Long source label] --> B[Rendered diagram]";
-        let svg = mermaid_render::render_to_svg(source, &theme).expect("mermaid should render");
+        for (gui, expected_background) in [
+            (GuiTheme::light(), "background-color:#ffffff00"),
+            (GuiTheme::dark(), "background-color:#06060600"),
+        ] {
+            let theme = build_mermaid_theme(gui);
+            let svg = mermaid_render::render_to_svg(source, &theme).expect("mermaid should render");
+            let svg_opening_tag = svg.split_once('>').map_or(svg.as_str(), |(tag, _)| tag);
 
-        assert!(svg.contains("<svg"));
-        assert!(!svg.contains("<foreignObject"));
-        assert!(!svg.contains("<foreignobject"));
+            assert!(svg.contains("<svg"));
+            assert!(
+                svg_opening_tag.contains(expected_background),
+                "SVG root must remain transparent: {svg_opening_tag}"
+            );
+            assert!(!svg.contains("<foreignObject"));
+            assert!(!svg.contains("<foreignobject"));
+        }
     }
 }

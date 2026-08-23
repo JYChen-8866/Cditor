@@ -1,7 +1,7 @@
 use gpui::Context;
 
 use crate::editor_view::CditorV2View;
-use crate::image_preview::close_active_preview_if_escape_enabled;
+use crate::image_preview::close_active_preview_if_open;
 use crate::input::trace::trace_input;
 use crate::input::{AiPromptEditAction, CodeLanguageEditAction, GuiInputCommand};
 use crate::platform::normalize_external_line_endings;
@@ -239,7 +239,7 @@ impl CditorV2View {
         if matches!(action, BoundInputAction::Cancel) {
             let _ = self.dismiss_table_menu_from_gui(cx);
             let _ = self.overlay.dismiss_topmost_formatting_layer();
-            let _ = close_active_preview_if_escape_enabled(cx);
+            let _ = close_active_preview_if_open(cx);
             cx.stop_propagation();
             cx.notify();
             return;

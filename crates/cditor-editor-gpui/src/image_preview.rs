@@ -1,59 +1,59 @@
-use std::sync::Arc;
-use std::time::Duration;
+mod camera;
 
-use gpui::prelude::FluentBuilder;
+use std::sync::Arc;
+
+use cditor_component::SvgIcon;
 use gpui::{
-    AnimationExt, AnyElement, App, BoxShadow, Global, InteractiveElement, IntoElement, ObjectFit,
-    ParentElement, Pixels, RenderImage, Size, Styled, Window, div, px, rgb, size,
+    AnyElement, App, AppContext, Bounds, Context, CursorStyle, Div, Global, InteractiveElement,
+    IntoElement, MouseButton, ObjectFit, ParentElement, PinchEvent, Pixels, Render, RenderImage,
+    ScrollDelta, ScrollWheelEvent, Size, StatefulInteractiveElement, Styled, Window, div, point,
+    px, rgb, size,
 };
 
 use crate::image_loader::RasterImageElement;
 use crate::theme::active_theme;
+use camera::{PREVIEW_SCROLL_LINE_PX, PREVIEW_ZOOM_STEP, PreviewCamera, wheel_zoom_factor};
 
-const PREVIEW_CLOSE_DURATION: Duration = Duration::from_millis(150);
-const PREVIEW_MAX_VIEWPORT_RATIO: f32 = 0.88;
-const PREVIEW_OVERLAY_OPACITY: f32 = 0.72;
-const PREVIEW_FRAME_RADIUS_PX: f32 = 4.0;
+const PREVIEW_CONTROL_SIZE_PX: f32 = 32.0;
+const PREVIEW_CONTROL_ICON_SIZE_PX: f32 = 16.0;
+const PREVIEW_CONTROLS_MARGIN_PX: f32 = 16.0;
+
+const ICON_PREVIEW_FIT: &[u8] = include_bytes!("../../../assets/icons/preview-fit.svg");
+const ICON_PREVIEW_RESET: &[u8] = include_bytes!("../../../assets/icons/preview-reset.svg");
+const ICON_PREVIEW_PLUS: &[u8] = include_bytes!("../../../assets/icons/preview-plus.svg");
+const ICON_PREVIEW_MINUS: &[u8] = include_bytes!("../../../assets/icons/preview-minus.svg");
 
 pub struct ActiveImagePreview {
     image: Option<Arc<RenderImage>>,
-    closing: bool,
-    close_on_click_outside: bool,
-    close_on_escape: bool,
+    camera: PreviewCamera,
+    camera_initialized: bool,
 }
 
 impl Global for ActiveImagePreview {}
 
-pub fn open_image_preview(
-    image: Arc<RenderImage>,
-    close_on_click_outside: bool,
-    close_on_escape: bool,
-    cx: &mut App,
-) {
+pub fn open_image_preview(image: Arc<RenderImage>, cx: &mut App) {
     if !cx.has_global::<ActiveImagePreview>() {
         cx.set_global(ActiveImagePreview {
             image: None,
-            closing: false,
-            close_on_click_outside,
-            close_on_escape,
+            camera: PreviewCamera::default(),
+            camera_initialized: false,
         });
     }
     let preview = cx.global_mut::<ActiveImagePreview>();
     preview.image = Some(image);
-    preview.closing = false;
-    preview.close_on_click_outside = close_on_click_outside;
-    preview.close_on_escape = close_on_escape;
+    preview.camera = PreviewCamera::default();
+    preview.camera_initialized = false;
     cx.refresh_windows();
 }
 
-pub fn close_active_preview_if_escape_enabled(cx: &mut App) -> bool {
-    let close_on_escape = cx
+pub fn close_active_preview_if_open(cx: &mut App) -> bool {
+    let has_preview = cx
         .try_global::<ActiveImagePreview>()
-        .is_some_and(|preview| preview.image.is_some() && preview.close_on_escape);
-    if close_on_escape {
+        .is_some_and(|preview| preview.image.is_some());
+    if has_preview {
         close_active_preview(cx);
     }
-    close_on_escape
+    has_preview
 }
 
 pub fn close_active_preview(cx: &mut App) {
@@ -61,238 +61,345 @@ pub fn close_active_preview(cx: &mut App) {
         return;
     }
     let preview = cx.global_mut::<ActiveImagePreview>();
-    if preview.image.is_none() || preview.closing {
+    if preview.image.is_none() {
         return;
     }
-    preview.closing = true;
+    preview.image = None;
+    preview.camera = PreviewCamera::default();
+    preview.camera_initialized = false;
     cx.refresh_windows();
-
-    let async_cx = cx.to_async();
-    let executor = cx.background_executor().clone();
-    cx.foreground_executor()
-        .spawn(async move {
-            executor.timer(preview_close_duration()).await;
-            async_cx.update(|cx| {
-                if cx.has_global::<ActiveImagePreview>() {
-                    let preview = cx.global_mut::<ActiveImagePreview>();
-                    if preview.closing {
-                        preview.image = None;
-                        preview.closing = false;
-                        cx.refresh_windows();
-                    }
-                }
-            });
-        })
-        .detach();
 }
 
-pub fn render_image_preview_overlay(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
+pub fn render_image_preview_canvas(
+    window: &mut Window,
+    editor_viewport_bounds: Option<Bounds<Pixels>>,
+    cx: &mut App,
+) -> Option<AnyElement> {
     let theme = active_theme(cx);
-    let (image, closing, close_on_click_outside, close_on_escape) =
-        cx.try_global::<ActiveImagePreview>().and_then(|preview| {
-            preview.image.clone().map(|image| {
-                (
-                    image,
-                    preview.closing,
-                    preview.close_on_click_outside,
-                    preview.close_on_escape,
-                )
-            })
-        })?;
+    let image = cx
+        .try_global::<ActiveImagePreview>()
+        .and_then(|preview| preview.image.clone())?;
 
-    let viewport = window.viewport_size();
-    let preview_size = preview_image_box_size(
-        &image,
-        viewport.width * PREVIEW_MAX_VIEWPORT_RATIO,
-        viewport.height * PREVIEW_MAX_VIEWPORT_RATIO,
-    );
-    let overlay_id = if closing {
-        "liora-preview-overlay-exit"
-    } else {
-        "liora-preview-overlay-enter"
+    let viewport = preview_viewport_bounds(editor_viewport_bounds, window.viewport_size());
+    let natural_image_size = natural_image_size(&image);
+    let camera = {
+        let preview = cx.global_mut::<ActiveImagePreview>();
+        if !preview.camera_initialized {
+            preview
+                .camera
+                .fit_to_view(viewport.size, natural_image_size);
+            preview.camera_initialized = true;
+        }
+        preview.camera
     };
-    let frame_id = if closing {
-        "liora-preview-frame-exit"
-    } else {
-        "liora-preview-frame-enter"
-    };
-    let overlay_direction = if closing {
-        FadeDirection::Out
-    } else {
-        FadeDirection::In
-    };
-
     Some(
-        fade(
-            overlay_id,
-            overlay_direction,
+        div()
+            .id("cditor-image-preview-canvas")
+            .size_full()
+            .bg(rgb(theme.surface))
+            .child(preview_frame(
+                &image,
+                natural_image_size,
+                viewport,
+                camera,
+                theme,
+            ))
+            .into_any_element(),
+    )
+}
+
+fn preview_frame(
+    image: &Arc<RenderImage>,
+    natural_image_size: Size<f32>,
+    viewport: Bounds<Pixels>,
+    camera: PreviewCamera,
+    theme: crate::theme::GuiTheme,
+) -> Div {
+    let image_frame = camera.image_frame(viewport.size, natural_image_size);
+    div()
+        .w(viewport.size.width)
+        .h(viewport.size.height)
+        .relative()
+        .overflow_hidden()
+        .cursor(if camera.is_dragging() {
+            CursorStyle::ClosedHand
+        } else {
+            CursorStyle::Arrow
+        })
+        .on_scroll_wheel(move |event, _, cx| {
+            handle_preview_scroll(event, viewport, cx);
+            cx.stop_propagation();
+        })
+        .on_pinch(move |event: &PinchEvent, _, cx| {
+            let factor = (1.0 + event.delta).max(0.01);
+            update_active_camera(cx, |camera| {
+                camera.zoom_at(event.position, viewport, factor)
+            });
+            cx.stop_propagation();
+        })
+        .on_mouse_down(MouseButton::Left, |event, _, cx| {
+            begin_preview_drag(event.position, cx);
+            cx.stop_propagation();
+        })
+        .on_mouse_down(MouseButton::Right, |_, _, cx| {
+            cx.stop_propagation();
+        })
+        .on_mouse_move(|event, _, cx| {
+            if event.dragging() {
+                update_active_camera(cx, |camera| camera.drag_to(event.position));
+            } else {
+                end_preview_drag(cx);
+            }
+            cx.stop_propagation();
+        })
+        .on_mouse_up(MouseButton::Left, |_, _, cx| {
+            end_preview_drag(cx);
+            cx.stop_propagation();
+        })
+        .on_mouse_up_out(MouseButton::Left, |_, _, cx| {
+            end_preview_drag(cx);
+            cx.stop_propagation();
+        })
+        .child(
             div()
                 .absolute()
-                .top_0()
-                .left_0()
-                .size_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(rgb(theme.surface).opacity(PREVIEW_OVERLAY_OPACITY))
-                .when(close_on_click_outside, |s| {
-                    s.on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
-                        close_active_preview(cx);
-                        cx.stop_propagation();
-                    })
-                })
-                .when(close_on_escape, |s| s)
-                .child(pop_in(
-                    frame_id,
-                    div()
-                        .w(preview_size.width)
-                        .h(preview_size.height)
-                        .rounded(px(PREVIEW_FRAME_RADIUS_PX))
-                        .overflow_hidden()
-                        .shadow(preview_image_frame_shadow())
-                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
-                            cx.stop_propagation();
-                        })
-                        .child(RasterImageElement::new(
-                            image,
-                            ObjectFit::Contain,
-                            px(PREVIEW_FRAME_RADIUS_PX),
-                        )),
-                ))
-                .child(
-                    div()
-                        .absolute()
-                        .top(px(16.0))
-                        .right(px(16.0))
-                        .size(px(32.0))
-                        .rounded(px(4.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .bg(rgb(theme.panel))
-                        .text_color(rgb(theme.text))
-                        .text_size(px(14.0))
-                        .cursor_pointer()
-                        .hover(|style| style.bg(rgb(theme.hover_surface)))
-                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
-                            close_active_preview(cx);
-                            cx.stop_propagation();
-                        })
-                        .child("X"),
-                ),
+                .left(image_frame.origin.x)
+                .top(image_frame.origin.y)
+                .w(image_frame.size.width)
+                .h(image_frame.size.height)
+                .child(RasterImageElement::new(
+                    image.clone(),
+                    ObjectFit::Contain,
+                    px(0.0),
+                )),
         )
-        .into_any_element(),
-    )
+        .child(preview_controls(natural_image_size, viewport, theme))
+}
+
+fn handle_preview_scroll(event: &ScrollWheelEvent, viewport: Bounds<Pixels>, cx: &mut App) {
+    if event.modifiers.control || event.modifiers.platform {
+        let delta_y = match event.delta {
+            ScrollDelta::Pixels(delta) => f32::from(delta.y),
+            ScrollDelta::Lines(delta) => delta.y * PREVIEW_SCROLL_LINE_PX,
+        };
+        let factor = wheel_zoom_factor(delta_y);
+        update_active_camera(cx, |camera| {
+            camera.zoom_at(event.position, viewport, factor)
+        });
+    } else {
+        let delta = event.delta.pixel_delta(px(PREVIEW_SCROLL_LINE_PX));
+        update_active_camera(cx, |camera| camera.pan_by(delta));
+    }
+}
+
+fn begin_preview_drag(position: gpui::Point<Pixels>, cx: &mut App) {
+    let changed = if cx.has_global::<ActiveImagePreview>() {
+        let preview = cx.global_mut::<ActiveImagePreview>();
+        if preview.image.is_some() {
+            preview.camera.begin_drag(position);
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    if changed {
+        cx.refresh_windows();
+    }
+}
+
+fn end_preview_drag(cx: &mut App) {
+    update_active_camera(cx, PreviewCamera::end_drag);
+}
+
+fn update_active_camera(cx: &mut App, update: impl FnOnce(&mut PreviewCamera) -> bool) {
+    let changed = if cx.has_global::<ActiveImagePreview>() {
+        let preview = cx.global_mut::<ActiveImagePreview>();
+        preview.image.is_some() && update(&mut preview.camera)
+    } else {
+        false
+    };
+    if changed {
+        cx.refresh_windows();
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FadeDirection {
-    In,
-    Out,
+enum PreviewControl {
+    Fit,
+    ActualSize,
+    ZoomIn,
+    ZoomOut,
 }
 
-fn fade<E>(id: &'static str, direction: FadeDirection, element: E) -> impl IntoElement
-where
-    E: Styled + IntoElement + 'static,
-{
-    element.with_animation(
-        id,
-        gpui::Animation::new(preview_close_duration()),
-        move |element, delta| {
-            let opacity = match direction {
-                FadeDirection::In => delta,
-                FadeDirection::Out => 1.0 - delta,
-            };
-            element.opacity(opacity)
-        },
+impl PreviewControl {
+    fn tooltip(self) -> &'static str {
+        match self {
+            Self::Fit => "Fit to view",
+            Self::ActualSize => "Actual size",
+            Self::ZoomIn => "Zoom in",
+            Self::ZoomOut => "Zoom out",
+        }
+    }
+}
+
+struct PreviewControlTooltip {
+    label: &'static str,
+    theme: crate::theme::GuiTheme,
+}
+
+impl Render for PreviewControlTooltip {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(8.0))
+            .py(px(4.0))
+            .rounded(px(4.0))
+            .border(px(1.0))
+            .border_color(rgb(self.theme.border))
+            .bg(rgb(self.theme.panel))
+            .text_color(rgb(self.theme.text))
+            .text_size(px(12.0))
+            .child(self.label)
+    }
+}
+
+fn preview_controls(
+    natural_image_size: Size<f32>,
+    viewport: Bounds<Pixels>,
+    theme: crate::theme::GuiTheme,
+) -> Div {
+    div()
+        .absolute()
+        .top(px(PREVIEW_CONTROLS_MARGIN_PX))
+        .right(px(PREVIEW_CONTROLS_MARGIN_PX))
+        .flex()
+        .gap(px(4.0))
+        .p(px(4.0))
+        .rounded(px(6.0))
+        .border(px(1.0))
+        .border_color(rgb(theme.border))
+        .bg(rgb(theme.panel))
+        .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+        .children([
+            preview_control_button(PreviewControl::Fit, natural_image_size, viewport, theme),
+            preview_control_button(
+                PreviewControl::ActualSize,
+                natural_image_size,
+                viewport,
+                theme,
+            ),
+            preview_control_button(PreviewControl::ZoomIn, natural_image_size, viewport, theme),
+            preview_control_button(PreviewControl::ZoomOut, natural_image_size, viewport, theme),
+        ])
+}
+
+fn preview_control_button(
+    control: PreviewControl,
+    natural_image_size: Size<f32>,
+    viewport: Bounds<Pixels>,
+    theme: crate::theme::GuiTheme,
+) -> AnyElement {
+    let (id, icon_key, icon) = match control {
+        PreviewControl::Fit => ("preview-fit", "preview-fit-icon", ICON_PREVIEW_FIT),
+        PreviewControl::ActualSize => (
+            "preview-actual-size",
+            "preview-actual-size-icon",
+            ICON_PREVIEW_RESET,
+        ),
+        PreviewControl::ZoomIn => ("preview-zoom-in", "preview-zoom-in-icon", ICON_PREVIEW_PLUS),
+        PreviewControl::ZoomOut => (
+            "preview-zoom-out",
+            "preview-zoom-out-icon",
+            ICON_PREVIEW_MINUS,
+        ),
+    };
+    let tooltip = control.tooltip();
+    div()
+        .id(id)
+        .size(px(PREVIEW_CONTROL_SIZE_PX))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.0))
+        .cursor_pointer()
+        .hover(|style| style.bg(rgb(theme.hover_surface)))
+        .tooltip(move |_, cx| {
+            cx.new(|_| PreviewControlTooltip {
+                label: tooltip,
+                theme,
+            })
+            .into()
+        })
+        .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            update_active_camera(cx, |camera| {
+                match control {
+                    PreviewControl::Fit => {
+                        camera.fit_to_view(viewport.size, natural_image_size);
+                    }
+                    PreviewControl::ActualSize => {
+                        camera.show_actual_size();
+                    }
+                    PreviewControl::ZoomIn => {
+                        return camera.zoom_at(viewport.center(), viewport, PREVIEW_ZOOM_STEP);
+                    }
+                    PreviewControl::ZoomOut => {
+                        return camera.zoom_at(
+                            viewport.center(),
+                            viewport,
+                            1.0 / PREVIEW_ZOOM_STEP,
+                        );
+                    }
+                }
+                true
+            });
+            cx.stop_propagation();
+        })
+        .child(
+            SvgIcon::new(icon_key, icon)
+                .color(rgb(theme.text))
+                .size(px(PREVIEW_CONTROL_ICON_SIZE_PX)),
+        )
+        .into_any_element()
+}
+
+fn natural_image_size(image: &RenderImage) -> Size<f32> {
+    let natural = image.size(0);
+    size(
+        i32::from(natural.width).max(1) as f32,
+        i32::from(natural.height).max(1) as f32,
     )
 }
 
-fn pop_in<E>(id: &'static str, element: E) -> impl IntoElement
-where
-    E: Styled + IntoElement + 'static,
-{
-    element.with_animation(
-        id,
-        gpui::Animation::new(Duration::from_millis(250)),
-        |element, delta| element.opacity(0.86 + delta * 0.14),
-    )
-}
-
-fn preview_close_duration() -> Duration {
-    PREVIEW_CLOSE_DURATION
-}
-
-fn preview_image_box_size(
-    image: &RenderImage,
-    max_width: Pixels,
-    max_height: Pixels,
-) -> Size<Pixels> {
-    let image_size = image.size(0);
-    let image_width = i32::from(image_size.width).max(1) as f32;
-    let image_height = i32::from(image_size.height).max(1) as f32;
-    let scale = (f32::from(max_width) / image_width)
-        .min(f32::from(max_height) / image_height)
-        .min(1.0);
-
-    size(px(image_width * scale), px(image_height * scale))
-}
-
-fn preview_image_frame_shadow() -> Vec<BoxShadow> {
-    vec![
-        BoxShadow {
-            color: gpui::black().opacity(0.32),
-            offset: gpui::point(px(0.0), px(16.0)),
-            blur_radius: px(48.0),
-            spread_radius: px(0.0),
-            inset: false,
-        },
-        BoxShadow {
-            color: gpui::black().opacity(0.18),
-            offset: gpui::point(px(0.0), px(2.0)),
-            blur_radius: px(8.0),
-            spread_radius: px(0.0),
-            inset: false,
-        },
-    ]
+fn preview_viewport_bounds(
+    editor_viewport_bounds: Option<Bounds<Pixels>>,
+    window_viewport_size: Size<Pixels>,
+) -> Bounds<Pixels> {
+    editor_viewport_bounds.unwrap_or(Bounds {
+        origin: point(px(0.0), px(0.0)),
+        size: window_viewport_size,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn test_render_image(width: u32, height: u32) -> RenderImage {
-        RenderImage::new([::image::Frame::new(::image::RgbaImage::new(width, height))])
-    }
-
     #[test]
-    fn preview_image_box_size_matches_contained_image_bounds() {
-        let wide = test_render_image(400, 200);
-        let wide_size = preview_image_box_size(&wide, px(300.0), px(300.0));
-        assert_eq!(wide_size.width, px(300.0));
-        assert_eq!(wide_size.height, px(150.0));
+    fn preview_uses_the_editor_parent_before_window_size() {
+        let editor = gpui::Bounds {
+            origin: gpui::point(gpui::px(200.0), gpui::px(80.0)),
+            size: gpui::size(gpui::px(720.0), gpui::px(640.0)),
+        };
+        let window = gpui::size(gpui::px(1440.0), gpui::px(900.0));
 
-        let tall = test_render_image(200, 400);
-        let tall_size = preview_image_box_size(&tall, px(300.0), px(300.0));
-        assert_eq!(tall_size.width, px(150.0));
-        assert_eq!(tall_size.height, px(300.0));
-    }
-
-    #[test]
-    fn preview_frame_shadow_uses_quiet_notion_elevation() {
-        let shadow = preview_image_frame_shadow();
-
-        assert_eq!(shadow.len(), 2);
-        assert_eq!(shadow[0].offset.y, px(16.0));
-        assert_eq!(shadow[0].blur_radius, px(48.0));
-        assert_eq!(shadow[1].offset.y, px(2.0));
-    }
-
-    #[test]
-    fn preview_does_not_upscale_small_images() {
-        let small = test_render_image(120, 80);
-        let preview = preview_image_box_size(&small, px(600.0), px(600.0));
-
-        assert_eq!(preview, size(px(120.0), px(80.0)));
+        assert_eq!(preview_viewport_bounds(Some(editor), window), editor);
+        assert_eq!(
+            preview_viewport_bounds(None, window),
+            gpui::Bounds {
+                origin: gpui::point(gpui::px(0.0), gpui::px(0.0)),
+                size: window,
+            }
+        );
     }
 }

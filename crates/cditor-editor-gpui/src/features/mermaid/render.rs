@@ -183,7 +183,7 @@ fn clickable_preview(
         .justify_center()
         .cursor_pointer()
         .on_mouse_down(gpui::MouseButton::Left, move |_event, _window, cx| {
-            open_image_preview(preview_image.clone(), true, true, cx);
+            open_image_preview(preview_image.clone(), cx);
             cx.stop_propagation();
         });
     if opacity < 1.0 {
