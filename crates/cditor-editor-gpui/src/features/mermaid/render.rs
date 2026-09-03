@@ -54,6 +54,11 @@ pub(crate) fn render_mermaid_block(
     cache: &MermaidRenderCache,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
+    // When Some, a source<->preview switch animation is in flight.
+    // Value is the *total block* height we should drive right now.
+    // Content subtree for the active side (source or preview) stays mounted
+    // and is clipped; only on stable (no tween) do we use pure min_h / geometry h.
+    animated_block_height: Option<f64>,
     cx: &mut App,
 ) -> AnyElement {
     let toggle_view = view.clone();
@@ -65,22 +70,43 @@ pub(crate) fn render_mermaid_block(
                 .map(mermaid_preview_geometry_for_dimensions)
         })
         .flatten();
-    if let Some(measured_height) =
-        mermaid_height_report(show_source, geometry, source_block_height_px)
-    {
-        schedule_rendered_media_height_report(view, block_id, content_version, measured_height, cx);
+
+    let has_animated = animated_block_height.map_or(false, |h| h > 0.5);
+    // During animation we feed the tween height from the driver (advance_*).
+    // Do not emit a stable report that would fight the tween.
+    //
+    // For preview: the rendered image geometry owns the block height.
+    // For source editing ("编辑模式"): the live text surface layout measurement
+    // owns the height (see accept_text_layout). We must NOT push the estimate
+    // here on every render, otherwise typing will cause repeated estimate-vs-measured
+    // corrections that make the document below jump and flicker.
+    if !has_animated && !show_source {
+        if let Some(measured_height) =
+            mermaid_height_report(show_source, geometry, source_block_height_px)
+        {
+            schedule_rendered_media_height_report(view, block_id, content_version, measured_height, cx);
+        }
     }
+
+    // Animated body (area under toolbar). Subtract toolbar+shell chrome.
+    let animated_body_h = animated_block_height.map(|total| {
+        (total - f64::from(MERMAID_TOOLBAR_HEIGHT_PX) - COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX)
+            .max(0.0) as f32
+    });
+
     let (body, body_height) = if show_source {
         (
             source_content,
-            mermaid_source_body_height(source_block_height_px),
+            animated_body_h.unwrap_or_else(|| mermaid_source_body_height(source_block_height_px)),
         )
     } else {
         (
             render_preview(status, source_content, theme, geometry),
-            geometry
-                .map(|geometry| geometry.body_height_px)
-                .unwrap_or_else(|| mermaid_body_height_for_layout(layout_height_px)),
+            animated_body_h.unwrap_or_else(|| {
+                geometry
+                    .map(|geometry| geometry.body_height_px)
+                    .unwrap_or_else(|| mermaid_body_height_for_layout(layout_height_px))
+            }),
         )
     };
 
@@ -89,8 +115,8 @@ pub(crate) fn render_mermaid_block(
         .id(("mermaid-block", block_id))
         .relative()
         .w_full()
-        // 预览是固定比例的图，撑满预留高度；源码模式跟着文本长高。
-        .when(!show_source, |frame| frame.h_full())
+        // Stable preview uses h_full reservation; during animation or source we do not.
+        .when(!show_source && !has_animated, |frame| frame.h_full())
         .rounded(px(MERMAID_FRAME_RADIUS_PX))
         .border(px(MERMAID_FRAME_BORDER_WIDTH_PX))
         .border_color(rgb(theme.border))
@@ -128,13 +154,25 @@ pub(crate) fn render_mermaid_block(
         .child(
             div()
                 .w_full()
-                // 源码区只给最小高度：多一行就长一行，不裁剪、不留空白。
-                .when(show_source, |source| {
-                    source
-                        .min_h(px(body_height.max(MERMAID_SOURCE_MIN_BODY_HEIGHT_PX)))
+                // Animation: explicit h + clip, subtree stays mounted.
+                // Stable source: min_h (grows with lines).
+                // Stable preview: fixed h from geometry (or layout fallback).
+                .when(has_animated, |b| {
+                    b.h(px(body_height.max(0.0)))
+                        .overflow_hidden()
                         .p(px(MERMAID_SOURCE_PADDING_PX))
                 })
-                .when(!show_source, |preview| {
+                .when(!has_animated && show_source, |source| {
+                    // In source editing mode ("编辑模式"), do not pin the body to a
+                    // pre-computed estimate. Let the inner text surface determine its
+                    // natural size (like a code block). The block's effective height is
+                    // kept in sync via the text layout measurement path in accept_text_layout.
+                    // Only reserve a minimal floor so an empty block doesn't collapse.
+                    source
+                        .min_h(px(MERMAID_SOURCE_MIN_BODY_HEIGHT_PX))
+                        .p(px(MERMAID_SOURCE_PADDING_PX))
+                })
+                .when(!has_animated && !show_source, |preview| {
                     preview
                         .h(px(body_height))
                         .px(px(MERMAID_PREVIEW_PADDING_X_PX))

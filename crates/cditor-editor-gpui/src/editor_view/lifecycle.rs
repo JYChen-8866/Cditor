@@ -395,6 +395,26 @@ impl CditorV2View {
             .remove(&block_id)
     }
 
+    pub(crate) fn mermaid_source_scroll_handle(&mut self, block_id: BlockId) -> gpui::ScrollHandle {
+        self.interaction
+            .mermaid_source_scroll_handles
+            .entry(block_id)
+            .or_default()
+            .clone()
+    }
+
+    pub(crate) fn request_mermaid_source_caret_reveal_after_line_break(&mut self, block_id: BlockId) {
+        self.interaction
+            .mermaid_source_caret_reveal_after_line_break
+            .insert(block_id);
+    }
+
+    pub(crate) fn take_mermaid_source_caret_reveal_after_line_break(&mut self, block_id: BlockId) -> bool {
+        self.interaction
+            .mermaid_source_caret_reveal_after_line_break
+            .remove(&block_id)
+    }
+
     pub(crate) fn stable_table_viewport_measurement(
         &mut self,
         block_id: BlockId,

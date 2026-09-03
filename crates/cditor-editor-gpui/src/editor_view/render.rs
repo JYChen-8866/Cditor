@@ -43,6 +43,7 @@ use crate::platform::editor_ui_font_family;
 use crate::scroll::HeightCorrectionPriority;
 use crate::surfaces::table_cell::projected_table_cells_from_projection;
 use crate::theme::{active_theme, is_dark_mode};
+use cditor_core::ids::BlockId;
 use cditor_runtime::AiRequestPresentation;
 use cditor_session::RenderFrameRequest;
 
@@ -64,6 +65,13 @@ impl Render for CditorV2View {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let frame_started = web_time::Instant::now();
         self.run_main_thread_applies(frame_started, cx);
+        // Drive code block collapse/expand height tweens before the frame
+        // samples layout. Intermediate heights make the document reflow
+        // continuously; mark_dirty is emitted only on final settle.
+        self.advance_code_collapse_tweens(window, cx);
+        // Same pattern for Mermaid source<->preview switch: continuous height
+        // feed so the page does not jump when toggling "源码 / 预览".
+        self.advance_mermaid_source_tweens(window, cx);
         let theme = active_theme(cx);
         self.interaction.presented_theme = theme;
 
@@ -765,11 +773,15 @@ impl Render for CditorV2View {
                         &internal_scroll.table_scroll_snapshots,
                         &internal_scroll.code_scroll_handles,
                         &internal_scroll.code_caret_reveal_after_line_break,
+                        &internal_scroll.mermaid_source_scroll_handles,
+                        &internal_scroll.mermaid_source_caret_reveal_after_line_break,
                         &self.overlay.collapsed_code_blocks,
+                        &self.overlay.code_collapse_tweens,
                         &self.cache.code_highlights,
                         &self.features.search_decorations,
                         &self.cache.mermaid_renders,
                         &mermaid_source_blocks,
+                        &self.overlay.mermaid_source_tweens,
                         &self.cache.video_playbacks,
                         &self.cache.whiteboard_thumbnails,
                         self.overlay.page_icon_menu_open,
@@ -1106,5 +1118,119 @@ impl Render for CditorV2View {
         self.record_frame_telemetry(window.window_handle().window_id(), frame_started.elapsed());
 
         root.into_any_element()
+    }
+}
+
+impl CditorV2View {
+    /// Advance all active code block collapse/expand height tweens for this frame.
+    ///
+    /// For every active tween we compute the current interpolated height and push
+    /// it into the layout system via `apply_measured_block_height`. When a tween
+    /// reaches its target we remove it and call `mark_dirty` exactly once so that
+    /// autosave/undo bookkeeping happens only at settle time.
+    pub(crate) fn advance_code_collapse_tweens(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.overlay.code_collapse_tweens.is_empty() {
+            return;
+        }
+
+        let now = web_time::Instant::now();
+
+        // Snapshot the work while holding a mutable borrow over the tween map,
+        // then release it before touching other &self surfaces.
+        let work: Vec<(BlockId, u64, f64, bool)> = self
+            .overlay
+            .code_collapse_tweens
+            .iter_mut()
+            .map(|(&block_id, tween)| {
+                let h = tween.tween.height(now);
+                let v = tween.content_version;
+                let done = !tween.tween.is_animating(now);
+                (block_id, v, h, done)
+            })
+            .collect();
+
+        for (block_id, version, height, _done) in &work {
+            let _ = self.ready_session().and_then(|session| {
+                session
+                    .apply_measured_block_height(*block_id, *version, *height)
+                    .ok()
+            });
+        }
+
+        let mut any_settled = false;
+        for (block_id, _v, _h, done) in &work {
+            if *done {
+                self.overlay.code_collapse_tweens.remove(block_id);
+                any_settled = true;
+            }
+        }
+
+        if any_settled {
+            // One mark_dirty when any tween settles this frame.
+            self.mark_dirty(cx);
+        }
+
+        // Drive the next frame while motion remains.
+        if !self.overlay.code_collapse_tweens.is_empty() {
+            window.request_animation_frame();
+        }
+    }
+
+    /// Advance all active Mermaid source<->preview height tweens for this frame.
+    ///
+    /// Mirrors the code block collapse logic: every active tween pushes an
+    /// interpolated total block height via `apply_measured_block_height`.
+    /// Only when a tween settles do we drop it and call `mark_dirty` once.
+    /// While any tween is alive we keep requesting animation frames.
+    pub(crate) fn advance_mermaid_source_tweens(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.overlay.mermaid_source_tweens.is_empty() {
+            return;
+        }
+
+        let now = web_time::Instant::now();
+
+        let work: Vec<(BlockId, u64, f64, bool)> = self
+            .overlay
+            .mermaid_source_tweens
+            .iter_mut()
+            .map(|(&block_id, tween)| {
+                let h = tween.tween.height(now);
+                let v = tween.content_version;
+                let done = !tween.tween.is_animating(now);
+                (block_id, v, h, done)
+            })
+            .collect();
+
+        for (block_id, version, height, _done) in &work {
+            let _ = self.ready_session().and_then(|session| {
+                session
+                    .apply_measured_block_height(*block_id, *version, *height)
+                    .ok()
+            });
+        }
+
+        let mut any_settled = false;
+        for (block_id, _v, _h, done) in &work {
+            if *done {
+                self.overlay.mermaid_source_tweens.remove(block_id);
+                any_settled = true;
+            }
+        }
+
+        if any_settled {
+            self.mark_dirty(cx);
+        }
+
+        if !self.overlay.mermaid_source_tweens.is_empty() {
+            window.request_animation_frame();
+        }
     }
 }

@@ -49,42 +49,73 @@ pub fn render_code_block(
     view: Entity<CditorV2View>,
     code_language_focus: FocusHandle,
     collapsed: bool,
+    // When Some, we are mid-animation for collapse/expand. The value is the
+    // desired pixel height for the code content surface (below the toolbar header).
+    // The viewport will be emitted (even if logical collapsed) and constrained to
+    // this height with overflow hidden, so the visual area shrinks/grows while
+    // the layout engine is fed the corresponding total block height.
+    animated_content_height: Option<f64>,
 ) -> AnyElement {
     let code_theme = code_theme_item(code_highlight_theme);
-    let code_viewport = if collapsed {
+
+    // Stably collapsed (no active animation): remove the content subtree entirely.
+    // While a tween is active we must keep (and clip) the content surface so there is
+    // something whose height can visually change while we feed the layout engine the
+    // shrinking/expanding total block height.
+    let has_animated_content = animated_content_height.map_or(false, |h| h > 0.5);
+    let stably_collapsed = collapsed && !has_animated_content;
+
+    // The content surface (the scrollable code area below the toolbar header) is
+    // mounted whenever we are not in the final closed visual state.
+    let content_surface_mounted = !stably_collapsed;
+
+    let code_viewport = if !content_surface_mounted {
         None
     } else {
         let content_background = code_theme.background;
-        Some(
-            div()
-                .relative()
-                .w_full()
-                .rounded_b(px(V1_CODE_BLOCK_RADIUS_PX))
-                .border_l(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
-                .border_r(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
-                .border_b(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
-                .border_color(rgb(theme.code_toolbar_border))
-                .bg(rgb(content_background))
-                .child(
-                    div()
-                        .w_full()
-                        .bg(rgb(content_background))
-                        .child(render_code_content(content, code_theme.foreground)),
-                )
-                .into_any_element(),
-        )
+        let mut vp = div()
+            .relative()
+            .w_full()
+            .rounded_b(px(V1_CODE_BLOCK_RADIUS_PX))
+            .border_l(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+            .border_r(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+            .border_b(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
+            .border_color(rgb(theme.code_toolbar_border))
+            .bg(rgb(content_background))
+            .child(
+                div()
+                    .w_full()
+                    .bg(rgb(content_background))
+                    .child(render_code_content(content, code_theme.foreground)),
+            );
+        if let Some(h) = animated_content_height {
+            vp = vp.h(px(h.max(0.0) as f32)).overflow_hidden();
+        }
+        Some(vp.into_any_element())
     };
+
+    // Only the stable fully-expanded (non-animating, not collapsed) state uses the
+    // tall geometry constraints. During animation the tween drives the size.
+    let is_stably_expanded = !collapsed && !has_animated_content;
+
+    // Header connection:
+    // - While a content surface is mounted (stable expanded or mid-animation with >0 content area),
+    //   the header must look "open": no bottom border, bottom corners not rounded.
+    // - Only when the final visual is just the header (stably collapsed), the header
+    //   draws its own bottom border and has full rounding.
+    let header_draws_bottom_border = !content_surface_mounted;
+    let header_open_bottom = content_surface_mounted;
 
     div()
         .relative()
         .w_full()
-        .when(!collapsed, |this| {
+        .when(is_stably_expanded, |this| {
             this.min_h(px(V1_CODE_BLOCK_MIN_HEIGHT_PX))
         })
         .rounded(px(V1_CODE_BLOCK_RADIUS_PX))
         .flex()
         .flex_col()
-        .when(!collapsed, |this| {
+        .when(is_stably_expanded, |this| {
             this.gap(px(V1_CODE_SURFACE_GAP_PX as f32))
         })
         .font_family(EDITOR_MONO_FONT_FAMILY)
@@ -93,11 +124,11 @@ pub fn render_code_block(
                 .relative()
                 .w_full()
                 .rounded(px(V1_CODE_BLOCK_RADIUS_PX))
-                .when(!collapsed, |this| this.rounded_b_none())
+                .when(header_open_bottom, |this| this.rounded_b_none())
                 .border_t(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
                 .border_l(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
                 .border_r(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
-                .when(collapsed, |this| {
+                .when(header_draws_bottom_border, |this| {
                     this.border_b(px(V1_CODE_FRAME_BORDER_WIDTH_PX as f32))
                 })
                 .border_color(rgb(theme.code_toolbar_border))

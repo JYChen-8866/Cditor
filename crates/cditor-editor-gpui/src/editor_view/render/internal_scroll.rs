@@ -11,6 +11,8 @@ pub(super) struct InternalScrollProjection {
     pub(super) table_scroll_snapshots: HashMap<BlockId, TableScrollSnapshot>,
     pub(super) code_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
     pub(super) code_caret_reveal_after_line_break: HashSet<BlockId>,
+    pub(super) mermaid_source_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
+    pub(super) mermaid_source_caret_reveal_after_line_break: HashSet<BlockId>,
     pub(super) corrected_table_scroll_offsets: Vec<(BlockId, f32)>,
 }
 
@@ -21,6 +23,8 @@ pub(super) fn prepare_internal_scroll_projection(
     let mut table_scroll_snapshots = HashMap::new();
     let mut code_scroll_handles = HashMap::new();
     let mut code_caret_reveal_after_line_break = HashSet::new();
+    let mut mermaid_source_scroll_handles = HashMap::new();
+    let mut mermaid_source_caret_reveal_after_line_break = HashSet::new();
     let mut corrected_table_scroll_offsets = Vec::new();
 
     for block in &projection.blocks {
@@ -31,6 +35,19 @@ pub(super) fn prepare_internal_scroll_projection(
             code_scroll_handles.insert(block.block_id, view.code_scroll_handle(block.block_id));
             if view.take_code_caret_reveal_after_line_break(block.block_id) {
                 code_caret_reveal_after_line_break.insert(block.block_id);
+            }
+        }
+
+        // Mermaid source editing ("编辑模式") gets the same caret reveal treatment as code blocks.
+        // When Enter adds a line at the bottom of the source text, we want the caret to stay
+        // visible (local scroll inside the source area if needed, and main doc scroll to follow).
+        if matches!(block.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
+            && view.cache.mermaid_source_blocks.contains(&block.block_id)
+        {
+            mermaid_source_scroll_handles
+                .insert(block.block_id, view.mermaid_source_scroll_handle(block.block_id));
+            if view.take_mermaid_source_caret_reveal_after_line_break(block.block_id) {
+                mermaid_source_caret_reveal_after_line_break.insert(block.block_id);
             }
         }
 
@@ -68,6 +85,8 @@ pub(super) fn prepare_internal_scroll_projection(
         table_scroll_snapshots,
         code_scroll_handles,
         code_caret_reveal_after_line_break,
+        mermaid_source_scroll_handles,
+        mermaid_source_caret_reveal_after_line_break,
         corrected_table_scroll_offsets,
     }
 }

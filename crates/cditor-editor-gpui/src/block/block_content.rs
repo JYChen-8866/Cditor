@@ -58,6 +58,8 @@ pub(crate) fn render_block_content(
     table_scroll_handle: Option<ScrollHandle>,
     code_scroll_handle: Option<ScrollHandle>,
     code_caret_reveal_after_line_break: bool,
+    mermaid_source_scroll_handle: Option<ScrollHandle>,
+    mermaid_source_caret_reveal_after_line_break: bool,
     code_highlights: &CodeHighlightCache,
     search_decorations: &SearchDecorationState,
     code_highlight_theme: &'static str,
@@ -277,13 +279,20 @@ pub(crate) fn render_block_content(
                     .with_selection_range(selection_range)
                     .with_search_ranges(search_ranges)
                     .with_caret_reveal_scroll_handle(
-                        (code_caret_reveal_after_line_break
+                        if code_caret_reveal_after_line_break
                             && matches!(
                                 block.kind,
                                 cditor_core::rich_text::RichBlockKind::Code { .. }
-                            ))
-                        .then_some(code_scroll_handle)
-                        .flatten(),
+                            )
+                        {
+                            code_scroll_handle
+                        } else if mermaid_source_caret_reveal_after_line_break
+                            && matches!(block.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
+                        {
+                            mermaid_source_scroll_handle
+                        } else {
+                            None
+                        },
                     )
                     .with_input_handler(
                         view,

@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use super::V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX;
+use super::{CodeCollapseTween, HeightTween, V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX};
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
 use gpui::Context;
+use web_time::Instant;
 
 use crate::editor_view::CditorV2View;
 
@@ -19,28 +20,52 @@ pub(crate) fn toggle_code_block_collapsed_from_gui(
         .ready_session()
         .and_then(|session| session.block_layout_context(block_id).ok())
         .flatten();
+
+    // Flip the collapsed flag immediately so the toolbar chevron reflects the intent.
     let collapsing = toggle_collapsed(&mut view.overlay.collapsed_code_blocks, block_id);
+
     if let Some(context) = context {
-        let target_height = next_code_block_height(
-            &mut view.overlay.collapsed_code_block_heights,
-            block_id,
-            collapsing,
-            context.effective_height,
-            context.estimated_height,
-        );
-        let applied = view.ready_session().is_some_and(|session| {
+        let now = Instant::now();
+        let target_height = if collapsing {
+            // Persist the pre-collapse height so expand can restore the exact size.
+            view.overlay
+                .collapsed_code_block_heights
+                .insert(block_id, context.effective_height);
+            V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX
+        } else {
+            view.overlay
+                .collapsed_code_block_heights
+                .remove(&block_id)
+                .unwrap_or(context.estimated_height)
+        };
+
+        let content_version = context.content_version.unwrap_or(0);
+
+        // Create or retarget the height tween so a mid-animation toggle continues smoothly.
+        let tween = match view.overlay.code_collapse_tweens.remove(&block_id) {
+            Some(mut existing) => {
+                existing.tween = existing.tween.retarget(target_height, now);
+                existing.content_version = content_version;
+                existing
+            }
+            None => CodeCollapseTween {
+                tween: HeightTween::new(context.effective_height, target_height, now),
+                content_version,
+            },
+        };
+
+        // Push the first interpolated height so the very next layout sees motion.
+        let first_height = tween.tween.height(now);
+        view.overlay.code_collapse_tweens.insert(block_id, tween);
+
+        let _ = view.ready_session().and_then(|session| {
             session
-                .apply_measured_block_height(
-                    block_id,
-                    context.content_version.unwrap_or(0),
-                    target_height,
-                )
-                .is_ok_and(|applied| applied)
+                .apply_measured_block_height(block_id, content_version, first_height)
+                .ok()
         });
-        if applied {
-            view.mark_dirty(cx);
-        }
+        // Do not mark_dirty during the animation. mark_dirty is issued once on settle.
     }
+
     cx.notify();
 }
 
@@ -201,9 +226,41 @@ mod tests {
         });
         assert!(original > V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX);
 
+        // Toggle to collapse. With animation the immediate sample is an
+        // interpolation; the authoritative collapsed height is applied when
+        // the tween settles. We validate the final state by forcing settle.
         view.update(cx, |view, cx| {
             toggle_code_block_collapsed_from_gui(view, 2, cx);
         });
+
+        // Intent is recorded immediately (for icon + expand restore value).
+        let (flag, saved) = view.read_with(cx, |view, _| {
+            (
+                view.overlay.collapsed_code_blocks.contains(&2),
+                view.overlay.collapsed_code_block_heights.get(&2).copied(),
+            )
+        });
+        assert!(flag);
+        assert_eq!(saved, Some(original));
+
+        // A tween is in flight.
+        let tween_present = view.read_with(cx, |view, _| {
+            view.overlay.code_collapse_tweens.contains_key(&2)
+        });
+        assert!(tween_present);
+
+        // Simulate settle: remove the tween and apply the final target height
+        // exactly as the animation driver would on completion.
+        view.update(cx, |view, _| {
+            if let Some(t) = view.overlay.code_collapse_tweens.remove(&2) {
+                let _ = view.ready_session().and_then(|session| {
+                    session
+                        .apply_measured_block_height(2, t.content_version, t.tween.target())
+                        .ok()
+                });
+            }
+        });
+
         let collapsed = view.read_with(cx, |view, _| {
             view.ready_session()
                 .unwrap()
@@ -215,18 +272,28 @@ mod tests {
             collapsed.effective_height,
             V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX
         );
-        let collapsed_state = view.read_with(cx, |view, _| {
-            (
-                view.overlay.collapsed_code_blocks.contains(&2),
-                view.overlay.collapsed_code_block_heights.get(&2).copied(),
-            )
-        });
-        assert!(collapsed_state.0);
-        assert_eq!(collapsed_state.1, Some(original));
 
+        // Expand.
         view.update(cx, |view, cx| {
             toggle_code_block_collapsed_from_gui(view, 2, cx);
         });
+
+        let tween_present2 = view.read_with(cx, |view, _| {
+            view.overlay.code_collapse_tweens.contains_key(&2)
+        });
+        assert!(tween_present2);
+
+        // Force settle to the restored original height.
+        view.update(cx, |view, _| {
+            if let Some(t) = view.overlay.code_collapse_tweens.remove(&2) {
+                let _ = view.ready_session().and_then(|session| {
+                    session
+                        .apply_measured_block_height(2, t.content_version, t.tween.target())
+                        .ok()
+                });
+            }
+        });
+
         let expanded = view.read_with(cx, |view, _| {
             view.ready_session()
                 .unwrap()
@@ -235,13 +302,14 @@ mod tests {
                 .unwrap()
         });
         assert_eq!(expanded.effective_height, original);
-        let expanded_state = view.read_with(cx, |view, _| {
+
+        let (flag2, heights_empty) = view.read_with(cx, |view, _| {
             (
                 view.overlay.collapsed_code_blocks.contains(&2),
                 view.overlay.collapsed_code_block_heights.is_empty(),
             )
         });
-        assert!(!expanded_state.0);
-        assert!(expanded_state.1);
+        assert!(!flag2);
+        assert!(heights_empty);
     }
 }

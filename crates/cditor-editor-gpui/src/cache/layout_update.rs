@@ -198,6 +198,18 @@ fn accept_text_layout(view: &mut CditorV2View, layout: RichTextPlatformLayout) -
     view.cache
         .text_layouts
         .insert(block_id, layout, pinned_surface);
+
+    // Mermaid blocks have special height ownership:
+    // - In *preview* mode: the diagram raster (image geometry) owns the block height.
+    //   Source text shaping must never overwrite the preview box size.
+    // - In *source editing* mode ("编辑模式"): the source text itself is the content,
+    //   exactly like a code block. We must accept the live text layout measurement
+    //   so that typing (adding/removing lines, wrapping) smoothly updates the
+    //   outer block height and the rest of the document reflows without jumps or flicker.
+    //
+    // We add MERMAID_SOURCE_CHROME_HEIGHT_PX because the text layout measured_height
+    // reflects the inner text area, while the block layout expects the full height
+    // (toolbar + paddings + shell chrome + text).
     if view.ready_session().is_some_and(|session| {
         session
             .text_block_context(block_id)
@@ -205,9 +217,14 @@ fn accept_text_layout(view: &mut CditorV2View, layout: RichTextPlatformLayout) -
             .flatten()
             .is_some_and(|context| context.kind == cditor_core::rich_text::RichBlockKind::Mermaid)
     }) {
-        // Mermaid owns a stable preview/source box and reports its rendered
-        // media height separately. Source text shaping must not overwrite it.
-        return false;
+        if view.cache.mermaid_source_blocks.contains(&block_id) {
+            let full_block_height =
+                measured_height + cditor_core::layout::MERMAID_SOURCE_CHROME_HEIGHT_PX;
+            return queue_rendered_media_height(view, block_id, content_version, full_block_height);
+        } else {
+            // Preview: ignore source text shaping.
+            return false;
+        }
     }
     queue_rendered_media_height(view, block_id, content_version, measured_height)
 }

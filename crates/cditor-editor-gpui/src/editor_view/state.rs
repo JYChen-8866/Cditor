@@ -110,6 +110,13 @@ pub(crate) struct OverlayUiState {
     /// 折叠高度要喂进布局引擎，下方每个块的位置都跟着它走，所以补间期间每帧推一个
     /// 新高度。落定后条目移除，块回到由 `collapsed_code_blocks` 决定的静态高度。
     pub(crate) code_collapse_tweens: HashMap<BlockId, crate::features::code::CodeCollapseTween>,
+
+    /// Mermaid 源码/预览切换进行中的高度补间。
+    ///
+    /// 切换不是纯绘制：要持续把插值高度喂 apply_measured_block_height，
+    /// 下方块才会跟着滑动。动画期间保留对应子树（源码或预览），用 animated 高度裁剪。
+    /// 只有最终稳定态才用纯 min_h（源码）或纯图片几何（预览）。
+    pub(crate) mermaid_source_tweens: HashMap<BlockId, crate::features::code::CodeCollapseTween>,
     pub(crate) slash_menu: Option<SlashMenuState>,
     pub(crate) slash_popup_menu: Option<Entity<PopupMenu>>,
     pub(crate) slash_popup_menu_dismiss_subscription: Option<Subscription>,
@@ -421,6 +428,14 @@ pub(crate) struct InteractionUiState {
     pub(crate) editor_viewport_handle: gpui::ScrollHandle,
     pub(crate) code_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
     pub(crate) code_caret_reveal_after_line_break: HashSet<BlockId>,
+
+    /// Same mechanism as code blocks, but for Mermaid blocks that are currently
+    /// showing their source ("编辑模式"). When Enter or soft line break happens
+    /// inside the Mermaid source text, we allocate a ScrollHandle and request
+    /// caret reveal so the caret stays visible (local scroll or main doc scroll
+    /// adjustment) without the document jumping only at the end.
+    pub(crate) mermaid_source_scroll_handles: HashMap<BlockId, gpui::ScrollHandle>,
+    pub(crate) mermaid_source_caret_reveal_after_line_break: HashSet<BlockId>,
     pub(crate) table_scroll_state: GuiTableScrollState,
     pub(crate) scrollbar_drag: Option<GuiScrollbarDrag>,
     pub(crate) text_drag_selection: Option<GuiTextDragSelection>,
@@ -460,6 +475,8 @@ impl Default for InteractionUiState {
             editor_viewport_handle: Default::default(),
             code_scroll_handles: Default::default(),
             code_caret_reveal_after_line_break: Default::default(),
+            mermaid_source_scroll_handles: Default::default(),
+            mermaid_source_caret_reveal_after_line_break: Default::default(),
             table_scroll_state: Default::default(),
             scrollbar_drag: None,
             text_drag_selection: None,

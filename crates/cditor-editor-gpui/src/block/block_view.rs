@@ -68,11 +68,21 @@ impl BlockView {
         table_scroll_handle: Option<ScrollHandle>,
         code_scroll_handle: Option<ScrollHandle>,
         code_caret_reveal_after_line_break: bool,
+        mermaid_source_scroll_handle: Option<ScrollHandle>,
+        mermaid_source_caret_reveal_after_line_break: bool,
         collapsed_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
+        code_collapse_tweens: &std::collections::HashMap<
+            cditor_core::ids::BlockId,
+            crate::features::code::CodeCollapseTween,
+        >,
         code_highlights: &CodeHighlightCache,
         search_decorations: &SearchDecorationState,
         mermaid_renders: &MermaidRenderCache,
         mermaid_show_source: bool,
+        mermaid_source_tweens: &std::collections::HashMap<
+            cditor_core::ids::BlockId,
+            crate::features::code::CodeCollapseTween,
+        >,
         video_playbacks: &VideoPlaybackCache,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
         cx: &mut App,
@@ -104,15 +114,20 @@ impl BlockView {
             table_scroll_handle,
             code_scroll_handle,
             code_caret_reveal_after_line_break,
+            mermaid_source_scroll_handle,
+            mermaid_source_caret_reveal_after_line_break,
             collapsed_code_blocks,
+            code_collapse_tweens,
             code_highlights,
             search_decorations,
             mermaid_renders,
             mermaid_show_source,
+            mermaid_source_tweens,
             video_playbacks,
             whiteboard_thumbnails,
             cx,
         );
+
         let focus_view = view.clone();
         let hover_view = view.clone();
         let add_view = view.clone();
@@ -132,8 +147,16 @@ impl BlockView {
                 },
             ) as crate::block::prefix::TodoToggleHandler
         });
-        let collapsed_code_block = matches!(block.kind, RichBlockKind::Code { .. })
-            && collapsed_code_blocks.contains(&block.block_id);
+        let code_block_kind = matches!(block.kind, RichBlockKind::Code { .. });
+        // While a tween is active we keep the content surface mounted (clipped)
+        // so the height change continuously slides the rest of the document.
+        let has_active_tween = code_block_kind && code_collapse_tweens.contains_key(&block.block_id);
+
+        // For the outer block shell: release the inner content min_h reservation
+        // both when stably collapsed *and* while animating. The live tween height
+        // (fed to layout + used for the absolute shell container) is authoritative.
+        let collapsed_code_block = code_block_kind
+            && (collapsed_code_blocks.contains(&block.block_id) || has_active_tween);
         let on_fold_toggle = matches!(
             block.chrome.prefix,
             cditor_core::block::BlockPrefixSnapshot::Heading { .. }
@@ -210,11 +233,21 @@ fn render_kind_content(
     table_scroll_handle: Option<ScrollHandle>,
     code_scroll_handle: Option<ScrollHandle>,
     code_caret_reveal_after_line_break: bool,
+    mermaid_source_scroll_handle: Option<ScrollHandle>,
+    mermaid_source_caret_reveal_after_line_break: bool,
     collapsed_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
+    code_collapse_tweens: &std::collections::HashMap<
+        cditor_core::ids::BlockId,
+        crate::features::code::CodeCollapseTween,
+    >,
     code_highlights: &CodeHighlightCache,
     search_decorations: &SearchDecorationState,
     mermaid_renders: &MermaidRenderCache,
     mermaid_show_source: bool,
+    mermaid_source_tweens: &std::collections::HashMap<
+        cditor_core::ids::BlockId,
+        crate::features::code::CodeCollapseTween,
+    >,
     video_playbacks: &VideoPlaybackCache,
     whiteboard_thumbnails: &WhiteboardThumbnailCache,
     cx: &mut App,
@@ -243,6 +276,8 @@ fn render_kind_content(
         table_scroll_handle,
         code_scroll_handle,
         code_caret_reveal_after_line_break,
+        mermaid_source_scroll_handle,
+        mermaid_source_caret_reveal_after_line_break,
         code_highlights,
         search_decorations,
         code_highlight_theme,
@@ -255,7 +290,21 @@ fn render_kind_content(
         RichBlockKind::Quote => content,
         RichBlockKind::Code { ref language } => {
             let language_edit = code_language_edit.filter(|edit| edit.block_id == block.block_id);
-            let code_collapsed = collapsed_code_blocks.contains(&block.block_id);
+            // Stable collapsed (no active animation) hides the content subtree entirely.
+            let code_collapsed = collapsed_code_blocks.contains(&block.block_id)
+                && !code_collapse_tweens.contains_key(&block.block_id);
+
+            // If a tween is active, compute how much of the *code content surface*
+            // (below the toolbar header) should be visible right now.
+            // The tween itself stores the *total* block height; subtract the collapsed
+            // header geometry to get the visible content area for clipping.
+            let animated_content_height =
+                code_collapse_tweens.get(&block.block_id).map(|tween| {
+                    let now = web_time::Instant::now();
+                    let total_h = tween.tween.height(now);
+                    (total_h - crate::features::code::V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX).max(0.0)
+                });
+
             render_code_block(
                 block.block_id,
                 content,
@@ -268,6 +317,7 @@ fn render_kind_content(
                 view,
                 code_language_focus,
                 code_collapsed,
+                animated_content_height,
             )
         }
         RichBlockKind::Todo { .. } | RichBlockKind::BulletedList | RichBlockKind::NumberedList => {
@@ -280,23 +330,32 @@ fn render_kind_content(
             .text_size(px(20.0))
             .child(content)
             .into_any_element(),
-        RichBlockKind::Mermaid => render_mermaid_block(
-            block.block_id,
-            match &block.payload {
-                cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
-                    payload.content_version
-                }
-                _ => 0,
-            },
-            block.layout.effective_height(),
-            mermaid_source_block_height_px(block, text_layout_width_px),
-            content,
-            mermaid_show_source,
-            mermaid_renders,
-            theme,
-            view,
-            cx,
-        ),
+        RichBlockKind::Mermaid => {
+            let animated_block_height = mermaid_source_tweens
+                .get(&block.block_id)
+                .map(|tween| {
+                    let now = web_time::Instant::now();
+                    tween.tween.height(now)
+                });
+            render_mermaid_block(
+                block.block_id,
+                match &block.payload {
+                    cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                        payload.content_version
+                    }
+                    _ => 0,
+                },
+                block.layout.effective_height(),
+                mermaid_source_block_height_px(block, text_layout_width_px),
+                content,
+                mermaid_show_source,
+                mermaid_renders,
+                theme,
+                view,
+                animated_block_height,
+                cx,
+            )
+        }
         RichBlockKind::RawMarkdown => div()
             .w_full()
             .font_family(EDITOR_MONO_FONT_FAMILY)

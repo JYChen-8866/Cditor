@@ -66,6 +66,7 @@ pub(crate) fn render_mermaid_block(
     _cache: &MermaidRenderCache,
     _theme: GuiTheme,
     _view: Entity<CditorV2View>,
+    _animated_block_height: Option<f64>,
     _cx: &mut App,
 ) -> AnyElement {
     source_content

@@ -139,11 +139,21 @@ impl DocumentEditorView {
         table_scroll_snapshots: &HashMap<BlockId, TableScrollSnapshot>,
         code_scroll_handles: &HashMap<BlockId, ScrollHandle>,
         code_caret_reveal_after_line_break: &std::collections::HashSet<BlockId>,
+        mermaid_source_scroll_handles: &HashMap<BlockId, ScrollHandle>,
+        mermaid_source_caret_reveal_after_line_break: &std::collections::HashSet<BlockId>,
         collapsed_code_blocks: &std::collections::HashSet<BlockId>,
+        code_collapse_tweens: &std::collections::HashMap<
+            BlockId,
+            crate::features::code::CodeCollapseTween,
+        >,
         code_highlights: &CodeHighlightCache,
         search_decorations: &SearchDecorationState,
         mermaid_renders: &MermaidRenderCache,
         mermaid_source_blocks: &std::collections::HashSet<BlockId>,
+        mermaid_source_tweens: &std::collections::HashMap<
+            BlockId,
+            crate::features::code::CodeCollapseTween,
+        >,
         video_playbacks: &VideoPlaybackCache,
         whiteboard_thumbnails: &WhiteboardThumbnailCache,
         page_icon_menu_open: bool,
@@ -173,6 +183,17 @@ impl DocumentEditorView {
                 let height = image_resize_preview
                     .filter(|(preview_block_id, _, _)| *preview_block_id == block.block_id)
                     .map(|(_, _, preview_height)| preview_height)
+                    .or_else(|| {
+                        // Live animated heights (code collapse/expand or Mermaid source<->preview)
+                        // must be used for absolute positioning so that the running block_y
+                        // for all following blocks moves continuously instead of jumping at the end.
+                        code_collapse_tweens.get(&block.block_id)
+                            .or_else(|| mermaid_source_tweens.get(&block.block_id))
+                            .map(|tween| {
+                                let now = web_time::Instant::now();
+                                tween.tween.height(now)
+                            })
+                    })
                     .unwrap_or_else(|| block.layout.effective_height());
                 if image_resize_preview
                     .is_some_and(|(preview_block_id, _, _)| preview_block_id == block.block_id)
@@ -379,11 +400,15 @@ impl DocumentEditorView {
                                 .map(|snapshot| snapshot.handle.clone()),
                             code_scroll_handles.get(&block.block_id).cloned(),
                             code_caret_reveal_after_line_break.contains(&block.block_id),
+                            mermaid_source_scroll_handles.get(&block.block_id).cloned(),
+                            mermaid_source_caret_reveal_after_line_break.contains(&block.block_id),
                             collapsed_code_blocks,
+                            code_collapse_tweens,
                             code_highlights,
                             search_decorations,
                             mermaid_renders,
                             mermaid_source_blocks.contains(&block.block_id),
+                            mermaid_source_tweens,
                             video_playbacks,
                             whiteboard_thumbnails,
                             cx,

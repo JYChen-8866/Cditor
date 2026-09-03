@@ -95,6 +95,7 @@ impl CditorV2View {
         }
 
         let code_line_break_target = code_line_break_target(self, &command);
+        let mermaid_source_line_break_target = mermaid_source_line_break_target(self, &command);
         let reveal_focused_block = keyboard_command_reveals_focused_block(&command, source);
         let invocation = command.invocation(source);
         command_catalog()
@@ -194,6 +195,11 @@ impl CditorV2View {
                 && let Some(block_id) = code_line_break_target
             {
                 self.request_code_caret_reveal_after_line_break(block_id);
+            }
+            if outcome.changed()
+                && let Some(block_id) = mermaid_source_line_break_target
+            {
+                self.request_mermaid_source_caret_reveal_after_line_break(block_id);
             }
             let document_scroll_changed = if outcome.changed() && reveal_focused_block {
                 self.ready_session()
@@ -322,6 +328,25 @@ fn code_line_break_target(view: &CditorV2View, command: &CditorCommand) -> Optio
     }
     let (block_id, kind) = view.ready_session()?.focused_block_kind().ok().flatten()?;
     matches!(kind, cditor_core::rich_text::RichBlockKind::Code { .. }).then_some(block_id)
+}
+
+fn mermaid_source_line_break_target(view: &CditorV2View, command: &CditorCommand) -> Option<BlockId> {
+    if !matches!(
+        command,
+        CditorCommand::HandleEnter | CditorCommand::InsertSoftLineBreak
+    ) {
+        return None;
+    }
+    let (block_id, kind) = view.ready_session()?.focused_block_kind().ok().flatten()?;
+    if !matches!(kind, cditor_core::rich_text::RichBlockKind::Mermaid) {
+        return None;
+    }
+    // Only when the block is currently showing/editing its source.
+    if view.cache.mermaid_source_blocks.contains(&block_id) {
+        Some(block_id)
+    } else {
+        None
+    }
 }
 
 fn keyboard_command_reveals_focused_block(command: &CditorCommand, source: CommandSource) -> bool {
