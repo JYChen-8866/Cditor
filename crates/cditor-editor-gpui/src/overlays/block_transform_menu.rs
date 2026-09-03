@@ -125,8 +125,8 @@ pub fn block_transform_menu_top_offset(toolbar_y: f32, viewport_height: f32) -> 
     // Parent container (trigger button row) is at approximately (toolbar_y + 97px) in viewport
     // Submenu renders at (parent_y + top_offset)
     // Default: top_offset = 0, but push up if would overflow bottom
-    const TRIGGER_OFFSET_IN_GUTTER: f32 = 97.0;  // Estimated offset of block transform trigger
-    const MENU_CHROME_PX: f32 = 14.0;  // padding + border
+    const TRIGGER_OFFSET_IN_GUTTER: f32 = 97.0; // Estimated offset of block transform trigger
+    const MENU_CHROME_PX: f32 = 14.0; // padding + border
     let parent_absolute_y = toolbar_y + TRIGGER_OFFSET_IN_GUTTER;
     let submenu_bottom = parent_absolute_y + PRIMARY_MENU_HEIGHT_PX + MENU_CHROME_PX;
     if submenu_bottom > viewport_height - VIEWPORT_MARGIN_PX {

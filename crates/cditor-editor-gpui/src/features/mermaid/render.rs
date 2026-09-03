@@ -84,7 +84,13 @@ pub(crate) fn render_mermaid_block(
         if let Some(measured_height) =
             mermaid_height_report(show_source, geometry, source_block_height_px)
         {
-            schedule_rendered_media_height_report(view, block_id, content_version, measured_height, cx);
+            schedule_rendered_media_height_report(
+                view,
+                block_id,
+                content_version,
+                measured_height,
+                cx,
+            );
         }
     }
 

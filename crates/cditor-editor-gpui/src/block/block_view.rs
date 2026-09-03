@@ -150,7 +150,8 @@ impl BlockView {
         let code_block_kind = matches!(block.kind, RichBlockKind::Code { .. });
         // While a tween is active we keep the content surface mounted (clipped)
         // so the height change continuously slides the rest of the document.
-        let has_active_tween = code_block_kind && code_collapse_tweens.contains_key(&block.block_id);
+        let has_active_tween =
+            code_block_kind && code_collapse_tweens.contains_key(&block.block_id);
 
         // For the outer block shell: release the inner content min_h reservation
         // both when stably collapsed *and* while animating. The live tween height
@@ -298,12 +299,11 @@ fn render_kind_content(
             // (below the toolbar header) should be visible right now.
             // The tween itself stores the *total* block height; subtract the collapsed
             // header geometry to get the visible content area for clipping.
-            let animated_content_height =
-                code_collapse_tweens.get(&block.block_id).map(|tween| {
-                    let now = web_time::Instant::now();
-                    let total_h = tween.tween.height(now);
-                    (total_h - crate::features::code::V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX).max(0.0)
-                });
+            let animated_content_height = code_collapse_tweens.get(&block.block_id).map(|tween| {
+                let now = web_time::Instant::now();
+                let total_h = tween.tween.height(now);
+                (total_h - crate::features::code::V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX).max(0.0)
+            });
 
             render_code_block(
                 block.block_id,
@@ -331,12 +331,10 @@ fn render_kind_content(
             .child(content)
             .into_any_element(),
         RichBlockKind::Mermaid => {
-            let animated_block_height = mermaid_source_tweens
-                .get(&block.block_id)
-                .map(|tween| {
-                    let now = web_time::Instant::now();
-                    tween.tween.height(now)
-                });
+            let animated_block_height = mermaid_source_tweens.get(&block.block_id).map(|tween| {
+                let now = web_time::Instant::now();
+                tween.tween.height(now)
+            });
             render_mermaid_block(
                 block.block_id,
                 match &block.payload {

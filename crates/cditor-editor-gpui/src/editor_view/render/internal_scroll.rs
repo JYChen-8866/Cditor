@@ -44,8 +44,10 @@ pub(super) fn prepare_internal_scroll_projection(
         if matches!(block.kind, cditor_core::rich_text::RichBlockKind::Mermaid)
             && view.cache.mermaid_source_blocks.contains(&block.block_id)
         {
-            mermaid_source_scroll_handles
-                .insert(block.block_id, view.mermaid_source_scroll_handle(block.block_id));
+            mermaid_source_scroll_handles.insert(
+                block.block_id,
+                view.mermaid_source_scroll_handle(block.block_id),
+            );
             if view.take_mermaid_source_caret_reveal_after_line_break(block.block_id) {
                 mermaid_source_caret_reveal_after_line_break.insert(block.block_id);
             }

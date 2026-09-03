@@ -26,7 +26,11 @@ pub(crate) struct HeightTween {
 
 impl HeightTween {
     pub(crate) fn new(from: f64, to: f64, now: Instant) -> Self {
-        Self { from, to, started: now }
+        Self {
+            from,
+            to,
+            started: now,
+        }
     }
 
     /// 从**当前高度**起算一个新目标。

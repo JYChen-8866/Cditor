@@ -403,13 +403,19 @@ impl CditorV2View {
             .clone()
     }
 
-    pub(crate) fn request_mermaid_source_caret_reveal_after_line_break(&mut self, block_id: BlockId) {
+    pub(crate) fn request_mermaid_source_caret_reveal_after_line_break(
+        &mut self,
+        block_id: BlockId,
+    ) {
         self.interaction
             .mermaid_source_caret_reveal_after_line_break
             .insert(block_id);
     }
 
-    pub(crate) fn take_mermaid_source_caret_reveal_after_line_break(&mut self, block_id: BlockId) -> bool {
+    pub(crate) fn take_mermaid_source_caret_reveal_after_line_break(
+        &mut self,
+        block_id: BlockId,
+    ) -> bool {
         self.interaction
             .mermaid_source_caret_reveal_after_line_break
             .remove(&block_id)

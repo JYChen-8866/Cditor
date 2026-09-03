@@ -14,7 +14,8 @@ pub(crate) fn toggle_source_from_gui(
     crate::features::media::invalidate_rendered_media_height_report(block_id);
 
     let _was_showing_source = view.cache.mermaid_source_blocks.contains(&block_id);
-    let now_showing_source = toggle_source_visibility(&mut view.cache.mermaid_source_blocks, block_id);
+    let now_showing_source =
+        toggle_source_visibility(&mut view.cache.mermaid_source_blocks, block_id);
 
     // Start/continue a height tween so the switch is a continuous layout change,
     // exactly like code block collapse/expand.

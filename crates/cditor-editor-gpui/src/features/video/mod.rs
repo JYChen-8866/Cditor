@@ -1226,12 +1226,12 @@ fn fullscreen_video_size(
     // Preserve aspect ratio, fit video inside viewport (letterbox/pillarbox)
     let source_aspect = source_width as f32 / source_height.max(1) as f32;
     let viewport_aspect = viewport_width / viewport_height.max(1.0);
-    
+
     if !source_aspect.is_finite() || source_aspect <= 0.0 {
         // Fallback if aspect ratio is invalid
         return (viewport_width.max(1.0), viewport_height.max(1.0));
     }
-    
+
     if source_aspect > viewport_aspect {
         // Video is wider than viewport, fit to width
         let width = viewport_width.max(1.0);

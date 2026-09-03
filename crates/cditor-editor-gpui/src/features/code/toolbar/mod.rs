@@ -81,10 +81,60 @@ pub fn render_code_toolbar(
                         .flex()
                         .items_center()
                         .gap(px(V1_CODE_TOOLBAR_GAP_PX))
+                        .when(language_is_mermaid(language), |row| {
+                            row.child(render_mermaid_button(theme, block_id, view.clone()))
+                        })
                         .child(render_collapse_button(theme, block_id, view.clone()))
                         .child(render_copy_button(theme, block_id, view)),
                 ),
         )
+        .into_any_element()
+}
+
+/// 代码块的语言是不是 mermaid。
+///
+/// 语言选择器允许自由输入，所以大小写和首尾空白都要归一化——`Mermaid`、`MERMAID`、
+/// ` mermaid ` 都算命中。
+pub(crate) fn language_is_mermaid(language: Option<&str>) -> bool {
+    language.is_some_and(|language| language.trim().eq_ignore_ascii_case("mermaid"))
+}
+
+/// 语言为 mermaid 时多出来的那颗按钮：把这个代码块转成 Mermaid 图表块。
+///
+/// 转换走的是块类型变换，所以源码原样留在新块里，预览、源码切换、缓存全部复用
+/// 既有的 mermaid 实现，这里不重新搭一套渲染。
+fn render_mermaid_button(
+    theme: GuiTheme,
+    block_id: BlockId,
+    view: Entity<CditorV2View>,
+) -> AnyElement {
+    const MERMAID: &[u8] = include_bytes!("../../../../../../assets/icons/mermaid.svg");
+
+    div()
+        .w(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
+        .h(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX))
+        .text_color(rgb(theme.code_toolbar_icon))
+        .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
+        .child(
+            SvgIcon::new("code-toolbar-mermaid-render", MERMAID)
+                .color(rgb(theme.code_toolbar_icon))
+                .size(px(V1_CODE_COPY_ICON_SIZE_PX))
+                .into_any_element(),
+        )
+        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+            view.update(cx, |view, cx| {
+                view.transform_block_kind_from_toolbar(
+                    block_id,
+                    cditor_core::rich_text::RichBlockKind::Mermaid,
+                    cx,
+                );
+            });
+            cx.stop_propagation();
+        })
         .into_any_element()
 }
 
@@ -609,5 +659,33 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(missing.is_empty(), "languages without icons: {missing:?}");
+    }
+}
+
+#[cfg(test)]
+mod mermaid_language_tests {
+    use super::language_is_mermaid;
+
+    #[test]
+    fn matches_mermaid_regardless_of_case_and_padding() {
+        // 语言选择器是自由输入框，用户敲什么都得认出来。
+        for language in ["mermaid", "Mermaid", "MERMAID", " mermaid ", "\tmermaid\n"] {
+            assert!(
+                language_is_mermaid(Some(language)),
+                "expected {language:?} to be recognized as mermaid"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_other_languages_and_absent_language() {
+        for language in ["rust", "md", "mermaidjs", "mer", "", " "] {
+            assert!(
+                !language_is_mermaid(Some(language)),
+                "expected {language:?} not to be treated as mermaid"
+            );
+        }
+        // 没标语言的代码块不该长出渲染按钮。
+        assert!(!language_is_mermaid(None));
     }
 }

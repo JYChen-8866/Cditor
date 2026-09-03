@@ -9,7 +9,7 @@ use gpui::{
     ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
-use super::floating_toolbar::{toolbar_content_width, VIEWPORT_MARGIN_PX};
+use super::floating_toolbar::{VIEWPORT_MARGIN_PX, toolbar_content_width};
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::editor_view::CditorV2View;
 use crate::menu_metrics::{PRIMARY_MENU_HEIGHT_PX, PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
@@ -240,7 +240,7 @@ pub fn gutter_color_menu_geometry(
         viewport_width,
         viewport_height,
         GUTTER_MENU_WIDTH_PX,
-        137.0,  // Estimated offset of color trigger in gutter menu
+        137.0, // Estimated offset of color trigger in gutter menu
         PRIMARY_MENU_HEIGHT_PX,
     )
 }
@@ -254,8 +254,8 @@ fn color_menu_geometry_for_width(
     trigger_top: f32,
     desired_height: f32,
 ) -> ColorMenuGeometry {
-    let opens_left =
-        toolbar_x + toolbar_width + COLOR_MENU_GAP_PX + COLOR_MENU_WIDTH_PX > viewport_width - VIEWPORT_MARGIN_PX;
+    let opens_left = toolbar_x + toolbar_width + COLOR_MENU_GAP_PX + COLOR_MENU_WIDTH_PX
+        > viewport_width - VIEWPORT_MARGIN_PX;
     // Account for menu padding (6px) + border (1px) on both sides
     const MENU_CHROME_PX: f32 = 14.0;
     let available_height = (viewport_height - VIEWPORT_MARGIN_PX * 2.0 - MENU_CHROME_PX).max(1.0);

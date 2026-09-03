@@ -330,7 +330,10 @@ fn code_line_break_target(view: &CditorV2View, command: &CditorCommand) -> Optio
     matches!(kind, cditor_core::rich_text::RichBlockKind::Code { .. }).then_some(block_id)
 }
 
-fn mermaid_source_line_break_target(view: &CditorV2View, command: &CditorCommand) -> Option<BlockId> {
+fn mermaid_source_line_break_target(
+    view: &CditorV2View,
+    command: &CditorCommand,
+) -> Option<BlockId> {
     if !matches!(
         command,
         CditorCommand::HandleEnter | CditorCommand::InsertSoftLineBreak
