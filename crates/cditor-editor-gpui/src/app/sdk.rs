@@ -8,17 +8,61 @@ use crate::persistence::{
 use cditor_core::edit::{ChangeOrigin, EditTransaction};
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcome, CommandSource};
-use cditor_sdk::diagnostics::CditorDiagnostics;
+use cditor_sdk::diagnostics::{
+    CditorDiagnostics, ExactRasterDiagnostics, ImageCacheDiagnostics, MermaidDiagnostics,
+    VideoDiagnostics,
+};
 use cditor_sdk::document::{
-    Affinity, CloseGuard, DocumentInfo, DocumentPosition, DocumentSelection, RecoveryExport,
-    SaveFailure, SaveFailureKind, SaveReport, SaveStatus, ScrollAlignment, SearchDecoration,
-    TextOffset, TextStatistics,
+    Affinity, CloseGuard, DocumentInfo, DocumentPosition, DocumentSelection, HibernationGuard,
+    RecoveryExport, SaveFailure, SaveFailureKind, SaveReport, SaveStatus, ScrollAlignment,
+    SearchDecoration, TextOffset, TextStatistics,
 };
 use cditor_sdk::event::CditorEvent;
 use cditor_sdk::{CditorError, command::CommandState};
 use cditor_session::{AgentEditOutcome, AgentEditRequest, AgentOutline, AgentOutlineRequest};
 
 impl EventEmitter<CditorEvent> for CditorV2View {}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ResidentMemoryEstimate {
+    owned_bytes: u64,
+    shared_bytes: u64,
+}
+
+impl ResidentMemoryEstimate {
+    fn total_bytes(self) -> u64 {
+        self.owned_bytes.saturating_add(self.shared_bytes)
+    }
+}
+
+fn resident_memory_estimate(
+    payload_and_undo_bytes: usize,
+    owned_layout_bytes: usize,
+    shared_layout_bytes: usize,
+    exact_raster: &ExactRasterDiagnostics,
+    images: &ImageCacheDiagnostics,
+    mermaid: &MermaidDiagnostics,
+    video: &VideoDiagnostics,
+) -> ResidentMemoryEstimate {
+    let owned_bytes = u64::try_from(
+        payload_and_undo_bytes
+            .saturating_add(owned_layout_bytes)
+            .saturating_add(mermaid.resident_image_bytes)
+            .saturating_add(video.resident_cpu_frame_bytes)
+            .saturating_add(video.resident_render_image_bytes),
+    )
+    .unwrap_or(u64::MAX);
+    let shared_bytes = u64::try_from(
+        shared_layout_bytes
+            .saturating_add(exact_raster.resident_image_bytes)
+            .saturating_add(images.resident_decoded_bytes),
+    )
+    .unwrap_or(u64::MAX);
+    ResidentMemoryEstimate {
+        owned_bytes,
+        shared_bytes,
+    }
+}
 
 impl CditorViewContract for CditorV2View {
     fn sdk_configure_ai(
@@ -83,6 +127,14 @@ impl CditorViewContract for CditorV2View {
 
     fn sdk_close_guard(&self) -> CloseGuard {
         CditorV2View::sdk_close_guard(self)
+    }
+
+    fn sdk_hibernation_guard(&self) -> HibernationGuard {
+        CditorV2View::sdk_hibernation_guard(self)
+    }
+
+    fn sdk_prepare_for_shutdown(&mut self, cx: &mut Context<Self>) -> Result<(), CditorError> {
+        CditorV2View::sdk_prepare_for_shutdown(self, cx)
     }
 
     fn sdk_export_markdown(&self) -> Result<String, CditorError> {
@@ -449,6 +501,20 @@ impl CditorV2View {
         }
     }
 
+    /// Commits any provisional document IME composition before a host starts
+    /// its final persistence barrier. A failed identity check is fail-closed:
+    /// the host must keep the process alive or export recovery instead of
+    /// silently discarding text that was still visible to the user.
+    pub fn sdk_prepare_for_shutdown(&mut self, cx: &mut Context<Self>) -> Result<(), CditorError> {
+        self.commit_document_composition_before_external_focus(cx)
+            .then_some(())
+            .ok_or_else(|| {
+                CditorError::Internal(
+                    "could not commit the active IME composition before shutdown".to_owned(),
+                )
+            })
+    }
+
     pub fn sdk_export_recovery(&self) -> Result<RecoveryExport, CditorError> {
         let artifact = self
             .ready_session()
@@ -543,7 +609,35 @@ impl CditorV2View {
             .ready_session()
             .and_then(|session| session.diagnostics_snapshot().ok())
             .ok_or(CditorError::NotReady)?;
+        let images = crate::image_loader::image_cache_diagnostics();
+        let mermaid = self.cache.mermaid_renders.diagnostics();
         let video = self.cache.video_playbacks.diagnostics();
+        let exact_raster_stats = crate::text::exact_raster_cache_stats();
+        let exact_raster = ExactRasterDiagnostics {
+            entries: exact_raster_stats.entries,
+            resident_image_bytes: exact_raster_stats.estimated_bytes,
+            max_entries: exact_raster_stats.max_entries,
+            image_byte_budget: exact_raster_stats.max_bytes,
+            hits: exact_raster_stats.hits,
+            misses: exact_raster_stats.misses,
+            evictions: exact_raster_stats.evictions,
+        };
+        let shared_layout_bytes = crate::text::text_layout_cache_stats().estimated_bytes;
+        let owned_layout_bytes = self
+            .cache
+            .text_layouts
+            .estimated_metadata_bytes()
+            .saturating_add(self.cache.table_cell_layouts.estimated_metadata_bytes())
+            .saturating_add(self.cache.text_surface_layouts.estimated_metadata_bytes());
+        let memory = resident_memory_estimate(
+            diagnostics.payload_and_undo_bytes,
+            owned_layout_bytes,
+            shared_layout_bytes,
+            &exact_raster,
+            &images,
+            &mermaid,
+            &video,
+        );
         Ok(CditorDiagnostics {
             storage_backend: self
                 .ready_session()
@@ -559,17 +653,12 @@ impl CditorV2View {
                 .map_or(0, |snapshot| snapshot.pending_operations),
             dirty_blocks: diagnostics.dirty_payloads,
             estimated_document_height: diagnostics.estimated_document_height,
-            memory_estimate_bytes: u64::try_from(
-                diagnostics
-                    .payload_and_undo_bytes
-                    .saturating_add(crate::text::text_layout_cache_stats().estimated_bytes)
-                    .saturating_add(self.cache.text_layouts.estimated_metadata_bytes())
-                    .saturating_add(self.cache.table_cell_layouts.estimated_metadata_bytes())
-                    .saturating_add(self.cache.text_surface_layouts.estimated_metadata_bytes())
-                    .saturating_add(video.resident_cpu_frame_bytes)
-                    .saturating_add(video.resident_render_image_bytes),
-            )
-            .unwrap_or(u64::MAX),
+            memory_estimate_bytes: memory.total_bytes(),
+            owned_memory_estimate_bytes: memory.owned_bytes,
+            shared_memory_estimate_bytes: memory.shared_bytes,
+            exact_raster,
+            images,
+            mermaid,
             video,
         })
     }
@@ -695,6 +784,7 @@ fn sdk_save_failure(failure: &cditor_session::PersistenceFailure) -> SaveFailure
             cditor_session::PersistenceFailureKind::PermissionDenied => {
                 SaveFailureKind::PermissionDenied
             }
+            cditor_session::PersistenceFailureKind::Conflict => SaveFailureKind::Conflict,
             cditor_session::PersistenceFailureKind::Corruption => SaveFailureKind::Corruption,
             cditor_session::PersistenceFailureKind::Timeout => SaveFailureKind::Timeout,
             cditor_session::PersistenceFailureKind::Io => SaveFailureKind::Io,
@@ -890,6 +980,10 @@ mod tests {
                 SaveFailureKind::PermissionDenied,
             ),
             (
+                cditor_session::PersistenceFailureKind::Conflict,
+                SaveFailureKind::Conflict,
+            ),
+            (
                 cditor_session::PersistenceFailureKind::Corruption,
                 SaveFailureKind::Corruption,
             ),
@@ -914,5 +1008,38 @@ mod tests {
             assert_eq!(failure.kind, sdk_kind);
             assert!(failure.requires_recovery_export);
         }
+    }
+
+    #[test]
+    fn memory_estimate_separates_editor_owned_and_shared_resident_bytes() {
+        let exact_raster = ExactRasterDiagnostics {
+            resident_image_bytes: 25,
+            image_byte_budget: usize::MAX,
+            ..Default::default()
+        };
+        let images = ImageCacheDiagnostics {
+            resident_decoded_bytes: 30,
+            decoded_byte_budget: usize::MAX,
+            ..Default::default()
+        };
+        let mermaid = MermaidDiagnostics {
+            resident_image_bytes: 40,
+            reserved_render_bytes: usize::MAX,
+            render_byte_budget: usize::MAX,
+            ..Default::default()
+        };
+        let video = VideoDiagnostics {
+            resident_cpu_frame_bytes: 50,
+            resident_render_image_bytes: 60,
+            reserved_decoder_bytes: usize::MAX,
+            decoder_budget_bytes: usize::MAX,
+            ..Default::default()
+        };
+
+        let estimate =
+            resident_memory_estimate(10, 20, 5, &exact_raster, &images, &mermaid, &video);
+        assert_eq!(estimate.owned_bytes, 10 + 20 + 40 + 50 + 60);
+        assert_eq!(estimate.shared_bytes, 5 + 25 + 30);
+        assert_eq!(estimate.total_bytes(), 10 + 20 + 5 + 25 + 30 + 40 + 50 + 60);
     }
 }

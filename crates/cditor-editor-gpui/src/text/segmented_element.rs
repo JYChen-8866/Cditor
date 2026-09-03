@@ -297,10 +297,22 @@ impl Element for SegmentedRichTextElement {
             self.marked_range.is_some(),
             super::platform_text_cursor_ownership(window),
         );
+        if !caret_visible {
+            // 见 `RichTextElement`：不画的那一帧要丢掉历史位置。
+            self.input_handler.view.read(cx).caret_motion().reset();
+        }
         let cursor = caret_visible
             .then_some(caret_bounds)
             .flatten()
-            .map(|bounds| fill(bounds, rgb(self.theme.focused)));
+            .map(|bounds| {
+                let painted = self
+                    .input_handler
+                    .view
+                    .read(cx)
+                    .caret_motion()
+                    .resolve_and_drive(bounds, window);
+                fill(painted, rgb(self.theme.focused))
+            });
         let mut backgrounds = Vec::new();
         if let (Some(layout), Some(range)) = (&platform, self.selection_range.clone()) {
             backgrounds.extend(layout.range_rects(range).into_iter().map(|rect| {

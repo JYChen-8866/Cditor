@@ -39,12 +39,12 @@ impl CditorV2View {
         }) {
             return false;
         }
-        let pins = self.payload_cache_ui_pins();
+        let pins = self.ui_protected_block_ids().into_iter().collect();
         let CditorViewState::Ready(session) = &self.state else {
             return false;
         };
         let Ok(report) = session.maintain_payload_cache(
-            PayloadCachePolicy::persistent_default(),
+            persistent_payload_cache_policy(self.status.host_active),
             pins,
             PayloadCacheMaintenanceBudget::idle_slice(),
         ) else {
@@ -117,7 +117,10 @@ impl CditorV2View {
         )
     }
 
-    fn payload_cache_ui_pins(&self) -> Vec<BlockId> {
+    /// Block identities owned by transient UI interactions. Cache-maintenance
+    /// paths share this set so a drag, popup or nested editor cannot be
+    /// invalidated merely because it is outside the physical viewport.
+    pub(crate) fn ui_protected_block_ids(&self) -> HashSet<BlockId> {
         let mut pins = HashSet::new();
         pins.extend(self.interaction.action_block_id);
         pins.extend(self.overlay.gutter_toolbar_block_id);
@@ -174,12 +177,20 @@ impl CditorV2View {
                 .map(|drag| drag.block_id),
         );
         pins.extend(self.interaction.table_interaction_mode.block_id());
-        pins.into_iter().collect()
+        pins
     }
 }
 
 fn payload_cache_trim_allowed(mode: InteractionMode, document_drag_active: bool) -> bool {
     mode == InteractionMode::Idle && !document_drag_active
+}
+
+fn persistent_payload_cache_policy(host_active: bool) -> PayloadCachePolicy {
+    if host_active {
+        PayloadCachePolicy::persistent_default()
+    } else {
+        PayloadCachePolicy::inactive_persistent()
+    }
 }
 
 fn payload_cache_follow_up_delay(
@@ -211,6 +222,15 @@ mod tests {
         ] {
             assert!(!payload_cache_trim_allowed(mode, false), "{mode:?}");
         }
+    }
+
+    #[test]
+    fn inactive_editor_uses_the_smaller_persistent_payload_budget() {
+        let active = persistent_payload_cache_policy(true);
+        let inactive = persistent_payload_cache_policy(false);
+
+        assert!(inactive.max_entries < active.max_entries);
+        assert!(inactive.max_estimated_bytes < active.max_estimated_bytes);
     }
 
     #[test]

@@ -667,6 +667,7 @@ impl Render for CditorV2View {
                 self.cache.video_playbacks.sync_visible_window(
                     &projection,
                     self.features.asset_provider.clone(),
+                    self.overlay.fullscreen_video_block_id,
                     cx,
                 );
                 let deferred_whiteboard_entities = {

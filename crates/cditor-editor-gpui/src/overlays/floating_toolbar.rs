@@ -26,14 +26,14 @@ const TOOLBAR_HORIZONTAL_PADDING_PX: f32 = 16.0;
 const TOOLBAR_ACTION_GAP_PX: f32 = 4.0;
 const TOOLBAR_COLOR_WIDTH_PX: f32 = 86.0;
 const TOOLBAR_DELETE_WIDTH_PX: f32 = 60.0;
-pub(crate) const GUTTER_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
+pub(crate) const GUTTER_MENU_WIDTH_PX: f32 = 240.0;
 const TOOLBAR_HEIGHT_PX: f32 = 46.0;
-const VIEWPORT_MARGIN_PX: f32 = 10.0;
+pub(crate) const VIEWPORT_MARGIN_PX: f32 = 10.0;
 const TOOLBAR_ANCHOR_GAP_PX: f32 = 8.0;
 const AI_ACTIONS_VIEWPORT_HEIGHT_PX: f32 = 110.0;
 const AI_ACTION_ROW_HEIGHT_PX: f32 = 36.0;
 const AI_ACTION_COUNT: usize = 6;
-const FORMAT_ICON_SIZE_PX: f32 = 20.0;
+const FORMAT_ICON_SIZE_PX: f32 = 16.0;
 const GUTTER_MENU_LABEL_FONT_SIZE_PX: f32 = 12.0;
 const GUTTER_FORMAT_ROW_PADDING_PX: f32 = 8.0;
 const FORMAT_BUTTON_SIZE_PX: f32 = 30.0;
@@ -269,7 +269,7 @@ pub fn render_floating_toolbar(
             ))
         })
         .when(state.show_inline_format || state.show_delete, |this| {
-            this.child(render_inline_format_row(state, theme, view.clone(), false))
+            this.child(render_inline_format_row(state, theme, view.clone(), true))
         })
         .when(state.show_delete, |this| {
             this.child(render_delete_action(
@@ -793,15 +793,11 @@ fn render_inline_format_row(
     use_svg_icons: bool,
 ) -> AnyElement {
     div()
-        .w_full()
-        .when(!use_svg_icons, |row| {
-            row.flex_none().w(px(inline_format_row_width()))
-        })
+        .flex_none()
+        .w(px(inline_format_row_width()))
         .flex()
-        .when(use_svg_icons, |row| {
-            row.px(px(GUTTER_FORMAT_ROW_PADDING_PX)).justify_between()
-        })
-        .when(!use_svg_icons, |row| row.gap(px(4.0)))
+        .items_center()
+        .gap(px(TOOLBAR_ACTION_GAP_PX))
         .children([
             render_format_button(
                 InlineFormatAction::Bold,
@@ -873,17 +869,9 @@ fn render_format_button(
     };
     div()
         .id(("inline-format", action_index(action)))
-        .h(px(if use_svg_icon {
-            GUTTER_FORMAT_BUTTON_SIZE_PX
-        } else {
-            FORMAT_BUTTON_SIZE_PX
-        }))
-        .when(use_svg_icon, |button| {
-            button.w(px(GUTTER_FORMAT_BUTTON_SIZE_PX)).flex_none()
-        })
-        .when(!use_svg_icon, |button| {
-            button.w(px(FORMAT_BUTTON_SIZE_PX)).flex_none()
-        })
+        .w(px(FORMAT_BUTTON_SIZE_PX))
+        .h(px(FORMAT_BUTTON_SIZE_PX))
+        .flex_none()
         .flex()
         .items_center()
         .justify_center()

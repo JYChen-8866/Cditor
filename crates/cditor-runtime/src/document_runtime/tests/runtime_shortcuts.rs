@@ -596,12 +596,15 @@ fn enter_shortcut_turns_mermaid_fence_into_focused_mermaid_source() {
 
     let payload = runtime.block_payload_record(1).unwrap();
     assert_eq!(payload.kind, RichBlockKind::Mermaid);
-    assert_eq!(
-        payload.payload,
-        BlockPayload::RichText { spans: Vec::new() }
+    // 新建的 Mermaid 块预置一段简短示例，光标落在示例末尾。
+    let source = payload.plain_text();
+    assert!(
+        source.starts_with("flowchart "),
+        "unexpected source: {source}"
     );
+    assert_eq!(source.lines().count(), 2);
     assert_eq!(runtime.focused_block_id(), Some(1));
-    assert_eq!(runtime.caret_offset_for_block(1), Some(0));
+    assert_eq!(runtime.caret_offset_for_block(1), Some(source.len()));
 }
 
 #[test]

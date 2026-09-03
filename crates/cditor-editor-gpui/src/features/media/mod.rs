@@ -12,7 +12,7 @@ use crate::editor_view::CditorV2View;
 use crate::image_loader::{
     RasterImageElement, image_load_failed, load_render_image, retry_image_load,
 };
-use crate::image_preview::open_image_preview;
+use crate::image_preview::open_source_image_preview;
 use crate::input::platform_adapter::on_text_activation;
 use crate::surfaces::{TextSurfaceInteractionGeometry, TextSurfaceRenderState};
 use crate::text::{RichTextElement, RichTextLayoutInput, RichTextTypography};
@@ -49,6 +49,7 @@ pub fn render_image_block(
     image_resize_preview_width_px: Option<f32>,
     cx: &mut App,
 ) -> AnyElement {
+    let preview_asset_provider = asset_provider.clone();
     let loaded = load_render_image(
         &image.source,
         block_id,
@@ -94,6 +95,8 @@ pub fn render_image_block(
 
     let card = card.child(if let Some(render_image) = loaded {
         let preview_image = render_image.clone();
+        let preview_source = image.source.clone();
+        let preview_workers = workers.clone();
         let resize_view = view.clone();
         let (width, height) =
             display_image_size_px(&render_image, image, image_resize_preview_width_px);
@@ -106,7 +109,13 @@ pub fn render_image_block(
             .cursor_pointer()
             .hover(|s| s.opacity(0.96))
             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                open_image_preview(preview_image.clone(), cx);
+                open_source_image_preview(
+                    &preview_source,
+                    preview_image.clone(),
+                    preview_workers.clone(),
+                    preview_asset_provider.clone(),
+                    cx,
+                );
                 cx.stop_propagation();
             })
             .child(

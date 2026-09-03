@@ -80,12 +80,23 @@ impl fmt::Display for ExactRasterError {
 impl std::error::Error for ExactRasterError {}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(super) struct ExactRasterCacheStats {
+pub(crate) struct ExactRasterCacheStats {
     pub entries: usize,
     pub estimated_bytes: usize,
+    pub max_entries: usize,
+    pub max_bytes: usize,
     pub hits: u64,
     pub misses: u64,
     pub evictions: u64,
+}
+
+#[derive(Default)]
+pub(crate) struct ExactRasterCacheTrimResult {
+    pub(crate) evicted_entries: usize,
+    pub(crate) evicted_estimated_bytes: usize,
+    pub(crate) remaining_entries: usize,
+    pub(crate) remaining_estimated_bytes: usize,
+    pub(crate) retired_images: Vec<Arc<RenderImage>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -214,9 +225,57 @@ impl ExactRasterCache {
         ExactRasterCacheStats {
             entries: self.entries.len(),
             estimated_bytes: self.estimated_bytes,
+            max_entries: self.max_entries,
+            max_bytes: self.max_bytes,
             hits: self.hits,
             misses: self.misses,
             evictions: self.evictions,
+        }
+    }
+
+    fn apply_memory_pressure(
+        &mut self,
+        pressure: crate::memory_pressure::CditorMemoryPressure,
+    ) -> ExactRasterCacheTrimResult {
+        let (target_entries, target_bytes) = match pressure {
+            crate::memory_pressure::CditorMemoryPressure::Normal => {
+                (self.max_entries, self.max_bytes)
+            }
+            crate::memory_pressure::CditorMemoryPressure::Warning => {
+                (self.max_entries / 2, self.max_bytes / 2)
+            }
+            crate::memory_pressure::CditorMemoryPressure::Critical => (0, 0),
+        };
+        self.trim_to(target_entries, target_bytes)
+    }
+
+    fn trim_to(
+        &mut self,
+        target_entries: usize,
+        target_bytes: usize,
+    ) -> ExactRasterCacheTrimResult {
+        let before_entries = self.entries.len();
+        let before_bytes = self.estimated_bytes;
+        let mut retired_images = Vec::new();
+        while self.entries.len() > target_entries || self.estimated_bytes > target_bytes {
+            let Some(oldest) = self.order.pop_front() else {
+                break;
+            };
+            let Some(evicted) = self.entries.remove(&oldest) else {
+                continue;
+            };
+            self.estimated_bytes = self
+                .estimated_bytes
+                .saturating_sub(evicted.estimated_bytes());
+            self.evictions = self.evictions.saturating_add(1);
+            self.push_if_uncached(&mut retired_images, evicted.image());
+        }
+        ExactRasterCacheTrimResult {
+            evicted_entries: before_entries.saturating_sub(self.entries.len()),
+            evicted_estimated_bytes: before_bytes.saturating_sub(self.estimated_bytes),
+            remaining_entries: self.entries.len(),
+            remaining_estimated_bytes: self.estimated_bytes,
+            retired_images,
         }
     }
 
@@ -553,8 +612,14 @@ fn quantize_device_origin(value: f32, variants: f32) -> QuantizedDeviceOrigin {
     QuantizedDeviceOrigin { integer, subpixel }
 }
 
-pub(super) fn exact_raster_cache_stats() -> ExactRasterCacheStats {
+pub(crate) fn exact_raster_cache_stats() -> ExactRasterCacheStats {
     RASTER_CACHE.with(|cache| cache.borrow().stats())
+}
+
+pub(crate) fn trim_exact_raster_cache(
+    pressure: crate::memory_pressure::CditorMemoryPressure,
+) -> ExactRasterCacheTrimResult {
+    RASTER_CACHE.with(|cache| cache.borrow_mut().apply_memory_pressure(pressure))
 }
 
 #[cfg(test)]

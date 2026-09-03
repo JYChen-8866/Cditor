@@ -69,11 +69,43 @@ pub struct CloseGuard {
     pub can_close_safely: bool,
 }
 
+/// Fail-closed snapshot used by hosts that temporarily release an inactive
+/// editor runtime while retaining its tab metadata.
+///
+/// This is stricter than [`CloseGuard`]: an active host, IME composition,
+/// non-collapsed selection, or a busy synchronous session also prevents
+/// hibernation. Hosts must still flush persistent storage before releasing the
+/// runtime and sample this guard again after that flush.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HibernationGuard {
+    pub ready: bool,
+    pub loading: bool,
+    pub load_failed: bool,
+    /// The current document can be reconstructed from its persistent backend
+    /// after the live runtime is released.
+    pub durable_storage: bool,
+    /// The host must await `sdk_flush` before releasing this runtime. Clean
+    /// readonly documents are durably reloadable but cannot accept a flush.
+    pub flush_required: bool,
+    pub host_active: bool,
+    pub dirty: bool,
+    pub saving: bool,
+    pub conflict: bool,
+    pub failed_operations: usize,
+    pub requires_recovery_export: bool,
+    pub can_close_safely: bool,
+    pub composing: bool,
+    pub selected: bool,
+    pub runtime_busy: bool,
+    pub can_hibernate_after_flush: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SaveFailureKind {
     Busy,
     CapacityExhausted,
     PermissionDenied,
+    Conflict,
     Corruption,
     Timeout,
     Io,

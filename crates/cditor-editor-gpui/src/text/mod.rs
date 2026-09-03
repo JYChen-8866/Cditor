@@ -1,5 +1,6 @@
 mod background;
 mod caret_blink;
+mod caret_motion;
 mod caret_ownership;
 mod caret_reveal;
 mod diagnostics;
@@ -17,6 +18,7 @@ mod segmented_platform;
 mod segmented_viewport;
 
 pub use caret_blink::CaretBlink;
+pub(crate) use caret_motion::CaretMotion;
 pub(crate) use caret_ownership::{platform_text_cursor_ownership, should_paint_custom_caret};
 pub(crate) use diagnostics::{
     TextGeometryOperation, record_snapshot_geometry, record_synchronous_geometry_fallback,
@@ -38,6 +40,7 @@ pub use layout_adapter::{
     sync_automatic_text_layout_pins, text_layout_cache_stats, try_cached_text_layout_with_request,
     try_compatible_text_layout_with_request, try_stale_text_layout_for_surface,
 };
+pub(crate) use layout_adapter::{exact_raster_cache_stats, trim_exact_raster_cache};
 #[cfg(test)]
 pub(crate) use platform::test_platform_layout;
 pub(crate) use platform::{

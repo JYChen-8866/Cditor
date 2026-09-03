@@ -10,6 +10,7 @@ pub mod collaboration;
 pub mod crdt;
 pub mod elbow;
 pub mod excalidraw;
+mod image_decode;
 pub mod input;
 pub mod mermaid;
 pub mod selection;

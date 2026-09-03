@@ -59,6 +59,35 @@ where
         self.last_insert.clear();
     }
 
+    /// Retains pinned entries and the newest `target_unpinned` remaining
+    /// unpinned entries. Returns the number of evicted geometry snapshots.
+    pub(crate) fn trim_to_recent(
+        &mut self,
+        target_unpinned: usize,
+        mut pinned: impl FnMut(&K, &RichTextPlatformLayout) -> bool,
+    ) -> usize {
+        let mut unpinned = self
+            .entries
+            .iter()
+            .filter(|(key, layout)| !pinned(key, layout))
+            .map(|(key, _)| {
+                (
+                    key.clone(),
+                    self.last_insert.get(key).copied().unwrap_or_default(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let remove = unpinned.len().saturating_sub(target_unpinned);
+        if remove == 0 {
+            return 0;
+        }
+        unpinned.sort_unstable_by_key(|(_, age)| *age);
+        for (key, _) in unpinned.into_iter().take(remove) {
+            self.remove(&key);
+        }
+        remove
+    }
+
     pub(crate) fn estimated_metadata_bytes(&self) -> usize {
         self.entries
             .len()

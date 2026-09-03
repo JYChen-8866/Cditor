@@ -11,6 +11,7 @@ pub(super) fn payload_for_converted_kind(kind: &RichBlockKind, text: String) -> 
             sanitized: false,
         },
         RichBlockKind::Table => default_table_payload(text),
+        RichBlockKind::Mermaid => super::mermaid::mermaid_payload_from_text(&text),
         RichBlockKind::Whiteboard => default_whiteboard_payload(),
         RichBlockKind::Video => {
             BlockPayload::Video(cditor_core::rich_text::VideoPayload::default())

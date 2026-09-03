@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::{
     Arc, Mutex, OnceLock,
     atomic::{AtomicUsize, Ordering},
-    mpsc::{self, Sender},
+    mpsc::{self, RecvTimeoutError, SyncSender, TrySendError},
 };
 use std::thread::JoinHandle;
 
@@ -13,7 +13,7 @@ use cditor_core::rich_text::{BlockPayloadView, RichBlockKind, VideoPayload};
 use cditor_runtime::EditorViewProjection;
 use gpui::{
     AnyElement, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
-    ParentElement, Styled, div, px,
+    ParentElement, Styled, StyledImage, div, px,
 };
 
 use crate::editor_view::CditorV2View;
@@ -35,15 +35,21 @@ const MAX_VIDEO_MEMORY_BYTES: usize = 24 * 1024 * 1024;
 const MAX_VIDEO_MEMORY_BYTES: usize = 64 * 1024 * 1024;
 const MAX_BUDGETED_VIDEO_SESSIONS: usize =
     MAX_VIDEO_MEMORY_BYTES / VIDEO_SESSION_MEMORY_RESERVATION_BYTES;
+const VIDEO_REAPER_QUEUE_CAPACITY: usize = 16;
+// Bootstrap and reaper workers perform bounded I/O/drop work. Avoid reserving
+// a platform-default multi-megabyte stack for every active video.
+const VIDEO_WORKER_STACK_BYTES: usize = 512 * 1024;
 static RESERVED_VIDEO_MEMORY_BYTES: AtomicUsize = AtomicUsize::new(0);
 const VIDEO_PLAYER_HOVER_GROUP: &str = "video-player";
 const VIDEO_CONTROLS_HIDE_UNTIL_HOVER: bool = !cfg!(any(target_os = "ios", target_os = "android"));
 
 mod controls;
+mod frame_surface;
 mod import;
 mod layout_cache;
 mod window_overlay;
 
+use frame_surface::{CachedVideoImage, RetiredVideoImage, VideoRenderImage};
 pub(crate) use import::accepts_external_video_paths;
 use layout_cache::VideoLayoutCache;
 
@@ -52,6 +58,15 @@ struct VideoEntry {
     state: Arc<Mutex<VideoEntryState>>,
     cancellation: cditor_video::VideoCancellationToken,
     _task: Option<JoinHandle<()>>,
+}
+
+impl VideoEntry {
+    fn is_heavy(&self) -> bool {
+        matches!(
+            *self.state.lock().unwrap_or_else(|error| error.into_inner()),
+            VideoEntryState::Loading | VideoEntryState::Ready { .. }
+        )
+    }
 }
 
 struct VideoMemoryReservation {
@@ -93,27 +108,6 @@ fn try_reserve_video_memory(counter: &AtomicUsize, budget: usize, bytes: usize) 
             Ok(_) => return true,
             Err(observed) => current = observed,
         }
-    }
-}
-
-#[derive(Default)]
-struct CachedVideoImage {
-    generation: u64,
-    image: Option<Arc<gpui::RenderImage>>,
-}
-
-impl CachedVideoImage {
-    fn replace(
-        &mut self,
-        generation: u64,
-        image: Arc<gpui::RenderImage>,
-    ) -> Option<Arc<gpui::RenderImage>> {
-        self.generation = generation;
-        self.image.replace(image)
-    }
-
-    fn take(&mut self) -> Option<Arc<gpui::RenderImage>> {
-        self.image.take()
     }
 }
 
@@ -163,8 +157,15 @@ impl VideoPlaybackCache {
                     diagnostics.resident_cpu_frame_bytes = diagnostics
                         .resident_cpu_frame_bytes
                         .saturating_add(session.resident_frame_bytes());
-                    if render_image.image.is_some() {
+                    if render_image.is_some() {
                         diagnostics.render_images += 1;
+                        #[cfg(feature = "gpui-dynamic-image")]
+                        {
+                            diagnostics.dynamic_images += 1;
+                        }
+                        diagnostics.stable_gpu_slot_capacity = diagnostics
+                            .stable_gpu_slot_capacity
+                            .saturating_add(render_image.stable_slot_capacity());
                         let dimensions = session.dimensions();
                         diagnostics.resident_render_image_bytes =
                             diagnostics.resident_render_image_bytes.saturating_add(
@@ -182,7 +183,7 @@ impl VideoPlaybackCache {
         diagnostics
     }
 
-    pub(crate) fn clear(&self) -> Vec<Arc<gpui::RenderImage>> {
+    pub(crate) fn clear(&self) -> Vec<RetiredVideoImage> {
         let retired = self.clear_playback_entries();
         self.layout_dimensions
             .lock()
@@ -204,10 +205,58 @@ impl VideoPlaybackCache {
         retired
     }
 
+    /// Releases decoder sessions and their current frame surfaces that are
+    /// outside the caller's protected set. Intrinsic dimensions remain in the
+    /// separate layout cache, so reclaiming a session cannot move the block or
+    /// disturb scroll anchors. This is intentionally a coarse per-editor
+    /// pressure boundary; the process-wide reservation enforces the hard cap.
+    pub(crate) fn apply_memory_pressure(
+        &self,
+        pressure: crate::memory_pressure::CditorMemoryPressure,
+        protected: &HashSet<BlockId>,
+    ) -> Vec<RetiredVideoImage> {
+        if matches!(
+            pressure,
+            crate::memory_pressure::CditorMemoryPressure::Normal
+        ) {
+            return Vec::new();
+        }
+        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        let victims = entries
+            .keys()
+            .copied()
+            .filter(|block_id| !protected.contains(block_id))
+            .filter(|block_id| {
+                entries.get(block_id).is_some_and(|entry| {
+                    !matches!(
+                        *entry.state.lock().unwrap_or_else(|e| e.into_inner()),
+                        VideoEntryState::Deferred | VideoEntryState::Failed(_)
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        let victims = if matches!(
+            pressure,
+            crate::memory_pressure::CditorMemoryPressure::Critical
+        ) {
+            victims
+        } else {
+            let target = victims.len().saturating_div(2).max(1);
+            victims.into_iter().take(target).collect()
+        };
+        let retired = victims
+            .into_iter()
+            .filter_map(|block_id| entries.remove(&block_id))
+            .collect::<Vec<_>>();
+        drop(entries);
+        retire_video_entries(retired)
+    }
+
     pub(crate) fn sync_visible_window(
         &self,
         projection: &EditorViewProjection,
         asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
+        pinned_block_id: Option<BlockId>,
         cx: &mut Context<CditorV2View>,
     ) {
         let video_ids = projection
@@ -217,6 +266,15 @@ impl VideoPlaybackCache {
             .map(|block| block.block_id)
             .collect::<HashSet<_>>();
         self.uploads
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .retain(|block_id, _| video_ids.contains(block_id));
+        // Import progress is document-window state as well. Keeping entries
+        // for every video ever touched made repeated drag/drop operations grow
+        // the map even after the blocks were deleted or left the projection.
+        // The durable block payload is the source of truth; stale progress is
+        // safe to discard and will be recreated when the block returns.
+        self.imports
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .retain(|block_id, _| video_ids.contains(block_id));
@@ -230,6 +288,11 @@ impl VideoPlaybackCache {
             .blocks
             .iter()
             .filter(|block| matches!(block.kind, RichBlockKind::Video))
+            // `projection.blocks` is the render window, including bounded
+            // overscan. Keep admission tied to that window rather than the
+            // physical payload-visible core: the latter is a data-fetch
+            // range, and using it to evict media would destroy playback
+            // continuity every time a block crosses the core boundary.
             .filter_map(|block| {
                 let BlockPayloadView::Loaded(payload) = &block.payload else {
                     return None;
@@ -240,6 +303,23 @@ impl VideoPlaybackCache {
                 (!video.source.trim().is_empty()).then_some((block.block_id, video.source.clone()))
             })
             .collect::<Vec<_>>();
+        let mut candidates = candidates;
+        // A fullscreen overlay can outlive the document render window. Keep
+        // its already-resolved source in the bounded candidate set even when
+        // the corresponding block is currently outside the projection.
+        if let Some(pinned_block_id) = pinned_block_id
+            && !candidates
+                .iter()
+                .any(|(block_id, _)| *block_id == pinned_block_id)
+            && let Some(source) = self
+                .entries
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .get(&pinned_block_id)
+                .map(|entry| entry.source.clone())
+        {
+            candidates.push((pinned_block_id, source));
+        }
         let visible = select_active_video_candidates(
             candidates,
             &requested,
@@ -253,7 +333,6 @@ impl VideoPlaybackCache {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .retain(|block_id| video_ids.contains(block_id));
-        let mut retired = Vec::new();
         let mut retired_entries = Vec::new();
         let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         let stale_ids = entries
@@ -308,6 +387,7 @@ impl VideoPlaybackCache {
                 let should_autoplay = requested.contains(&block_id);
                 let task = std::thread::Builder::new()
                     .name("cditor-video-session".into())
+                    .stack_size(VIDEO_WORKER_STACK_BYTES)
                     .spawn(move || {
                         let result = futures_lite::future::block_on(async {
                             if cancellation_for_task.is_cancelled() {
@@ -409,11 +489,10 @@ impl VideoPlaybackCache {
             }
         }
         drop(entries);
-        retired.extend(retire_video_entries(retired_entries));
-        retire_video_images_after_effect(retired, cx);
+        retire_video_resources_after_effect(retire_video_entries(retired_entries), [], cx);
     }
 
-    fn clear_playback_entries(&self) -> Vec<Arc<gpui::RenderImage>> {
+    fn clear_playback_entries(&self) -> Vec<RetiredVideoImage> {
         let entries = self
             .entries
             .lock()
@@ -464,7 +543,7 @@ impl VideoPlaybackCache {
         upload
     }
 
-    fn render_image(&self, block_id: BlockId, cx: &mut App) -> Option<Arc<gpui::RenderImage>> {
+    fn render_image(&self, block_id: BlockId, cx: &mut App) -> Option<Arc<VideoRenderImage>> {
         let (current, retired) = {
             let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
             let entry = entries.get(&block_id)?;
@@ -477,19 +556,31 @@ impl VideoPlaybackCache {
             else {
                 return None;
             };
-            let retired = session.latest_frame().and_then(|frame| {
-                if frame.generation == render_image.generation {
-                    return None;
-                }
-                let next = cditor_video::render_image_from_frame(&frame.frame).ok()?;
-                render_image.generation = frame.generation;
-                session.mark_frame_presented(frame.generation);
-                session.release_presented_frame(frame.generation);
-                render_image.replace(frame.generation, next)
-            });
-            (render_image.image.clone(), retired)
+            let retired = session
+                .claim_latest_frame_for_presentation_after(render_image.presented_generation())
+                .and_then(|mut lease| {
+                    let generation = lease.generation();
+                    let frame = lease.take_frame()?;
+                    match cditor_video::render_image_from_owned_frame_recoverable(frame) {
+                        Ok(next) => {
+                            // Acknowledge only after the image owns the
+                            // claimed pixels. Conversion errors leave the
+                            // frame available for a later render attempt.
+                            let retired = render_image.replace(generation, next);
+                            lease.commit();
+                            Some(retired)
+                        }
+                        Err(error) => {
+                            let (_, frame) = error.into_parts();
+                            lease.return_frame(frame);
+                            None
+                        }
+                    }
+                })
+                .flatten();
+            (render_image.current(), retired)
         };
-        retire_video_images_after_effect(retired.into_iter(), cx);
+        retire_video_resources_after_effect([], retired.into_iter(), cx);
         current
     }
 
@@ -650,7 +741,7 @@ impl Drop for VideoPlaybackCache {
     }
 }
 
-fn retire_video_entries(entries: Vec<VideoEntry>) -> Vec<Arc<gpui::RenderImage>> {
+fn retire_video_entries(entries: Vec<VideoEntry>) -> Vec<RetiredVideoImage> {
     if entries.is_empty() {
         return Vec::new();
     }
@@ -663,30 +754,127 @@ fn retire_video_entries(entries: Vec<VideoEntry>) -> Vec<Arc<gpui::RenderImage>>
         .collect();
     // Stopping FFmpeg and joining its pipe workers can briefly block. Never do
     // that while GPUI is producing a frame or holding the playback map lock.
-    if let Err(error) = video_reaper().send(entries) {
-        // Thread creation or an unexpected worker shutdown is exceptional.
-        // Dropping remains correct; it only loses the off-UI latency benefit.
-        drop(error.0);
-    }
+    enqueue_video_reap(entries);
     retired_images
 }
 
-fn video_reaper() -> &'static Sender<Vec<VideoEntry>> {
-    static REAPER: OnceLock<Sender<Vec<VideoEntry>>> = OnceLock::new();
+struct VideoReaper {
+    primary: SyncSender<Vec<VideoEntry>>,
+    overflow: Arc<Mutex<Vec<VideoEntry>>>,
+}
+
+fn video_reaper() -> &'static VideoReaper {
+    static REAPER: OnceLock<VideoReaper> = OnceLock::new();
     REAPER.get_or_init(|| {
-        let (sender, receiver) = mpsc::channel::<Vec<VideoEntry>>();
-        let _ = std::thread::Builder::new()
-            .name("cditor-video-reaper".into())
-            .spawn(move || {
-                while let Ok(entries) = receiver.recv() {
-                    drop(entries);
-                }
-            });
-        sender
+        let (primary, primary_receiver) =
+            mpsc::sync_channel::<Vec<VideoEntry>>(VIDEO_REAPER_QUEUE_CAPACITY);
+        let overflow = Arc::new(Mutex::new(Vec::new()));
+        spawn_video_reaper_worker(
+            "cditor-video-reaper",
+            primary_receiver,
+            Arc::clone(&overflow),
+        );
+        VideoReaper { primary, overflow }
     })
 }
 
-fn take_entry_render_image(entry: &VideoEntry) -> Option<Arc<gpui::RenderImage>> {
+fn spawn_video_reaper_worker(
+    name: &'static str,
+    receiver: mpsc::Receiver<Vec<VideoEntry>>,
+    overflow: Arc<Mutex<Vec<VideoEntry>>>,
+) {
+    let _ = std::thread::Builder::new()
+        .name(name.into())
+        .stack_size(VIDEO_WORKER_STACK_BYTES)
+        .spawn(move || {
+            loop {
+                match receiver.recv_timeout(std::time::Duration::from_millis(25)) {
+                    Ok(entries) => {
+                        reap_video_entries(entries);
+                        drain_video_reaper_overflow(&overflow);
+                    }
+                    // An idle reaper must stay alive. The next eviction may
+                    // arrive long after the previous batch was drained.
+                    Err(RecvTimeoutError::Timeout) => {
+                        drain_video_reaper_overflow(&overflow);
+                    }
+                    Err(RecvTimeoutError::Disconnected) => {
+                        drain_video_reaper_overflow(&overflow);
+                        break;
+                    }
+                }
+            }
+        });
+}
+
+fn enqueue_video_reap(entries: Vec<VideoEntry>) {
+    let reaper = video_reaper();
+    match reaper.primary.try_send(entries) {
+        Ok(()) => {}
+        Err(TrySendError::Disconnected(entries)) => {
+            // There is no receiver left that could drain an overflow slot.
+            // This is only a thread-start/panic fallback. Reap synchronously
+            // so a detached startup task cannot outlive the editor forever.
+            reap_video_entries(entries);
+        }
+        Err(TrySendError::Full(entries)) => {
+            append_video_reaper_overflow(&reaper.overflow, entries);
+        }
+    }
+}
+
+fn append_video_reaper_overflow(overflow: &Mutex<Vec<VideoEntry>>, entries: Vec<VideoEntry>) {
+    let (heavy, light): (Vec<_>, Vec<_>) = entries.into_iter().partition(VideoEntry::is_heavy);
+    // Failed/deferred entries do not own an FFmpeg process or reservation; they
+    // can be released immediately and never contribute to the overflow.
+    drop(light);
+    if heavy.is_empty() {
+        return;
+    }
+    let excess = {
+        let mut pending = overflow.lock().unwrap_or_else(|error| error.into_inner());
+        // Every Loading/Ready entry owns one reservation from the process-wide
+        // decoder budget. Keep the bound explicit in release builds too: if a
+        // future lifecycle path ever violates that accounting invariant, the
+        // excess is reaped rather than retained indefinitely.
+        let available = MAX_BUDGETED_VIDEO_SESSIONS.saturating_sub(pending.len());
+        let mut heavy = heavy;
+        let keep = available.min(heavy.len());
+        let excess = heavy.split_off(keep);
+        pending.extend(heavy);
+        excess
+    };
+    if !excess.is_empty() {
+        // This is a defensive fallback for an accounting bug. Release the
+        // lock before joining startup workers so other evictions can proceed.
+        reap_video_entries(excess);
+    }
+}
+
+fn drain_video_reaper_overflow(overflow: &Mutex<Vec<VideoEntry>>) {
+    let pending = {
+        let mut pending = overflow.lock().unwrap_or_else(|error| error.into_inner());
+        std::mem::take(&mut *pending)
+    };
+    reap_video_entries(pending);
+}
+
+/// Stop and join startup workers on the dedicated reaper thread. Dropping a
+/// `JoinHandle` detaches the worker, which would let a cancelled asset lookup
+/// retain its source, reservation and session state after viewport eviction.
+/// Joining here is safe because this path never holds the editor playback map
+/// or runs on the GPUI frame thread.
+fn reap_video_entries(entries: Vec<VideoEntry>) {
+    for mut entry in entries {
+        entry.cancellation.cancel();
+        if let Some(task) = entry._task.take() {
+            let _ = task.join();
+        }
+        drop(entry);
+    }
+}
+
+fn take_entry_render_image(entry: &VideoEntry) -> Option<RetiredVideoImage> {
     let mut state = entry.state.lock().unwrap_or_else(|e| e.into_inner());
     match &mut *state {
         VideoEntryState::Ready { render_image, .. } => render_image.take(),
@@ -694,21 +882,49 @@ fn take_entry_render_image(entry: &VideoEntry) -> Option<Arc<gpui::RenderImage>>
     }
 }
 
-fn retire_video_images_after_effect(
-    images: impl IntoIterator<Item = Arc<gpui::RenderImage>>,
+fn retire_video_resources_after_effect(
+    retired_images: impl IntoIterator<Item = RetiredVideoImage>,
+    fallback_images: impl IntoIterator<Item = Arc<gpui::RenderImage>>,
     cx: &mut App,
 ) {
-    let images = images.into_iter().collect::<Vec<_>>();
-    if images.is_empty() {
+    let retired_images = retired_images.into_iter().collect::<Vec<_>>();
+    let fallback_images = fallback_images.into_iter().collect::<Vec<_>>();
+    if retired_images.is_empty() && fallback_images.is_empty() {
         return;
     }
-    // The prior frame may still be referenced by the scene currently being
-    // replaced. Retire its atlas tile after this update finishes.
+    // The current scene can still reference the immutable fallback tile. Keep
+    // retirement after the update so atlas removal cannot race the scene.
     cx.defer(move |cx| {
-        for image in images {
+        #[cfg(feature = "gpui-dynamic-image")]
+        for retired in retired_images {
+            let (dynamic, fallback) = retired.into_parts();
+            cx.drop_dynamic_image(dynamic, None);
+            cx.drop_image(fallback, None);
+        }
+        #[cfg(not(feature = "gpui-dynamic-image"))]
+        for retired in retired_images {
+            cx.drop_image(retired.into_parts(), None);
+        }
+        for image in fallback_images {
             cx.drop_image(image, None);
         }
     });
+}
+
+#[cfg(feature = "gpui-dynamic-image")]
+fn render_video_frame(image: Arc<VideoRenderImage>) -> AnyElement {
+    gpui::dynamic_img(image)
+        .size_full()
+        .object_fit(gpui::ObjectFit::Contain)
+        .into_any_element()
+}
+
+#[cfg(not(feature = "gpui-dynamic-image"))]
+fn render_video_frame(image: Arc<VideoRenderImage>) -> AnyElement {
+    gpui::img(image)
+        .size_full()
+        .object_fit(gpui::ObjectFit::Contain)
+        .into_any_element()
 }
 
 pub(crate) fn render_video_block(
@@ -792,13 +1008,7 @@ pub(crate) fn render_video_block(
                 .child(upload),
         );
     } else if let Some(image) = cache.render_image(block_id, cx) {
-        surface = surface.child(crate::image_loader::RasterImageElement::new(
-            image,
-            // Preserve the complete frame. The player surface may contain
-            // letterbox space, but a video must never be cropped or stretched.
-            gpui::ObjectFit::Contain,
-            px(0.0),
-        ));
+        surface = surface.child(render_video_frame(image));
     } else if let Some(poster) = poster {
         surface = surface.child(crate::image_loader::RasterImageElement::new(
             poster,
@@ -900,13 +1110,7 @@ pub(crate) fn render_fullscreen_video_overlay(
         .bg(gpui::rgb(theme.code_background))
         .overflow_hidden();
     if let Some(image) = image {
-        surface = surface.child(crate::image_loader::RasterImageElement::new(
-            image,
-            // Fullscreen fills the window's surface, while the image itself
-            // remains aspect-correct and fully visible inside it.
-            gpui::ObjectFit::Contain,
-            px(0.0),
-        ));
+        surface = surface.child(render_video_frame(image));
     }
     let controls = controls::render_video_controls(
         block_id,
@@ -1014,12 +1218,31 @@ fn reconcile_fullscreen_video_state(
 }
 
 fn fullscreen_video_size(
-    _source_width: u32,
-    _source_height: u32,
+    source_width: u32,
+    source_height: u32,
     viewport_width: f32,
     viewport_height: f32,
 ) -> (f32, f32) {
-    (viewport_width.max(1.0), viewport_height.max(1.0))
+    // Preserve aspect ratio, fit video inside viewport (letterbox/pillarbox)
+    let source_aspect = source_width as f32 / source_height.max(1) as f32;
+    let viewport_aspect = viewport_width / viewport_height.max(1.0);
+    
+    if !source_aspect.is_finite() || source_aspect <= 0.0 {
+        // Fallback if aspect ratio is invalid
+        return (viewport_width.max(1.0), viewport_height.max(1.0));
+    }
+    
+    if source_aspect > viewport_aspect {
+        // Video is wider than viewport, fit to width
+        let width = viewport_width.max(1.0);
+        let height = width / source_aspect;
+        (width, height)
+    } else {
+        // Video is taller than viewport, fit to height
+        let height = viewport_height.max(1.0);
+        let width = height * source_aspect;
+        (width, height)
+    }
 }
 
 fn video_block_height_px(
@@ -1075,27 +1298,6 @@ impl CditorV2View {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn cached_video_image_retires_only_the_superseded_frame() {
-        let image = |value| {
-            Arc::new(gpui::RenderImage::new([image::Frame::new(
-                image::RgbaImage::from_pixel(1, 1, image::Rgba([value, 0, 0, 255])),
-            )]))
-        };
-        let first = image(1);
-        let second = image(2);
-        let mut cached = CachedVideoImage::default();
-
-        assert!(cached.replace(1, first.clone()).is_none());
-        let retired = cached.replace(2, second.clone()).unwrap();
-
-        assert!(Arc::ptr_eq(&retired, &first));
-        assert!(Arc::ptr_eq(cached.image.as_ref().unwrap(), &second));
-        assert_eq!(cached.generation, 2);
-        assert!(Arc::ptr_eq(&cached.take().unwrap(), &second));
-        assert!(cached.image.is_none());
-    }
 
     #[test]
     fn fullscreen_surface_uses_the_entire_window_viewport() {
@@ -1216,6 +1418,56 @@ mod tests {
     fn video_memory_budget_rejects_overflow() {
         let counter = AtomicUsize::new(usize::MAX);
         assert!(!try_reserve_video_memory(&counter, usize::MAX, 1,));
+    }
+
+    #[test]
+    fn reaper_overflow_drops_cheap_entries_and_bounds_heavy_pressure() {
+        let overflow = Mutex::new(Vec::new());
+        let entries = (0..MAX_BUDGETED_VIDEO_SESSIONS)
+            .map(|block_id| VideoEntry {
+                source: format!("video-{block_id}.mp4"),
+                state: Arc::new(Mutex::new(VideoEntryState::Loading)),
+                cancellation: cditor_video::VideoCancellationToken::default(),
+                _task: None,
+            })
+            .chain([
+                VideoEntry {
+                    source: "deferred.mp4".into(),
+                    state: Arc::new(Mutex::new(VideoEntryState::Deferred)),
+                    cancellation: cditor_video::VideoCancellationToken::default(),
+                    _task: None,
+                },
+                VideoEntry {
+                    source: "failed.mp4".into(),
+                    state: Arc::new(Mutex::new(VideoEntryState::Failed("decode".into()))),
+                    cancellation: cditor_video::VideoCancellationToken::default(),
+                    _task: None,
+                },
+            ])
+            .collect();
+
+        append_video_reaper_overflow(&overflow, entries);
+
+        let pending = overflow.lock().unwrap();
+        assert_eq!(pending.len(), MAX_BUDGETED_VIDEO_SESSIONS);
+        assert!(pending.iter().all(VideoEntry::is_heavy));
+    }
+
+    #[test]
+    fn reaper_overflow_hard_caps_heavy_entries_in_release() {
+        let overflow = Mutex::new(Vec::new());
+        let entries = (0..MAX_BUDGETED_VIDEO_SESSIONS + 2)
+            .map(|block_id| VideoEntry {
+                source: format!("video-{block_id}.mp4"),
+                state: Arc::new(Mutex::new(VideoEntryState::Loading)),
+                cancellation: cditor_video::VideoCancellationToken::default(),
+                _task: None,
+            })
+            .collect();
+
+        append_video_reaper_overflow(&overflow, entries);
+
+        assert_eq!(overflow.lock().unwrap().len(), MAX_BUDGETED_VIDEO_SESSIONS);
     }
 
     #[test]

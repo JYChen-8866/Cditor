@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    io::{BufRead, BufReader, Read},
+    io::{self, Read},
     path::Path,
     process::{Child, Command, Stdio},
     sync::{
@@ -15,6 +15,9 @@ use serde::Deserialize;
 
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 use crate::audio::{AudioControl, AudioPlayback};
+use crate::stderr::{
+    STDERR_MAX_DIAGNOSTIC_BYTES, STDERR_MAX_LINE_BYTES, read_bounded_lines, truncate_utf8,
+};
 use crate::{
     VideoCommand, VideoDimensions, VideoError, VideoFrame, VideoFrameStore, VideoPlaybackSnapshot,
     VideoSessionConfig, types::fit_dimensions,
@@ -22,6 +25,7 @@ use crate::{
 
 const STDERR_RING_LINES: usize = 24;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+const PROBE_MAX_STDOUT_BYTES: usize = 64 * 1024;
 const INITIAL_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const INITIAL_FRAME_POLL_INTERVAL: Duration = Duration::from_millis(2);
 
@@ -51,7 +55,11 @@ pub struct VideoSession {
 #[derive(Debug, Default)]
 struct VideoCancellationState {
     cancelled: AtomicBool,
-    wakers: Mutex<Vec<std::task::Waker>>,
+    // A session has one cancellable startup wait (the asset-resolution race).
+    // Keeping a single replaceable waker avoids retaining every executor waker
+    // ever used to poll that future while preserving the cancellation wake-up
+    // guarantee for the active waiter.
+    waker: Mutex<Option<std::task::Waker>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -62,8 +70,7 @@ impl VideoCancellationToken {
         if self.0.cancelled.swap(true, Ordering::SeqCst) {
             return;
         }
-        let wakers = std::mem::take(&mut *lock(&self.0.wakers));
-        for waker in wakers {
+        if let Some(waker) = lock(&self.0.waker).take() {
             waker.wake();
         }
     }
@@ -75,21 +82,66 @@ impl VideoCancellationToken {
     /// Resolves as soon as cancellation is requested. This lets callers race
     /// cancellable async asset resolution against viewport eviction without a
     /// polling timer.
-    pub async fn cancelled(&self) {
-        std::future::poll_fn(|cx| {
-            if self.is_cancelled() {
-                return std::task::Poll::Ready(());
-            }
-            let mut wakers = lock(&self.0.wakers);
-            if self.is_cancelled() {
-                return std::task::Poll::Ready(());
-            }
-            if !wakers.iter().any(|waker| waker.will_wake(cx.waker())) {
-                wakers.push(cx.waker().clone());
-            }
-            std::task::Poll::Pending
-        })
-        .await
+    pub fn cancelled(&self) -> VideoCancellationFuture {
+        VideoCancellationFuture {
+            state: Arc::clone(&self.0),
+            registered: false,
+            waker: None,
+        }
+    }
+}
+
+/// A dropped losing-side waiter must unregister its waker. Otherwise a
+/// successful asset-resolution race leaves an executor task waker retained by
+/// the cancellation token until the whole video entry is retired.
+pub struct VideoCancellationFuture {
+    state: Arc<VideoCancellationState>,
+    registered: bool,
+    waker: Option<std::task::Waker>,
+}
+
+impl std::future::Future for VideoCancellationFuture {
+    type Output = ();
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        let state = Arc::clone(&self.state);
+        if state.cancelled.load(Ordering::SeqCst) {
+            self.registered = false;
+            return std::task::Poll::Ready(());
+        }
+        let mut waker = lock(&state.waker);
+        if state.cancelled.load(Ordering::SeqCst) {
+            self.registered = false;
+            return std::task::Poll::Ready(());
+        }
+        if !waker
+            .as_ref()
+            .is_some_and(|current| current.will_wake(cx.waker()))
+        {
+            *waker = Some(cx.waker().clone());
+        }
+        self.waker = Some(cx.waker().clone());
+        self.registered = true;
+        std::task::Poll::Pending
+    }
+}
+
+impl Drop for VideoCancellationFuture {
+    fn drop(&mut self) {
+        if !self.registered {
+            return;
+        }
+        let mut waker = lock(&self.state.waker);
+        if self.waker.as_ref().is_some_and(|registered| {
+            waker
+                .as_ref()
+                .is_some_and(|current| current.will_wake(registered))
+        }) {
+            waker.take();
+        }
     }
 }
 
@@ -239,6 +291,26 @@ impl VideoSession {
         self.frames.latest()
     }
 
+    pub fn take_latest_frame_for_presentation(&self) -> Option<crate::LatestVideoFrame> {
+        self.frames.take_latest_for_presentation()
+    }
+
+    pub fn claim_latest_frame_for_presentation_after(
+        &self,
+        last_presented_generation: u64,
+    ) -> Option<crate::VideoFrameLease> {
+        self.frames
+            .claim_latest_for_presentation_after(last_presented_generation)
+    }
+
+    pub fn take_latest_frame_for_presentation_after(
+        &self,
+        last_presented_generation: u64,
+    ) -> Option<crate::LatestVideoFrame> {
+        self.frames
+            .take_latest_for_presentation_after(last_presented_generation)
+    }
+
     pub fn mark_frame_presented(&self, generation: u64) {
         self.frames.mark_presented(generation);
     }
@@ -253,6 +325,17 @@ impl VideoSession {
 
     pub fn stderr(&self) -> Vec<String> {
         lock(&self.stderr).iter().cloned().collect()
+    }
+
+    fn stderr_diagnostic(&self) -> String {
+        truncate_utf8(
+            &lock(&self.stderr)
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join("\n"),
+            STDERR_MAX_DIAGNOSTIC_BYTES,
+        )
     }
 
     pub const fn has_audio(&self) -> bool {
@@ -275,7 +358,7 @@ impl VideoSession {
 
     pub fn snapshot(&self) -> VideoPlaybackSnapshot {
         let state = *lock(&self.playback);
-        let mut position = if state.playing {
+        let position = if state.playing {
             state.position
                 + state
                     .started_at
@@ -283,9 +366,8 @@ impl VideoSession {
         } else {
             state.position
         };
-        if let Some(duration) = self.duration_seconds {
-            position = position.min(duration);
-        }
+        // Don't clamp position to duration - let it reflect actual playback
+        // Duration from metadata may be inaccurate for some videos
         VideoPlaybackSnapshot {
             position_seconds: position,
             duration_seconds: self.duration_seconds,
@@ -375,17 +457,15 @@ impl VideoSession {
                 "seek position must be finite and non-negative".into(),
             ));
         }
-        let seconds = self
-            .duration_seconds
-            .map_or(seconds, |duration| seconds.min(duration));
+        // Don't clamp seek position - metadata duration may be inaccurate
+        // Let ffmpeg handle invalid seeks naturally
         let was_playing = self.snapshot().playing;
         self.start_process(seconds, was_playing)?;
         let mut state = lock(&self.playback);
         state.position = seconds;
         state.playing = was_playing;
-        state.ended = self
-            .duration_seconds
-            .is_some_and(|duration| seconds >= duration);
+        // Don't mark as ended based on metadata duration - let playback determine it
+        state.ended = false;
         state.started_at = was_playing.then(Instant::now);
         Ok(())
     }
@@ -451,6 +531,7 @@ impl VideoSession {
         process.stdout_worker = Some(
             thread::Builder::new()
                 .name("cditor-video-ffmpeg-stdout".into())
+                .stack_size(crate::MEDIA_IO_THREAD_STACK_BYTES)
                 .spawn(move || {
                     let frame_len = dimensions.width as usize * dimensions.height as usize * 4;
                     let mut bytes = vec![0; frame_len];
@@ -464,6 +545,14 @@ impl VideoSession {
                             index = index.saturating_add(1);
                             continue;
                         }
+                        // Keep the decoder scratch buffer reusable. A true
+                        // move here would require allocating a new scratch
+                        // buffer for every accepted frame because GPUI's
+                        // `RenderImage` owns the upload bytes and exposes no
+                        // buffer-return API. The bounded clone is therefore
+                        // intentional until a stable GPU-surface API exists;
+                        // it avoids unbounded allocation churn while the
+                        // one-slot mailbox provides backpressure.
                         if let Ok(frame) = VideoFrame::bgra(
                             dimensions.width,
                             dimensions.height,
@@ -532,7 +621,7 @@ impl VideoSession {
                     .and_then(|process| process.child.try_wait().ok().flatten())
             };
             if let Some(status) = exited {
-                let diagnostics = self.stderr().join("\n");
+                let diagnostics = self.stderr_diagnostic();
                 return Err(VideoError::Process(format!(
                     "FFmpeg exited before producing a frame ({status}){}",
                     if diagnostics.is_empty() {
@@ -543,7 +632,7 @@ impl VideoSession {
                 )));
             }
             if Instant::now() >= deadline {
-                let diagnostics = self.stderr().join("\n");
+                let diagnostics = self.stderr_diagnostic();
                 return Err(VideoError::Process(format!(
                     "timed out waiting for the first video frame{}",
                     if diagnostics.is_empty() {
@@ -601,33 +690,102 @@ fn probe_metadata(
     else {
         return Ok(None);
     };
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Ok(None);
+    };
+    // `wait_with_output` drains into an unconstrained Vec and can also deadlock
+    // if a producer fills the pipe before it exits. Drain concurrently with a
+    // fixed cap, and let the polling loop terminate a pathological probe.
+    let output_exceeded = Arc::new(AtomicBool::new(false));
+    let output_exceeded_for_reader = Arc::clone(&output_exceeded);
+    let stdout_reader = thread::Builder::new()
+        .name("cditor-video-ffprobe-stdout".into())
+        .stack_size(crate::MEDIA_IO_THREAD_STACK_BYTES)
+        .spawn(move || {
+            read_bounded_probe_stdout(stdout, PROBE_MAX_STDOUT_BYTES, &output_exceeded_for_reader)
+        })
+        .ok();
+    if stdout_reader.is_none() {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Ok(None);
+    }
     let deadline = Instant::now() + PROBE_TIMEOUT;
+    let mut timed_out = false;
     loop {
         if cancellation.is_some_and(VideoCancellationToken::is_cancelled) {
             let _ = child.kill();
             let _ = child.wait();
+            let _ = stdout_reader
+                .expect("reader existence checked above")
+                .join();
             return Err(VideoError::Cancelled);
         }
-        if Instant::now() >= deadline {
+        if output_exceeded.load(Ordering::Acquire) {
             let _ = child.kill();
             let _ = child.wait();
-            return Ok(None);
+            break;
+        }
+        if Instant::now() >= deadline {
+            timed_out = true;
+            let _ = child.kill();
+            let _ = child.wait();
+            break;
         }
         match child.try_wait() {
-            Ok(Some(status)) => {
-                let output = child.wait_with_output()?;
-                if !status.success() {
-                    return Ok(None);
-                }
-                return Ok(parse_probe_output(&output.stdout, max_width, max_height));
-            }
+            Ok(Some(_status)) => break,
             Ok(None) => thread::sleep(Duration::from_millis(5)),
             Err(_) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Ok(None);
+                break;
             }
         }
+    }
+    let output = stdout_reader
+        .expect("reader existence checked above")
+        .join()
+        .ok()
+        .and_then(Result::ok);
+    if timed_out || output_exceeded.load(Ordering::Acquire) {
+        return Ok(None);
+    }
+    let status = child.try_wait().ok().flatten();
+    if !status.is_some_and(|status| status.success()) {
+        return Ok(None);
+    }
+    Ok(output.and_then(|output| parse_probe_output(&output, max_width, max_height)))
+}
+
+fn read_bounded_probe_stdout<R: Read>(
+    mut stdout: R,
+    max_bytes: usize,
+    exceeded: &AtomicBool,
+) -> io::Result<Vec<u8>> {
+    let mut output = Vec::with_capacity(max_bytes.min(8192));
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let bytes_read = stdout.read(&mut buffer)?;
+        if bytes_read == 0 {
+            return Ok(output);
+        }
+        let Some(next_len) = output.len().checked_add(bytes_read) else {
+            exceeded.store(true, Ordering::Release);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ffprobe output length overflow",
+            ));
+        };
+        if next_len > max_bytes {
+            exceeded.store(true, Ordering::Release);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ffprobe output exceeded the diagnostic limit",
+            ));
+        }
+        output.extend_from_slice(&buffer[..bytes_read]);
     }
 }
 
@@ -706,14 +864,11 @@ fn spawn_stderr_worker(
 ) -> Result<JoinHandle<()>, VideoError> {
     thread::Builder::new()
         .name("cditor-video-ffmpeg-stderr".into())
+        .stack_size(crate::MEDIA_IO_THREAD_STACK_BYTES)
         .spawn(move || {
-            for line in BufReader::new(stderr).lines() {
-                if stop_requested.load(Ordering::SeqCst) {
-                    break;
-                }
-                let Ok(line) = line else { break };
+            let _ = read_bounded_lines(stderr, &stop_requested, |line| {
                 push_stderr_line(&lines, line);
-            }
+            });
         })
         .map_err(|error| VideoError::Process(error.to_string()))
 }
@@ -723,7 +878,7 @@ fn push_stderr_line(lines: &Mutex<VecDeque<String>>, line: String) {
     if lines.len() == STDERR_RING_LINES {
         lines.pop_front();
     }
-    lines.push_back(line);
+    lines.push_back(truncate_utf8(&line, STDERR_MAX_LINE_BYTES));
 }
 
 fn seconds_to_micros(seconds: f64) -> u64 {
@@ -744,6 +899,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 mod tests {
     use super::*;
     use std::future::Future;
+    use std::io::Cursor;
     use std::sync::atomic::AtomicUsize;
     use std::task::{Context, Wake};
 
@@ -777,6 +933,32 @@ mod tests {
         assert_eq!(wake_counter.0.load(Ordering::SeqCst), 1);
         assert!(future.as_mut().poll(&mut context).is_ready());
     }
+
+    #[test]
+    fn ffprobe_stdout_reader_rejects_output_beyond_the_fixed_limit() {
+        let exceeded = AtomicBool::new(false);
+        let input = vec![b'x'; PROBE_MAX_STDOUT_BYTES + 1];
+
+        assert!(
+            read_bounded_probe_stdout(Cursor::new(input), PROBE_MAX_STDOUT_BYTES, &exceeded)
+                .is_err()
+        );
+        assert!(exceeded.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn ffprobe_stdout_reader_keeps_valid_small_output() {
+        let exceeded = AtomicBool::new(false);
+        let input = br#"{"streams":[]}"#;
+
+        assert_eq!(
+            read_bounded_probe_stdout(Cursor::new(input), PROBE_MAX_STDOUT_BYTES, &exceeded)
+                .unwrap(),
+            input
+        );
+        assert!(!exceeded.load(Ordering::Acquire));
+    }
+
     use std::path::PathBuf;
 
     #[test]
@@ -838,6 +1020,31 @@ mod tests {
     #[test]
     fn seek_timestamp_keeps_source_offset() {
         assert_eq!(seconds_to_micros(2.5), 2_500_000);
+    }
+
+    #[test]
+    fn stderr_lines_are_bounded_without_splitting_utf8() {
+        let line = "汉".repeat(STDERR_MAX_LINE_BYTES);
+        let mutex = Mutex::new(VecDeque::new());
+        push_stderr_line(&mutex, line);
+        let mut lines = lock(&mutex).clone();
+
+        let output = lines.pop_front().unwrap();
+        assert!(output.len() <= STDERR_MAX_LINE_BYTES);
+        assert!(output.ends_with("..."));
+        assert!(output.is_char_boundary(output.len()));
+    }
+
+    #[test]
+    fn stderr_ring_keeps_a_fixed_number_of_bounded_lines() {
+        let mutex = Mutex::new(VecDeque::new());
+        for _ in 0..(STDERR_RING_LINES + 4) {
+            push_stderr_line(&mutex, "x".repeat(STDERR_MAX_LINE_BYTES + 100));
+        }
+
+        let lines = lock(&mutex);
+        assert_eq!(lines.len(), STDERR_RING_LINES);
+        assert!(lines.iter().all(|line| line.len() <= STDERR_MAX_LINE_BYTES));
     }
 
     #[test]

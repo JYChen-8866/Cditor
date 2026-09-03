@@ -5,7 +5,7 @@ use std::{
 
 use crate::shapes::{Image, ShapeId, ShapeTrait};
 use gpui::{Image as GpuiImage, ImageFormat};
-use image::{ImageEncoder, Rgba, RgbaImage};
+use image::{Rgba, RgbaImage};
 use kurbo::{Affine, Point, Rect};
 
 use super::plan::{ImagePaint, PaintCommand, PaintKind};
@@ -85,47 +85,30 @@ impl ImagePaintEngine {
 
 fn build_raster(image: &Image) -> Option<Arc<GpuiImage>> {
     let bytes = image.data()?;
-    if image.rotation.abs() <= 0.001 && image.style.opacity >= 0.999 {
-        let format = match image.format {
-            crate::shapes::ImageFormat::Png => ImageFormat::Png,
-            crate::shapes::ImageFormat::Jpeg => ImageFormat::Jpeg,
-            crate::shapes::ImageFormat::WebP => ImageFormat::Webp,
-        };
-        return Some(Arc::new(GpuiImage::from_bytes(format, bytes)));
-    }
-
-    let source = image::load_from_memory(&bytes).ok()?.to_rgba8();
-    let transformed = rotate_with_opacity(&source, image.rotation, image.style.opacity);
-    let mut png = Vec::new();
-    image::codecs::png::PngEncoder::new(&mut png)
-        .write_image(
-            transformed.as_raw(),
-            transformed.width(),
-            transformed.height(),
-            image::ExtendedColorType::Rgba8,
-        )
-        .ok()?;
+    let source = crate::image_decode::decode_display_rgba(&bytes)?;
+    let transformed = if image.rotation.abs() <= 0.001 && image.style.opacity >= 0.999 {
+        source
+    } else {
+        rotate_with_opacity(&source, image.rotation, image.style.opacity)?
+    };
+    let png = crate::image_decode::encode_png(&transformed)?;
     Some(Arc::new(GpuiImage::from_bytes(ImageFormat::Png, png)))
 }
 
-fn rotate_with_opacity(source: &RgbaImage, angle: f64, opacity: f64) -> RgbaImage {
+fn rotate_with_opacity(source: &RgbaImage, angle: f64, opacity: f64) -> Option<RgbaImage> {
     let cosine = angle.cos();
     let sine = angle.sin();
     let source_width = source.width() as f64;
     let source_height = source.height() as f64;
-    let target_width = (source_width * cosine.abs() + source_height * sine.abs() - 1e-9)
-        .ceil()
-        .max(1.0) as u32;
-    let target_height = (source_width * sine.abs() + source_height * cosine.abs() - 1e-9)
-        .ceil()
-        .max(1.0) as u32;
+    let (target_width, target_height) =
+        crate::image_decode::rotated_raster_dimensions(source.width(), source.height(), angle)?;
     let source_center = ((source_width - 1.0) / 2.0, (source_height - 1.0) / 2.0);
     let target_center = (
         (target_width as f64 - 1.0) / 2.0,
         (target_height as f64 - 1.0) / 2.0,
     );
     let alpha_scale = opacity.clamp(0.0, 1.0);
-    RgbaImage::from_fn(target_width, target_height, |x, y| {
+    Some(RgbaImage::from_fn(target_width, target_height, |x, y| {
         let dx = x as f64 - target_center.0;
         let dy = y as f64 - target_center.1;
         let source_x = cosine * dx + sine * dy + source_center.0;
@@ -137,7 +120,7 @@ fn rotate_with_opacity(source: &RgbaImage, angle: f64, opacity: f64) -> RgbaImag
         let mut pixel = *source.get_pixel(source_x.round() as u32, source_y.round() as u32);
         pixel.0[3] = (f64::from(pixel.0[3]) * alpha_scale).round() as u8;
         pixel
-    })
+    }))
 }
 
 fn rotated_screen_bounds(image: &Image, camera: Affine) -> Rect {
@@ -172,8 +155,14 @@ mod tests {
     #[test]
     fn rotated_raster_expands_bounds_and_applies_opacity() {
         let source = RgbaImage::from_pixel(4, 2, Rgba([10, 20, 30, 200]));
-        let result = rotate_with_opacity(&source, std::f64::consts::FRAC_PI_2, 0.5);
+        let result = rotate_with_opacity(&source, std::f64::consts::FRAC_PI_2, 0.5).unwrap();
         assert_eq!((result.width(), result.height()), (2, 4));
         assert!(result.pixels().any(|pixel| pixel.0[3] == 100));
+    }
+
+    #[test]
+    fn rotation_rejects_a_non_finite_transform_before_allocating() {
+        let source = RgbaImage::new(1, 1);
+        assert!(rotate_with_opacity(&source, f64::NAN, 1.0).is_none());
     }
 }

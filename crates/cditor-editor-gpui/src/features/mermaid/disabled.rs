@@ -12,7 +12,23 @@ use crate::theme::GuiTheme;
 #[derive(Default)]
 pub(crate) struct MermaidRenderCache;
 
+#[derive(Default)]
+pub(crate) struct MermaidRenderCacheTrimResult {
+    pub(crate) evicted_entries: usize,
+    pub(crate) evicted_budgeted_bytes: usize,
+    pub(crate) evicted_resident_bytes: usize,
+    pub(crate) invalidated_renderings: usize,
+    pub(crate) remaining_entries: usize,
+    pub(crate) remaining_budgeted_bytes: usize,
+    pub(crate) remaining_resident_bytes: usize,
+    pub(crate) retired_images: Vec<Arc<RenderImage>>,
+}
+
 impl MermaidRenderCache {
+    pub(crate) fn diagnostics(&self) -> cditor_sdk::diagnostics::MermaidDiagnostics {
+        cditor_sdk::diagnostics::MermaidDiagnostics::default()
+    }
+
     pub(crate) fn sync_visible_window(
         &mut self,
         _projection: &EditorViewProjection,
@@ -26,6 +42,14 @@ impl MermaidRenderCache {
     pub(crate) fn clear(&mut self) -> Vec<Arc<RenderImage>> {
         Vec::new()
     }
+
+    pub(crate) fn apply_memory_pressure(
+        &mut self,
+        _pressure: crate::memory_pressure::CditorMemoryPressure,
+        _protected: &HashSet<BlockId>,
+    ) -> MermaidRenderCacheTrimResult {
+        MermaidRenderCacheTrimResult::default()
+    }
 }
 
 #[expect(
@@ -36,6 +60,7 @@ pub(crate) fn render_mermaid_block(
     _block_id: BlockId,
     _content_version: u64,
     _layout_height_px: f64,
+    _source_block_height_px: f64,
     source_content: AnyElement,
     _show_source: bool,
     _cache: &MermaidRenderCache,

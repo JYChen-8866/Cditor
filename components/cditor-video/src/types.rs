@@ -49,6 +49,29 @@ impl VideoFrame {
     pub fn bytes(&self) -> &[u8] {
         &self.data
     }
+
+    pub(crate) fn into_tight_bgra_bytes(self) -> Result<Vec<u8>, VideoError> {
+        let row_len = usize::try_from(self.width)
+            .ok()
+            .and_then(|width| width.checked_mul(4))
+            .ok_or_else(|| VideoError::UnsupportedFrameLayout("row length overflow".into()))?;
+        let height = usize::try_from(self.height)
+            .map_err(|_| VideoError::UnsupportedFrameLayout("frame height overflow".into()))?;
+        let tight_len = row_len
+            .checked_mul(height)
+            .ok_or_else(|| VideoError::UnsupportedFrameLayout("frame length overflow".into()))?;
+        if usize::try_from(self.stride).ok() == Some(row_len) {
+            let mut data = self.data;
+            data.truncate(tight_len);
+            return Ok(data);
+        }
+        compact_bgra_rows(
+            &self.data,
+            usize::try_from(self.stride).unwrap_or(usize::MAX),
+            row_len,
+            height,
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -147,15 +170,45 @@ pub(crate) fn validate_frame_layout(
 }
 
 pub(crate) fn tight_bgra_bytes(frame: &VideoFrame) -> Result<Vec<u8>, VideoError> {
-    let row_len = usize::try_from(frame.width * 4)
-        .map_err(|_| VideoError::UnsupportedFrameLayout("row length overflow".into()))?;
+    let row_len = usize::try_from(frame.width)
+        .ok()
+        .and_then(|width| width.checked_mul(4))
+        .ok_or_else(|| VideoError::UnsupportedFrameLayout("row length overflow".into()))?;
     if frame.stride as usize == row_len {
-        return Ok(frame.data[..row_len * frame.height as usize].to_vec());
+        let tight_len = row_len
+            .checked_mul(frame.height as usize)
+            .ok_or_else(|| VideoError::UnsupportedFrameLayout("frame length overflow".into()))?;
+        return Ok(frame.data[..tight_len].to_vec());
     }
-    let mut output = Vec::with_capacity(row_len * frame.height as usize);
-    for row in 0..frame.height as usize {
-        let start = row * frame.stride as usize;
-        output.extend_from_slice(&frame.data[start..start + row_len]);
+    compact_bgra_rows(
+        &frame.data,
+        frame.stride as usize,
+        row_len,
+        frame.height as usize,
+    )
+}
+
+fn compact_bgra_rows(
+    data: &[u8],
+    stride: usize,
+    row_len: usize,
+    height: usize,
+) -> Result<Vec<u8>, VideoError> {
+    let tight_len = row_len
+        .checked_mul(height)
+        .ok_or_else(|| VideoError::UnsupportedFrameLayout("frame length overflow".into()))?;
+    let mut output = Vec::with_capacity(tight_len);
+    for row in 0..height {
+        let start = row
+            .checked_mul(stride)
+            .ok_or_else(|| VideoError::UnsupportedFrameLayout("row offset overflow".into()))?;
+        let end = start
+            .checked_add(row_len)
+            .ok_or_else(|| VideoError::UnsupportedFrameLayout("row end overflow".into()))?;
+        let row = data
+            .get(start..end)
+            .ok_or_else(|| VideoError::UnsupportedFrameLayout("frame data is incomplete".into()))?;
+        output.extend_from_slice(row);
     }
     Ok(output)
 }
@@ -197,6 +250,34 @@ mod tests {
         )
         .unwrap();
         assert_eq!(tight_bgra_bytes(&frame).unwrap(), [1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn owned_tight_frame_reuses_the_decoder_allocation() {
+        let frame = VideoFrame::bgra(2, 2, 8, 0, vec![7; 16]).unwrap();
+        let allocation = frame.bytes().as_ptr();
+
+        let bytes = frame.into_tight_bgra_bytes().unwrap();
+
+        assert_eq!(bytes.as_ptr(), allocation);
+        assert_eq!(bytes, vec![7; 16]);
+    }
+
+    #[test]
+    fn owned_padded_frame_compacts_rows() {
+        let frame = VideoFrame::bgra(
+            1,
+            2,
+            8,
+            0,
+            vec![1, 2, 3, 4, 99, 99, 99, 99, 5, 6, 7, 8, 88, 88, 88, 88],
+        )
+        .unwrap();
+
+        assert_eq!(
+            frame.into_tight_bgra_bytes().unwrap(),
+            [1, 2, 3, 4, 5, 6, 7, 8]
+        );
     }
 
     #[test]

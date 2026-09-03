@@ -335,6 +335,78 @@ impl MainThreadBudgetArbiter {
         self.heap.len()
     }
 
+    /// Remove work whose generation was superseded before the next frame.
+    ///
+    /// The arbiter already knows how to identify stale coalesced work, but it
+    /// used to leave those heap entries (and the GUI callbacks that own their
+    /// captures) resident until `run_frame`.  During a blocked/slow frame this
+    /// made rapid typing, scrolling, and image loads retain an arbitrary
+    /// number of dead closures.  Rebuilding the binary heap is intentionally
+    /// amortized by the caller after a generation update; it bounds lifetime
+    /// without changing the ordering of live tasks.
+    pub fn drop_stale_tasks(&mut self) -> Vec<u64> {
+        if self.heap.is_empty() {
+            return Vec::new();
+        }
+        if !self.heap.iter().any(|task| self.is_stale(task)) {
+            self.prune_latest_generations();
+            return Vec::new();
+        }
+        let mut retained = BinaryHeap::with_capacity(self.heap.len());
+        let mut dropped = Vec::new();
+        while let Some(task) = self.heap.pop() {
+            if self.is_stale(&task) {
+                dropped.push(task.id);
+            } else {
+                retained.push(task);
+            }
+        }
+        self.heap = retained;
+        self.prune_latest_generations();
+        dropped
+    }
+
+    /// Reclaim stale entries for one coalescing key. This is the hot-path
+    /// variant used when a newer result for the same block arrives; unlike the
+    /// full sweep it does not scan/rebuild the queue when unrelated work is
+    /// being enqueued.
+    pub fn drop_stale_tasks_for(
+        &mut self,
+        kind: MainThreadWorkKind,
+        block_id: BlockId,
+    ) -> Vec<u64> {
+        let Some(&latest) = self.latest_generation.get(&(kind, block_id)) else {
+            return Vec::new();
+        };
+        if !self.heap.iter().any(|task| {
+            task.kind == kind && task.block_id == Some(block_id) && task.generation < latest
+        }) {
+            return Vec::new();
+        }
+        let mut retained = BinaryHeap::with_capacity(self.heap.len());
+        let mut dropped = Vec::new();
+        while let Some(task) = self.heap.pop() {
+            if task.kind == kind && task.block_id == Some(block_id) && task.generation < latest {
+                dropped.push(task.id);
+            } else {
+                retained.push(task);
+            }
+        }
+        self.heap = retained;
+        self.prune_latest_generations();
+        dropped
+    }
+
+    fn prune_latest_generations(&mut self) {
+        let live_keys = self
+            .heap
+            .iter()
+            .filter_map(MainThreadTask::coalesce_key)
+            .collect::<std::collections::HashSet<_>>();
+        self.latest_generation
+            .retain(|key, _| live_keys.contains(key));
+    }
+
     pub fn run_frame(&mut self, budget: MainThreadBudget, mode: InteractionMode) -> FrameRunResult {
         let mut frame = budget.for_mode(mode);
         self.run_frame_with_budget(&mut frame)
@@ -373,6 +445,7 @@ impl MainThreadBudgetArbiter {
         for task in deferred {
             self.heap.push(task);
         }
+        self.prune_latest_generations();
 
         FrameRunResult {
             applied,
@@ -519,6 +592,29 @@ mod tests {
 
         assert!(result.outcomes.contains(&TaskOutcome::DroppedStale(1)));
         assert!(result.outcomes.contains(&TaskOutcome::Applied(2)));
+    }
+
+    #[test]
+    fn stale_tasks_can_be_reclaimed_before_a_frame_runs() {
+        let mut arbiter = MainThreadBudgetArbiter::default();
+        arbiter.enqueue_async_result(MainThreadTask::new(
+            1,
+            MainThreadWorkKind::ImageDecodeApply,
+            1,
+            Some(42),
+            WorkCost::image_decode_apply(),
+        ));
+        arbiter.enqueue_async_result(MainThreadTask::new(
+            2,
+            MainThreadWorkKind::ImageDecodeApply,
+            2,
+            Some(42),
+            WorkCost::image_decode_apply(),
+        ));
+
+        assert_eq!(arbiter.drop_stale_tasks(), vec![1]);
+        assert_eq!(arbiter.queue_len(), 1);
+        assert!(arbiter.drop_stale_tasks().is_empty());
     }
 
     #[test]

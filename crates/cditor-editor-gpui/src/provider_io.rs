@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use cditor_core::rich_text::AssetRef;
-use cditor_sdk::providers::{AssetError, AssetInput, AssetProvider, ImportedAsset, ResolvedAsset};
+use cditor_sdk::providers::{
+    AssetError, AssetFileInput, AssetInput, AssetProvider, ImportedAsset, ResolvedAsset,
+};
 #[cfg(not(target_family = "wasm"))]
 use cditor_session::SessionIoExecutor;
 
@@ -10,6 +12,13 @@ pub(crate) async fn import_asset(
     input: AssetInput,
 ) -> Result<ImportedAsset, AssetError> {
     run_asset_operation(async move { provider.import(input).await }).await
+}
+
+pub(crate) async fn import_asset_file(
+    provider: Arc<dyn AssetProvider>,
+    input: AssetFileInput,
+) -> Result<ImportedAsset, AssetError> {
+    run_asset_operation(async move { provider.import_file(input).await }).await
 }
 
 pub(crate) async fn resolve_asset(

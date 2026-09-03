@@ -1,6 +1,8 @@
 mod exact_raster;
 mod paint;
 
+pub(crate) use exact_raster::{exact_raster_cache_stats, trim_exact_raster_cache};
+
 use crate::text::RichTextLayoutInput;
 use crate::theme::GuiTheme;
 

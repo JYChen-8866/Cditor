@@ -6,8 +6,8 @@ use std::{
 
 use cditor_core::{ids::BlockId, rich_text::VideoPayload};
 use cditor_editor_protocol::command::{CditorCommand, CommandSource};
-use cditor_sdk::providers::{AssetError, AssetProvider};
-use gpui::{App, BackgroundExecutor, Entity, ExternalPaths, Pixels, Point};
+use cditor_sdk::providers::{AssetError, AssetFileInput, AssetProvider};
+use gpui::{App, Entity, ExternalPaths, Pixels, Point};
 
 use crate::{editor_view::CditorV2View, interaction::geometry::ProjectedBlockRect};
 
@@ -52,10 +52,9 @@ impl CditorV2View {
                     .and_then(|session| session.document_snapshot().ok())
                     .and_then(|snapshot| snapshot.focused_block_id)
             });
-        let background = cx.background_executor().clone();
         cx.spawn(async move |view, cx| {
             for path in paths {
-                let imported = import_video(path, provider.clone(), background.clone()).await;
+                let imported = import_video(path, provider.clone()).await;
                 let next_anchor = view
                     .update(cx, |view, cx| match imported {
                         Ok(imported) => match view.dispatch_command(
@@ -106,9 +105,8 @@ pub(super) fn replace_video_from_path(
             .set_import_status(block_id, Some("正在导入视频…".into()));
         cx.notify();
     });
-    let background = cx.background_executor().clone();
     cx.spawn(async move |cx| {
-        let imported = import_video(path, provider, background).await;
+        let imported = import_video(path, provider).await;
         let _ = view.update(cx, |view, cx| match imported {
             Ok(imported) => {
                 view.cache.video_playbacks.set_import_status(block_id, None);
@@ -140,7 +138,6 @@ pub(super) fn replace_video_from_path(
 async fn import_video(
     path: PathBuf,
     provider: Option<Arc<dyn AssetProvider>>,
-    background: BackgroundExecutor,
 ) -> Result<ImportedVideo, AssetError> {
     validate_video_path(&path).map_err(|message| AssetError { message })?;
     let file_name = path
@@ -160,17 +157,12 @@ async fn import_video(
             asset: None,
         });
     };
-    let path_for_read = path.clone();
-    let bytes = background
-        .spawn(async move { std::fs::read(path_for_read).map_err(|error| error.to_string()) })
-        .await
-        .map_err(|message| AssetError { message })?;
-    let imported = crate::provider_io::import_asset(
+    let imported = crate::provider_io::import_asset_file(
         provider,
-        cditor_sdk::providers::AssetInput {
+        AssetFileInput {
             name: file_name.clone(),
             media_type: Some(media_type.clone()),
-            bytes,
+            path,
         },
     )
     .await?;

@@ -9,13 +9,14 @@ use gpui::{App, Entity, IntoElement, ParentElement, Styled, Window, div, px};
 use crate::editor_view::CditorV2View;
 use crate::menu_metrics::{PRIMARY_MENU_HEIGHT_PX, PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
 use crate::overlays::callout_menu::CALLOUT_MENU_ITEMS;
+use crate::overlays::floating_toolbar::VIEWPORT_MARGIN_PX;
 use crate::presentation::block_registry::{
     TransformBlockPresentation, block_presentation_registry,
 };
 
 pub const BLOCK_TRANSFORM_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
 const BLOCK_TRANSFORM_MENU_GAP_PX: f32 = 6.0;
-const PRIMARY_TOOLBAR_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
+const PRIMARY_TOOLBAR_WIDTH_PX: f32 = 240.0;
 const PRIMARY_TOOLBAR_CONTENT_LEFT_PX: f32 = 8.0;
 const BLOCK_TRANSFORM_MENU_RIGHT_OFFSET_PX: f32 =
     PRIMARY_TOOLBAR_WIDTH_PX - PRIMARY_TOOLBAR_CONTENT_LEFT_PX + BLOCK_TRANSFORM_MENU_GAP_PX;
@@ -117,13 +118,24 @@ pub fn block_transform_menu_opens_left(toolbar_x: f32, viewport_width: f32) -> b
         + PRIMARY_TOOLBAR_WIDTH_PX
         + BLOCK_TRANSFORM_MENU_GAP_PX
         + BLOCK_TRANSFORM_MENU_WIDTH_PX
-        > viewport_width - 10.0
+        > viewport_width - VIEWPORT_MARGIN_PX
 }
 
 pub fn block_transform_menu_top_offset(toolbar_y: f32, viewport_height: f32) -> f32 {
-    let max_top = (viewport_height - PRIMARY_MENU_HEIGHT_PX - 10.0).max(10.0);
-    let clamped_top = toolbar_y.clamp(10.0, max_top);
-    clamped_top - toolbar_y - 8.0
+    // Parent container (trigger button row) is at approximately (toolbar_y + 97px) in viewport
+    // Submenu renders at (parent_y + top_offset)
+    // Default: top_offset = 0, but push up if would overflow bottom
+    const TRIGGER_OFFSET_IN_GUTTER: f32 = 97.0;  // Estimated offset of block transform trigger
+    const MENU_CHROME_PX: f32 = 14.0;  // padding + border
+    let parent_absolute_y = toolbar_y + TRIGGER_OFFSET_IN_GUTTER;
+    let submenu_bottom = parent_absolute_y + PRIMARY_MENU_HEIGHT_PX + MENU_CHROME_PX;
+    if submenu_bottom > viewport_height - VIEWPORT_MARGIN_PX {
+        // Push up to fit in viewport
+        let overflow = submenu_bottom - (viewport_height - VIEWPORT_MARGIN_PX);
+        -overflow
+    } else {
+        0.0
+    }
 }
 
 pub fn build_block_transform_popup_menu(

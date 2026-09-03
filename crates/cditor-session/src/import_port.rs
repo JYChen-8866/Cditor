@@ -286,9 +286,36 @@ mod tests {
     }
 
     #[test]
-    fn clipboard_import_keeps_plain_text_semantics() {
-        // Regression guard: pasting prose stays a single plain-text block,
-        // while document import uses ApplyMarkdownImport for parsing.
+    fn clipboard_import_keeps_single_line_prose_as_one_plain_text_block() {
+        // Regression guard: 单行散文粘贴不进 markdown 解析，仍是一个纯文本块。
+        // 多行粘贴按行/空行拆块，见
+        // `clipboard_import_splits_multi_line_prose_into_blocks`。
+        let handle = EditorSession::new(DocumentRuntime::empty(), false).into_handle();
+        handle
+            .dispatch(CommandEnvelope::new(
+                EditorCommand::FocusBlock { block_id: 1 },
+                CommandSource::Automation,
+            ))
+            .unwrap();
+        handle
+            .dispatch(command(EditorCommand::ApplyClipboardData {
+                text: "first paragraph and #not a heading".to_owned(),
+                metadata_json: None,
+            }))
+            .unwrap();
+        let snapshot = handle.document_snapshot().unwrap();
+        assert_eq!(snapshot.block_count, 1);
+        assert_eq!(
+            handle.block_plain_text(1).unwrap().as_deref(),
+            Some("first paragraph and #not a heading")
+        );
+    }
+
+    #[test]
+    fn clipboard_import_splits_multi_line_prose_into_blocks() {
+        // 粘贴多行文本按块拆分（`fix(markdown): paste lines into separate
+        // blocks and keep --- as divider`）：每段落一个块，而不是把换行塞进
+        // 同一个块。
         let handle = EditorSession::new(DocumentRuntime::empty(), false).into_handle();
         handle
             .dispatch(CommandEnvelope::new(
@@ -303,10 +330,14 @@ mod tests {
             }))
             .unwrap();
         let snapshot = handle.document_snapshot().unwrap();
-        assert_eq!(snapshot.block_count, 1);
+        assert_eq!(snapshot.block_count, 2);
         assert_eq!(
-            handle.block_plain_text(1).unwrap().as_deref(),
-            Some("first paragraph\n\nsecond paragraph")
+            handle.text_block_context(1).unwrap().unwrap().text,
+            "first paragraph"
+        );
+        assert_eq!(
+            handle.block_plain_text(3).unwrap().as_deref(),
+            Some("second paragraph")
         );
     }
 

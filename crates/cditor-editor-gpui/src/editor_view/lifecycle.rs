@@ -1,10 +1,11 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
-use gpui::{App, Context, Entity, RenderImage};
+use gpui::{App, Context, Entity};
 
 use cditor_core::ids::BlockId;
+use cditor_sdk::document::{CloseGuard, HibernationGuard, SaveFailureKind};
 
-use crate::cache::RenderCacheState;
+use crate::cache::{RenderCacheState, RetiredRenderResources};
 use crate::editor_view::state::{
     EditorDiagnosticsState, EditorStatusUiState, FeatureUiState, FocusUiState, InteractionUiState,
     OverlayUiState, PlatformInputState,
@@ -18,12 +19,20 @@ use crate::text::CaretBlink;
 use cditor_runtime::DocumentRuntime;
 use cditor_session::{EditorSession, EditorSessionHandle};
 
-fn retire_images_after_effect(images: Vec<Arc<RenderImage>>, cx: &mut App) {
-    if images.is_empty() {
+fn retire_images_after_effect(resources: RetiredRenderResources, cx: &mut App) {
+    #[cfg(feature = "gpui-dynamic-image")]
+    let has_dynamic_images = !resources.dynamic_images.is_empty();
+    #[cfg(not(feature = "gpui-dynamic-image"))]
+    let has_dynamic_images = false;
+    if resources.images.is_empty() && !has_dynamic_images {
         return;
     }
     cx.defer(move |cx| {
-        for image in images {
+        #[cfg(feature = "gpui-dynamic-image")]
+        for image in resources.dynamic_images {
+            cx.drop_dynamic_image(image, None);
+        }
+        for image in resources.images {
             cx.drop_image(image, None);
         }
     });
@@ -37,6 +46,7 @@ impl CditorV2View {
     /// memory proportional to the active viewport instead of the number of
     /// tabs that have been opened during the process lifetime.
     pub fn sdk_set_host_active(&mut self, active: bool, cx: &mut Context<Self>) {
+        self.status.host_active = active;
         self.set_caret_blink_enabled(active, cx);
         if let Some(session) = self.ready_session() {
             let _ = session.set_host_active(active);
@@ -51,6 +61,60 @@ impl CditorV2View {
         self.interaction.projected_table_cells.clear();
         retire_images_after_effect(self.cache.reset_session(), cx);
         self.scheduling.main_thread.clear();
+        self.schedule_persistent_payload_cache_trim(cx);
+    }
+
+    /// Returns the host-facing facts required for a safe two-phase
+    /// hibernation. Any failed synchronous session read is treated as busy;
+    /// callers must never infer "clean" from an unavailable snapshot.
+    pub fn sdk_hibernation_guard(&self) -> HibernationGuard {
+        let ready = self.state.is_ready();
+        let close_guard = self.sdk_close_guard();
+        let durable_storage = self
+            .ready_session()
+            .and_then(|session| session.persistence_snapshot().ok())
+            .is_some_and(|snapshot| snapshot.enabled);
+        let flush_required = durable_storage && !self.status.readonly;
+        let (composing, selected, runtime_busy) = match self.ready_session() {
+            Some(session) => match session.input_context() {
+                Ok(input) => (
+                    input.has_pending_composition || input.composition.is_some(),
+                    input.has_active_selection,
+                    false,
+                ),
+                Err(_) => (false, false, true),
+            },
+            None => (false, false, false),
+        };
+        HibernationGuard {
+            ready,
+            loading: self.state.is_loading(),
+            load_failed: self.state.is_load_failed(),
+            durable_storage,
+            flush_required,
+            host_active: self.status.host_active,
+            dirty: close_guard.dirty,
+            saving: close_guard.saving,
+            conflict: close_guard
+                .local_failure
+                .as_ref()
+                .is_some_and(|failure| failure.kind == SaveFailureKind::Conflict),
+            failed_operations: close_guard.failed_operations,
+            requires_recovery_export: close_guard.requires_recovery_export,
+            can_close_safely: close_guard.can_close_safely,
+            composing,
+            selected,
+            runtime_busy,
+            can_hibernate_after_flush: hibernation_guard_allows_release(
+                ready,
+                durable_storage,
+                self.status.host_active,
+                &close_guard,
+                composing,
+                selected,
+                runtime_busy,
+            ),
+        }
     }
 
     pub(crate) fn set_caret_blink_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -67,6 +131,12 @@ impl CditorV2View {
 
     pub(crate) fn caret_blink_visible(&self, cx: &App) -> bool {
         self.focus.caret_blink.read(cx).visible()
+    }
+
+    /// 插入符的位移补间。绘制阶段只拿得到视图的只读引用，所以补间状态自己
+    /// 用 `Cell` 做内部可变。
+    pub(crate) fn caret_motion(&self) -> &crate::text::CaretMotion {
+        &self.focus.caret_motion
     }
 
     pub fn caret_blink_entity(&self) -> &Entity<CaretBlink> {
@@ -86,6 +156,14 @@ impl CditorV2View {
         requested_readonly: bool,
         cx: &mut Context<Self>,
     ) -> Self {
+        // Hosts normally deactivate an editor before releasing its entity, but
+        // the SDK cannot require every embedder to honor that ordering. Keep a
+        // final GPUI-context cleanup so stable video slots and fallback image
+        // tiles never survive an abruptly released editor.
+        cx.on_release(|view, cx| {
+            retire_images_after_effect(view.cache.reset_session(), cx);
+        })
+        .detach();
         Self {
             state,
             focus: FocusUiState::new(cx),
@@ -337,5 +415,75 @@ impl CditorV2View {
 
     pub fn apply_save_status(&mut self, status: EditorSaveStatus) {
         self.status.save_status = status;
+    }
+}
+
+fn hibernation_guard_allows_release(
+    ready: bool,
+    durable_storage: bool,
+    host_active: bool,
+    close_guard: &CloseGuard,
+    composing: bool,
+    selected: bool,
+    runtime_busy: bool,
+) -> bool {
+    ready
+        && durable_storage
+        && !host_active
+        && close_guard.can_close_safely
+        && !composing
+        && !selected
+        && !runtime_busy
+}
+
+#[cfg(test)]
+mod hibernation_guard_tests {
+    use super::hibernation_guard_allows_release;
+    use cditor_sdk::document::CloseGuard;
+
+    fn clean_close_guard() -> CloseGuard {
+        CloseGuard {
+            dirty: false,
+            saving: false,
+            failed_operations: 0,
+            local_failure: None,
+            requires_recovery_export: false,
+            can_close_safely: true,
+        }
+    }
+
+    #[test]
+    fn only_an_inactive_clean_idle_session_can_be_released() {
+        let clean = clean_close_guard();
+        assert!(hibernation_guard_allows_release(
+            true, true, false, &clean, false, false, false,
+        ));
+        assert!(!hibernation_guard_allows_release(
+            false, true, false, &clean, false, false, false,
+        ));
+        assert!(!hibernation_guard_allows_release(
+            true, false, false, &clean, false, false, false,
+        ));
+        assert!(!hibernation_guard_allows_release(
+            true, true, true, &clean, false, false, false,
+        ));
+        assert!(!hibernation_guard_allows_release(
+            true, true, false, &clean, true, false, false,
+        ));
+        assert!(!hibernation_guard_allows_release(
+            true, true, false, &clean, false, true, false,
+        ));
+        assert!(!hibernation_guard_allows_release(
+            true, true, false, &clean, false, false, true,
+        ));
+
+        let dirty = CloseGuard {
+            dirty: true,
+            can_close_safely: false,
+            ..clean
+        };
+        assert!(!hibernation_guard_allows_release(
+            true, true, false, &dirty, false, false, false,
+        ));
     }
 }

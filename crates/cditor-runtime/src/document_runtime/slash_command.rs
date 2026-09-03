@@ -53,8 +53,12 @@ impl DocumentRuntime {
             "",
         );
         let remaining_text = plain_text_from_spans(&remaining_spans);
-        let mut next_payload = payload_for_converted_kind(&kind, remaining_text);
-        if matches!(next_payload, BlockPayload::RichText { .. }) {
+        let mut next_payload = payload_for_converted_kind(&kind, remaining_text.clone());
+        // 转换只是给同一段文本换了个块类型时，用原来的 spans 还原行内标记；
+        // 目标块类型自带预置内容（例如 Mermaid 示例）时不要用空文本盖掉它。
+        if matches!(next_payload, BlockPayload::RichText { .. })
+            && next_payload.plain_text() == remaining_text
+        {
             next_payload = BlockPayload::RichText {
                 spans: remaining_spans,
             };

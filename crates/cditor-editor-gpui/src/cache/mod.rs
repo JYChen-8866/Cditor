@@ -9,4 +9,4 @@ pub(crate) use platform_layout::{
     PlatformGeometryRegistry, auxiliary_geometry_registry, block_geometry_registry,
     table_geometry_registry,
 };
-pub(crate) use state::RenderCacheState;
+pub(crate) use state::{RenderCacheState, RetiredRenderResources};

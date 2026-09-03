@@ -309,9 +309,29 @@ impl Element for RichTextGpuiElement {
         {
             reveal_caret_in_scroll_handle(scroll_handle, caret_bounds, window);
         }
+        // 只有描边用补间后的位置。上面的滚动跟随和 IME 候选窗定位必须继续用
+        // 目标矩形，否则会一路追着动画跑。
         let cursor = if caret_visible {
-            caret_bounds.map(|bounds| fill(bounds, rgb(self.theme.focused)))
+            caret_bounds.map(|bounds| {
+                let painted = self
+                    .input_handler
+                    .as_ref()
+                    .map(|handler| {
+                        handler
+                            .view
+                            .read(cx)
+                            .caret_motion()
+                            .resolve_and_drive(bounds, window)
+                    })
+                    .unwrap_or(bounds);
+                fill(painted, rgb(self.theme.focused))
+            })
         } else {
+            // 这一帧不画光标（失焦、IME 组字中）：丢掉历史位置，否则重新出现时
+            // 会从一个过期位置滑过来。
+            if let Some(handler) = self.input_handler.as_ref() {
+                handler.view.read(cx).caret_motion().reset();
+            }
             None
         };
         let marked_rects = self

@@ -65,6 +65,20 @@ pub const V1_CODE_BASE_HEIGHT_PX: f64 = V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX
     + V1_CODE_CONTENT_PADDING_TOP_PX
     + V1_CODE_CONTENT_PADDING_BOTTOM_PX;
 pub const V1_CODE_INNER_MIN_HEIGHT_PX: f64 = V1_CODE_BASE_HEIGHT_PX + V1_CODE_TEXT_LINE_HEIGHT_PX;
+/// 等宽正文的平均字宽，用于按宽度估算折行数。
+pub const V1_CODE_TEXT_AVG_CHAR_WIDTH_PX: f64 = 8.0;
+/// Mermaid frame 的工具栏高度（GUI 绘制，布局也要按它预留）。
+pub const MERMAID_TOOLBAR_HEIGHT_PX: f64 = 28.0;
+/// Mermaid 源码区的上下内边距。
+pub const MERMAID_SOURCE_PADDING_Y_PX: f64 = 8.0;
+/// 源码模式下 frame 自身占掉的高度：工具栏 + 源码内边距 + 复杂块 shell。
+pub const MERMAID_SOURCE_CHROME_HEIGHT_PX: f64 = MERMAID_TOOLBAR_HEIGHT_PX
+    + MERMAID_SOURCE_PADDING_Y_PX * 2.0
+    + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX;
+/// 预览还没渲染出来时的加载盒高度。预览是图片，尺寸只能等渲染完才知道，所以
+/// 这里保留一个稳定的占位高度（源码模式不用它，见
+/// [`estimate_mermaid_source_block_height_px`]）。
+pub const MERMAID_LOADING_PREVIEW_BODY_HEIGHT_PX: f64 = 188.0;
 pub const IMAGE_BLOCK_ESTIMATED_HEIGHT_PX: f64 = 260.0;
 pub const VIDEO_DEFAULT_ASPECT_RATIO: f64 = 16.0 / 9.0;
 pub const VIDEO_BLOCK_CHROME_HEIGHT_PX: f64 = COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX + 6.0 + 26.0;
@@ -290,7 +304,7 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
         RichBlockKind::Code { .. } => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
             V1_CODE_TEXT_LINE_HEIGHT_PX,
-            8.0,
+            V1_CODE_TEXT_AVG_CHAR_WIDTH_PX,
         )),
         RichBlockKind::Math => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
@@ -298,7 +312,9 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
             10.0,
         )),
         RichBlockKind::Mermaid => BlockHeightRule::StableBox {
-            estimated_height: 232.0,
+            estimated_height: MERMAID_TOOLBAR_HEIGHT_PX
+                + MERMAID_LOADING_PREVIEW_BODY_HEIGHT_PX
+                + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX,
             max_error_hint: 1028.0,
         },
         RichBlockKind::Html => BlockHeightRule::TextLike(
@@ -353,7 +369,7 @@ pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
             9.0,
         )),
         RichBlockKind::Database => BlockHeightRule::Database,
-        RichBlockKind::Custom(_) => BlockHeightRule::StableBox {
+        RichBlockKind::Custom(_) | RichBlockKind::Unknown(_) => BlockHeightRule::StableBox {
             estimated_height: 96.0,
             max_error_hint: 48.0,
         },
@@ -421,6 +437,14 @@ pub fn video_payload_block_height_px(video: &VideoPayload, width_px: f64) -> f64
         .map(|(width, height)| width / height)
         .unwrap_or(VIDEO_DEFAULT_ASPECT_RATIO);
     width_px.max(1.0) / aspect_ratio + VIDEO_BLOCK_CHROME_HEIGHT_PX
+}
+
+/// Mermaid 源码模式的块高度：源码区和代码块用同一套行度量，随内容增长，不设
+/// 默认高度。预览模式的高度另算（由渲染出的图片尺寸决定）。
+pub fn estimate_mermaid_source_block_height_px(source: &str, width_px: f64) -> f64 {
+    let line_count =
+        estimate_wrapped_line_count(source, width_px, V1_CODE_TEXT_AVG_CHAR_WIDTH_PX) as f64;
+    line_count * V1_CODE_TEXT_LINE_HEIGHT_PX + MERMAID_SOURCE_CHROME_HEIGHT_PX
 }
 
 pub fn estimate_kind_fallback_height(kind: &RichBlockKind) -> HeightEstimate {
@@ -736,6 +760,25 @@ mod tests {
         assert_eq!(
             video_block_height_px(&payload, 640.0),
             360.0 + VIDEO_BLOCK_CHROME_HEIGHT_PX
+        );
+    }
+
+    #[test]
+    fn mermaid_source_height_follows_the_source_instead_of_a_default_box() {
+        let one_line = estimate_mermaid_source_block_height_px("flowchart LR", 720.0);
+        let three_lines =
+            estimate_mermaid_source_block_height_px("flowchart LR\n  A --> B\n  B --> C", 720.0);
+
+        assert_eq!(
+            one_line,
+            MERMAID_SOURCE_CHROME_HEIGHT_PX + V1_CODE_TEXT_LINE_HEIGHT_PX
+        );
+        assert_eq!(three_lines - one_line, V1_CODE_TEXT_LINE_HEIGHT_PX * 2.0);
+        // 空源码仍然是一行高，而不是预览加载盒那个固定高度。
+        assert_eq!(estimate_mermaid_source_block_height_px("", 720.0), one_line);
+        assert_ne!(
+            one_line,
+            estimate_kind_fallback_height(&RichBlockKind::Mermaid).height
         );
     }
 

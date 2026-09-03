@@ -319,3 +319,37 @@ pub enum CommandArgumentKind {
     TableRangeAlign,
     Extension,
 }
+
+#[cfg(test)]
+mod forward_compatibility_tests {
+    use super::*;
+    use cditor_core::fixtures::unknown::{FUTURE_BLOCK_KIND_JSON, FUTURE_BLOCK_PAYLOAD_JSON};
+
+    /// `CommandArgs` 是 adjacently tagged enum，而 `RichBlockKind` /
+    /// `BlockPayload` 的解码依赖 serde_json 的 `RawValue`。这个测试锁住协议
+    /// 边界：读不懂的 kind/payload 过一遍命令编解码后字节不变。
+    #[test]
+    fn command_arguments_carry_a_newer_builds_kind_and_payload_unchanged() {
+        let args = CommandArgs::InsertBlock {
+            kind: serde_json::from_str(FUTURE_BLOCK_KIND_JSON).unwrap(),
+            attrs: BlockAttrs::default(),
+            payload: serde_json::from_str(FUTURE_BLOCK_PAYLOAD_JSON).unwrap(),
+        };
+
+        let encoded = serde_json::to_string(&args).unwrap();
+        let decoded: CommandArgs = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, args);
+        let CommandArgs::InsertBlock { kind, payload, .. } = decoded else {
+            panic!("expected insert block arguments")
+        };
+        assert_eq!(
+            serde_json::to_string(&kind).unwrap(),
+            FUTURE_BLOCK_KIND_JSON
+        );
+        assert_eq!(
+            serde_json::to_string(&payload).unwrap(),
+            FUTURE_BLOCK_PAYLOAD_JSON
+        );
+    }
+}

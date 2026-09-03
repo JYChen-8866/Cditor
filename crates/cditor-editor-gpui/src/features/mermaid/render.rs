@@ -1,5 +1,10 @@
 use cditor_core::ids::BlockId;
-use cditor_core::layout::{BODY_BLOCK_CONTENT_WIDTH_PX, COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX};
+use cditor_core::layout::{
+    BODY_BLOCK_CONTENT_WIDTH_PX, COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX,
+    MERMAID_LOADING_PREVIEW_BODY_HEIGHT_PX, MERMAID_SOURCE_CHROME_HEIGHT_PX,
+    MERMAID_SOURCE_PADDING_Y_PX, MERMAID_TOOLBAR_HEIGHT_PX as MERMAID_TOOLBAR_HEIGHT_PX_F64,
+    V1_CODE_TEXT_LINE_HEIGHT_PX,
+};
 use gpui::prelude::FluentBuilder;
 use gpui::{
     AnyElement, App, Entity, ImageSource, InteractiveElement, IntoElement, ParentElement,
@@ -15,13 +20,16 @@ use crate::theme::GuiTheme;
 use super::cache::MermaidRenderDimensions;
 use super::{MermaidRenderCache, MermaidRenderStatus};
 
-const MERMAID_TOOLBAR_HEIGHT_PX: f32 = 28.0;
-const MERMAID_SOURCE_PADDING_PX: f32 = 8.0;
+/// 工具栏与源码内边距由 core 定义：布局按同样的 chrome 预留高度。
+const MERMAID_TOOLBAR_HEIGHT_PX: f32 = MERMAID_TOOLBAR_HEIGHT_PX_F64 as f32;
+const MERMAID_SOURCE_PADDING_PX: f32 = MERMAID_SOURCE_PADDING_Y_PX as f32;
 const MERMAID_PREVIEW_PADDING_X_PX: f32 = 22.0;
 const MERMAID_PREVIEW_PADDING_Y_PX: f32 = 32.0;
 const MERMAID_FRAME_RADIUS_PX: f32 = 10.0;
 const MERMAID_FRAME_BORDER_WIDTH_PX: f32 = 1.0;
-const MERMAID_LOADING_BODY_HEIGHT_PX: f32 = 188.0;
+const MERMAID_LOADING_BODY_HEIGHT_PX: f32 = MERMAID_LOADING_PREVIEW_BODY_HEIGHT_PX as f32;
+/// 源码区至少一行，之后跟着内容长高——和代码块一样，不设默认高度。
+const MERMAID_SOURCE_MIN_BODY_HEIGHT_PX: f32 = V1_CODE_TEXT_LINE_HEIGHT_PX as f32;
 const MERMAID_MAX_IMAGE_HEIGHT_PX: f32 = 1200.0;
 const MERMAID_MAX_IMAGE_WIDTH_PX: f32 = BODY_BLOCK_CONTENT_WIDTH_PX as f32
     - BLOCK_CONTENT_BORDER_WIDTH_PX * 2.0
@@ -40,6 +48,7 @@ pub(crate) fn render_mermaid_block(
     block_id: BlockId,
     content_version: u64,
     layout_height_px: f64,
+    source_block_height_px: f64,
     source_content: AnyElement,
     show_source: bool,
     cache: &MermaidRenderCache,
@@ -56,11 +65,16 @@ pub(crate) fn render_mermaid_block(
                 .map(mermaid_preview_geometry_for_dimensions)
         })
         .flatten();
-    if let Some(measured_height) = mermaid_height_report(show_source, geometry) {
+    if let Some(measured_height) =
+        mermaid_height_report(show_source, geometry, source_block_height_px)
+    {
         schedule_rendered_media_height_report(view, block_id, content_version, measured_height, cx);
     }
     let (body, body_height) = if show_source {
-        (source_content, MERMAID_LOADING_BODY_HEIGHT_PX)
+        (
+            source_content,
+            mermaid_source_body_height(source_block_height_px),
+        )
     } else {
         (
             render_preview(status, source_content, theme, geometry),
@@ -75,7 +89,8 @@ pub(crate) fn render_mermaid_block(
         .id(("mermaid-block", block_id))
         .relative()
         .w_full()
-        .h_full()
+        // 预览是固定比例的图，撑满预留高度；源码模式跟着文本长高。
+        .when(!show_source, |frame| frame.h_full())
         .rounded(px(MERMAID_FRAME_RADIUS_PX))
         .border(px(MERMAID_FRAME_BORDER_WIDTH_PX))
         .border_color(rgb(theme.border))
@@ -113,13 +128,19 @@ pub(crate) fn render_mermaid_block(
         .child(
             div()
                 .w_full()
-                .h(px(body_height))
-                .when(show_source, |body| body.p(px(MERMAID_SOURCE_PADDING_PX)))
-                .when(!show_source, |body| {
-                    body.px(px(MERMAID_PREVIEW_PADDING_X_PX))
-                        .py(px(MERMAID_PREVIEW_PADDING_Y_PX))
+                // 源码区只给最小高度：多一行就长一行，不裁剪、不留空白。
+                .when(show_source, |source| {
+                    source
+                        .min_h(px(body_height.max(MERMAID_SOURCE_MIN_BODY_HEIGHT_PX)))
+                        .p(px(MERMAID_SOURCE_PADDING_PX))
                 })
-                .overflow_hidden()
+                .when(!show_source, |preview| {
+                    preview
+                        .h(px(body_height))
+                        .px(px(MERMAID_PREVIEW_PADDING_X_PX))
+                        .py(px(MERMAID_PREVIEW_PADDING_Y_PX))
+                        .overflow_hidden()
+                })
                 .child(body),
         )
         .into_any_element()
@@ -229,6 +250,8 @@ fn mermaid_preview_geometry_for_dimensions(
     }
 }
 
+/// 预览加载盒的块高度，仅用于和 core 的 Mermaid 估算对齐（见测试）。
+#[cfg(test)]
 fn default_mermaid_block_height_px() -> f64 {
     f64::from(
         MERMAID_TOOLBAR_HEIGHT_PX
@@ -245,12 +268,18 @@ fn mermaid_body_height_for_layout(layout_height_px: f64) -> f32 {
 fn mermaid_height_report(
     show_source: bool,
     geometry: Option<MermaidPreviewGeometry>,
+    source_block_height_px: f64,
 ) -> Option<f64> {
     if show_source {
-        Some(default_mermaid_block_height_px())
+        Some(source_block_height_px)
     } else {
         geometry.map(|geometry| geometry.block_height_px)
     }
+}
+
+/// 源码区自身的高度 = 块高度减去 frame chrome。
+fn mermaid_source_body_height(source_block_height_px: f64) -> f32 {
+    (source_block_height_px - MERMAID_SOURCE_CHROME_HEIGHT_PX).max(0.0) as f32
 }
 
 fn concise_error(message: &str) -> &str {
@@ -270,13 +299,13 @@ mod tests {
     #[test]
     fn mermaid_toolbar_height_is_part_of_source_and_preview_geometry() {
         assert_eq!(MERMAID_TOOLBAR_HEIGHT_PX, 28.0);
+        // 预览还在渲染时用稳定的加载盒；这个高度与 core 的 Mermaid 估算一致。
         assert_eq!(
             default_mermaid_block_height_px(),
-            f64::from(
-                MERMAID_TOOLBAR_HEIGHT_PX
-                    + MERMAID_LOADING_BODY_HEIGHT_PX
-                    + COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX as f32
+            cditor_core::layout::estimate_kind_fallback_height(
+                &cditor_core::rich_text::RichBlockKind::Mermaid
             )
+            .height
         );
     }
 
@@ -325,13 +354,34 @@ mod tests {
     }
 
     #[test]
-    fn source_mode_height_matches_the_rendered_fixed_box() {
-        assert_eq!(default_mermaid_block_height_px(), 232.0);
+    fn source_mode_body_height_follows_the_source_instead_of_a_fixed_box() {
+        let one_line = cditor_core::layout::estimate_mermaid_source_block_height_px(
+            "flowchart LR",
+            BODY_BLOCK_CONTENT_WIDTH_PX,
+        );
+        let three_lines = cditor_core::layout::estimate_mermaid_source_block_height_px(
+            "flowchart LR\n  A --> B\n  B --> C",
+            BODY_BLOCK_CONTENT_WIDTH_PX,
+        );
+
+        // 源码区高度 = 块高度 - frame chrome，并且随行数增长。
+        assert_eq!(
+            mermaid_source_body_height(one_line),
+            V1_CODE_TEXT_LINE_HEIGHT_PX as f32
+        );
+        assert_eq!(
+            mermaid_source_body_height(three_lines) - mermaid_source_body_height(one_line),
+            (V1_CODE_TEXT_LINE_HEIGHT_PX * 2.0) as f32
+        );
+        assert_ne!(
+            mermaid_source_body_height(one_line),
+            MERMAID_LOADING_BODY_HEIGHT_PX
+        );
     }
 
     #[test]
     fn loading_preview_preserves_the_existing_layout_without_reporting_an_estimate() {
-        assert_eq!(mermaid_height_report(false, None), None);
+        assert_eq!(mermaid_height_report(false, None, 96.0), None);
         assert_eq!(mermaid_body_height_for_layout(430.0), 386.0);
     }
 
@@ -344,11 +394,16 @@ mod tests {
             block_height_px: 288.0,
         };
 
+        // 源码模式报告的是内容算出来的高度，预览模式报告图片几何。
+        assert_eq!(mermaid_height_report(true, None, 96.0), Some(96.0));
         assert_eq!(
-            mermaid_height_report(true, None),
-            Some(default_mermaid_block_height_px())
+            mermaid_height_report(true, Some(geometry), 96.0),
+            Some(96.0)
         );
-        assert_eq!(mermaid_height_report(false, Some(geometry)), Some(288.0));
+        assert_eq!(
+            mermaid_height_report(false, Some(geometry), 96.0),
+            Some(288.0)
+        );
     }
 }
 

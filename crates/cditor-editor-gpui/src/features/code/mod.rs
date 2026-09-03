@@ -12,10 +12,12 @@ use gpui::prelude::FluentBuilder;
 use gpui::{AnyElement, Entity, FocusHandle, IntoElement, ParentElement, Styled, div, px, rgb};
 
 mod actions;
+mod collapse_motion;
 pub(crate) mod highlight;
 mod language_actions;
 mod toolbar;
 
+pub(crate) use collapse_motion::{CodeCollapseTween, HeightTween};
 use highlight::code_theme_item;
 use toolbar::render_code_toolbar;
 

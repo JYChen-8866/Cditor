@@ -5,8 +5,8 @@ use gpui::{App, Context, Task, Window};
 use cditor_sdk::command::{CditorCommand, CommandOutcome, CommandState};
 use cditor_sdk::diagnostics::CditorDiagnostics;
 use cditor_sdk::document::{
-    CloseGuard, DocumentInfo, DocumentSelection, RecoveryExport, SaveReport, SaveStatus,
-    ScrollAlignment, SearchDecoration, TextStatistics,
+    CloseGuard, DocumentInfo, DocumentSelection, HibernationGuard, RecoveryExport, SaveReport,
+    SaveStatus, ScrollAlignment, SearchDecoration, TextStatistics,
 };
 use cditor_sdk::{Cditor, CditorError};
 use cditor_session::{AgentEditOutcome, AgentEditRequest, AgentOutline, AgentOutlineRequest};
@@ -34,6 +34,8 @@ pub trait CditorViewContract: Sized + 'static {
     fn sdk_is_dirty(&self) -> bool;
     fn sdk_save_status(&self) -> SaveStatus;
     fn sdk_close_guard(&self) -> CloseGuard;
+    fn sdk_hibernation_guard(&self) -> HibernationGuard;
+    fn sdk_prepare_for_shutdown(&mut self, cx: &mut Context<Self>) -> Result<(), CditorError>;
     fn sdk_export_markdown(&self) -> Result<String, CditorError>;
     fn sdk_content_height(&self) -> Result<f64, CditorError>;
     fn sdk_export_recovery(&self) -> Result<RecoveryExport, CditorError>;

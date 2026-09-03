@@ -9,7 +9,7 @@ use gpui::{
     ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
-use super::floating_toolbar::toolbar_content_width;
+use super::floating_toolbar::{toolbar_content_width, VIEWPORT_MARGIN_PX};
 use crate::diagnostics::block_color::trace as trace_block_color;
 use crate::editor_view::CditorV2View;
 use crate::menu_metrics::{PRIMARY_MENU_HEIGHT_PX, PRIMARY_MENU_WIDTH_PX, SECONDARY_MENU_WIDTH_PX};
@@ -18,9 +18,9 @@ use crate::theme::GuiTheme;
 pub const COLOR_MENU_WIDTH_PX: f32 = SECONDARY_MENU_WIDTH_PX;
 pub const COLOR_MENU_DESIRED_HEIGHT_PX: f32 = 520.0;
 const COLOR_MENU_MIN_HEIGHT_PX: f32 = 180.0;
-const COLOR_MENU_GAP_PX: f32 = 6.0;
-const PRIMARY_TOOLBAR_WIDTH_PX: f32 = 194.0;
-const GUTTER_MENU_WIDTH_PX: f32 = PRIMARY_MENU_WIDTH_PX;
+const COLOR_MENU_GAP_PX: f32 = 2.0;
+const PRIMARY_TOOLBAR_WIDTH_PX: f32 = 240.0;
+const GUTTER_MENU_WIDTH_PX: f32 = 240.0;
 const PRIMARY_TOOLBAR_CONTENT_LEFT_PX: f32 = 8.0;
 #[cfg(test)]
 const COLOR_MENU_RIGHT_OFFSET_PX: f32 =
@@ -240,7 +240,7 @@ pub fn gutter_color_menu_geometry(
         viewport_width,
         viewport_height,
         GUTTER_MENU_WIDTH_PX,
-        60.0,
+        137.0,  // Estimated offset of color trigger in gutter menu
         PRIMARY_MENU_HEIGHT_PX,
     )
 }
@@ -255,16 +255,29 @@ fn color_menu_geometry_for_width(
     desired_height: f32,
 ) -> ColorMenuGeometry {
     let opens_left =
-        toolbar_x + toolbar_width + COLOR_MENU_GAP_PX + COLOR_MENU_WIDTH_PX > viewport_width - 10.0;
-    let available_height = (viewport_height - 20.0).max(1.0);
+        toolbar_x + toolbar_width + COLOR_MENU_GAP_PX + COLOR_MENU_WIDTH_PX > viewport_width - VIEWPORT_MARGIN_PX;
+    // Account for menu padding (6px) + border (1px) on both sides
+    const MENU_CHROME_PX: f32 = 14.0;
+    let available_height = (viewport_height - VIEWPORT_MARGIN_PX * 2.0 - MENU_CHROME_PX).max(1.0);
     let height = desired_height
         .min(available_height)
         .max(COLOR_MENU_MIN_HEIGHT_PX.min(available_height));
-    let max_top = (viewport_height - height - 10.0).max(10.0);
-    let clamped_top = toolbar_y.clamp(10.0, max_top);
+    // Parent container is at (toolbar_y + trigger_top) in viewport
+    // Submenu renders at (parent_y + top_offset)
+    // Default: top_offset = 0 (align to trigger)
+    // If would overflow bottom: push up with negative offset
+    let parent_absolute_y = toolbar_y + trigger_top;
+    let submenu_bottom = parent_absolute_y + height + MENU_CHROME_PX;
+    let top_offset = if submenu_bottom > viewport_height - VIEWPORT_MARGIN_PX {
+        // Push up to fit in viewport
+        let overflow = submenu_bottom - (viewport_height - VIEWPORT_MARGIN_PX);
+        -overflow
+    } else {
+        0.0
+    };
     ColorMenuGeometry {
         opens_left,
-        top_offset: clamped_top - toolbar_y - trigger_top,
+        top_offset,
         height,
     }
 }

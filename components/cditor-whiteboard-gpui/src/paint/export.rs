@@ -1,9 +1,8 @@
 use crate::{Canvas, shapes::ShapeId};
-use image::imageops::FilterType;
 use kurbo::{PathEl, Rect, Size, Vec2};
 use tiny_skia::{
-    Color, FillRule, IntSize, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke, StrokeDash,
-    Transform,
+    Color, FillRule, FilterQuality, IntSize, Paint, PathBuilder, Pixmap, PixmapPaint, Stroke,
+    StrokeDash, Transform,
 };
 
 use super::{
@@ -142,26 +141,38 @@ fn draw_image(pixmap: &mut Pixmap, image: &super::plan::ImagePaint) -> Result<()
     let bounds = normalized(image.bounds);
     let width = bounds.width().round().max(1.0) as u32;
     let height = bounds.height().round().max(1.0) as u32;
-    let decoded = image::load_from_memory(image.image.bytes())
-        .map_err(|error| error.to_string())?
-        .to_rgba8();
-    let resized = image::imageops::resize(&decoded, width, height, FilterType::Lanczos3);
-    let mut premultiplied = resized.into_raw();
+    let decoded = crate::image_decode::decode_rgba(image.image.bytes(), None)
+        .ok_or_else(|| "Image exceeds whiteboard decode limits".to_string())?;
+    let source_width = decoded.width();
+    let source_height = decoded.height();
+    let mut premultiplied = decoded.into_raw();
     for pixel in premultiplied.chunks_exact_mut(4) {
         let alpha = u16::from(pixel[3]);
         pixel[0] = (u16::from(pixel[0]) * alpha / 255) as u8;
         pixel[1] = (u16::from(pixel[1]) * alpha / 255) as u8;
         pixel[2] = (u16::from(pixel[2]) * alpha / 255) as u8;
     }
-    let size = IntSize::from_wh(width, height).ok_or_else(|| "Invalid image size".to_string())?;
+    let size = IntSize::from_wh(source_width, source_height)
+        .ok_or_else(|| "Invalid image size".to_string())?;
     let source = Pixmap::from_vec(premultiplied, size)
         .ok_or_else(|| "Could not prepare image".to_string())?;
+    let transform = Transform::from_row(
+        width as f32 / source_width as f32,
+        0.0,
+        0.0,
+        height as f32 / source_height as f32,
+        bounds.x0.round() as f32,
+        bounds.y0.round() as f32,
+    );
     pixmap.draw_pixmap(
-        bounds.x0.round() as i32,
-        bounds.y0.round() as i32,
+        0,
+        0,
         source.as_ref(),
-        &PixmapPaint::default(),
-        Transform::identity(),
+        &PixmapPaint {
+            quality: FilterQuality::Bicubic,
+            ..PixmapPaint::default()
+        },
+        transform,
         None,
     );
     Ok(())
@@ -174,4 +185,39 @@ fn normalized(rect: Rect) -> Rect {
         rect.x0.max(rect.x1),
         rect.y0.max(rect.y1),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use gpui::{Image as GpuiImage, ImageFormat};
+    use image::{Rgba, RgbaImage};
+
+    use super::*;
+
+    #[test]
+    fn image_export_scales_in_the_draw_transform_without_a_target_raster() {
+        let raster = RgbaImage::from_pixel(1, 1, Rgba([240, 16, 32, 255]));
+        let png = crate::image_decode::encode_png(&raster).unwrap();
+        let image = super::super::plan::ImagePaint {
+            image: Arc::new(GpuiImage::from_bytes(ImageFormat::Png, png)),
+            bounds: Rect::new(1.0, 1.0, 3.0, 3.0),
+        };
+        let mut output = Pixmap::new(4, 4).unwrap();
+
+        draw_image(&mut output, &image).unwrap();
+
+        for (x, y) in [(1, 1), (2, 1), (1, 2), (2, 2)] {
+            let pixel = output.pixel(x, y).unwrap();
+            assert_eq!(
+                (pixel.red(), pixel.green(), pixel.blue(), pixel.alpha()),
+                (240, 16, 32, 255)
+            );
+        }
+        assert_eq!(
+            output.pixel(3, 3).unwrap(),
+            tiny_skia::PremultipliedColorU8::TRANSPARENT
+        );
+    }
 }

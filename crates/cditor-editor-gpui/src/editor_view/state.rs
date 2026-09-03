@@ -105,6 +105,11 @@ pub(crate) struct OverlayUiState {
     pub(crate) code_copy_feedback_generation: u64,
     pub(crate) collapsed_code_blocks: HashSet<BlockId>,
     pub(crate) collapsed_code_block_heights: HashMap<BlockId, f64>,
+    /// 收起/展开进行中的高度补间。空表示所有代码块都已稳定。
+    ///
+    /// 折叠高度要喂进布局引擎，下方每个块的位置都跟着它走，所以补间期间每帧推一个
+    /// 新高度。落定后条目移除，块回到由 `collapsed_code_blocks` 决定的静态高度。
+    pub(crate) code_collapse_tweens: HashMap<BlockId, crate::features::code::CodeCollapseTween>,
     pub(crate) slash_menu: Option<SlashMenuState>,
     pub(crate) slash_popup_menu: Option<Entity<PopupMenu>>,
     pub(crate) slash_popup_menu_dismiss_subscription: Option<Subscription>,
@@ -173,6 +178,7 @@ pub(crate) struct FocusUiState {
     pub(crate) link_edit: FocusHandle,
     pub(crate) ai_prompt: FocusHandle,
     pub(crate) caret_blink: Entity<CaretBlink>,
+    pub(crate) caret_motion: crate::text::CaretMotion,
     pub(crate) sdk_observers_registered: bool,
     pub(crate) last_emitted_selection: Option<cditor_sdk::document::DocumentSelection>,
     document_epoch: DocumentInteractionEpoch,
@@ -241,6 +247,7 @@ impl FocusUiState {
             link_edit: cx.focus_handle(),
             ai_prompt: cx.focus_handle(),
             caret_blink,
+            caret_motion: crate::text::CaretMotion::default(),
             sdk_observers_registered: false,
             last_emitted_selection: None,
             document_epoch: DocumentInteractionEpoch::default(),
@@ -568,6 +575,7 @@ pub(crate) struct EditorStatusUiState {
     pub(crate) readonly_reason: Option<EditorReadonlyReason>,
     pub(crate) dirty: bool,
     pub(crate) save_status: EditorSaveStatus,
+    pub(crate) host_active: bool,
 }
 
 impl EditorStatusUiState {
@@ -578,6 +586,7 @@ impl EditorStatusUiState {
             readonly_reason: None,
             dirty: false,
             save_status: super::save_status_for_mode(readonly),
+            host_active: true,
         }
     }
 
@@ -784,6 +793,7 @@ mod tests {
     #[test]
     fn status_reset_preserves_host_request_and_clears_transient_save_state() {
         let mut status = EditorStatusUiState::new(true, false);
+        status.host_active = false;
         status.readonly_reason = Some(EditorReadonlyReason::NewerDocumentSchema {
             written_major: 3,
             supported_major: 2,
@@ -795,6 +805,7 @@ mod tests {
 
         assert!(!status.readonly);
         assert!(!status.requested_readonly);
+        assert!(!status.host_active);
         assert!(status.readonly_reason.is_none());
         assert!(!status.dirty);
         assert_eq!(status.save_status, EditorSaveStatus::LocallySaved);

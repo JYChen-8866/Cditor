@@ -80,7 +80,8 @@ impl BlockKeyboardPolicy {
             | RichBlockKind::Math
             | RichBlockKind::ColumnsGroup
             | RichBlockKind::Column
-            | RichBlockKind::Custom(_) => EnterKeyBehavior::InsertParagraphAfter,
+            | RichBlockKind::Custom(_)
+            | RichBlockKind::Unknown(_) => EnterKeyBehavior::InsertParagraphAfter,
             _ => EnterKeyBehavior::SplitText,
         };
         let tab = match kind {
@@ -129,7 +130,9 @@ impl BlockInputCapability {
             | RichBlockKind::File
             | RichBlockKind::Attachment
             | RichBlockKind::Divider
-            | RichBlockKind::Separator => BlockInputCapability::Atomic,
+            | RichBlockKind::Separator
+            // 读不懂的块类型：只读，不接受任何直接输入。
+            | RichBlockKind::Unknown(_) => BlockInputCapability::Atomic,
 
             RichBlockKind::Embed
             | RichBlockKind::Database

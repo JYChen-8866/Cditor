@@ -186,6 +186,65 @@ fn cache_returns_the_evicted_render_image_for_atlas_retirement() {
 }
 
 #[test]
+fn memory_pressure_trims_lru_rasters_and_returns_gpu_resources() {
+    let mut cache = ExactRasterCache::new(4, 1024);
+    let instance = FontInstanceKey::new(
+        FontFaceKey::new(3, 1, 0),
+        Vec::new(),
+        FontSynthesisKey::new(Vec::new(), false, None),
+    );
+    let key = |glyph_id| ExactRasterKey {
+        font: instance.clone(),
+        glyph_id,
+        device_font_size_bits: 16.0f32.to_bits(),
+        subpixel_x: 0,
+        subpixel_y: 0,
+        foreground: 0,
+        color: false,
+        policy_version: EXACT_RASTER_POLICY_VERSION,
+    };
+    let value = |image: Arc<RenderImage>| {
+        ExactRasterCacheValue::Glyph(Arc::new(ExactRasterGlyph {
+            image,
+            placement: RasterPlacement {
+                left: 0,
+                top: 0,
+                width: 1,
+                height: 1,
+            },
+            estimated_bytes: 4,
+        }))
+    };
+    let images = (0..4)
+        .map(|_| Arc::new(RenderImage::new([Frame::new(RgbaImage::new(1, 1))])))
+        .collect::<Vec<_>>();
+    for (index, image) in images.iter().enumerate() {
+        assert!(
+            cache
+                .insert(key(index as u32), value(image.clone()))
+                .is_empty()
+        );
+    }
+    let _ = cache.get(&key(0));
+
+    let warning = cache.apply_memory_pressure(crate::CditorMemoryPressure::Warning);
+
+    assert_eq!(warning.evicted_entries, 2);
+    assert_eq!(warning.evicted_estimated_bytes, 8);
+    assert_eq!(warning.remaining_entries, 2);
+    assert_eq!(warning.remaining_estimated_bytes, 8);
+    assert_eq!(warning.retired_images.len(), 2);
+    assert!(cache.get(&key(0)).is_some(), "recent glyph must survive");
+
+    let critical = cache.apply_memory_pressure(crate::CditorMemoryPressure::Critical);
+
+    assert_eq!(critical.evicted_entries, 2);
+    assert_eq!(critical.remaining_entries, 0);
+    assert_eq!(critical.remaining_estimated_bytes, 0);
+    assert_eq!(critical.retired_images.len(), 2);
+}
+
+#[test]
 fn quantization_matches_four_horizontal_subpixels() {
     let quantized = quantize_device_origin(10.26, SUBPIXEL_VARIANTS_X);
     assert_eq!(quantized.integer, 10);

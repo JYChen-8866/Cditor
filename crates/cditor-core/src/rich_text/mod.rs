@@ -8,6 +8,7 @@ mod markdown_shortcuts;
 pub mod payload;
 pub mod span_splice;
 pub mod table;
+pub mod unknown;
 
 pub use attrs::{BlockAttrs, TextAlign};
 pub use block_kind::{
@@ -37,3 +38,4 @@ pub use table::{
     TableCellAlign, TableCellMerge, TableCellPayload, TableCellStyle, TableColumnPayload,
     TableHeaderStyle, TablePayload, TableRange, TableRowPayload, TableTrackSize, paste_table_at,
 };
+pub use unknown::UnknownWire;

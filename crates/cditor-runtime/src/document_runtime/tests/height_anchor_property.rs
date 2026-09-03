@@ -31,7 +31,7 @@ fn randomized_measured_height_stale_result_and_anchor_property() {
         .scroll
         .scroll_to_global_offset(8_000.25, ScrollOrigin::UserWheel)
         .unwrap();
-    let mut expected_heights = vec![RichBlockRecord::DEFAULT_TEXT_HEIGHT; BLOCK_COUNT];
+    let mut expected_heights = runtime.layout.height_index.heights.clone();
     let mut rng = Lcg(0x5eed_cafe_f00d_beef);
 
     for step in 0..STEPS {

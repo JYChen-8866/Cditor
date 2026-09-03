@@ -150,13 +150,16 @@ impl DocumentRuntime {
             && let Some(RichBlockKind::Code { language }) = code_fence_shortcut(&text)
         {
             if language.as_deref() == Some("mermaid") {
+                let payload = super::mermaid::mermaid_payload_from_text("");
+                // 光标落在示例末尾，接着写下一行即可，不会插到示例前面。
+                let caret_offset = payload.plain_text().len();
                 self.apply_local_block_payload_transaction(
                     block_id,
                     EditTransactionKind::ExplicitCommand,
                     RichBlockKind::Mermaid,
-                    BlockPayload::RichText { spans: Vec::new() },
+                    payload,
                 )?;
-                self.focus_block_at_offset(block_id, 0)?;
+                self.focus_block_at_offset(block_id, caret_offset)?;
                 return Ok(());
             }
             self.apply_local_block_payload_transaction(

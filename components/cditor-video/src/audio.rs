@@ -12,11 +12,18 @@ use std::{
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-use crate::VideoError;
+use crate::{
+    VideoError,
+    stderr::{STDERR_MAX_LINE_BYTES, read_bounded_lines, truncate_utf8},
+};
 
 const AUDIO_BUFFER_SECONDS: usize = 3;
 const AUDIO_READ_BUFFER_BYTES: usize = 8192;
 const AUDIO_PREBUFFER_MS: usize = 30;
+// Keep an invalid or unusually large device-reported format from turning one
+// playback session into an unbounded allocation. This is 4 MiB of f32 samples,
+// while the normal 48 kHz stereo three-second buffer is about 1.1 MiB.
+const AUDIO_MAX_BUFFER_SAMPLES: usize = 1_048_576;
 const STDERR_RING_LINES: usize = 24;
 
 pub(crate) struct AudioControl {
@@ -129,6 +136,7 @@ impl AudioPlayback {
         playback.stdout_worker = Some(
             thread::Builder::new()
                 .name("cditor-video-ffmpeg-audio-stdout".into())
+                .stack_size(crate::MEDIA_IO_THREAD_STACK_BYTES)
                 .spawn(move || {
                     let output = match AudioOutput::new(device, supported, control, stderr_lines) {
                         Ok(output) => output,
@@ -213,10 +221,11 @@ impl AudioOutput {
     ) -> Result<Self, VideoError> {
         let config = supported.config();
         let channels = usize::from(config.channels);
-        let capacity = usize::try_from(config.sample_rate)
+        let requested_capacity = usize::try_from(config.sample_rate)
             .unwrap_or(48_000)
             .saturating_mul(channels)
             .saturating_mul(AUDIO_BUFFER_SECONDS);
+        let capacity = requested_capacity.min(AUDIO_MAX_BUFFER_SAMPLES);
         let buffer = Arc::new(Mutex::new(AudioSampleBuffer {
             samples: VecDeque::with_capacity(capacity),
             capacity,
@@ -308,9 +317,12 @@ fn build_audio_args(source: &Path, start_seconds: f64, spec: AudioOutputSpec) ->
 
 fn push_audio_samples(buffer: &Arc<Mutex<AudioSampleBuffer>>, bytes: &[u8]) -> usize {
     let mut buffer = lock(buffer);
+    if buffer.capacity == 0 {
+        return 0;
+    }
     let mut count = 0;
     for chunk in bytes.chunks_exact(4) {
-        if buffer.samples.len() == buffer.capacity {
+        if buffer.samples.len() >= buffer.capacity {
             buffer.samples.pop_front();
         }
         buffer
@@ -378,14 +390,11 @@ fn spawn_audio_stderr_worker(
 ) -> Result<JoinHandle<()>, VideoError> {
     thread::Builder::new()
         .name("cditor-video-ffmpeg-audio-stderr".into())
+        .stack_size(crate::MEDIA_IO_THREAD_STACK_BYTES)
         .spawn(move || {
-            use std::io::{BufRead, BufReader};
-            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                if stop_requested.load(Ordering::SeqCst) {
-                    break;
-                }
+            let _ = read_bounded_lines(stderr, &stop_requested, |line| {
                 push_stderr_line(&lines, line);
-            }
+            });
         })
         .map_err(|error| VideoError::Audio(error.to_string()))
 }
@@ -395,7 +404,7 @@ fn push_stderr_line(lines: &Mutex<VecDeque<String>>, line: String) {
     if lines.len() == STDERR_RING_LINES {
         lines.pop_front();
     }
-    lines.push_back(line);
+    lines.push_back(truncate_utf8(&line, STDERR_MAX_LINE_BYTES));
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -440,6 +449,27 @@ mod tests {
         assert_eq!(
             lock(&buffer).samples.iter().copied().collect::<Vec<_>>(),
             vec![2.0, 3.0]
+        );
+    }
+
+    #[test]
+    fn zero_capacity_pcm_buffer_drops_samples_instead_of_growing() {
+        let buffer = Arc::new(Mutex::new(AudioSampleBuffer {
+            samples: VecDeque::new(),
+            capacity: 0,
+        }));
+        let bytes = [1.0_f32.to_le_bytes(), 2.0_f32.to_le_bytes()].concat();
+
+        assert_eq!(push_audio_samples(&buffer, &bytes), 0);
+        assert!(lock(&buffer).samples.is_empty());
+    }
+
+    #[test]
+    fn audio_buffer_capacity_is_hard_bounded() {
+        let requested = usize::MAX;
+        assert_eq!(
+            requested.min(AUDIO_MAX_BUFFER_SAMPLES),
+            AUDIO_MAX_BUFFER_SAMPLES
         );
     }
 }

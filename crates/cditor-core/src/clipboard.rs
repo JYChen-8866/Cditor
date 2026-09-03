@@ -307,6 +307,8 @@ fn valid_block(block: &ClipboardBlock, budget: &mut ValidationBudget) -> bool {
             envelope.domain == crate::schema::SchemaDomain::BlockPayload
                 && envelope.body_bytes().len() <= MAX_CLIPBOARD_METADATA_BYTES
         }
+        // 读不懂的载荷同样只按体积设限：内容无法解释，但必须原样透传。
+        BlockPayload::Unknown(unknown) => unknown.json().len() <= MAX_CLIPBOARD_METADATA_BYTES,
         _ => true,
     }
 }
@@ -325,6 +327,11 @@ fn valid_table(table: &TablePayload, budget: &mut ValidationBudget) -> bool {
 }
 
 fn kind_matches_payload(kind: &RichBlockKind, payload: &BlockPayload) -> bool {
+    // 任一侧是本 build 读不懂的形态时，配对关系由写下它的版本负责；这里原样
+    // 放行，否则复制/粘贴会静默丢块。
+    if matches!(kind, RichBlockKind::Unknown(_)) || matches!(payload, BlockPayload::Unknown(_)) {
+        return true;
+    }
     match kind {
         RichBlockKind::Custom(_) => matches!(
             payload,
@@ -384,7 +391,8 @@ mod tests {
     use super::*;
     use crate::fixtures::unknown::{
         UNKNOWN_PLUGIN_BODY, UNKNOWN_PLUGIN_FALLBACK, UNKNOWN_PLUGIN_KIND,
-        assert_unknown_plugin_bytes, unknown_plugin_payload,
+        assert_future_build_bytes, assert_unknown_plugin_bytes, future_build_payload,
+        unknown_plugin_payload,
     };
     use crate::rich_text::{TableCellPayload, TableRowPayload, WhiteboardPayload};
 
@@ -643,6 +651,36 @@ mod tests {
                 selection
             );
         }
+    }
+
+    #[test]
+    fn native_clipboard_preserves_a_block_written_by_a_newer_build() {
+        let record = future_build_payload(43);
+        let selection = ClipboardSelection::Blocks {
+            blocks: vec![ClipboardBlock {
+                source_id: record.block_id,
+                parent_source_id: None,
+                depth: 0,
+                kind: record.kind.clone(),
+                payload: record.payload.clone(),
+            }],
+        };
+        let system_text = selection.plain_text();
+        let envelope = CditorClipboardEnvelope::new(Some(7), selection, &system_text);
+
+        let json = serde_json::to_string(&envelope).unwrap();
+        let decoded = CditorClipboardEnvelope::decode_metadata(&json, &system_text).unwrap();
+
+        let ClipboardSelection::Blocks { blocks } = decoded.selection else {
+            panic!("expected block clipboard")
+        };
+        let block = &blocks[0];
+        assert_future_build_bytes(&crate::rich_text::BlockPayloadRecord {
+            block_id: block.source_id,
+            content_version: 11,
+            kind: block.kind.clone(),
+            payload: block.payload.clone(),
+        });
     }
 
     #[test]

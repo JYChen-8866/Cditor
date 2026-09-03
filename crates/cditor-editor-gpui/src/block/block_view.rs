@@ -289,6 +289,7 @@ fn render_kind_content(
                 _ => 0,
             },
             block.layout.effective_height(),
+            mermaid_source_block_height_px(block, text_layout_width_px),
             content,
             mermaid_show_source,
             mermaid_renders,
@@ -305,6 +306,15 @@ fn render_kind_content(
         RichBlockKind::Divider | RichBlockKind::Separator => render_notion_divider(theme),
         _ => render_paragraph(content),
     }
+}
+
+/// Mermaid 源码模式的块高度：与代码块同一套行度量，随源码行数增长。
+fn mermaid_source_block_height_px(block: &ViewBlockSnapshot, text_layout_width_px: f64) -> f64 {
+    let source = match &block.payload {
+        cditor_core::rich_text::BlockPayloadView::Loaded(payload) => payload.plain_text(),
+        _ => String::new(),
+    };
+    cditor_core::layout::estimate_mermaid_source_block_height_px(&source, text_layout_width_px)
 }
 
 #[cfg(test)]

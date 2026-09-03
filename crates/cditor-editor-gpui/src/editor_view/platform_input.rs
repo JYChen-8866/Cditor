@@ -351,7 +351,7 @@ mod tests {
             view.input.session_identity = view
                 .ready_session()
                 .and_then(|session| session.input_context().ok()?.identity);
-            assert!(view.commit_document_composition_before_external_focus(cx));
+            assert!(view.sdk_prepare_for_shutdown(cx).is_ok());
             assert!(view.status.dirty);
             let session = view.ready_session().unwrap();
             assert_eq!(
@@ -382,7 +382,7 @@ mod tests {
                 .unwrap()
                 .target_generation += 1;
 
-            assert!(!view.commit_document_composition_before_external_focus(cx));
+            assert!(view.sdk_prepare_for_shutdown(cx).is_err());
             assert!(!view.status.dirty);
             assert!(matches!(
                 view.status.save_status,

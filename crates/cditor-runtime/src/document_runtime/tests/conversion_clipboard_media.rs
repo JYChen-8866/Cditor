@@ -71,6 +71,49 @@ fn slash_block_command_rejects_stale_range_without_mutating() {
 }
 
 #[test]
+fn slash_mermaid_command_prefills_a_short_example() {
+    let mut runtime =
+        runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "/mermaid")]);
+    runtime.focus_block_at_offset(1, "/mermaid".len()).unwrap();
+
+    assert!(
+        runtime
+            .apply_slash_block_kind(1, 0.."/mermaid".len(), RichBlockKind::Mermaid)
+            .unwrap()
+    );
+
+    let record = runtime.block_payload_record(1).unwrap();
+    assert_eq!(record.kind, RichBlockKind::Mermaid);
+    let source = record.plain_text();
+    assert!(
+        source.starts_with("flowchart "),
+        "unexpected source: {source}"
+    );
+    assert_eq!(source.lines().count(), 2);
+}
+
+#[test]
+fn slash_mermaid_command_keeps_text_the_user_already_typed() {
+    let mut runtime = runtime_with_kind_depths_and_text(vec![(
+        RichBlockKind::Paragraph,
+        0,
+        None,
+        "/mermaid sequenceDiagram",
+    )]);
+    runtime.focus_block_at_offset(1, 9).unwrap();
+
+    assert!(
+        runtime
+            .apply_slash_block_kind(1, 0..9, RichBlockKind::Mermaid)
+            .unwrap()
+    );
+
+    let record = runtime.block_payload_record(1).unwrap();
+    assert_eq!(record.kind, RichBlockKind::Mermaid);
+    assert_eq!(record.plain_text(), "sequenceDiagram");
+}
+
+#[test]
 fn slash_table_command_creates_and_projects_default_grid() {
     let mut runtime =
         runtime_with_kind_depths_and_text(vec![(RichBlockKind::Paragraph, 0, None, "/table")]);

@@ -712,7 +712,12 @@ fn mermaid_fence_enter_opens_the_new_block_in_source_edit_mode(cx: &mut TestAppC
             .unwrap();
         assert_eq!(context.block_id, 1);
         assert_eq!(context.kind, RichBlockKind::Mermaid);
-        assert_eq!(context.text, "");
+        // 新建的 Mermaid 块预置一段简短示例，源码模式下可直接编辑。
+        assert!(
+            context.text.starts_with("flowchart "),
+            "unexpected source: {}",
+            context.text
+        );
         assert!(view.cache.mermaid_source_blocks.contains(&1));
     });
 }
@@ -747,7 +752,11 @@ fn typed_mermaid_fence_newline_creates_mermaid_in_source_edit_mode(cx: &mut Test
         let after_enter = session.focused_text_block_context().unwrap().unwrap();
         assert_eq!(after_enter.block_id, 1);
         assert_eq!(after_enter.kind, RichBlockKind::Mermaid);
-        assert_eq!(after_enter.text, "");
+        assert!(
+            after_enter.text.starts_with("flowchart "),
+            "unexpected source: {}",
+            after_enter.text
+        );
         assert!(view.cache.mermaid_source_blocks.contains(&1));
     });
 }
@@ -780,7 +789,11 @@ fn slash_mermaid_opens_the_converted_block_in_source_edit_mode(cx: &mut TestAppC
             .unwrap();
         assert_eq!(context.block_id, 1);
         assert_eq!(context.kind, RichBlockKind::Mermaid);
-        assert_eq!(context.text, "");
+        assert!(
+            context.text.starts_with("flowchart "),
+            "unexpected source: {}",
+            context.text
+        );
         assert!(view.cache.mermaid_source_blocks.contains(&1));
     });
 }

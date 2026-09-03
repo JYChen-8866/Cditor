@@ -6,7 +6,7 @@ use web_time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 
 #[cfg(test)]
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 const DEFAULT_FRAME_BUDGET: Duration = Duration::from_micros(16_667);
 const RECENT_FRAME_CAPACITY: usize = 240;
 const LONG_FRAME_CAPACITY: usize = 64;
@@ -62,6 +62,17 @@ pub struct FrameEntitySnapshot {
 pub struct FrameCacheSnapshot {
     pub payload_and_undo_bytes: usize,
     pub platform_layout_bytes: usize,
+    pub image_cache_entries: usize,
+    pub image_resident_decoded_bytes: usize,
+    pub mermaid_cache_entries: usize,
+    pub mermaid_resident_image_bytes: usize,
+    /// Maximum output bytes reserved by in-flight Mermaid raster jobs. These
+    /// bytes express admission pressure and are not resident memory.
+    pub mermaid_reserved_render_bytes: usize,
+    pub video_resident_cpu_frame_bytes: usize,
+    pub video_resident_render_image_bytes: usize,
+    pub image_cache_over_budget: bool,
+    pub mermaid_cache_over_budget: bool,
     pub payload_cache_over_budget: bool,
     pub platform_layout_cache_over_budget: bool,
 }
@@ -75,6 +86,8 @@ pub enum LongFrameReason {
     EntityPressure,
     PayloadMemoryPressure,
     PlatformLayoutMemoryPressure,
+    ImageMemoryPressure,
+    MermaidMemoryPressure,
     TextGeometryFallback,
     Unattributed,
 }
@@ -205,6 +218,12 @@ fn classify_long_frame(input: &AppFrameTelemetryInput) -> Vec<LongFrameReason> {
     if input.caches.platform_layout_cache_over_budget {
         reasons.push(LongFrameReason::PlatformLayoutMemoryPressure);
     }
+    if input.caches.image_cache_over_budget {
+        reasons.push(LongFrameReason::ImageMemoryPressure);
+    }
+    if input.caches.mermaid_cache_over_budget {
+        reasons.push(LongFrameReason::MermaidMemoryPressure);
+    }
     if input.text_geometry_fallback_rate > 0.0 {
         reasons.push(LongFrameReason::TextGeometryFallback);
     }
@@ -273,6 +292,15 @@ mod tests {
                 ..FrameEntitySnapshot::default()
             },
             caches: FrameCacheSnapshot {
+                image_cache_entries: 7,
+                image_resident_decoded_bytes: 11,
+                mermaid_cache_entries: 3,
+                mermaid_resident_image_bytes: 13,
+                mermaid_reserved_render_bytes: 17,
+                video_resident_cpu_frame_bytes: 19,
+                video_resident_render_image_bytes: 23,
+                image_cache_over_budget: true,
+                mermaid_cache_over_budget: true,
                 payload_cache_over_budget: true,
                 ..FrameCacheSnapshot::default()
             },
@@ -294,8 +322,25 @@ mod tests {
         assert!(
             frame
                 .reasons
+                .contains(&LongFrameReason::ImageMemoryPressure)
+        );
+        assert!(
+            frame
+                .reasons
+                .contains(&LongFrameReason::MermaidMemoryPressure)
+        );
+        assert!(
+            frame
+                .reasons
                 .contains(&LongFrameReason::TextGeometryFallback)
         );
+        assert_eq!(frame.caches.image_cache_entries, 7);
+        assert_eq!(frame.caches.image_resident_decoded_bytes, 11);
+        assert_eq!(frame.caches.mermaid_cache_entries, 3);
+        assert_eq!(frame.caches.mermaid_resident_image_bytes, 13);
+        assert_eq!(frame.caches.mermaid_reserved_render_bytes, 17);
+        assert_eq!(frame.caches.video_resident_cpu_frame_bytes, 19);
+        assert_eq!(frame.caches.video_resident_render_image_bytes, 23);
         assert!(
             export_frame_telemetry_json()
                 .unwrap()

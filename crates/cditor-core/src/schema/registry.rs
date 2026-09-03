@@ -220,7 +220,9 @@ fn unknown_descriptor() -> BlockDescriptor {
     BlockDescriptor {
         kind_tag: u16::MAX,
         name: "unknown",
-        default_kind: RichBlockKind::Custom("unknown".to_owned()),
+        default_kind: RichBlockKind::Custom(
+            crate::rich_text::block_kind::UNKNOWN_BLOCK_KIND_NAME.to_owned(),
+        ),
         payload_version: CURRENT_BLOCK_PAYLOAD,
         capabilities: BlockCapabilities {
             block_selection: true,

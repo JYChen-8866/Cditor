@@ -406,6 +406,10 @@ pub(super) fn split_payload_for_enter(
         BlockPayload::Opaque { .. } => {
             Err("Cannot split opaque payload - Enter should insert paragraph after".to_owned())
         }
+        BlockPayload::Unknown(_) => Err(
+            "Cannot split a payload this build cannot decode - Enter should insert paragraph after"
+                .to_owned(),
+        ),
     }
 }
 

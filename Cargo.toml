@@ -13,6 +13,7 @@ members = [
     "crates/cditor-editor-gpui",
     "crates/cditor-import-export",
     "crates/cditor-sdk",
+    "crates/cditor-http-server",
     "apps/cditor-desktop",
     "crates/cditor-test-support",
     "crates/cditor-text",
@@ -22,7 +23,7 @@ members = [
     "components/cditor-whiteboard-gpui",
     "apps/cditor-web",
 ]
-exclude = ["components/cditor-whiteboard-drafft"]
+exclude = ["components/cditor-whiteboard-drafft", "extensions/zed-cditor"]
 default-members = ["apps/cditor-desktop"]
 resolver = "3"
 

@@ -1,0 +1,32 @@
+id = "cditor"
+name = "Cditor Integration"
+description = "Import, export, and work with Cditor rich-text documents from Zed"
+version = "0.1.0"
+schema_version = 1
+authors = ["Cditor Team"]
+repository = "https://github.com/jychenx/cditor-v2"
+
+[slash_commands.cditor-status]
+description = "Check Cditor server status"
+requires_argument = false
+tooltip_text = "Check if Cditor HTTP server is running"
+
+[slash_commands.cditor-import]
+description = "Import a Markdown file to Cditor format"
+requires_argument = true
+tooltip_text = "Import file: /cditor-import path/to/file.md"
+
+[slash_commands.cditor-export]
+description = "Export a Cditor document to Markdown"
+requires_argument = true
+tooltip_text = "Export document: /cditor-export document_id"
+
+[slash_commands.cditor-list]
+description = "List all Cditor documents"
+requires_argument = false
+tooltip_text = "List all documents stored in Cditor"
+
+[slash_commands.cditor-delete]
+description = "Delete a Cditor document"
+requires_argument = true
+tooltip_text = "Delete document: /cditor-delete document_id"

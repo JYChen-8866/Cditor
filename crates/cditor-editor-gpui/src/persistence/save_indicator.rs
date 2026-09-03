@@ -59,6 +59,7 @@ fn local_failure_label(failure: &PersistenceFailure) -> &'static str {
         PersistenceFailureKind::Busy => "本地数据库正忙，内容尚未保存",
         PersistenceFailureKind::CapacityExhausted => "本机存储空间不足，内容尚未保存",
         PersistenceFailureKind::PermissionDenied => "没有本地文件写入权限，内容尚未保存",
+        PersistenceFailureKind::Conflict => "文档版本冲突，内容尚未保存",
         PersistenceFailureKind::Corruption => "本地文档数据损坏，已停止写入",
         PersistenceFailureKind::Timeout => "本地保存超时，内容尚未保存",
         PersistenceFailureKind::Io => "本地存储不可用，内容尚未保存",
@@ -74,6 +75,9 @@ fn local_failure_guidance(failure: &PersistenceFailure) -> &'static str {
         }
         PersistenceFailureKind::PermissionDenied => {
             "请恢复文档目录写入权限后重试；关闭前应导出恢复副本。"
+        }
+        PersistenceFailureKind::Conflict => {
+            "请先解决文档版本冲突；当前窗口内容仍保留，关闭前应导出恢复副本。"
         }
         PersistenceFailureKind::Corruption => {
             "为避免扩大损坏已停止写入，请保持窗口打开并导出恢复副本。"

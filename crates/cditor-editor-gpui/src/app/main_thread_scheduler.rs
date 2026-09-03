@@ -122,7 +122,26 @@ impl EditorMainThreadScheduler {
         } else if let Some(cancel) = cancel {
             cancel();
         }
+        // A newer generation makes older callbacks unreachable. Reclaim both
+        // the scheduler task records and their captured `Arc`s immediately so
+        // a busy UI cannot accumulate dead image/layout work until the next
+        // frame.
+        if kind.is_drop_stale()
+            && let Some(block_id) = block_id
+        {
+            self.drop_stale_callbacks_for(kind, block_id);
+        }
+        self.prune_generation_keys();
         decision
+    }
+
+    fn drop_stale_callbacks_for(&mut self, kind: MainThreadWorkKind, block_id: BlockId) {
+        for stale_id in self.arbiter.drop_stale_tasks_for(kind, block_id) {
+            self.tasks.remove(&stale_id);
+            if let Some(callbacks) = self.callbacks.remove(&stale_id) {
+                callbacks.cancel();
+            }
+        }
     }
 
     fn take_ready(
@@ -242,6 +261,16 @@ impl EditorMainThreadScheduler {
         self.wake_scheduled = false;
         self.pump_scheduled = false;
         self.frame_budget = None;
+    }
+
+    fn prune_generation_keys(&mut self) {
+        let live_keys = self
+            .tasks
+            .values()
+            .filter_map(|task| task.block_id.map(|block_id| (task.kind, block_id)))
+            .collect::<std::collections::HashSet<_>>();
+        self.latest_generation
+            .retain(|key, _| live_keys.contains(key));
     }
 
     fn schedule_wake(&mut self) -> bool {

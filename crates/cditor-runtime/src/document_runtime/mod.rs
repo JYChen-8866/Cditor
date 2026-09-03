@@ -37,6 +37,7 @@ mod page_local_layout;
 mod payload_cache;
 mod payload_hydration;
 mod payload_window;
+mod mermaid;
 mod platform_text_edit;
 mod projection;
 mod queries;

@@ -13,6 +13,14 @@ pub const DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES: usize = 8_192;
 /// Default byte budget for heavyweight block payload entities. Structure,
 /// height indexes and stable layout boxes remain resident outside this budget.
 pub const DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
+/// Resident payload ceiling for an inactive storage-backed editor.
+///
+/// The current viewport, dirty payloads, selections and in-flight work remain
+/// pinned independently of this policy, so an inactive tab can retain more
+/// than this limit when correctness requires it.
+pub const INACTIVE_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES: usize = 1_024;
+/// Byte budget for rebuildable payloads owned by an inactive editor tab.
+pub const INACTIVE_POSTGRES_PAYLOAD_CACHE_MAX_BYTES: usize = 2 * 1024 * 1024;
 
 /// Work admitted by one idle payload-cache maintenance callback.
 ///
@@ -63,6 +71,13 @@ impl PayloadCachePolicy {
         Self {
             max_entries: DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES,
             max_estimated_bytes: DEFAULT_POSTGRES_PAYLOAD_CACHE_MAX_BYTES,
+        }
+    }
+
+    pub const fn inactive_persistent() -> Self {
+        Self {
+            max_entries: INACTIVE_POSTGRES_PAYLOAD_CACHE_MAX_ENTRIES,
+            max_estimated_bytes: INACTIVE_POSTGRES_PAYLOAD_CACHE_MAX_BYTES,
         }
     }
 }
@@ -119,6 +134,7 @@ fn estimated_kind_heap_bytes(kind: &RichBlockKind) -> usize {
             language: Some(language),
         } => language.capacity(),
         RichBlockKind::Custom(name) => name.capacity(),
+        RichBlockKind::Unknown(unknown) => unknown.json().len(),
         _ => 0,
     }
 }
@@ -184,6 +200,7 @@ fn estimated_payload_heap_bytes(payload: &BlockPayload) -> usize {
             .body_bytes()
             .len()
             .saturating_add(plain_text_fallback.capacity()),
+        BlockPayload::Unknown(unknown) => unknown.estimated_heap_bytes(),
         BlockPayload::Empty => 0,
     }
 }
@@ -324,5 +341,33 @@ mod tests {
         };
 
         assert!(estimated_payload_record_bytes(&marked) > estimated_payload_record_bytes(&plain));
+    }
+
+    #[test]
+    fn inactive_persistent_policy_is_stricter_but_keeps_a_working_set() {
+        let active = PayloadCachePolicy::persistent_default();
+        let inactive = PayloadCachePolicy::inactive_persistent();
+
+        assert!(inactive.max_entries > 0);
+        assert!(inactive.max_estimated_bytes > 0);
+        assert!(inactive.max_entries < active.max_entries);
+        assert!(inactive.max_estimated_bytes < active.max_estimated_bytes);
+    }
+
+    #[test]
+    fn unknown_payload_bytes_are_charged_to_the_cache_budget() {
+        let record = BlockPayloadRecord {
+            block_id: 1,
+            content_version: 1,
+            kind: RichBlockKind::Custom("future/audio".to_owned()),
+            payload: serde_json::from_str(
+                "{\"Audio\":{\"source\":\"a-very-large-future-payload.m4a\"}}",
+            )
+            .unwrap(),
+        };
+
+        let baseline =
+            size_of::<BlockPayloadRecord>().saturating_add(estimated_kind_heap_bytes(&record.kind));
+        assert!(estimated_payload_record_bytes(&record) > baseline);
     }
 }

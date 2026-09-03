@@ -270,7 +270,9 @@ impl DrafftBoardView {
                     let ClipboardEntry::Image(image) = entry else {
                         return false;
                     };
-                    let Ok(decoded) = image::load_from_memory(image.bytes()) else {
+                    let Some((width, height)) =
+                        crate::image_decode::validated_dimensions(image.bytes())
+                    else {
                         return false;
                     };
                     let format = match image.format() {
@@ -279,13 +281,8 @@ impl DrafftBoardView {
                         gpui::ImageFormat::Webp => crate::shapes::ImageFormat::WebP,
                         _ => return false,
                     };
-                    self.board.paste_image_at(
-                        image.bytes(),
-                        decoded.width(),
-                        decoded.height(),
-                        format,
-                        center,
-                    )
+                    self.board
+                        .paste_image_at(image.bytes(), width, height, format, center)
                 })
             });
         self.finish_action(cx);

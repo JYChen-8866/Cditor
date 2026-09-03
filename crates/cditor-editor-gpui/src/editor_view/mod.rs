@@ -9,6 +9,7 @@ mod formatting;
 mod host_element;
 mod lifecycle;
 mod link_actions;
+mod memory_pressure;
 mod platform_input;
 mod render;
 mod slash_menu;

@@ -74,6 +74,9 @@ impl CditorV2View {
         let platform_layout_bytes = text_layout_cache
             .estimated_bytes
             .saturating_add(platform_geometry_bytes);
+        let images = crate::image_loader::image_cache_diagnostics();
+        let mermaid = self.cache.mermaid_renders.diagnostics();
+        let video = self.cache.video_playbacks.diagnostics();
         let input = AppFrameTelemetryInput {
             elapsed,
             interaction,
@@ -83,6 +86,18 @@ impl CditorV2View {
             caches: FrameCacheSnapshot {
                 payload_and_undo_bytes,
                 platform_layout_bytes,
+                image_cache_entries: images.tracked_entries,
+                image_resident_decoded_bytes: images.resident_decoded_bytes,
+                mermaid_cache_entries: mermaid.tracked_entries,
+                mermaid_resident_image_bytes: mermaid.resident_image_bytes,
+                mermaid_reserved_render_bytes: mermaid.reserved_render_bytes,
+                video_resident_cpu_frame_bytes: video.resident_cpu_frame_bytes,
+                video_resident_render_image_bytes: video.resident_render_image_bytes,
+                image_cache_over_budget: images.resident_decoded_bytes > images.decoded_byte_budget,
+                mermaid_cache_over_budget: mermaid
+                    .resident_image_bytes
+                    .saturating_add(mermaid.reserved_render_bytes)
+                    > mermaid.render_byte_budget,
                 payload_cache_over_budget: payload_over_budget,
                 platform_layout_cache_over_budget: text_layout_cache.over_budget_due_to_pins
                     || self.cache.text_layouts.is_over_budget()

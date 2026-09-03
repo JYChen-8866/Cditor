@@ -205,6 +205,12 @@ pub fn render_payload_text(payload: &BlockPayloadRecord, theme: GuiTheme) -> Any
             fallback_inner_height_px(&payload.kind),
             theme,
         ),
+        // 本 build 读不懂的载荷：只读占位，字节在保存时原样写回。
+        BlockPayload::Unknown(unknown) => render_embedded_surface(
+            unknown.placeholder_label(),
+            fallback_inner_height_px(&payload.kind),
+            theme,
+        ),
         BlockPayload::Empty => render_empty_payload(&payload.kind, theme),
     }
 }

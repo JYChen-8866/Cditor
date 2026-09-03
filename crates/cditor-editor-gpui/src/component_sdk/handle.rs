@@ -130,6 +130,12 @@ impl<V: CditorViewContract> CditorHandle<V> {
             })
     }
 
+    pub fn prepare_for_shutdown(&self, cx: &mut App) -> Result<(), CditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_prepare_for_shutdown(cx))
+            .map_err(|_| CditorError::ComponentDropped)?
+    }
+
     pub fn export_markdown(&self, cx: &App) -> Result<String, CditorError> {
         self.entity
             .read_with(cx, |view, _| view.sdk_export_markdown())

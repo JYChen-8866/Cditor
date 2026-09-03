@@ -6,6 +6,7 @@ use crate::schema::{SchemaDomain, VersionedEnvelope};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::Arc;
 
+use super::unknown::{UnknownWire, raw_json};
 use super::{InlineSpan, RichBlockKind, TablePayload, plain_text_from_spans};
 
 /// Persisted rich text for sub-block surfaces such as image captions and
@@ -105,6 +106,7 @@ impl BlockPayloadRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(remote = "Self")]
 pub enum BlockPayload {
     RichText {
         spans: Vec<InlineSpan>,
@@ -133,7 +135,47 @@ pub enum BlockPayload {
         envelope: VersionedEnvelope,
         plain_text_fallback: String,
     },
+    /// 本 build 解码不了的载荷：新版本新增的块类型，或形状与本 build schema
+    /// 不匹配的值。原始 JSON 字节原样保留（见 [`UnknownWire`]），因此旧版本
+    /// load → save 之后，新版本依然读到自己写下的载荷。
+    ///
+    /// 这个变体只由 [`BlockPayload`] 的 `Deserialize` 产生，序列化时写回原始
+    /// 字节而非 `{"Unknown": …}`，所以对 derive 隐藏。
+    #[serde(skip)]
+    Unknown(UnknownWire),
     Empty,
+}
+
+/// `Unknown` 走原始字节，其余变体交给 derive（`remote = "Self"` 生成的固有
+/// 方法）。
+impl Serialize for BlockPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Unknown(unknown) => unknown.serialize(serializer),
+            known => Self::serialize(known, serializer),
+        }
+    }
+}
+
+/// 语法合法但本 build 解释不了的载荷退化为 [`BlockPayload::Unknown`]，而不是
+/// 让整篇文档加载失败；JSON 语法错误仍然是错误（真正的数据损坏）。
+impl<'de> Deserialize<'de> for BlockPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = raw_json(deserializer)?;
+        // 固有方法优先于 trait 方法：这里调用的是 derive 为 `remote = "Self"`
+        // 生成的解码器，不会递归回本实现。
+        let mut known = serde_json::Deserializer::from_str(raw.get());
+        match Self::deserialize(&mut known) {
+            Ok(payload) => Ok(payload),
+            Err(error) => Ok(Self::Unknown(UnknownWire::new(raw, error.to_string()))),
+        }
+    }
 }
 
 impl BlockPayload {
@@ -164,6 +206,8 @@ impl BlockPayload {
                 plain_text_fallback,
                 ..
             } => plain_text_fallback.clone(),
+            // 读不懂的载荷不参与全文索引：本 build 无法判断哪些字节是正文。
+            Self::Unknown(_) => String::new(),
             Self::Empty => String::new(),
         }
     }
@@ -178,6 +222,28 @@ impl BlockPayload {
         };
         payload.validate_opaque_envelope_domain()?;
         Ok(payload)
+    }
+
+    /// 本载荷按原样透传的原始 JSON 字节：`Opaque` 的 envelope body 与
+    /// `Unknown` 的整个值。行分隔的传输格式（例如 repository 同步流）需要知道
+    /// 这些字节是否包含换行。
+    pub fn verbatim_json(&self) -> Option<&str> {
+        match self {
+            Self::Opaque { envelope, .. } => Some(envelope.body_bytes()),
+            Self::Unknown(unknown) => Some(unknown.json()),
+            Self::RichText { .. }
+            | Self::Code { .. }
+            | Self::Table(_)
+            | Self::Columns(_)
+            | Self::Image(_)
+            | Self::Video(_)
+            | Self::Collection(_)
+            | Self::File(_)
+            | Self::Whiteboard(_)
+            | Self::Embed(_)
+            | Self::Html { .. }
+            | Self::Empty => None,
+        }
     }
 
     /// Validates the invariant that serde cannot enforce while preserving an
@@ -470,6 +536,84 @@ mod tests {
         };
         assert_eq!(columns.gap_px(), DEFAULT_COLUMN_GAP_PX);
         assert_eq!(columns.layout_model(10).unwrap().columns().len(), 2);
+    }
+
+    #[test]
+    fn a_payload_variant_from_a_newer_build_round_trips_byte_for_byte() {
+        // 新版本写下的 `Video` 载荷，在还不认识它的 build 里的行为。
+        let future = "{\"Audio\":{\"source\":\"a.m4a\",\"gain_milli\":900}}";
+
+        let decoded: BlockPayload = serde_json::from_str(future).unwrap();
+
+        let BlockPayload::Unknown(unknown) = &decoded else {
+            panic!("expected an unknown payload, got {decoded:?}")
+        };
+        assert_eq!(unknown.tag(), "Audio");
+        assert!(unknown.reason().contains("unknown variant"));
+        assert_eq!(decoded.plain_text(), "");
+        assert_eq!(serde_json::to_string(&decoded).unwrap(), future);
+    }
+
+    #[test]
+    fn an_unknown_unit_variant_round_trips_without_a_wrapper() {
+        let future = "\"Placeholder\"";
+
+        let decoded: BlockPayload = serde_json::from_str(future).unwrap();
+
+        assert!(
+            matches!(&decoded, BlockPayload::Unknown(unknown) if unknown.tag() == "Placeholder")
+        );
+        assert_eq!(serde_json::to_string(&decoded).unwrap(), future);
+    }
+
+    #[test]
+    fn a_known_variant_with_a_newer_shape_is_preserved_instead_of_failing_the_document() {
+        // 已知 tag、但字段形状本 build 解释不了：同样保留字节而不是报错，
+        // 整篇文档仍可打开，块降级为只读占位。
+        let future = "{\"Code\":{\"language\":42,\"text\":\"x\"}}";
+
+        let decoded: BlockPayload = serde_json::from_str(future).unwrap();
+
+        assert!(matches!(&decoded, BlockPayload::Unknown(_)));
+        assert_eq!(serde_json::to_string(&decoded).unwrap(), future);
+    }
+
+    #[test]
+    fn unknown_fields_inside_a_known_variant_still_decode_as_that_variant() {
+        let future = "{\"Html\":{\"html\":\"<b>x</b>\",\"sanitized\":true,\"future\":1}}";
+
+        let decoded: BlockPayload = serde_json::from_str(future).unwrap();
+
+        assert!(matches!(
+            decoded,
+            BlockPayload::Html {
+                sanitized: true,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn malformed_json_is_still_an_error_rather_than_a_preserved_payload() {
+        let broken = "{\"RichText\":{\"spans\":[";
+
+        assert!(serde_json::from_str::<BlockPayload>(broken).is_err());
+    }
+
+    #[test]
+    fn an_unknown_payload_survives_a_record_round_trip() {
+        let record = BlockPayloadRecord {
+            block_id: 9,
+            content_version: 3,
+            kind: RichBlockKind::Custom("future.vendor/audio".to_owned()),
+            payload: serde_json::from_str("{\"Audio\":{\"source\":\"a.m4a\"}}").unwrap(),
+        };
+
+        let encoded = serde_json::to_string(&record).unwrap();
+        let decoded: BlockPayloadRecord = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, record);
+        assert!(encoded.contains("{\"Audio\":{\"source\":\"a.m4a\"}}"));
     }
 
     #[test]

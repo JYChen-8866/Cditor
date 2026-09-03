@@ -7,6 +7,7 @@ pub enum PersistenceFailureKind {
     Busy,
     CapacityExhausted,
     PermissionDenied,
+    Conflict,
     Corruption,
     Timeout,
     Io,
@@ -55,6 +56,7 @@ impl From<StorageError> for PersistenceFailure {
             StorageError::Busy { .. } => PersistenceFailureKind::Busy,
             StorageError::CapacityExhausted(_) => PersistenceFailureKind::CapacityExhausted,
             StorageError::PermissionDenied(_) => PersistenceFailureKind::PermissionDenied,
+            StorageError::Conflict(_) => PersistenceFailureKind::Conflict,
             StorageError::CorruptData(_) => PersistenceFailureKind::Corruption,
             StorageError::Timeout { .. } => PersistenceFailureKind::Timeout,
             StorageError::Io(_) => PersistenceFailureKind::Io,
@@ -96,6 +98,10 @@ mod tests {
                 PersistenceFailureKind::PermissionDenied,
             ),
             (
+                StorageError::Conflict("revision mismatch".to_owned()),
+                PersistenceFailureKind::Conflict,
+            ),
+            (
                 StorageError::CorruptData("bad page".to_owned()),
                 PersistenceFailureKind::Corruption,
             ),
@@ -120,14 +126,19 @@ mod tests {
     }
 
     #[test]
-    fn corruption_is_not_blindly_retried() {
-        let failure = PersistenceFailure::from(StorageError::CorruptData("bad page".to_owned()));
-        assert!(!failure.retryable());
-        assert!(
-            failure
-                .with_context("commit failed")
-                .message
-                .starts_with("commit failed:")
-        );
+    fn conflict_and_corruption_are_not_blindly_retried() {
+        for error in [
+            StorageError::Conflict("revision mismatch".to_owned()),
+            StorageError::CorruptData("bad page".to_owned()),
+        ] {
+            let failure = PersistenceFailure::from(error);
+            assert!(!failure.retryable());
+            assert!(
+                failure
+                    .with_context("commit failed")
+                    .message
+                    .starts_with("commit failed:")
+            );
+        }
     }
 }
