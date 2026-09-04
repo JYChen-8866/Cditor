@@ -45,6 +45,11 @@ pub fn render_code_toolbar(
     _code_highlight_theme: &'static str,
     view: Entity<CditorV2View>,
     code_language_focus: FocusHandle,
+    // 在渲染时求值好的状态。绝不能在 paint 闭包里 `view.read(cx)`：那时 view 可能
+    // 仍被 `update` 租用，gpui 会 double-lease panic，而 paint 跑在不允许 unwind 的
+    // 平台回调里，结果是 abort（`failed to initiate panic`），不是可恢复的错误。
+    collapse_intent: bool,
+    copy_feedback: bool,
 ) -> AnyElement {
     div()
         .absolute()
@@ -84,8 +89,13 @@ pub fn render_code_toolbar(
                         .when(language_is_mermaid(language), |row| {
                             row.child(render_mermaid_button(theme, block_id, view.clone()))
                         })
-                        .child(render_collapse_button(theme, block_id, view.clone()))
-                        .child(render_copy_button(theme, block_id, view)),
+                        .child(render_collapse_button(
+                            theme,
+                            block_id,
+                            view.clone(),
+                            collapse_intent,
+                        ))
+                        .child(render_copy_button(theme, block_id, view, copy_feedback)),
                 ),
         )
         .into_any_element()
@@ -99,10 +109,10 @@ pub(crate) fn language_is_mermaid(language: Option<&str>) -> bool {
     language.is_some_and(|language| language.trim().eq_ignore_ascii_case("mermaid"))
 }
 
-/// 语言为 mermaid 时多出来的那颗按钮：把这个代码块转成 Mermaid 图表块。
+/// 语言为 mermaid 时多出来的那颗按钮：在渲染图和源码之间切换。
 ///
-/// 转换走的是块类型变换，所以源码原样留在新块里，预览、源码切换、缓存全部复用
-/// 既有的 mermaid 实现，这里不重新搭一套渲染。
+/// 切的是这个代码块的显示态，块类型始终是 `Code { language }`——输入框、折叠、
+/// 语言选择器全都还走代码块那一套，mermaid 只负责把图画出来。
 fn render_mermaid_button(
     theme: GuiTheme,
     block_id: BlockId,
@@ -127,11 +137,7 @@ fn render_mermaid_button(
         )
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             view.update(cx, |view, cx| {
-                view.transform_block_kind_from_toolbar(
-                    block_id,
-                    cditor_core::rich_text::RichBlockKind::Mermaid,
-                    cx,
-                );
+                super::actions::toggle_mermaid_preview_from_gui(view, block_id, cx);
             });
             cx.stop_propagation();
         })
@@ -142,6 +148,7 @@ fn render_collapse_button(
     theme: GuiTheme,
     block_id: BlockId,
     view: Entity<CditorV2View>,
+    collapsed: bool,
 ) -> AnyElement {
     div()
         .w(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
@@ -152,7 +159,7 @@ fn render_collapse_button(
         .rounded(px(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX))
         .text_color(rgb(theme.code_toolbar_icon))
         .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
-        .child(render_collapse_icon(theme, block_id, view.clone()))
+        .child(render_collapse_icon(theme, collapsed))
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             view.update(cx, |view, cx| {
                 super::actions::toggle_code_block_collapsed_from_gui(view, block_id, cx);
@@ -162,29 +169,19 @@ fn render_collapse_button(
         .into_any_element()
 }
 
-fn render_collapse_icon(
-    theme: GuiTheme,
-    block_id: BlockId,
-    view: Entity<CditorV2View>,
-) -> AnyElement {
+fn render_collapse_icon(theme: GuiTheme, collapsed: bool) -> AnyElement {
     const CHEVRON_UP: &[u8] = include_bytes!("../../../../../../assets/icons/chevron-up.svg");
     const CHEVRON_DOWN: &[u8] = include_bytes!("../../../../../../assets/icons/chevron-down.svg");
 
-    SvgIcon::dynamic(move |cx| {
-        if view
-            .read(cx)
-            .overlay
-            .collapsed_code_blocks
-            .contains(&block_id)
-        {
-            ("code-toolbar-expand", CHEVRON_DOWN)
-        } else {
-            ("code-toolbar-collapse", CHEVRON_UP)
-        }
-    })
-    .color(rgb(theme.code_toolbar_icon))
-    .size(px(V1_CODE_COPY_ICON_SIZE_PX))
-    .into_any_element()
+    let (key, bytes) = if collapsed {
+        ("code-toolbar-expand", CHEVRON_DOWN)
+    } else {
+        ("code-toolbar-collapse", CHEVRON_UP)
+    };
+    SvgIcon::new(key, bytes)
+        .color(rgb(theme.code_toolbar_icon))
+        .size(px(V1_CODE_COPY_ICON_SIZE_PX))
+        .into_any_element()
 }
 
 fn render_language_editor(
@@ -517,6 +514,7 @@ fn render_copy_button(
     theme: GuiTheme,
     block_id: BlockId,
     view: Entity<CditorV2View>,
+    copied: bool,
 ) -> AnyElement {
     div()
         .w(px(V1_CODE_TOOLBAR_BUTTON_SIZE_PX))
@@ -527,7 +525,7 @@ fn render_copy_button(
         .rounded(px(V1_CODE_TOOLBAR_BUTTON_RADIUS_PX))
         .text_color(rgb(theme.code_toolbar_icon))
         .hover(move |style| style.bg(rgb(theme.code_toolbar_hover)))
-        .child(render_copy_icon(theme, block_id, view.clone()))
+        .child(render_copy_icon(theme, copied))
         .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
             view.update(cx, |view, cx| {
                 super::actions::copy_code_block_from_gui(view, block_id, cx);
@@ -537,21 +535,19 @@ fn render_copy_button(
         .into_any_element()
 }
 
-fn render_copy_icon(theme: GuiTheme, block_id: BlockId, view: Entity<CditorV2View>) -> AnyElement {
+fn render_copy_icon(theme: GuiTheme, copied: bool) -> AnyElement {
     const COPY: &[u8] = include_bytes!("../../../../../../assets/icons/copy.svg");
     const COPY_CHECK: &[u8] = include_bytes!("../../../../../../assets/icons/copy-check.svg");
 
-    SvgIcon::dynamic(move |cx| {
-        let copied = view.read(cx).overlay.code_copy_feedback_block_id == Some(block_id);
-        if copied {
-            ("code-toolbar-copy-check", COPY_CHECK)
-        } else {
-            ("code-toolbar-copy", COPY)
-        }
-    })
-    .color(rgb(theme.code_toolbar_icon))
-    .size(px(V1_CODE_COPY_ICON_SIZE_PX))
-    .into_any_element()
+    let (key, bytes) = if copied {
+        ("code-toolbar-copy-check", COPY_CHECK)
+    } else {
+        ("code-toolbar-copy", COPY)
+    };
+    SvgIcon::new(key, bytes)
+        .color(rgb(theme.code_toolbar_icon))
+        .size(px(V1_CODE_COPY_ICON_SIZE_PX))
+        .into_any_element()
 }
 
 #[cfg(test)]

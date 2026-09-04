@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
+use crate::features::code::language_is_mermaid;
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{BlockPayloadView, RichBlockKind};
 use cditor_runtime::{EditorViewProjection, MainThreadWorkKind, WorkCost, WorkerTaskKind};
@@ -383,6 +384,7 @@ impl MermaidRenderCache {
         &mut self,
         projection: &EditorViewProjection,
         source_blocks: &HashSet<BlockId>,
+        preview_code_blocks: &HashSet<BlockId>,
         theme: GuiTheme,
         worker_admission: &EditorWorkerAdmission,
         cx: &mut Context<CditorV2View>,
@@ -396,7 +398,14 @@ impl MermaidRenderCache {
         let visible = projection
             .blocks
             .iter()
-            .filter(|block| matches!(block.kind, RichBlockKind::Mermaid))
+            .filter(|block| match &block.kind {
+                RichBlockKind::Mermaid => true,
+                RichBlockKind::Code { language } => {
+                    language_is_mermaid(language.as_deref())
+                        && preview_code_blocks.contains(&block.block_id)
+                }
+                _ => false,
+            })
             .filter_map(|block| {
                 let BlockPayloadView::Loaded(payload) = &block.payload else {
                     return None;

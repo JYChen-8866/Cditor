@@ -61,7 +61,8 @@ impl DocumentRuntime {
             EditorCommand::SetInlineLink { .. } => self.focused_text_selection_range().is_some(),
             EditorCommand::SetBlockColor { block_id, .. }
             | EditorCommand::InsertParagraphAfterBlock { block_id }
-            | EditorCommand::CopyBlockText { block_id } => {
+            | EditorCommand::CopyBlockText { block_id }
+            | EditorCommand::CopyBlockMarkdown { block_id } => {
                 self.block_payload_record(*block_id).is_some()
             }
             EditorCommand::CopyBlockLink { block_id } => self.has_block(*block_id),

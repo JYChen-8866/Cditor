@@ -33,6 +33,7 @@ pub(crate) fn formatting_toolbar_state(
     gutter_toolbar_block_id: Option<BlockId>,
     block_transform_menu_open: bool,
     color_menu_open: bool,
+    copy_menu_open: bool,
     last_color_action: Option<ColorMenuAction>,
     projected_block_rects: &[ProjectedBlockRect],
 ) -> Option<FloatingToolbarState> {
@@ -192,6 +193,7 @@ pub(crate) fn formatting_toolbar_state(
             color_menu_top_offset: color_geometry.top_offset,
             color_menu_height: color_geometry.height,
             color_menu_open,
+            copy_menu_open,
             last_color_action,
         });
     }
@@ -239,6 +241,7 @@ pub(crate) fn formatting_toolbar_state(
             color_menu_top_offset: 0.0,
             color_menu_height: 0.0,
             color_menu_open: false,
+            copy_menu_open: false,
             last_color_action,
         });
     }
@@ -290,6 +293,7 @@ pub(crate) fn formatting_toolbar_state(
         color_menu_top_offset: color_geometry.top_offset,
         color_menu_height: color_geometry.height,
         color_menu_open,
+        copy_menu_open,
         last_color_action,
     })
 }
@@ -462,6 +466,7 @@ mod tests {
                 Some(2),
                 true,
                 true,
+                false,
                 None,
                 &[],
             )
@@ -496,6 +501,7 @@ mod tests {
             EditorViewport::from_size(size(px(900.0), px(700.0))),
             Some(1),
             true,
+            false,
             false,
             None,
             &[rect],

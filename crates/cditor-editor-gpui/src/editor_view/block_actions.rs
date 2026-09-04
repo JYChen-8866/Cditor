@@ -82,6 +82,91 @@ impl CditorV2View {
         }
     }
 
+    /// 展开 gutter 菜单里「复制」的二级菜单。
+    ///
+    /// 与颜色那一项同构：展开一个就把另一个收起来，避免两个二级菜单同时挂在
+    /// 主菜单右侧互相盖住。
+    pub(crate) fn open_copy_menu_from_gui(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.overlay.copy_menu_open || self.overlay.gutter_toolbar_block_id.is_none() {
+            return false;
+        }
+        self.overlay.copy_menu_open = true;
+        self.overlay.color_menu_open = false;
+        self.overlay.block_transform_menu_open = false;
+        self.overlay.block_transform_popup_menu = None;
+        self.overlay.block_transform_popup_menu_dismiss_subscription = None;
+        cx.notify();
+        true
+    }
+
+    /// 悬停进入展开、离开后延迟收起。延迟是为了让指针能从触发行斜着移到
+    /// 二级菜单上而不中途关闭。
+    pub(crate) fn set_copy_menu_hovered(&mut self, hovered: bool, cx: &mut Context<Self>) {
+        self.overlay.copy_menu_hover_generation =
+            self.overlay.copy_menu_hover_generation.wrapping_add(1);
+        if hovered {
+            self.open_copy_menu_from_gui(cx);
+            return;
+        }
+
+        let generation = self.overlay.copy_menu_hover_generation;
+        let delay = cx.background_executor().timer(Duration::from_millis(140));
+        cx.spawn(async move |view, cx| {
+            delay.await;
+            let _ = view.update(cx, |view, cx| {
+                if view.overlay.copy_menu_hover_generation == generation
+                    && view.overlay.copy_menu_open
+                {
+                    view.overlay.copy_menu_open = false;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub(crate) fn copy_block_text_from_gui(
+        &mut self,
+        block_id: BlockId,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let copied = self
+            .dispatch_command(
+                CditorCommand::CopyBlockText { block_id },
+                CommandSource::Toolbar,
+                cx,
+            )
+            .is_ok_and(|outcome| outcome.status == CommandOutcomeStatus::Applied);
+        if !copied {
+            return false;
+        }
+
+        self.clear_gutter_action();
+        crate::overlays::show_toast(self, "已复制区块", Duration::from_secs(3), cx);
+        true
+    }
+
+    pub(crate) fn copy_block_markdown_from_gui(
+        &mut self,
+        block_id: BlockId,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let copied = self
+            .dispatch_command(
+                CditorCommand::CopyBlockMarkdown { block_id },
+                CommandSource::Toolbar,
+                cx,
+            )
+            .is_ok_and(|outcome| outcome.status == CommandOutcomeStatus::Applied);
+        if !copied {
+            return false;
+        }
+
+        self.clear_gutter_action();
+        crate::overlays::show_toast(self, "已复制为 Markdown", Duration::from_secs(3), cx);
+        true
+    }
+
     pub(crate) fn copy_block_link_from_gui(
         &mut self,
         block_id: BlockId,

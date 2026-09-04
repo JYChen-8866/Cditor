@@ -27,6 +27,8 @@ const TOOLBAR_ACTION_GAP_PX: f32 = 4.0;
 const TOOLBAR_COLOR_WIDTH_PX: f32 = 86.0;
 const TOOLBAR_DELETE_WIDTH_PX: f32 = 60.0;
 pub(crate) const GUTTER_MENU_WIDTH_PX: f32 = 240.0;
+/// 「复制」二级菜单与主菜单之间的水平间距，与颜色二级菜单取同一个值。
+const COPY_MENU_GAP_PX: f32 = 2.0;
 const TOOLBAR_HEIGHT_PX: f32 = 46.0;
 pub(crate) const VIEWPORT_MARGIN_PX: f32 = 10.0;
 const TOOLBAR_ANCHOR_GAP_PX: f32 = 8.0;
@@ -111,6 +113,8 @@ pub struct FloatingToolbarState {
     pub color_menu_top_offset: f32,
     pub color_menu_height: f32,
     pub color_menu_open: bool,
+    /// gutter 菜单里「复制」的二级菜单是否展开。
+    pub copy_menu_open: bool,
     pub last_color_action: Option<ColorMenuAction>,
 }
 
@@ -374,7 +378,7 @@ fn render_gutter_popup_content(
                 true,
             ))
         })
-        .child(render_copy_link_action(theme, view.clone(), state.block_id))
+        .child(render_copy_trigger(state, theme, view.clone()))
         .child(render_delete_action(
             theme,
             view.clone(),
@@ -385,14 +389,18 @@ fn render_gutter_popup_content(
         .into_any_element()
 }
 
-fn render_copy_link_action(
+/// gutter 菜单里「复制」那一项：本身不复制，点/悬停展开二级菜单。
+///
+/// 复制有三种目标（区块内容、Markdown、区块链接）。平铺成三行会把主菜单撑长，
+/// 所以收进二级菜单，交互与「颜色」那一项同构。
+fn render_copy_trigger(
+    state: FloatingToolbarState,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
-    block_id: Option<BlockId>,
 ) -> AnyElement {
-    let enabled = block_id.is_some();
-    div()
-        .id("gutter-menu-copy-block-link")
+    let enabled = state.block_id.is_some();
+    let row = div()
+        .id("gutter-menu-copy-trigger")
         .h(px(48.0))
         .w_full()
         .px(px(8.0))
@@ -400,17 +408,27 @@ fn render_copy_link_action(
         .items_center()
         .gap(px(10.0))
         .rounded(px(4.0))
+        .bg(rgb(if state.copy_menu_open {
+            theme.action_background
+        } else {
+            theme.panel
+        }))
         .text_color(rgb(if enabled { theme.text } else { theme.muted }))
         .when(!enabled, |row| row.opacity(0.45))
         .when(enabled, |row| {
+            let click_view = view.clone();
             row.cursor_pointer()
                 .hover(|style| style.bg(rgb(theme.hover_surface)))
-                .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
-                    if let Some(block_id) = block_id {
+                .on_hover({
+                    let view = view.clone();
+                    move |hovered, _window, cx| {
                         view.update(cx, |view, cx| {
-                            view.copy_block_link_from_gui(block_id, cx);
+                            view.set_copy_menu_hovered(*hovered, cx);
                         });
                     }
+                })
+                .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+                    let _ = click_view.update(cx, |view, cx| view.open_copy_menu_from_gui(cx));
                     cx.stop_propagation();
                 })
         })
@@ -425,7 +443,7 @@ fn render_copy_link_action(
                 .items_center()
                 .justify_center()
                 .child(
-                    SvgIcon::new("gutter-menu-copy-block-link-icon", ICON_COPY)
+                    SvgIcon::new("gutter-menu-copy-icon", ICON_COPY)
                         .color(rgb(if enabled { theme.text } else { theme.muted }))
                         .size(px(FORMAT_ICON_SIZE_PX)),
                 ),
@@ -437,14 +455,108 @@ fn render_copy_link_action(
                 .flex()
                 .flex_col()
                 .gap(px(1.0))
-                .child(div().text_size(px(14.0)).child("复制区块链接"))
+                .child(div().text_size(px(14.0)).child("复制"))
                 .child(
                     div()
                         .text_size(px(GUTTER_MENU_LABEL_FONT_SIZE_PX))
                         .text_color(rgb(theme.muted))
-                        .child("复制指向当前区块的链接"),
+                        .child("区块、Markdown 或链接"),
                 ),
         )
+        .child(render_submenu_arrow("gutter-copy-arrow", theme));
+
+    div()
+        .relative()
+        .child(row)
+        .when(enabled && state.copy_menu_open, |this| {
+            this.child(render_copy_menu(theme, view, state.block_id))
+        })
+        .into_any_element()
+}
+
+/// 「复制」的二级菜单面。定位方式与颜色二级菜单一致：贴在主菜单右缘外侧。
+fn render_copy_menu(
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    block_id: Option<BlockId>,
+) -> AnyElement {
+    div()
+        .id("gutter-menu-copy-submenu")
+        .absolute()
+        .top(px(0.0))
+        // 主菜单内容左内边距是 8，所以减掉它再加间距，才与颜色菜单对齐。
+        .left(px(GUTTER_MENU_WIDTH_PX - 8.0 + COPY_MENU_GAP_PX))
+        .w(px(GUTTER_MENU_WIDTH_PX))
+        .p(px(6.0))
+        .flex()
+        .flex_col()
+        .gap(px(2.0))
+        .rounded(px(9.0))
+        .border_1()
+        .border_color(rgb(theme.border))
+        .bg(rgb(theme.panel))
+        .shadow_lg()
+        .occlude()
+        .child(render_copy_menu_item(
+            "gutter-copy-block",
+            "复制 block",
+            theme,
+            view.clone(),
+            block_id,
+            |view, block_id, cx| {
+                view.copy_block_text_from_gui(block_id, cx);
+            },
+        ))
+        .child(render_copy_menu_item(
+            "gutter-copy-markdown",
+            "复制 Markdown",
+            theme,
+            view.clone(),
+            block_id,
+            |view, block_id, cx| {
+                view.copy_block_markdown_from_gui(block_id, cx);
+            },
+        ))
+        .child(render_copy_menu_item(
+            "gutter-copy-link",
+            "复制区块链接",
+            theme,
+            view,
+            block_id,
+            |view, block_id, cx| {
+                view.copy_block_link_from_gui(block_id, cx);
+            },
+        ))
+        .into_any_element()
+}
+
+fn render_copy_menu_item(
+    id: &'static str,
+    label: &'static str,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    block_id: Option<BlockId>,
+    action: fn(&mut CditorV2View, BlockId, &mut gpui::Context<CditorV2View>),
+) -> AnyElement {
+    div()
+        .id(id)
+        .h(px(32.0))
+        .w_full()
+        .px(px(8.0))
+        .flex()
+        .items_center()
+        .rounded(px(4.0))
+        .text_size(px(13.0))
+        .text_color(rgb(theme.text))
+        .cursor_pointer()
+        .hover(|style| style.bg(rgb(theme.hover_surface)))
+        .on_mouse_down(MouseButton::Left, move |_event, _window, cx| {
+            if let Some(block_id) = block_id {
+                view.update(cx, |view, cx| action(view, block_id, cx));
+            }
+            cx.stop_propagation();
+        })
+        .child(label)
         .into_any_element()
 }
 

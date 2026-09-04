@@ -65,27 +65,34 @@ pub(crate) fn toggle_source_from_gui(
         };
 
         let tween = match view.overlay.mermaid_source_tweens.remove(&block_id) {
-            Some(mut existing) => {
-                existing.tween = existing.tween.retarget(target_height, now);
-                existing.content_version = content_version;
-                existing
-            }
-            None => crate::features::code::CodeCollapseTween {
-                tween: crate::features::code::HeightTween::new(
+            Some(existing) => crate::features::code::CodeCollapseTween::start(
+                existing.tween.retarget(target_height, now),
+                content_version,
+                now,
+            ),
+            None => crate::features::code::CodeCollapseTween::start(
+                crate::features::code::HeightTween::new(
                     context.effective_height,
                     target_height,
                     now,
                 ),
                 content_version,
-            },
+                now,
+            ),
         };
 
-        let first_h = tween.tween.height(now);
+        let first_h = tween.frame_height;
         view.overlay.mermaid_source_tweens.insert(block_id, tween);
+
+        // 与代码块折叠同一套：补间期间高度所有权归动画路径，源码文本的自然高度上报
+        // 会被拒，避免和补间互相覆盖。`advance_height_tweens` 落定时交还。
+        let _ = view
+            .ready_session()
+            .and_then(|session| session.begin_block_height_animation(block_id).ok());
 
         let _ = view.ready_session().and_then(|session| {
             session
-                .apply_measured_block_height(block_id, content_version, first_h)
+                .apply_animated_block_height(block_id, content_version, first_h)
                 .ok()
         });
     }

@@ -105,6 +105,13 @@ pub(crate) struct OverlayUiState {
     pub(crate) code_copy_feedback_generation: u64,
     pub(crate) collapsed_code_blocks: HashSet<BlockId>,
     pub(crate) collapsed_code_block_heights: HashMap<BlockId, f64>,
+    /// 语言为 mermaid 的代码块里，当前正在显示渲染图（而非源码）的块。
+    ///
+    /// 预览态是整个代码块的显示切换，不是块类型转换：`RichBlockKind::Code { language }`
+    /// 保持不变，输入框、折叠、缓存 all 复用代码块那条路径。mermaid 的渲染调度器
+    /// 需要知道哪个代码块要看图，所以它和 [`Self::mermaid_source_blocks`] 一起喂给
+    /// `MermaidRenderCache::sync_visible_window`。
+    pub(crate) mermaid_preview_code_blocks: HashSet<BlockId>,
     /// 收起/展开进行中的高度补间。空表示所有代码块都已稳定。
     ///
     /// 折叠高度要喂进布局引擎，下方每个块的位置都跟着它走，所以补间期间每帧推一个
@@ -135,6 +142,12 @@ pub(crate) struct OverlayUiState {
     pub(crate) selection_toolbar_delay: SelectionToolbarDelay,
     pub(crate) block_transform_menu_open: bool,
     pub(crate) color_menu_open: bool,
+    /// gutter 菜单里「复制」那一项的二级菜单是否展开。
+    ///
+    /// 复制有三种目标（区块内容、markdown、区块链接），塞成三行会把主菜单撑长，
+    /// 所以收进二级菜单，展开逻辑与颜色那一项同构。
+    pub(crate) copy_menu_open: bool,
+    pub(crate) copy_menu_hover_generation: u64,
     pub(crate) color_menu_hover_generation: u64,
     pub(crate) color_menu_scroll_handle: gpui::ScrollHandle,
     pub(crate) ai_actions_scroll_handle: gpui::ScrollHandle,
@@ -156,6 +169,11 @@ impl OverlayUiState {
         if self.editor_context_menu.take().is_some() {
             self.editor_context_menu_position = None;
             self.editor_context_menu_dismiss_subscription = None;
+            return true;
+        }
+        if self.copy_menu_open {
+            self.copy_menu_open = false;
+            self.copy_menu_hover_generation = self.copy_menu_hover_generation.wrapping_add(1);
             return true;
         }
         if self.color_menu_open {

@@ -10,10 +10,18 @@
 use std::time::{Duration, Instant};
 
 /// 补间时长。比光标位移（70ms）长一些——这里要挪动下方整篇内容，太快会显得跳。
-const DURATION: Duration = Duration::from_millis(180);
+const DURATION: Duration = Duration::from_millis(200);
 
-fn ease_out_quint(t: f32) -> f32 {
-    1.0 - (1.0 - t).powi(5)
+/// 出缓动，三次方。
+///
+/// 别换成更高次方。曲线的阶数决定的不是"快慢"而是**帧与帧之间的推进是否均匀**：
+/// 按 60Hz 把 200ms 拆成 12 帧，cubic 的首帧推进 ~23%，之后逐帧递减；五次方
+/// （quint）首帧就吃掉 ~38%，四帧内跑完 90%，剩下一半时间在磨最后几个百分点。
+/// 那些尾帧的位移小到人眼看不出在动，观感就从"一段平滑的动画"塌成"先弹开一大半，
+/// 停一下，再补完"——即使代码里只有一个补间。`advance_bound` 那条测试就是钉这个
+/// 性质的。
+fn ease_out_cubic(t: f32) -> f32 {
+    1.0 - (1.0 - t).powi(3)
 }
 
 /// 一个代码块正在进行的高度补间。
@@ -51,7 +59,7 @@ impl HeightTween {
         if elapsed >= DURATION {
             return self.to;
         }
-        let t = ease_out_quint(elapsed.as_secs_f32() / DURATION.as_secs_f32()) as f64;
+        let t = ease_out_cubic(elapsed.as_secs_f32() / DURATION.as_secs_f32()) as f64;
         self.from + (self.to - self.from) * t
     }
 
@@ -81,6 +89,30 @@ pub(crate) struct CodeCollapseTween {
     pub(crate) tween: HeightTween,
     /// 回推高度时要带的内容版本。布局引擎用它拒绝过期的测量值。
     pub(crate) content_version: u64,
+    /// **本帧**的高度，由每帧的补间驱动写入一次。
+    ///
+    /// 一帧之内所有读高度的地方都必须用这个值，不许各自去 `tween.height(now)`
+    /// 重采样。布局用 H(t₁) 补偿了锚点，渲染却用 H(t₂) 定位，两者差多少、
+    /// 视口就漂多少；而补间单调，折叠与展开的差符号相反，于是同一个按钮会朝
+    /// 相反方向跑。一帧一个时间戳、一个高度真相，这个漂移才不存在。
+    pub(crate) frame_height: f64,
+}
+
+impl CodeCollapseTween {
+    /// 起一个新补间，本帧高度取补间起点。
+    pub(crate) fn start(tween: HeightTween, content_version: u64, now: Instant) -> Self {
+        Self {
+            tween,
+            content_version,
+            frame_height: tween.height(now),
+        }
+    }
+
+    /// 把本帧的高度采样一次并记下来。返回值就是本帧该用的高度。
+    pub(crate) fn sample_frame(&mut self, now: Instant) -> f64 {
+        self.frame_height = self.tween.height(now);
+        self.frame_height
+    }
 }
 
 /// 补间时长，导出给测试用来一次推到落定。
@@ -156,14 +188,102 @@ mod tests {
     }
 
     #[test]
+    fn start_records_the_tween_start_as_this_frames_height() {
+        let now = Instant::now();
+        let tween = CodeCollapseTween::start(HeightTween::new(300.0, 40.0, now), 7, now);
+
+        assert_eq!(tween.frame_height, 300.0);
+        assert_eq!(tween.content_version, 7);
+    }
+
+    /// 采样一次之后，本帧高度必须冻结。
+    ///
+    /// 这是防"按钮乱跑"的核心不变量：布局按 H(t₁) 补偿锚点，渲染必须也用
+    /// H(t₁) 定位。任何消费方回去自己 `tween.height(now)` 拿到的都是更晚的
+    /// H(t₂)，两者之差就是视口漂移量。
+    #[test]
+    fn frame_height_stays_frozen_between_samples() {
+        let now = Instant::now();
+        let mut tween = CodeCollapseTween::start(HeightTween::new(300.0, 40.0, now), 1, now);
+
+        let sampled = tween.sample_frame(now + Duration::from_millis(60));
+
+        // 时间在走，但没再采样——本帧高度不许变。
+        assert_eq!(tween.frame_height, sampled);
+        assert_eq!(tween.frame_height, sampled, "重复读取必须得到同一个值");
+        assert!(
+            tween.tween.height(now + Duration::from_millis(120)) != sampled,
+            "补间本身应当仍在推进，否则这个测试证明不了冻结"
+        );
+    }
+
+    /// 折叠与展开的采样误差符号相反——这正是按钮"忽上忽下"的由来。
+    #[test]
+    fn resampling_later_drifts_in_opposite_directions_for_collapse_and_expand() {
+        let now = Instant::now();
+        let early = now + Duration::from_millis(40);
+        let late = now + Duration::from_millis(70);
+
+        let collapsing = HeightTween::new(300.0, 40.0, now);
+        let expanding = HeightTween::new(40.0, 300.0, now);
+
+        // 同一帧内若两处用了不同时间戳，折叠得到负差、展开得到正差。
+        assert!(collapsing.height(late) - collapsing.height(early) < 0.0);
+        assert!(expanding.height(late) - expanding.height(early) > 0.0);
+    }
+
+    #[test]
+    fn sample_frame_tracks_the_tween_until_settle() {
+        let now = Instant::now();
+        let mut tween = CodeCollapseTween::start(HeightTween::new(300.0, 40.0, now), 1, now);
+
+        let mut previous = tween.frame_height;
+        for step in 1..=6 {
+            let sampled = tween.sample_frame(now + Duration::from_millis(step * 30));
+            assert!(sampled <= previous, "折叠过程中高度不该回升");
+            previous = sampled;
+        }
+        assert_eq!(tween.sample_frame(now + DURATION), 40.0);
+    }
+
+    #[test]
     fn easing_is_monotonic_and_bounded() {
-        assert_eq!(ease_out_quint(0.0), 0.0);
-        assert_eq!(ease_out_quint(1.0), 1.0);
+        assert_eq!(ease_out_cubic(0.0), 0.0);
+        assert_eq!(ease_out_cubic(1.0), 1.0);
         let mut prev = 0.0;
         for step in 1..=20 {
-            let value = ease_out_quint(step as f32 / 20.0);
+            let value = ease_out_cubic(step as f32 / 20.0);
             assert!(value >= prev, "not monotonic at {step}");
             prev = value;
+        }
+    }
+
+    /// 任何单帧的推进都不许超过全程的 25%。
+    ///
+    /// 这条钉的是"动画看起来是一段还是两段"。曲线越陡，头几帧吃掉的比例越大，尾帧
+    /// 就越接近 0 位移——人眼把那段读成停顿，于是一个补间被看成两段。25% 是 cubic
+    /// 在 60Hz 下的首帧值（~23%）之上留一点余量；换成五次方会直接顶到 38% 而挂掉。
+    #[test]
+    fn no_single_frame_advances_more_than_a_quarter() {
+        const FRAME: Duration = Duration::from_micros(16_667);
+        let now = Instant::now();
+        let tween = HeightTween::new(0.0, 1_000.0, now);
+
+        let mut prev = tween.height(now);
+        let mut frame = 1;
+        loop {
+            let at = now + FRAME * frame;
+            let height = tween.height(at);
+            let advance = height - prev;
+            assert!(
+                advance <= 250.0,
+                "frame {frame} advanced {advance:.1} of 1000 (>25%)"
+            );
+            if !tween.is_animating(at) {
+                break;
+            }
+            prev = height;
+            frame += 1;
         }
     }
 
@@ -172,7 +292,7 @@ mod tests {
         let now = Instant::now();
         let tween = HeightTween::new(40.0, 300.0, now);
         let mut prev = 0.0;
-        for step in 0..=18 {
+        for step in 0..=20 {
             let height = tween.height(now + Duration::from_millis(step * 10));
             assert!(height >= prev, "shrank at step {step}: {height} < {prev}");
             prev = height;

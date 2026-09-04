@@ -3,7 +3,7 @@ use cditor_core::layout::{
     BODY_BLOCK_CONTENT_WIDTH_PX, COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX,
     MERMAID_LOADING_PREVIEW_BODY_HEIGHT_PX, MERMAID_SOURCE_CHROME_HEIGHT_PX,
     MERMAID_SOURCE_PADDING_Y_PX, MERMAID_TOOLBAR_HEIGHT_PX as MERMAID_TOOLBAR_HEIGHT_PX_F64,
-    V1_CODE_TEXT_LINE_HEIGHT_PX,
+    V1_CODE_TEXT_LINE_HEIGHT_PX, normalize_text_inner_measured_height,
 };
 use gpui::prelude::FluentBuilder;
 use gpui::{
@@ -188,6 +188,44 @@ pub(crate) fn render_mermaid_block(
                 .child(body),
         )
         .into_any_element()
+}
+
+/// 给 mermaid 代码块的预览态画「只含图」的元素。
+///
+/// 代码块不是 `RichBlockKind::Mermaid`，没有 mermaid 自己的工具栏和源码/预览
+/// 切换外壳，所以这里不走 [`render_mermaid_block`]，只复用它的核心：从缓存取
+/// 渲染状态和几何，交给 [`render_preview`]。布局高度由调用方（代码块）负责，
+/// 这里不推 `schedule_rendered_media_height_report`。
+pub(crate) fn render_code_block_mermaid_preview(
+    block_id: BlockId,
+    content_version: u64,
+    source_content: AnyElement,
+    cache: &MermaidRenderCache,
+    theme: GuiTheme,
+    view: Entity<CditorV2View>,
+    cx: &mut App,
+) -> AnyElement {
+    let status = cache.status(block_id);
+    let geometry = cache
+        .preview_dimensions(block_id, content_version, theme)
+        .map(mermaid_preview_geometry_for_dimensions);
+
+    // 代码块的文字路径走 `normalize_text_inner_measured_height`：上报内容区高度，
+    // chrome 由它自己补。这里必须走同一契约——报 mermaid 图的 inner 高度（图高加
+    // 预览内边距），chrome 交给权威函数，否则会算两份 chrome。
+    if let Some(geometry) = geometry {
+        // `clickable_preview` 只设图的宽高、自己不带内边距，而 chrome 里已经算了
+        // 代码块的 content padding，所以 inner 就是图的裸高度。
+        let inner = f64::from(geometry.image_height_px);
+        let total = normalize_text_inner_measured_height(
+            &cditor_core::rich_text::RichBlockKind::Code { language: None },
+            inner,
+        )
+        .height;
+        schedule_rendered_media_height_report(view, block_id, content_version, total, cx);
+    }
+
+    render_preview(status, source_content, theme, geometry)
 }
 
 fn render_preview(

@@ -152,6 +152,29 @@ pub(crate) fn queue_rendered_media_height(
         .unwrap_or(false)
 }
 
+/// 把渲染完成的媒体高度**立即冲刷**进布局。
+///
+/// [`queue_rendered_media_height`] 只入队，靠后续文字布局顺带冲刷。整块内容都不是
+/// 文字的块（例如代码块切到 mermaid 图：`render_preview` 会丢掉 `source_content`）
+/// 没有文字元素，永远等不到那次冲刷，高度修正就一直悬着。这些块必须自己冲刷。
+///
+/// 只能用在离散事件上（渲染完成），不能用在每帧绘制路径——那会让每个媒体块每帧
+/// 触发一次布局回流。
+pub(crate) fn apply_rendered_media_height(
+    view: &CditorV2View,
+    block_id: BlockId,
+    content_version: u64,
+    measured_height: f64,
+) -> bool {
+    view.ready_session()
+        .and_then(|session| {
+            session
+                .apply_measured_block_height(block_id, content_version, measured_height)
+                .ok()
+        })
+        .unwrap_or(false)
+}
+
 fn accept_text_layout(view: &mut CditorV2View, layout: RichTextPlatformLayout) -> bool {
     let pinned_surface = view
         .input

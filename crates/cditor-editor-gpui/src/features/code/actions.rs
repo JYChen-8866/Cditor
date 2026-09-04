@@ -28,39 +28,64 @@ pub(crate) fn toggle_code_block_collapsed_from_gui(
         let now = Instant::now();
         let target_height = if collapsing {
             // Persist the pre-collapse height so expand can restore the exact size.
-            view.overlay
-                .collapsed_code_block_heights
-                .insert(block_id, context.effective_height);
-            V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX
+            next_code_block_height(
+                &mut view.overlay.collapsed_code_block_heights,
+                block_id,
+                true,
+                context.effective_height,
+                None,
+                context.estimated_height,
+            )
         } else {
-            view.overlay
-                .collapsed_code_block_heights
-                .remove(&block_id)
-                .unwrap_or(context.estimated_height)
+            // 展开终点必须是块真正的全高，否则落定那一刻真实测量接管、和补间终点不等，
+            // 就再跳一下。优先级：折叠前存下的高度 > 文本布局实测 > 估算值兜底。
+            //
+            // 中间那级来自 `text/element.rs` 的 `normalize_text_inner_measured_height`，
+            // 对 Code 已经含 `code_block_v1_chrome_y()`（内含 block shell 留白），
+            // 与 `effective_height` 同单位，可直接用。
+            next_code_block_height(
+                &mut view.overlay.collapsed_code_block_heights,
+                block_id,
+                false,
+                context.effective_height,
+                view.cache
+                    .text_layouts
+                    .get(&block_id)
+                    .map(|layout| layout.measured_height),
+                context.estimated_height,
+            )
         };
 
         let content_version = context.content_version.unwrap_or(0);
 
         // Create or retarget the height tween so a mid-animation toggle continues smoothly.
         let tween = match view.overlay.code_collapse_tweens.remove(&block_id) {
-            Some(mut existing) => {
-                existing.tween = existing.tween.retarget(target_height, now);
-                existing.content_version = content_version;
-                existing
-            }
-            None => CodeCollapseTween {
-                tween: HeightTween::new(context.effective_height, target_height, now),
+            Some(existing) => CodeCollapseTween::start(
+                existing.tween.retarget(target_height, now),
                 content_version,
-            },
+                now,
+            ),
+            None => CodeCollapseTween::start(
+                HeightTween::new(context.effective_height, target_height, now),
+                content_version,
+                now,
+            ),
         };
 
         // Push the first interpolated height so the very next layout sees motion.
-        let first_height = tween.tween.height(now);
+        let first_height = tween.frame_height;
         view.overlay.code_collapse_tweens.insert(block_id, tween);
+
+        // 补间期间高度所有权归动画路径：文本布局仍在按自然全高测量并上报，放它进来
+        // 会跟补间高度互相覆盖（pending 表按 block 去重，后写赢），折叠走到一半被拽回
+        // 全高。`advance_height_tweens` 落定时交还。中途反向点击时这里是幂等的。
+        let _ = view
+            .ready_session()
+            .and_then(|session| session.begin_block_height_animation(block_id).ok());
 
         let _ = view.ready_session().and_then(|session| {
             session
-                .apply_measured_block_height(block_id, content_version, first_height)
+                .apply_animated_block_height(block_id, content_version, first_height)
                 .ok()
         });
         // Do not mark_dirty during the animation. mark_dirty is issued once on settle.
@@ -78,11 +103,19 @@ fn toggle_collapsed(collapsed: &mut HashSet<BlockId>, block_id: BlockId) -> bool
     }
 }
 
+/// 折叠/展开的目标高度。折叠与展开共用这条，两侧的存档、兜底、最小高约束在这里
+/// 一次定死，避免生产路径和测试各自实现一份而分叉。
+///
+/// - 折叠：存下折叠前高度（含零高度块，见下），返回收起高度。
+/// - 展开：存档 > 文本布局实测 > 估算兜底，且不低于外框最小高。
+/// 展开分支收到 `measured_height` —— 展开态的块渲染会挂 `min_h`，终点低于它的话
+/// 落定帧 `min_h` 生效会把块顶起来，看起来像动画结束后又跳了一下。
 fn next_code_block_height(
     collapsed_heights: &mut HashMap<BlockId, f64>,
     block_id: BlockId,
     collapsing: bool,
     effective_height: f64,
+    measured_height: Option<f64>,
     estimated_height: f64,
 ) -> f64 {
     if collapsing {
@@ -91,8 +124,32 @@ fn next_code_block_height(
     } else {
         collapsed_heights
             .remove(&block_id)
+            .or(measured_height)
             .unwrap_or(estimated_height)
+            .max(cditor_core::layout::code_block_v1_outer_min_height())
     }
+}
+
+/// 切换 mermaid 代码块的预览态：显示渲染图，还是显示源码。
+///
+/// 这是显示切换，不是块类型转换——`RichBlockKind::Code { language }` 保持不变，
+/// 所以输入框、折叠、语言选择器全都还是代码块那一套。mermaid 只负责把图画出来。
+///
+/// 返回切换后是否处于预览态，方便调用方立刻反映到按钮上。
+pub(crate) fn toggle_mermaid_preview_from_gui(
+    view: &mut CditorV2View,
+    block_id: BlockId,
+    cx: &mut Context<CditorV2View>,
+) -> bool {
+    let previewing = toggle_collapsed(&mut view.overlay.mermaid_preview_code_blocks, block_id);
+    // 源码和图的高度不一样，切换后必须重新上报。高度上报带 (block, version, height)
+    // 去重，同一个组合报过一次就会被跳过，所以这里要先把这个块的记录清掉，否则切回来
+    // 的高度发不出去，布局会一直停在切换前那个高度上。正牌 mermaid 块的源码/预览
+    // 切换也是这么做的（见 features/mermaid/actions.rs）。
+    #[cfg(feature = "mermaid")]
+    crate::features::media::invalidate_rendered_media_height_report(block_id);
+    cx.notify();
+    previewing
 }
 
 pub(crate) fn copy_code_block_from_gui(
@@ -189,27 +246,41 @@ mod tests {
         let mut heights = HashMap::new();
 
         assert_eq!(
-            next_code_block_height(&mut heights, 7, true, 386.0, 300.0),
+            next_code_block_height(&mut heights, 7, true, 386.0, None, 300.0),
             V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX
         );
         assert_eq!(heights.get(&7), Some(&386.0));
 
         assert_eq!(
-            next_code_block_height(&mut heights, 7, false, 38.0, 300.0),
+            next_code_block_height(&mut heights, 7, false, 38.0, None, 300.0),
             386.0
         );
         assert!(!heights.contains_key(&7));
     }
 
     #[test]
-    fn expand_without_a_saved_height_falls_back_to_the_estimate() {
+    fn expand_target_prefers_measured_height_over_the_estimate() {
         let mut heights = HashMap::new();
 
-        assert_eq!(
-            next_code_block_height(&mut heights, 7, false, 38.0, 300.0),
-            300.0
-        );
+        // 没存档：文本布局实测优先于估算。
+        let target = next_code_block_height(&mut heights, 7, false, 38.0, Some(412.0), 300.0);
+        assert_eq!(target, 412.0);
         assert!(heights.is_empty());
+    }
+
+    #[test]
+    fn expand_target_never_drops_below_the_outer_min_height() {
+        let mut heights = HashMap::new();
+
+        // 短代码块：估算和实测都压不到外框最小高之下，否则落定帧 min_h 生效会顶一下。
+        let outer_min = cditor_core::layout::code_block_v1_outer_min_height();
+        let low = next_code_block_height(&mut heights, 7, false, 38.0, Some(80.0), 90.0);
+        assert_eq!(low, outer_min);
+        assert!(low > 80.0, "被抬到最小高: {low}");
+
+        // 顶到最小高之上就不动它了。
+        let ok = next_code_block_height(&mut heights, 7, false, 38.0, Some(500.0), 90.0);
+        assert_eq!(ok, 500.0);
     }
 
     #[gpui::test]
@@ -253,11 +324,16 @@ mod tests {
         // exactly as the animation driver would on completion.
         view.update(cx, |view, _| {
             if let Some(t) = view.overlay.code_collapse_tweens.remove(&2) {
+                // 与 `advance_height_tweens` 的落定顺序一致：先用动画通道落权威终值，
+                // 再交还高度所有权。反过来的话终值会被容差门按静态测量处理。
                 let _ = view.ready_session().and_then(|session| {
                     session
-                        .apply_measured_block_height(2, t.content_version, t.tween.target())
+                        .apply_animated_block_height(2, t.content_version, t.tween.target())
                         .ok()
                 });
+                let _ = view
+                    .ready_session()
+                    .and_then(|session| session.end_block_height_animation(2).ok());
             }
         });
 
@@ -286,11 +362,16 @@ mod tests {
         // Force settle to the restored original height.
         view.update(cx, |view, _| {
             if let Some(t) = view.overlay.code_collapse_tweens.remove(&2) {
+                // 与 `advance_height_tweens` 的落定顺序一致：先用动画通道落权威终值，
+                // 再交还高度所有权。反过来的话终值会被容差门按静态测量处理。
                 let _ = view.ready_session().and_then(|session| {
                     session
-                        .apply_measured_block_height(2, t.content_version, t.tween.target())
+                        .apply_animated_block_height(2, t.content_version, t.tween.target())
                         .ok()
                 });
+                let _ = view
+                    .ready_session()
+                    .and_then(|session| session.end_block_height_animation(2).ok());
             }
         });
 

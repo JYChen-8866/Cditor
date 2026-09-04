@@ -149,6 +149,28 @@ impl CditorV2View {
             return Ok(CommandOutcome::applied_side_effect(false));
         }
 
+        if let CditorCommand::CopyBlockMarkdown { block_id } = command {
+            let record = self
+                .ready_session()
+                .and_then(|session| session.loaded_payload_record(block_id).ok().flatten())
+                .ok_or(CditorError::BlockNotFound(block_id))?;
+            // 单个区块导出：用 ClipboardSelection::Blocks 包住，交给统一的 markdown
+            // 导出函数。和复制选中区是同一个序列化路径，保证复制出来的 markdown 一致。
+            let selection = cditor_core::clipboard::ClipboardSelection::Blocks {
+                blocks: vec![cditor_core::clipboard::ClipboardBlock {
+                    source_id: block_id,
+                    parent_source_id: None,
+                    depth: 0,
+                    kind: record.kind,
+                    payload: record.payload,
+                }],
+            };
+            let markdown =
+                cditor_import_export::markdown::export_clipboard_selection_markdown(&selection);
+            cx.write_to_clipboard(ClipboardItem::new_string(markdown));
+            return Ok(CommandOutcome::applied_side_effect(false));
+        }
+
         if let CditorCommand::CopyBlockLink { block_id } = command {
             let document_id = self
                 .ready_session()
@@ -548,6 +570,7 @@ fn command_mutates_document(command: &CditorCommand) -> bool {
             | CditorCommand::CopySelectionAsMarkdown
             | CditorCommand::CopyBlockText { .. }
             | CditorCommand::CopyBlockLink { .. }
+            | CditorCommand::CopyBlockMarkdown { .. }
             | CditorCommand::MoveCaret { .. }
     )
 }

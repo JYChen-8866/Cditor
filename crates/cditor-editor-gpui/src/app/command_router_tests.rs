@@ -687,7 +687,7 @@ fn keyboard_enter_reveals_the_new_focused_block_in_the_document_viewport(cx: &mu
 
 #[cfg(feature = "mermaid")]
 #[gpui::test]
-fn mermaid_fence_enter_opens_the_new_block_in_source_edit_mode(cx: &mut TestAppContext) {
+fn mermaid_fence_enter_creates_a_code_block_with_mermaid_language(cx: &mut TestAppContext) {
     let marker = "```mermaid";
     let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(
         1,
@@ -711,20 +711,20 @@ fn mermaid_fence_enter_opens_the_new_block_in_source_edit_mode(cx: &mut TestAppC
             .unwrap()
             .unwrap();
         assert_eq!(context.block_id, 1);
-        assert_eq!(context.kind, RichBlockKind::Mermaid);
-        // 新建的 Mermaid 块预置一段简短示例，源码模式下可直接编辑。
-        assert!(
-            context.text.starts_with("flowchart "),
-            "unexpected source: {}",
-            context.text
+        // ```mermaid 落在普通代码块上，语言记为 mermaid——图是块的显示切换。
+        assert_eq!(
+            context.kind,
+            RichBlockKind::Code {
+                language: Some("mermaid".to_string()),
+            }
         );
-        assert!(view.cache.mermaid_source_blocks.contains(&1));
+        assert_eq!(context.text, "");
     });
 }
 
 #[cfg(feature = "mermaid")]
 #[gpui::test]
-fn typed_mermaid_fence_newline_creates_mermaid_in_source_edit_mode(cx: &mut TestAppContext) {
+fn typed_mermaid_fence_newline_creates_a_code_block_with_mermaid_language(cx: &mut TestAppContext) {
     let mut runtime = cditor_runtime::DocumentRuntime::from_payloads(
         1,
         vec![BlockPayloadRecord::rich_text(
@@ -751,13 +751,13 @@ fn typed_mermaid_fence_newline_creates_mermaid_in_source_edit_mode(cx: &mut Test
 
         let after_enter = session.focused_text_block_context().unwrap().unwrap();
         assert_eq!(after_enter.block_id, 1);
-        assert_eq!(after_enter.kind, RichBlockKind::Mermaid);
-        assert!(
-            after_enter.text.starts_with("flowchart "),
-            "unexpected source: {}",
-            after_enter.text
+        assert_eq!(
+            after_enter.kind,
+            RichBlockKind::Code {
+                language: Some("mermaid".to_string()),
+            }
         );
-        assert!(view.cache.mermaid_source_blocks.contains(&1));
+        assert_eq!(after_enter.text, "");
     });
 }
 

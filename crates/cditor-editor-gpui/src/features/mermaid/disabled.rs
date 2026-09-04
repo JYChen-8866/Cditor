@@ -33,6 +33,7 @@ impl MermaidRenderCache {
         &mut self,
         _projection: &EditorViewProjection,
         _source_blocks: &HashSet<BlockId>,
+        _preview_code_blocks: &HashSet<BlockId>,
         _theme: GuiTheme,
         _worker_admission: &EditorWorkerAdmission,
         _cx: &mut Context<CditorV2View>,
@@ -50,6 +51,19 @@ impl MermaidRenderCache {
     ) -> MermaidRenderCacheTrimResult {
         MermaidRenderCacheTrimResult::default()
     }
+}
+
+/// mermaid 关闭时代码块拿不到图，原样显示源码。
+pub(crate) fn render_code_block_mermaid_preview(
+    _block_id: BlockId,
+    _content_version: u64,
+    source_content: AnyElement,
+    _cache: &MermaidRenderCache,
+    _theme: GuiTheme,
+    _view: Entity<CditorV2View>,
+    _cx: &mut App,
+) -> AnyElement {
+    source_content
 }
 
 #[expect(

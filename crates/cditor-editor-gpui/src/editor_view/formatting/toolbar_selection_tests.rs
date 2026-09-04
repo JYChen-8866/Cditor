@@ -48,6 +48,7 @@ fn cross_block_text_selection_keeps_unsupported_actions_visible_but_disabled() {
         None,
         false,
         false,
+        false,
         None,
         &[],
     )
@@ -92,6 +93,7 @@ fn single_block_text_selection_enables_inline_actions_and_captures_range() {
         false,
         viewport,
         None,
+        false,
         false,
         false,
         None,

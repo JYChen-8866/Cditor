@@ -51,6 +51,7 @@ impl BlockView {
         focus: FocusHandle,
         code_language_focus: FocusHandle,
         image_caption_state: Option<TextSurfaceRenderState>,
+        collection_title_state: Option<TextSurfaceRenderState>,
         workers: &EditorWorkerAdmission,
         asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
         hovered: bool,
@@ -71,6 +72,9 @@ impl BlockView {
         mermaid_source_scroll_handle: Option<ScrollHandle>,
         mermaid_source_caret_reveal_after_line_break: bool,
         collapsed_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
+        code_copy_feedback_block_id: Option<cditor_core::ids::BlockId>,
+        // 语言为 mermaid 且当前在看图的代码块。
+        mermaid_preview_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
         code_collapse_tweens: &std::collections::HashMap<
             cditor_core::ids::BlockId,
             crate::features::code::CodeCollapseTween,
@@ -98,6 +102,7 @@ impl BlockView {
             focus,
             code_language_focus,
             image_caption_state,
+            collection_title_state,
             workers,
             asset_provider,
             action,
@@ -117,6 +122,8 @@ impl BlockView {
             mermaid_source_scroll_handle,
             mermaid_source_caret_reveal_after_line_break,
             collapsed_code_blocks,
+            code_copy_feedback_block_id,
+            mermaid_preview_code_blocks,
             code_collapse_tweens,
             code_highlights,
             search_decorations,
@@ -218,6 +225,7 @@ fn render_kind_content(
     focus: FocusHandle,
     code_language_focus: FocusHandle,
     image_caption_state: Option<TextSurfaceRenderState>,
+    collection_title_state: Option<TextSurfaceRenderState>,
     workers: &EditorWorkerAdmission,
     asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
     action: BlockActionState,
@@ -237,6 +245,9 @@ fn render_kind_content(
     mermaid_source_scroll_handle: Option<ScrollHandle>,
     mermaid_source_caret_reveal_after_line_break: bool,
     collapsed_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
+    code_copy_feedback_block_id: Option<cditor_core::ids::BlockId>,
+    // 语言为 mermaid 且当前在看图的代码块。
+    mermaid_preview_code_blocks: &std::collections::HashSet<cditor_core::ids::BlockId>,
     code_collapse_tweens: &std::collections::HashMap<
         cditor_core::ids::BlockId,
         crate::features::code::CodeCollapseTween,
@@ -261,6 +272,7 @@ fn render_kind_content(
         view.clone(),
         focus,
         image_caption_state,
+        collection_title_state,
         workers,
         asset_provider,
         image_resize_preview_width_px,
@@ -300,10 +312,33 @@ fn render_kind_content(
             // The tween itself stores the *total* block height; subtract the collapsed
             // header geometry to get the visible content area for clipping.
             let animated_content_height = code_collapse_tweens.get(&block.block_id).map(|tween| {
-                let now = web_time::Instant::now();
-                let total_h = tween.tween.height(now);
-                (total_h - crate::features::code::V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX).max(0.0)
+                (tween.frame_height - crate::features::code::V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX)
+                    .max(0.0)
             });
+
+            // 语言是 mermaid 且开了预览：内容区换成渲染图。块类型仍是 Code，
+            // 所以工具栏、折叠、语言选择器全都不变，只有内容区换了东西。
+            let content = if crate::features::code::language_is_mermaid(language.as_deref())
+                && mermaid_preview_code_blocks.contains(&block.block_id)
+            {
+                let content_version = match &block.payload {
+                    cditor_core::rich_text::BlockPayloadView::Loaded(payload) => {
+                        payload.content_version
+                    }
+                    _ => 0,
+                };
+                crate::features::mermaid::render_code_block_mermaid_preview(
+                    block.block_id,
+                    content_version,
+                    content,
+                    mermaid_renders,
+                    theme,
+                    view.clone(),
+                    cx,
+                )
+            } else {
+                content
+            };
 
             render_code_block(
                 block.block_id,
@@ -318,6 +353,9 @@ fn render_kind_content(
                 code_language_focus,
                 code_collapsed,
                 animated_content_height,
+                // chevron 要跟"意图"而不是"稳定折叠态"：动画途中也得立刻翻向。
+                collapsed_code_blocks.contains(&block.block_id),
+                code_copy_feedback_block_id == Some(block.block_id),
             )
         }
         RichBlockKind::Todo { .. } | RichBlockKind::BulletedList | RichBlockKind::NumberedList => {
@@ -331,10 +369,9 @@ fn render_kind_content(
             .child(content)
             .into_any_element(),
         RichBlockKind::Mermaid => {
-            let animated_block_height = mermaid_source_tweens.get(&block.block_id).map(|tween| {
-                let now = web_time::Instant::now();
-                tween.tween.height(now)
-            });
+            let animated_block_height = mermaid_source_tweens
+                .get(&block.block_id)
+                .map(|tween| tween.frame_height);
             render_mermaid_block(
                 block.block_id,
                 match &block.payload {

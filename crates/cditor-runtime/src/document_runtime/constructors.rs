@@ -287,6 +287,7 @@ impl DocumentRuntime {
                 window_memory_pressure: WindowMemoryPressure::Normal,
                 projection: ProjectionState::default(),
                 pending_measured_heights: HashMap::new(),
+                animating_heights: HashSet::new(),
                 dirty: false,
                 scrollbar_drag: None,
             },

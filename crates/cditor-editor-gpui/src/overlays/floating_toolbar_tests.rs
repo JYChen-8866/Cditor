@@ -71,6 +71,7 @@ fn toolbar_state() -> FloatingToolbarState {
         color_menu_top_offset: 0.0,
         color_menu_height: 520.0,
         color_menu_open: false,
+        copy_menu_open: false,
         last_color_action: None,
     }
 }

@@ -19,6 +19,7 @@ mod toolbar;
 
 pub(crate) use collapse_motion::{CodeCollapseTween, HeightTween};
 use highlight::code_theme_item;
+pub(crate) use toolbar::language_is_mermaid;
 use toolbar::render_code_toolbar;
 
 pub const V1_CODE_BLOCK_MIN_HEIGHT_PX: f32 = V1_CODE_INNER_MIN_HEIGHT_PX as f32;
@@ -55,6 +56,9 @@ pub fn render_code_block(
     // this height with overflow hidden, so the visual area shrinks/grows while
     // the layout engine is fed the corresponding total block height.
     animated_content_height: Option<f64>,
+    // 折叠意图（不是"稳定折叠态"）：动画途中 chevron 也要立刻反映用户刚点的方向。
+    collapse_intent: bool,
+    copy_feedback: bool,
 ) -> AnyElement {
     let code_theme = code_theme_item(code_highlight_theme);
 
@@ -115,7 +119,13 @@ pub fn render_code_block(
         .rounded(px(V1_CODE_BLOCK_RADIUS_PX))
         .flex()
         .flex_col()
-        .when(is_stably_expanded, |this| {
+        // gap 与 header 的底边框（header_draws_bottom_border）做 1px 互换：
+        // 动画期间 header 无底边框（37px）+ gap(1px) == 收起态 header 有底边框（38px）。
+        // 而 V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX=46 已经按"有底边框"算好——所以 gap 必须
+        // 在内容面挂载（含动画中）时都在，否则动画期间少这 1px，落定时凭空多 1px 弹一下。
+        // 必须跟 content_surface_mounted 而不是 is_stably_expanded：后者在补间结束前为
+        // false，会把 gap 压到落定帧才出现，制造一跳。
+        .when(content_surface_mounted, |this| {
             this.gap(px(V1_CODE_SURFACE_GAP_PX as f32))
         })
         .font_family(EDITOR_MONO_FONT_FAMILY)
@@ -149,6 +159,8 @@ pub fn render_code_block(
                             code_highlight_theme,
                             view,
                             code_language_focus,
+                            collapse_intent,
+                            copy_feedback,
                         )),
                 ),
         )
@@ -170,6 +182,30 @@ fn render_code_content(content: AnyElement, text_color: u32) -> AnyElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 收起高度必须同时容得下两种 header 画法，否则落定那一帧会跳。
+    ///
+    /// 展开/动画中：header 不画底边框（上边框 + 工具栏），下面接一个 `gap`。
+    /// 稳定收起：header 自己画底边框，没有 gap。
+    /// `V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX` 是按后者算的，而 `animated_content_height`
+    /// 用它做减数——两种画法的高度相等，这个减法才成立。相等的前提就是
+    /// `gap == 边框宽`。谁改了其中一个而没改另一个，这条会先炸，而不是等到肉眼
+    /// 发现"动画结束又弹了 1px"。
+    #[test]
+    fn collapsed_height_is_identical_for_both_header_paintings() {
+        let open_header = V1_CODE_FRAME_BORDER_WIDTH_PX + V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX;
+        let animated = BLOCK_SHELL_PADDING_Y_PX * 2.0 + open_header + V1_CODE_SURFACE_GAP_PX;
+        let stably_collapsed = BLOCK_SHELL_PADDING_Y_PX * 2.0
+            + V1_CODE_FRAME_BORDER_WIDTH_PX * 2.0
+            + V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX;
+
+        assert_eq!(
+            V1_CODE_SURFACE_GAP_PX, V1_CODE_FRAME_BORDER_WIDTH_PX,
+            "gap 与底边框必须等宽，两种 header 画法才能互换"
+        );
+        assert_eq!(animated, stably_collapsed);
+        assert_eq!(animated, V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX);
+    }
 
     #[test]
     fn code_block_geometry_matches_the_visual_prototype() {

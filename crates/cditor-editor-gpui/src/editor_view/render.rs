@@ -185,6 +185,7 @@ impl Render for CditorV2View {
         let code_theme_menu_block_id = self.overlay.code_theme_menu_block_id;
         let code_highlight_theme = self.features.code_highlight_theme;
         let mermaid_source_blocks = self.cache.mermaid_source_blocks.clone();
+        let mermaid_preview_code_blocks = self.overlay.mermaid_preview_code_blocks.clone();
         let mut formatting_context =
             formatting_toolbar_context(self.ready_session(), self.overlay.gutter_toolbar_block_id);
         let embedded_ai_prompt = self.overlay.ai_prompt.as_ref().is_some_and(|prompt| {
@@ -668,6 +669,7 @@ impl Render for CditorV2View {
                 self.cache.mermaid_renders.sync_visible_window(
                     &projection,
                     &mermaid_source_blocks,
+                    &mermaid_preview_code_blocks,
                     theme,
                     &self.scheduling.workers,
                     cx,
@@ -736,6 +738,30 @@ impl Render for CditorV2View {
                         .map(|state| (block.block_id, state))
                     })
                     .collect::<std::collections::HashMap<_, _>>();
+                // 与 image_caption_states 同理：集合块标题面的状态也必须在这里取好。
+                // 渲染链下游只持有 `Entity<CditorV2View>`，而 self 此刻正被 render 独占
+                // 租用，下游再 `view.read(cx)` 就是 double-lease，直接 abort。
+                let collection_title_states = projection
+                    .blocks
+                    .iter()
+                    .filter_map(|block| {
+                        let cditor_core::rich_text::BlockPayloadView::Loaded(payload) =
+                            &block.payload
+                        else {
+                            return None;
+                        };
+                        if !matches!(
+                            payload.payload,
+                            cditor_core::rich_text::BlockPayload::Collection(_)
+                        ) {
+                            return None;
+                        }
+                        self.text_surface_render_state(
+                            crate::surfaces::collection_title::surface_id(block.block_id),
+                        )
+                        .map(|state| (block.block_id, state))
+                    })
+                    .collect::<std::collections::HashMap<_, _>>();
                 let document_editor = DocumentEditorView::new(theme);
                 let internal_scroll = prepare_internal_scroll_projection(self, &projection);
                 pending_table_scroll_offsets.extend(internal_scroll.corrected_table_scroll_offsets);
@@ -747,6 +773,7 @@ impl Render for CditorV2View {
                         !self.embedded_composer,
                         view.clone(),
                         &image_caption_states,
+                        &collection_title_states,
                         &self.scheduling.workers,
                         self.features.asset_provider.clone(),
                         self.focus.editor.clone(),
@@ -776,6 +803,8 @@ impl Render for CditorV2View {
                         &internal_scroll.mermaid_source_scroll_handles,
                         &internal_scroll.mermaid_source_caret_reveal_after_line_break,
                         &self.overlay.collapsed_code_blocks,
+                        self.overlay.code_copy_feedback_block_id,
+                        &self.overlay.mermaid_preview_code_blocks,
                         &self.overlay.code_collapse_tweens,
                         &self.cache.code_highlights,
                         &self.features.search_decorations,
@@ -870,6 +899,7 @@ impl Render for CditorV2View {
             }),
             self.overlay.block_transform_menu_open,
             self.overlay.color_menu_open,
+            self.overlay.copy_menu_open,
             self.overlay.last_color_action,
             &self.interaction.projected_block_rects,
         );
@@ -1122,115 +1152,105 @@ impl Render for CditorV2View {
 }
 
 impl CditorV2View {
-    /// Advance all active code block collapse/expand height tweens for this frame.
+    /// 推进一组高度补间：每帧把插值高度喂给布局，落定时交还所有权并标脏一次。
     ///
-    /// For every active tween we compute the current interpolated height and push
-    /// it into the layout system via `apply_measured_block_height`. When a tween
-    /// reaches its target we remove it and call `mark_dirty` exactly once so that
-    /// autosave/undo bookkeeping happens only at settle time.
+    /// 折叠不是纯绘制——高度要进布局引擎，下方每个块的位置都跟着它走，所以补间期间
+    /// 每帧都得推一个新高度，下面的内容才是跟着一起滑而不是在末尾跳一下。
+    ///
+    /// 代码块折叠和 mermaid 源码/预览切换是同一套机制，区别只有存补间的那张表，
+    /// 所以用一个 accessor 把表取出来，逻辑只写一遍。
+    fn advance_height_tweens(
+        &mut self,
+        tweens: fn(
+            &mut Self,
+        ) -> &mut std::collections::HashMap<
+            BlockId,
+            crate::features::code::CodeCollapseTween,
+        >,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if tweens(self).is_empty() {
+            return;
+        }
+
+        let now = web_time::Instant::now();
+
+        // 先把本帧要做的事抓成快照（顺带把 frame_height 定下来），再放开对表的借用。
+        let work: Vec<(BlockId, u64, f64, bool)> = tweens(self)
+            .iter_mut()
+            .map(|(&block_id, tween)| {
+                // 本帧唯一的一次采样。渲染侧一律读 `frame_height`，不再自采样。
+                let height = tween.sample_frame(now);
+                (
+                    block_id,
+                    tween.content_version,
+                    height,
+                    !tween.tween.is_animating(now),
+                )
+            })
+            .collect();
+
+        // 走动画通道，不走 `apply_measured_block_height`：后者用 measured_height_tolerance_px
+        // （代码块约 1px）过滤 sub-pixel 抖动，而补间尾帧本身就只动零点几个像素，会被整批
+        // 丢掉——下方文档提前冻住，块内部还在缩，一个补间被看成两段。动画通道用 epsilon。
+        for (block_id, version, height, _) in &work {
+            let _ = self.ready_session().and_then(|session| {
+                session
+                    .apply_animated_block_height(*block_id, *version, *height)
+                    .ok()
+            });
+        }
+
+        let mut any_settled = false;
+        for (block_id, version, _, done) in &work {
+            if !*done {
+                continue;
+            }
+            // 落定：先落权威终值（插值算出来的是近似数），再把高度所有权交还给正常测量。
+            // 顺序不能反——交还之后动画通道就不再受信任了。
+            let target = tweens(self).get(block_id).map(|tween| tween.tween.target());
+            if let Some(target) = target {
+                let _ = self.ready_session().and_then(|session| {
+                    session
+                        .apply_animated_block_height(*block_id, *version, target)
+                        .ok()
+                });
+            }
+            let _ = self
+                .ready_session()
+                .and_then(|session| session.end_block_height_animation(*block_id).ok());
+            tweens(self).remove(block_id);
+            any_settled = true;
+        }
+
+        if any_settled {
+            // 补间期间不标脏，落定这一帧标一次。`mark_dirty` 会 bump revision、排 autosave
+            // 和 undo spill，每帧调就是十几次自动保存和十几条 undo。
+            self.mark_dirty(cx);
+        }
+
+        // 还在动就继续排帧。
+        if !tweens(self).is_empty() {
+            window.request_animation_frame();
+        }
+    }
+
+    /// 推进代码块折叠/展开的高度补间。
     pub(crate) fn advance_code_collapse_tweens(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.overlay.code_collapse_tweens.is_empty() {
-            return;
-        }
-
-        let now = web_time::Instant::now();
-
-        // Snapshot the work while holding a mutable borrow over the tween map,
-        // then release it before touching other &self surfaces.
-        let work: Vec<(BlockId, u64, f64, bool)> = self
-            .overlay
-            .code_collapse_tweens
-            .iter_mut()
-            .map(|(&block_id, tween)| {
-                let h = tween.tween.height(now);
-                let v = tween.content_version;
-                let done = !tween.tween.is_animating(now);
-                (block_id, v, h, done)
-            })
-            .collect();
-
-        for (block_id, version, height, _done) in &work {
-            let _ = self.ready_session().and_then(|session| {
-                session
-                    .apply_measured_block_height(*block_id, *version, *height)
-                    .ok()
-            });
-        }
-
-        let mut any_settled = false;
-        for (block_id, _v, _h, done) in &work {
-            if *done {
-                self.overlay.code_collapse_tweens.remove(block_id);
-                any_settled = true;
-            }
-        }
-
-        if any_settled {
-            // One mark_dirty when any tween settles this frame.
-            self.mark_dirty(cx);
-        }
-
-        // Drive the next frame while motion remains.
-        if !self.overlay.code_collapse_tweens.is_empty() {
-            window.request_animation_frame();
-        }
+        self.advance_height_tweens(|view| &mut view.overlay.code_collapse_tweens, window, cx);
     }
 
-    /// Advance all active Mermaid source<->preview height tweens for this frame.
-    ///
-    /// Mirrors the code block collapse logic: every active tween pushes an
-    /// interpolated total block height via `apply_measured_block_height`.
-    /// Only when a tween settles do we drop it and call `mark_dirty` once.
-    /// While any tween is alive we keep requesting animation frames.
+    /// 推进 mermaid 源码/预览切换的高度补间。
     pub(crate) fn advance_mermaid_source_tweens(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.overlay.mermaid_source_tweens.is_empty() {
-            return;
-        }
-
-        let now = web_time::Instant::now();
-
-        let work: Vec<(BlockId, u64, f64, bool)> = self
-            .overlay
-            .mermaid_source_tweens
-            .iter_mut()
-            .map(|(&block_id, tween)| {
-                let h = tween.tween.height(now);
-                let v = tween.content_version;
-                let done = !tween.tween.is_animating(now);
-                (block_id, v, h, done)
-            })
-            .collect();
-
-        for (block_id, version, height, _done) in &work {
-            let _ = self.ready_session().and_then(|session| {
-                session
-                    .apply_measured_block_height(*block_id, *version, *height)
-                    .ok()
-            });
-        }
-
-        let mut any_settled = false;
-        for (block_id, _v, _h, done) in &work {
-            if *done {
-                self.overlay.mermaid_source_tweens.remove(block_id);
-                any_settled = true;
-            }
-        }
-
-        if any_settled {
-            self.mark_dirty(cx);
-        }
-
-        if !self.overlay.mermaid_source_tweens.is_empty() {
-            window.request_animation_frame();
-        }
+        self.advance_height_tweens(|view| &mut view.overlay.mermaid_source_tweens, window, cx);
     }
 }

@@ -46,6 +46,7 @@ pub(crate) fn render_block_content(
     view: Entity<CditorV2View>,
     focus: FocusHandle,
     image_caption_state: Option<TextSurfaceRenderState>,
+    collection_title_state: Option<TextSurfaceRenderState>,
     workers: &EditorWorkerAdmission,
     asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
     image_resize_preview_width_px: Option<f32>,
@@ -152,7 +153,7 @@ pub(crate) fn render_block_content(
                     theme,
                     view,
                     focus,
-                    cx,
+                    collection_title_state,
                 );
             }
             #[cfg(feature = "whiteboard")]

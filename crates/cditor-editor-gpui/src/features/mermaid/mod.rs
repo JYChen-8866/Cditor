@@ -14,6 +14,8 @@ pub(crate) use actions::{show_focused_source_after_enter, show_source_after_crea
 #[cfg(feature = "mermaid")]
 pub(crate) use cache::{MermaidRenderCache, MermaidRenderCacheTrimResult, MermaidRenderStatus};
 #[cfg(not(feature = "mermaid"))]
-pub(crate) use disabled::{MermaidRenderCache, render_mermaid_block};
+pub(crate) use disabled::{
+    MermaidRenderCache, render_code_block_mermaid_preview, render_mermaid_block,
+};
 #[cfg(feature = "mermaid")]
-pub(crate) use render::render_mermaid_block;
+pub(crate) use render::{render_code_block_mermaid_preview, render_mermaid_block};

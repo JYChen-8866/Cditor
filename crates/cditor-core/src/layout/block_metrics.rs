@@ -562,7 +562,11 @@ pub fn estimate_code_block_height_v1(
     HeightEstimate::new(height, metrics.confidence, V1_CODE_TEXT_LINE_HEIGHT_PX)
 }
 
-const fn code_block_v1_outer_min_height() -> f64 {
+/// 代码块外框的最小高度（含 block shell 的上下留白）。
+///
+/// 展开态的渲染会挂 `min_h(V1_CODE_BLOCK_MIN_HEIGHT_PX)`。补间的终点必须不低于这个
+/// 值，否则落定那一帧 `min_h` 生效会把块顶起来，看起来就是动画结束后又跳了一下。
+pub const fn code_block_v1_outer_min_height() -> f64 {
     BLOCK_SHELL_PADDING_Y_PX * 2.0 + V1_CODE_INNER_MIN_HEIGHT_PX
 }
 

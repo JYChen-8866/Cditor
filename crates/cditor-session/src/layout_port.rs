@@ -72,6 +72,25 @@ pub fn project_apply_measured_block_height(
         .map_err(|message| layout_error(runtime, message))
 }
 
+pub fn project_begin_block_height_animation(runtime: &mut DocumentRuntime, block_id: BlockId) {
+    runtime.begin_block_height_animation(block_id);
+}
+
+pub fn project_end_block_height_animation(runtime: &mut DocumentRuntime, block_id: BlockId) {
+    runtime.end_block_height_animation(block_id);
+}
+
+pub fn project_apply_animated_block_height(
+    runtime: &mut DocumentRuntime,
+    block_id: BlockId,
+    content_version: u64,
+    animated_height: f64,
+) -> Result<bool, ProtocolError> {
+    runtime
+        .apply_animated_block_height(block_id, content_version, animated_height)
+        .map_err(|message| layout_error(runtime, message))
+}
+
 pub fn project_scroll_input_frame(
     runtime: &mut DocumentRuntime,
     accumulator: &mut ScrollAccumulator,
@@ -237,6 +256,36 @@ impl EditorSessionHandle {
             block_id,
             content_version,
             measured_height,
+        )
+    }
+
+    /// 把块高度的所有权交给动画路径，直到 `end_block_height_animation`。
+    ///
+    /// 期间正常的测量上报（文本布局的自然全高）对该块一律被拒，只有
+    /// `apply_animated_block_height` 能写——两者同时写会互相覆盖。
+    pub fn begin_block_height_animation(&self, block_id: BlockId) -> Result<(), ProtocolError> {
+        project_begin_block_height_animation(&mut self.try_session_mut()?.runtime, block_id);
+        Ok(())
+    }
+
+    /// 交还高度所有权。调用方须先落权威终值，再调这个。
+    pub fn end_block_height_animation(&self, block_id: BlockId) -> Result<(), ProtocolError> {
+        project_end_block_height_animation(&mut self.try_session_mut()?.runtime, block_id);
+        Ok(())
+    }
+
+    /// 补间的每帧高度。容差是 epsilon，所以尾帧的亚像素增量也能落到布局。
+    pub fn apply_animated_block_height(
+        &self,
+        block_id: BlockId,
+        content_version: u64,
+        animated_height: f64,
+    ) -> Result<bool, ProtocolError> {
+        project_apply_animated_block_height(
+            &mut self.try_session_mut()?.runtime,
+            block_id,
+            content_version,
+            animated_height,
         )
     }
 

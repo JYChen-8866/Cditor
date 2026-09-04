@@ -132,10 +132,18 @@ fn sample_table_payload() -> BlockPayloadRecord {
 
 #[path = "tests/ai.rs"]
 mod ai;
+#[path = "tests/animated_block_anchor.rs"]
+mod animated_block_anchor;
+#[path = "tests/animated_block_height.rs"]
+mod animated_block_height;
 #[path = "tests/capabilities.rs"]
 mod capabilities;
 #[path = "tests/clipboard.rs"]
 mod clipboard;
+#[path = "tests/code_collapse_scroll.rs"]
+mod code_collapse_scroll;
+#[path = "tests/collapse_button_stability.rs"]
+mod collapse_button_stability;
 #[path = "tests/command_input.rs"]
 mod command_input;
 #[path = "tests/complex_block_input.rs"]

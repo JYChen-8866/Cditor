@@ -16,6 +16,11 @@ pub(super) struct LayoutState {
     pub(super) window_memory_pressure: WindowMemoryPressure,
     pub(super) projection: ProjectionState,
     pub(super) pending_measured_heights: HashMap<BlockId, PendingMeasuredHeight>,
+    /// 正在进行高度动画的块。动画期间该块的高度所有权从正常测量转到动画路径：
+    /// `apply_animated_block_height` 绕开容差门逐帧落值，而 `queue_measured_height`
+    /// 对这里的块拒绝写入（否则文本布局会把自然全高挤进 pending 表，跟动画高度
+    /// 互相覆盖，折叠走到一半被拽回全高）。`end_block_height_animation` 交还所有权。
+    pub(super) animating_heights: HashSet<BlockId>,
     pub(super) dirty: bool,
     pub(super) scrollbar_drag: Option<ScrollbarDragSession>,
 }
@@ -200,6 +205,11 @@ impl ProjectionWindowTarget {
 pub(super) struct PendingMeasuredHeight {
     pub(super) content_version: u64,
     pub(super) height: f64,
+    /// 这个高度是补间的某一帧吗。决定 flush 时用哪把容差尺子。
+    ///
+    /// 跟着数据走而不是入队后回头查 `animating_heights`：容差必须和入队时的判断
+    /// 一致，否则同一个值在两个阶段被两种标准衡量，尾帧仍会在 flush 阶段被丢掉。
+    pub(super) animated: bool,
 }
 
 #[cfg(test)]

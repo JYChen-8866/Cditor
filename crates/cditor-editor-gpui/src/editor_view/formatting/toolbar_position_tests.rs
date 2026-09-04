@@ -38,6 +38,7 @@ fn gutter_toolbar_opens_left_of_the_actual_gutter_and_aligns_its_top() {
         Some(1),
         false,
         false,
+        false,
         None,
         &[rect],
     )

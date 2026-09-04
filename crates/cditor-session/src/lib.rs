@@ -77,8 +77,10 @@ pub use input_port::{
 };
 pub use io_executor::SessionIoExecutor;
 pub use layout_port::{
-    LayoutScrollSnapshot, LayoutViewportSnapshot, project_apply_measured_block_height,
+    LayoutScrollSnapshot, LayoutViewportSnapshot, project_apply_animated_block_height,
+    project_apply_measured_block_height, project_begin_block_height_animation,
     project_begin_scrollbar_drag, project_drag_scrollbar, project_drag_scrollbar_to_ratio,
+    project_end_block_height_animation,
     project_finish_scrollbar_drag, project_flush_scroll_input_frame, project_layout_viewport,
     project_measured_block_height, project_queue_scroll_input, project_scroll_by_delta,
     project_scroll_focused_block_into_view, project_scroll_input_frame, project_scroll_to_block,

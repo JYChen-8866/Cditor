@@ -1,8 +1,8 @@
 use cditor_core::ids::BlockId;
 use cditor_core::rich_text::{CollectionPayload, TextAlign};
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
+    AnyElement, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    ScrollHandle, StatefulInteractiveElement, Styled, div, px, rgb,
 };
 
 use crate::editor_view::CditorV2View;
@@ -18,10 +18,16 @@ pub(crate) fn render_collection_block(
     theme: GuiTheme,
     view: Entity<CditorV2View>,
     focus: FocusHandle,
-    cx: &mut App,
+    // 由调用方在 `render()` 里用 `self.text_surface_render_state(...)` 预先取好。
+    //
+    // 这里绝不能 `view.read(cx)`：整条渲染链是从 `CditorV2View::render(&mut self, ..)`
+    // 下来的，那个 entity 此刻正被独占租用，重借会触发 gpui 的 double-lease；而 render
+    // 跑在不允许 unwind 的路径上，结果是 abort（`failed to initiate panic`）而非可恢复
+    // 错误。图片说明（`image_caption_state`）走的就是这个模式。
+    collection_title_state: Option<crate::surfaces::TextSurfaceRenderState>,
 ) -> AnyElement {
     let surface_id = crate::surfaces::collection_title::surface_id(block_id);
-    let Some(state) = view.read(cx).text_surface_render_state(surface_id) else {
+    let Some(state) = collection_title_state else {
         return div().into_any_element();
     };
     let input = RichTextLayoutInput::from_text_surface_snapshot(

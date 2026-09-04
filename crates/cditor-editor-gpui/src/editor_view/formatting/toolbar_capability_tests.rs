@@ -39,6 +39,7 @@ fn complex_block_gutter_menu_disables_unsupported_text_and_ai_actions() {
         Some(1),
         false,
         false,
+        false,
         None,
         &[rect],
     )

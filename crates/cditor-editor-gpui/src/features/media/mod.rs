@@ -332,7 +332,7 @@ pub(crate) fn schedule_rendered_media_height_report(
                             ..WorkCost::ZERO
                         },
                         move |view, cx| {
-                            let queued = crate::cache::queue_rendered_media_height(
+                            let queued = crate::cache::apply_rendered_media_height(
                                 view,
                                 block_id,
                                 content_version,

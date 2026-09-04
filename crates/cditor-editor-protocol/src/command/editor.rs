@@ -152,6 +152,10 @@ pub enum EditorCommand {
         block_id: cditor_core::ids::BlockId,
     },
     #[doc(hidden)]
+    CopyBlockMarkdown {
+        block_id: cditor_core::ids::BlockId,
+    },
+    #[doc(hidden)]
     MoveBlockBefore {
         block_id: cditor_core::ids::BlockId,
         before_block_id: Option<cditor_core::ids::BlockId>,
@@ -350,6 +354,7 @@ impl EditorCommand {
             Self::SetCodeLanguage { .. } => builtin::CODE_SET_LANGUAGE,
             Self::CopyBlockText { .. } => builtin::BLOCK_COPY_TEXT,
             Self::CopyBlockLink { .. } => builtin::BLOCK_COPY_LINK,
+            Self::CopyBlockMarkdown { .. } => builtin::BLOCK_COPY_MARKDOWN,
             Self::MoveBlockBefore { .. } => builtin::BLOCK_MOVE_BEFORE,
             Self::MoveBlockToParent { .. } => builtin::BLOCK_MOVE_TO_PARENT,
             Self::ApplyAiPreview { .. } => builtin::AI_APPLY,
@@ -491,6 +496,7 @@ impl EditorCommand {
             | Self::ToggleTodo { block_id }
             | Self::CopyBlockText { block_id }
             | Self::CopyBlockLink { block_id }
+            | Self::CopyBlockMarkdown { block_id }
             | Self::FocusBlock { block_id } => CommandArgs::BlockTarget {
                 block_id: *block_id,
             },

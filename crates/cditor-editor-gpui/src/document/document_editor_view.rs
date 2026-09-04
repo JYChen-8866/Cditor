@@ -113,6 +113,7 @@ impl DocumentEditorView {
         show_page_chrome: bool,
         view: Entity<CditorV2View>,
         image_caption_states: &HashMap<BlockId, TextSurfaceRenderState>,
+        collection_title_states: &HashMap<BlockId, TextSurfaceRenderState>,
         workers: &EditorWorkerAdmission,
         asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
         focus: FocusHandle,
@@ -142,6 +143,9 @@ impl DocumentEditorView {
         mermaid_source_scroll_handles: &HashMap<BlockId, ScrollHandle>,
         mermaid_source_caret_reveal_after_line_break: &std::collections::HashSet<BlockId>,
         collapsed_code_blocks: &std::collections::HashSet<BlockId>,
+        code_copy_feedback_block_id: Option<BlockId>,
+        // 语言为 mermaid 且当前在看图的代码块。
+        mermaid_preview_code_blocks: &std::collections::HashSet<BlockId>,
         code_collapse_tweens: &std::collections::HashMap<
             BlockId,
             crate::features::code::CodeCollapseTween,
@@ -187,12 +191,12 @@ impl DocumentEditorView {
                         // Live animated heights (code collapse/expand or Mermaid source<->preview)
                         // must be used for absolute positioning so that the running block_y
                         // for all following blocks moves continuously instead of jumping at the end.
+                        // 用本帧已解析的高度。这里若重新 `tween.height(now)` 采样，
+                        // 时间戳比布局那次晚，块的绝对位置就和锚点补偿依据的高度对不上，
+                        // 视口会漂掉两次采样之差。
                         code_collapse_tweens.get(&block.block_id)
                             .or_else(|| mermaid_source_tweens.get(&block.block_id))
-                            .map(|tween| {
-                                let now = web_time::Instant::now();
-                                tween.tween.height(now)
-                            })
+                            .map(|tween| tween.frame_height)
                     })
                     .unwrap_or_else(|| block.layout.effective_height());
                 if image_resize_preview
@@ -370,6 +374,7 @@ impl DocumentEditorView {
                             focus.clone(),
                             code_language_focus.clone(),
                             image_caption_states.get(&block.block_id).cloned(),
+                            collection_title_states.get(&block.block_id).cloned(),
                             workers,
                             asset_provider.clone(),
                             show_hover_gutter,
@@ -403,6 +408,8 @@ impl DocumentEditorView {
                             mermaid_source_scroll_handles.get(&block.block_id).cloned(),
                             mermaid_source_caret_reveal_after_line_break.contains(&block.block_id),
                             collapsed_code_blocks,
+                            code_copy_feedback_block_id,
+                            mermaid_preview_code_blocks,
                             code_collapse_tweens,
                             code_highlights,
                             search_decorations,
