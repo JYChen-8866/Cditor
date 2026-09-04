@@ -2,7 +2,7 @@ use std::{
     collections::VecDeque,
     io::Read,
     path::Path,
-    process::{Child, Command, Stdio},
+    process::{Child, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU32, Ordering},
@@ -99,7 +99,7 @@ impl AudioPlayback {
             sample_rate: supported.sample_rate(),
             channels: supported.channels(),
         };
-        let mut child = Command::new(crate::ffmpeg_executable())
+        let mut child = crate::media_command(crate::ffmpeg_executable())
             .args(build_audio_args(source, start_seconds, spec))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())

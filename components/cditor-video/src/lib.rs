@@ -28,7 +28,7 @@ pub use types::{
     VideoCommand, VideoDimensions, VideoFrame, VideoPlaybackSnapshot, VideoSessionConfig,
 };
 
-pub(crate) use runtime_binaries::{ffmpeg_executable, ffprobe_executable};
+pub(crate) use runtime_binaries::{ffmpeg_executable, ffprobe_executable, media_command};
 
 // Media workers spend almost all of their lifetime blocked on process pipes or
 // copying bounded frame/audio buffers. Rust's platform-default thread stack is

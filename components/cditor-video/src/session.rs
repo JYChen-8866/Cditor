@@ -2,7 +2,7 @@ use std::{
     collections::VecDeque,
     io::{self, Read},
     path::Path,
-    process::{Child, Command, Stdio},
+    process::{Child, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -489,7 +489,7 @@ impl VideoSession {
             start_seconds,
             realtime,
         );
-        let mut child = Command::new(ffmpeg)
+        let mut child = crate::media_command(ffmpeg)
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -674,7 +674,7 @@ fn probe_metadata(
     max_height: u32,
     cancellation: Option<&VideoCancellationToken>,
 ) -> Result<Option<VideoMetadata>, VideoError> {
-    let Ok(mut child) = Command::new(crate::ffprobe_executable())
+    let Ok(mut child) = crate::media_command(crate::ffprobe_executable())
         .args([
             "-v",
             "error",
@@ -1050,12 +1050,12 @@ mod tests {
     #[test]
     fn bundled_ffmpeg_generates_and_decodes_a_real_video_frame_when_available() {
         let ffmpeg = crate::ffmpeg_executable();
-        if Command::new(&ffmpeg).arg("-version").output().is_err() {
+        if crate::media_command(&ffmpeg).arg("-version").output().is_err() {
             return;
         }
         let source =
             std::env::temp_dir().join(format!("cditor-video-smoke-{}.mp4", std::process::id()));
-        let generated = Command::new(&ffmpeg)
+        let generated = crate::media_command(&ffmpeg)
             .args([
                 "-hide_banner",
                 "-loglevel",

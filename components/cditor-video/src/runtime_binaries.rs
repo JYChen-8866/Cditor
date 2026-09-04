@@ -1,6 +1,31 @@
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const RESOURCE_DIR: &str = "resources/binaries";
+
+/// Windows: 不给子进程分配控制台。
+///
+/// `ffmpeg.exe` / `ffprobe.exe` 是 console 子系统程序。GUI 宿主自己没有控制台
+/// （`windows_subsystem = "windows"`），所以系统会为每个子进程新建一个——那就是
+/// 播放视频时冒出来的黑窗口。这个标志让子进程完全不带控制台运行，stdout/stderr
+/// 管道不受影响。
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// 构造一条指向媒体工具的命令。
+///
+/// 所有 ffmpeg/ffprobe 调用都必须走这里，否则 Windows 上会冒出控制台黑窗口。
+pub(crate) fn media_command(program: impl AsRef<OsStr>) -> Command {
+    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
+    let mut command = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt as _;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
 
 pub(crate) fn ffmpeg_executable() -> PathBuf {
     resolve("CDITOR_FFMPEG", "ffmpeg")
