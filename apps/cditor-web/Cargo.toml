@@ -10,7 +10,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # cditor crates — default-features = false to skip font-kit (not available on WASM)
-cditor-editor-gpui = { path = "../../crates/cditor-editor-gpui", default-features = false, features = ["mermaid", "whiteboard"] }
+# mermaid 暂时移除：gpui-pre 迁移未完成，见 cditor-editor-gpui/Cargo.toml
+cditor-editor-gpui = { path = "../../crates/cditor-editor-gpui", default-features = false, features = ["whiteboard"] }
 cditor-runtime = { path = "../../crates/cditor-runtime" }
 cditor-sdk = { path = "../../crates/cditor-sdk" }
 cditor-whiteboard-drafft = { path = "../../components/cditor-whiteboard-drafft" }

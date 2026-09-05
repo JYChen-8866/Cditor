@@ -8,9 +8,21 @@ impl DocumentRuntime {
         let Some(current_id) = self.focused_block_id() else {
             return Ok(false);
         };
+        if matches!(
+            self.kind_for_block(current_id),
+            RichBlockKind::DocumentTitle
+        ) {
+            return Ok(false);
+        }
         let Some(previous_id) = self.adjacent_visible_block_id(current_id, -1) else {
             return Ok(false);
         };
+        if matches!(
+            self.kind_for_block(previous_id),
+            RichBlockKind::DocumentTitle
+        ) {
+            return Ok(false);
+        }
         self.merge_block_into_previous(current_id, previous_id)
     }
 
@@ -118,6 +130,12 @@ impl DocumentRuntime {
         let Some(current_id) = self.focused_block_id() else {
             return Ok(false);
         };
+        if matches!(
+            self.kind_for_block(current_id),
+            RichBlockKind::DocumentTitle
+        ) {
+            return Ok(false);
+        }
         if self
             .document
             .text_models
@@ -141,6 +159,9 @@ impl DocumentRuntime {
             .adjacent_visible_block_id(current_id, preferred_direction)
             .or_else(|| self.adjacent_visible_block_id(current_id, -preferred_direction))
             .ok_or_else(|| "missing adjacent block for empty block delete".to_owned())?;
+        if preferred_direction < 0 && self.is_document_title_block(target_id) {
+            return Ok(false);
+        }
         let target_offset = if preferred_direction < 0 {
             self.document
                 .payload_window
@@ -156,6 +177,9 @@ impl DocumentRuntime {
 
     /// Delete any block by ID, moving focus to an adjacent block.
     pub fn delete_block_by_id(&mut self, block_id: BlockId) -> Result<bool, String> {
+        if matches!(self.kind_for_block(block_id), RichBlockKind::DocumentTitle) {
+            return Ok(false);
+        }
         if self.document.visible_index.total_visible_count() <= 1 {
             self.reset_last_block_to_empty_text_block(block_id)?;
             return Ok(true);

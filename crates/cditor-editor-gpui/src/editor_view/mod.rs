@@ -62,10 +62,10 @@ impl CditorV2View {
         self.focus.editor.clone()
     }
 
-    /// Embeds a host-owned view in the page chrome action row.
+    /// Embeds a host-owned view below the document title.
     ///
-    /// The extra view is rendered on the same line as the page icon and cover
-    /// actions so hosts can surface decorations such as document tags.
+    /// The extra view participates in the title block's vertical layout so
+    /// decorations such as document tags remain below wrapped title lines.
     pub fn set_page_chrome_extra(&mut self, view: AnyView, cx: &mut Context<Self>) {
         self.page_chrome_extras = Some(view);
         cx.notify();

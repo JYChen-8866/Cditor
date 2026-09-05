@@ -35,6 +35,9 @@ impl DocumentRuntime {
     }
 
     fn can_indent_block(&self, block_id: BlockId) -> bool {
+        if self.is_document_title_block(block_id) {
+            return false;
+        }
         let Some(index) = self.document.index.index_of(block_id) else {
             return false;
         };
@@ -59,6 +62,9 @@ impl DocumentRuntime {
     }
 
     fn can_outdent_block(&self, block_id: BlockId) -> bool {
+        if self.is_document_title_block(block_id) {
+            return false;
+        }
         let Some(index) = self.document.index.index_of(block_id) else {
             return false;
         };
@@ -95,6 +101,9 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn indent_block(&mut self, block_id: BlockId) -> Result<bool, String> {
+        if self.is_document_title_block(block_id) {
+            return Ok(false);
+        }
         let Some(index) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
@@ -121,6 +130,9 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn outdent_block(&mut self, block_id: BlockId) -> Result<bool, String> {
+        if self.is_document_title_block(block_id) {
+            return Ok(false);
+        }
         let Some(index) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };

@@ -156,6 +156,8 @@ mod composition_input_normalization;
 mod conversion_clipboard_media;
 #[path = "tests/delete_navigation_height.rs"]
 mod delete_navigation_height;
+#[path = "tests/document_title.rs"]
+mod document_title;
 #[path = "tests/focus_composition.rs"]
 mod focus_composition;
 #[path = "tests/height_anchor_property.rs"]

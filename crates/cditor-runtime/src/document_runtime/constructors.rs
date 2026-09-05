@@ -6,19 +6,35 @@ use super::*;
 impl DocumentRuntime {
     pub fn empty() -> Self {
         let mut document = RichTextDocument::empty(1);
-        document.push_root_block(RichBlockRecord::heading(1, 1, ""));
-        Self::from_rich_text_document(document, 720.0)
-    }
-
-    pub fn empty_composer() -> Self {
-        let mut document = RichTextDocument::empty(1);
+        document.push_root_block(RichBlockRecord::rich_text(
+            2,
+            RichBlockKind::DocumentTitle,
+            "",
+        ));
         document.push_root_block(RichBlockRecord::paragraph(1, ""));
         Self::from_rich_text_document(document, 720.0)
     }
 
+    pub fn empty_composer() -> Self {
+        Self::from_payloads(
+            1,
+            vec![BlockPayloadRecord::rich_text(
+                1,
+                RichBlockKind::Paragraph,
+                "",
+            )],
+            720.0,
+        )
+    }
+
     pub fn demo() -> Self {
         let mut document = RichTextDocument::empty(1);
-        document.push_root_block(RichBlockRecord::heading(1, 1, "Cditor"));
+        document.push_root_block(RichBlockRecord::rich_text(
+            5,
+            RichBlockKind::DocumentTitle,
+            "Cditor",
+        ));
+        document.push_root_block(RichBlockRecord::paragraph(1, "正文内容"));
         document.push_root_block(RichBlockRecord::paragraph(
             2,
             "这是接入当前 V2 runtime 的最小 GPUI 富文本编辑器。",
@@ -90,8 +106,42 @@ impl DocumentRuntime {
         Self::from_index_records(document_id, records, payloads, 1, viewport_height)
     }
 
-    pub fn from_rich_text_document(document: RichTextDocument, viewport_height: f64) -> Self {
-        let metadata = document.metadata.clone();
+    pub fn from_rich_text_document(mut document: RichTextDocument, viewport_height: f64) -> Self {
+        let mut metadata = document.metadata.clone();
+        if metadata.name.is_none() {
+            metadata.name = metadata.title.take();
+        }
+        if !document
+            .blocks
+            .iter()
+            .any(|block| matches!(block.kind, RichBlockKind::DocumentTitle))
+        {
+            let title_id = document
+                .blocks
+                .iter()
+                .map(|block| block.id)
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1);
+            let mut title = RichBlockRecord::rich_text(
+                title_id,
+                RichBlockKind::DocumentTitle,
+                metadata.name.clone().unwrap_or_default(),
+            );
+            title.document_id = document.id;
+            title.structure_version = document.structure_version;
+            title.next_id = document.root_blocks.first().copied();
+            if let Some(first_root) = document.root_blocks.first().copied()
+                && let Some(first) = document
+                    .blocks
+                    .iter_mut()
+                    .find(|block| block.id == first_root)
+            {
+                first.prev_id = Some(title_id);
+            }
+            document.root_blocks.insert(0, title_id);
+            document.blocks.insert(0, title);
+        }
         let block_attrs = document
             .blocks
             .iter()
@@ -107,7 +157,6 @@ impl DocumentRuntime {
         );
         runtime.document.block_attrs = block_attrs;
         runtime.document.metadata = metadata;
-        runtime.sync_auto_document_title();
         runtime
     }
 
@@ -255,7 +304,7 @@ impl DocumentRuntime {
             payload_window.insert_loaded(payload);
         }
 
-        let mut runtime = Self {
+        let runtime = Self {
             document_id,
             document: DocumentState {
                 metadata: DocumentMetadata::default(),
@@ -301,7 +350,6 @@ impl DocumentRuntime {
             history: HistoryState::default(),
             transactions: TransactionState::default(),
         };
-        runtime.sync_auto_document_title();
         runtime
     }
 }
@@ -417,16 +465,21 @@ mod empty_document_tests {
     use super::*;
 
     #[test]
-    fn empty_document_starts_with_an_empty_h1_page_title() {
+    fn empty_document_starts_with_a_reserved_document_title_and_body() {
         let runtime = DocumentRuntime::empty();
 
-        assert_eq!(
-            runtime.block_kind(1),
-            Some(RichBlockKind::Heading { level: 1 })
+        assert_eq!(runtime.block_kind(2), Some(RichBlockKind::DocumentTitle));
+        assert_eq!(runtime.block_kind(1), Some(RichBlockKind::Paragraph));
+        assert_eq!(runtime.document_title_block_id(), Some(2));
+        assert!(
+            !runtime
+                .loaded_payload_records_snapshot()
+                .iter()
+                .any(|block| matches!(block.kind, RichBlockKind::Heading { level: 1 }))
         );
         assert!(
             runtime
-                .block_payload_record(1)
+                .block_payload_record(2)
                 .unwrap()
                 .plain_text()
                 .is_empty()
@@ -444,6 +497,18 @@ mod empty_document_tests {
                 .unwrap()
                 .plain_text()
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn demo_does_not_prepopulate_a_body_h1() {
+        let runtime = DocumentRuntime::demo();
+
+        assert!(
+            !runtime
+                .loaded_payload_records_snapshot()
+                .iter()
+                .any(|block| matches!(block.kind, RichBlockKind::Heading { level: 1 }))
         );
     }
 }

@@ -24,6 +24,10 @@ pub(crate) fn block_parts_to_plain_markdown(
         _ => payload.plain_text(),
     };
     match kind {
+        // Markdown has no page-header metadata. Preserve the system document
+        // title as a top-level heading while keeping body H1 blocks distinct
+        // in the editor model.
+        RichBlockKind::DocumentTitle => format!("# {text}"),
         RichBlockKind::Heading { level } => format!("{} {}", "#".repeat(usize::from(*level)), text),
         RichBlockKind::BulletedList => format!("- {text}"),
         RichBlockKind::NumberedList => format!("1. {text}"),

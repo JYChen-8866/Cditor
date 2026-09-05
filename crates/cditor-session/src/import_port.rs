@@ -207,15 +207,15 @@ mod tests {
             }))
             .unwrap();
         let snapshot = handle.document_snapshot().unwrap();
-        assert_eq!(snapshot.block_count, 3);
+        assert_eq!(snapshot.block_count, 4);
         assert!(matches!(
             handle.text_block_context(1).unwrap().unwrap().kind,
             RichBlockKind::Heading { level: 1 }
         ));
-        assert_eq!(handle.text_block_context(3).unwrap().unwrap().text, "one");
+        assert_eq!(handle.text_block_context(4).unwrap().unwrap().text, "one");
         handle.dispatch(command(EditorCommand::Undo)).unwrap();
         let snapshot = handle.document_snapshot().unwrap();
-        assert_eq!(snapshot.block_count, 1);
+        assert_eq!(snapshot.block_count, 2);
         assert_eq!(handle.text_block_context(1).unwrap().unwrap().text, "");
     }
 
@@ -235,7 +235,7 @@ mod tests {
             .unwrap();
         let snapshot = handle.document_snapshot().unwrap();
         assert_eq!(
-            snapshot.block_count, 2,
+            snapshot.block_count, 3,
             "plain prose must not collapse into one block"
         );
         assert_eq!(
@@ -247,7 +247,7 @@ mod tests {
             "first paragraph"
         );
         assert_eq!(
-            handle.text_block_context(3).unwrap().unwrap().text,
+            handle.text_block_context(4).unwrap().unwrap().text,
             "second paragraph"
         );
     }
@@ -267,12 +267,12 @@ mod tests {
             }))
             .unwrap();
         let snapshot = handle.document_snapshot().unwrap();
-        assert_eq!(snapshot.block_count, 4);
+        assert_eq!(snapshot.block_count, 5);
         assert!(matches!(
             handle.text_block_context(1).unwrap().unwrap().kind,
             RichBlockKind::Heading { level: 1 }
         ));
-        for block_id in [3, 4] {
+        for block_id in [4, 5] {
             assert_eq!(
                 handle.text_block_context(block_id).unwrap().unwrap().kind,
                 RichBlockKind::BulletedList,
@@ -280,7 +280,7 @@ mod tests {
             );
         }
         assert!(matches!(
-            handle.text_block_context(5).unwrap().unwrap().kind,
+            handle.text_block_context(6).unwrap().unwrap().kind,
             RichBlockKind::Code { .. }
         ));
     }
@@ -304,7 +304,7 @@ mod tests {
             }))
             .unwrap();
         let snapshot = handle.document_snapshot().unwrap();
-        assert_eq!(snapshot.block_count, 1);
+        assert_eq!(snapshot.block_count, 2);
         assert_eq!(
             handle.block_plain_text(1).unwrap().as_deref(),
             Some("first paragraph and #not a heading")
@@ -330,13 +330,13 @@ mod tests {
             }))
             .unwrap();
         let snapshot = handle.document_snapshot().unwrap();
-        assert_eq!(snapshot.block_count, 2);
+        assert_eq!(snapshot.block_count, 3);
         assert_eq!(
             handle.text_block_context(1).unwrap().unwrap().text,
             "first paragraph"
         );
         assert_eq!(
-            handle.block_plain_text(3).unwrap().as_deref(),
+            handle.block_plain_text(4).unwrap().as_deref(),
             Some("second paragraph")
         );
     }

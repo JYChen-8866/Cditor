@@ -82,7 +82,14 @@ impl RenderOnce for SvgIcon {
                 if colored {
                     match colored_svg_image(key, bytes, cx) {
                         Some(image) => {
-                            let _ = window.paint_image(bounds, Corners::default(), image, 0, false);
+                            let _ = window.paint_image(
+                                bounds,
+                                bounds,
+                                Corners::default(),
+                                image,
+                                0,
+                                false,
+                            );
                         }
                         None => {
                             let _ = window.paint_svg(

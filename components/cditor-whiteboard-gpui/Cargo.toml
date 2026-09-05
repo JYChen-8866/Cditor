@@ -11,7 +11,7 @@ default = []
 drafft-vello = []  # reserved for future Vello integration
 
 [dependencies]
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
+gpui = { package = "gpui-pre", version = "0.3.3" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 kurbo = { version = "0.12", features = ["serde"] }
 parley = { version = "=0.11.0", features = ["complex-scripts", "system"] }
@@ -53,8 +53,8 @@ rfd = "0.15"
 
 [dev-dependencies]
 tempfile = "3"
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", features = ["test-support"] }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", features = ["font-kit"] }
+gpui = { package = "gpui-pre", version = "0.3.3", features = ["test-support"] }
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.3", features = ["font-kit"] }
 
 [[example]]
 name = "gpui_board"

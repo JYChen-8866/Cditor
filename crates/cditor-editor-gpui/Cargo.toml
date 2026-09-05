@@ -9,12 +9,21 @@ name = "cditor_editor_gpui"
 
 [features]
 default = ["full", "test-support"]
-full = ["font-kit", "code-highlight", "mermaid", "whiteboard"]
+# mermaid 暂时不在 full 里：gpui-pre 迁移未完成。`mermaid_render` 仍是
+# zed git rev 1d217ee 的依赖，它自带 gpui 0.2.2，与本 crate 现在用的
+# gpui-pre 0.3.3 是两个不同的 `Hsla` 类型，features/mermaid/theme.rs 编译不过。
+# crates.io 上没有 mermaid_render，所以不能简单换版本号。
+# 恢复方式：解决 mermaid_render 的 gpui 版本后把 "mermaid" 加回本行。
+full = ["font-kit", "code-highlight", "whiteboard"]
 runtime-shaders = ["gpui_platform/runtime_shaders"]
 font-kit = ["gpui/font-kit"]
 test-support = ["gpui/test-support"]
 mobile-text-session = ["cditor-component/mobile-text-session"]
 gpui-dynamic-image = []
+# Renderer-internal frame timing (draw spans, invalidation counts). Only the
+# mobile GPUI fork exposes the collector this reads from; upstream builds leave
+# the FPS trace inert.
+gpui-frame-timing = []
 code-highlight = ["dep:lumis"]
 mermaid = ["dep:mermaid_render", "dep:usvg"]
 whiteboard = ["dep:cditor-whiteboard", "dep:cditor-whiteboard-gpui"]
@@ -42,8 +51,8 @@ cditor-component = { path = "../../components/cditor-component" }
 cditor-video = { path = "../../components/cditor-video" }
 cditor-whiteboard = { path = "../../components/cditor-whiteboard", optional = true }
 cditor-whiteboard-gpui = { path = "../../components/cditor-whiteboard-gpui", optional = true }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
+gpui = { package = "gpui-pre", version = "0.3.3", default-features = false }
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.3", default-features = false, features = ["font-kit"] }
 mermaid_render = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", optional = true }
 usvg = { version = "0.45.1", default-features = false, features = ["text"], optional = true }
 serde = { version = "1", features = ["derive"] }

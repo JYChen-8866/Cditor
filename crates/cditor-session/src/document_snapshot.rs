@@ -1,7 +1,7 @@
 use cditor_core::{
     edit::DocumentSelection,
     ids::BlockId,
-    rich_text::{BlockAttrs, PageCover, PageIcon, RichBlockKind},
+    rich_text::{BlockAttrs, DocumentMetadata, PageCover, PageIcon, RichBlockKind},
 };
 use cditor_editor_protocol::{ProtocolError, ProtocolErrorCode};
 use cditor_runtime::DocumentRuntime;
@@ -12,6 +12,7 @@ use crate::EditorSessionHandle;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionDocumentSnapshot {
     pub document_id: u64,
+    pub name: Option<String>,
     pub title: Option<String>,
     pub title_from_heading: bool,
     pub cover: Option<PageCover>,
@@ -43,8 +44,9 @@ pub fn project_document_snapshot(
 ) -> SessionDocumentSnapshot {
     SessionDocumentSnapshot {
         document_id: runtime.document_id(),
+        name: runtime.document_name().map(ToOwned::to_owned),
         title: runtime.document_title().map(ToOwned::to_owned),
-        title_from_heading: runtime.auto_document_title().is_some(),
+        title_from_heading: false,
         cover: runtime.page_cover().cloned(),
         icon: runtime.page_icon().cloned(),
         revision: runtime.revision(),
@@ -117,6 +119,31 @@ pub fn project_focused_block_kind(runtime: &DocumentRuntime) -> Option<(BlockId,
 }
 
 impl EditorSessionHandle {
+    pub fn document_metadata(&self) -> Result<DocumentMetadata, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| {
+            ProtocolError::new(
+                ProtocolErrorCode::Busy,
+                "editor session is already processing a synchronous request",
+            )
+            .retryable()
+        })?;
+        Ok(session.runtime.document_metadata().clone())
+    }
+
+    pub fn set_document_name(&self, name: impl Into<String>) -> Result<Option<u64>, ProtocolError> {
+        let mut session = self.try_session_mut()?;
+        if session.readonly {
+            return Err(ProtocolError::new(
+                ProtocolErrorCode::PermissionDenied,
+                "document is readonly",
+            ));
+        }
+        Ok(session
+            .runtime
+            .set_document_name(name)
+            .then(|| session.runtime.revision()))
+    }
+
     /// Renders the whole document to GitHub-Flavored Markdown.
     ///
     /// The export reads the runtime's full document model. Heavyweight
@@ -174,6 +201,11 @@ impl EditorSessionHandle {
             &session.runtime,
             session.readonly,
         ))
+    }
+
+    pub fn document_title_block_id(&self) -> Result<Option<BlockId>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| busy_error())?;
+        Ok(session.runtime.document_title_block_id())
     }
 
     /// Word and line counts computed over the currently loaded payload window.
@@ -284,7 +316,9 @@ fn busy_error() -> ProtocolError {
 
 #[cfg(test)]
 mod tests {
-    use cditor_core::rich_text::BlockPayloadRecord;
+    use cditor_core::rich_text::{
+        BlockPayloadRecord, CoverPositionY, DocumentMetadata, PageCover, RichTextDocument,
+    };
     use cditor_editor_protocol::command::{CommandEnvelope, CommandSource, EditorCommand};
 
     use super::*;
@@ -309,12 +343,40 @@ mod tests {
     fn export_markdown_on_blank_document_is_not_an_error() {
         let handle = EditorSession::new(DocumentRuntime::empty(), true).into_handle();
         let markdown = handle.export_markdown().expect("export markdown");
-        // `empty()` still contains one blank heading block; the export must
-        // succeed and carry the heading marker rather than erroring.
+        // `empty()` contains a blank system title; Markdown maps that page
+        // metadata surface to a top-level heading marker.
         assert!(
             markdown.contains("#"),
             "expected heading marker: {markdown:?}"
         );
+    }
+
+    #[test]
+    fn document_metadata_returns_an_owned_runtime_snapshot() {
+        let mut document = RichTextDocument::empty(9);
+        document.metadata = DocumentMetadata {
+            name: Some("Preview source".to_owned()),
+            created_at: Some("2026-09-01".to_owned()),
+            updated_at: Some("2026-09-05".to_owned()),
+            tags: vec!["design".to_owned(), "notes".to_owned()],
+            cover: Some(PageCover::External {
+                url: "https://example.com/cover.jpg".to_owned(),
+                position_y: CoverPositionY::CENTER,
+            }),
+            ..DocumentMetadata::default()
+        };
+        let handle = EditorSession::new(
+            DocumentRuntime::from_rich_text_document(document, 720.0),
+            false,
+        )
+        .into_handle();
+
+        let metadata = handle.document_metadata().expect("document metadata");
+
+        assert_eq!(metadata.name.as_deref(), Some("Preview source"));
+        assert_eq!(metadata.tags, ["design", "notes"]);
+        assert!(metadata.cover.is_some());
+        assert_eq!(metadata.updated_at.as_deref(), Some("2026-09-05"));
     }
 
     #[test]

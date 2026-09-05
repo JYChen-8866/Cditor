@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use gpui::{
-    AnyElement, AnyView, App, Entity, FocusHandle, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, ScrollHandle, Styled, div, prelude::FluentBuilder, px,
+    AnyElement, AnyView, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement,
+    ScrollHandle, Styled, div, prelude::FluentBuilder, px,
 };
 
 use crate::app::worker_admission::EditorWorkerAdmission;
@@ -371,6 +371,7 @@ impl DocumentEditorView {
                             text_layout_width_px,
                             text_viewport,
                             view.clone(),
+                            block.kind.is_document_title().then(|| page_chrome_extras.clone()).flatten(),
                             focus.clone(),
                             code_language_focus.clone(),
                             image_caption_states.get(&block.block_id).cloned(),
@@ -484,7 +485,6 @@ impl DocumentEditorView {
                 document_layout,
                 projection.scroll.global_scroll_top,
                 readonly,
-                page_chrome_extras,
                 self.theme,
                 workers,
                 asset_provider,

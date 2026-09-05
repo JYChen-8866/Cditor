@@ -38,13 +38,43 @@ impl DocumentRuntime {
     /// All database I/O and database identifier conversion must happen in the
     /// application integration layer before this boundary.
     pub fn from_cold_start_data(
-        data: DocumentRuntimeColdStartData,
+        mut data: DocumentRuntimeColdStartData,
         viewport_height: f64,
     ) -> Result<(Self, DocumentRuntimeColdStartReport), String> {
         if !viewport_height.is_finite() || viewport_height <= 0.0 {
             return Err(format!(
                 "cold-start viewport height must be positive and finite, got {viewport_height}"
             ));
+        }
+
+        let title_tag = kind_tag_for_rich_block_kind(&RichBlockKind::DocumentTitle);
+        if !data
+            .records
+            .iter()
+            .any(|record| record.kind_tag == title_tag)
+        {
+            let title_id = data
+                .records
+                .iter()
+                .map(|record| record.id)
+                .chain(data.initial_payloads.iter().map(|payload| payload.block_id))
+                .chain(data.block_attrs.iter().map(|(block_id, _)| *block_id))
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1);
+            let title_payload = BlockPayloadRecord::rich_text(
+                title_id,
+                RichBlockKind::DocumentTitle,
+                data.document_title.clone(),
+            );
+            let title_record = BlockIndexRecord::new(title_id, None, 0, title_tag, 0)
+                .with_layout_meta(cditor_core::layout::BlockLayoutMeta::new(
+                    title_id,
+                    estimate_payload_height(&title_payload, 0),
+                ));
+            data.records.insert(0, title_record);
+            data.initial_payloads.insert(0, title_payload);
+            data.initial_payload_window_end = data.initial_payload_window_end.saturating_add(1);
         }
         if data.initial_payload_window_end > data.records.len() {
             return Err(format!(
@@ -153,11 +183,10 @@ impl DocumentRuntime {
             viewport_height,
             0..window_end,
         );
-        runtime.document.metadata.title = Some(document_title.clone());
+        runtime.document.metadata.name = Some(document_title.clone());
         runtime.document.metadata.cover = page_cover;
         runtime.document.metadata.icon = page_icon;
         runtime.document.block_attrs = data.block_attrs.into_iter().collect();
-        runtime.sync_auto_document_title();
         let total_blocks = runtime.document.index.total_count();
 
         Ok((
@@ -252,11 +281,17 @@ mod tests {
 
         assert_eq!(runtime.document_id, 9);
         assert_eq!(runtime.document.index.structure_version, 3);
-        assert_eq!(runtime.document.payload_window.block_range, 0..2);
+        assert_eq!(runtime.document.payload_window.block_range, 0..3);
+        assert!(
+            runtime
+                .kind_for_block(runtime.document.index.block_ids[0])
+                .is_document_title()
+        );
+        assert_eq!(runtime.document_name(), Some("Loaded"));
         assert_eq!(report.document_title, "Loaded");
         assert_eq!(report.index_source, DocumentRuntimeIndexSource::Snapshot);
-        assert_eq!(report.total_blocks, 3);
-        assert_eq!(report.payloads_loaded, 2);
+        assert_eq!(report.total_blocks, 4);
+        assert_eq!(report.payloads_loaded, 3);
         assert_eq!(report.layout_cache_hits, 1);
         assert!(!report.page_layout_cache_hit);
     }

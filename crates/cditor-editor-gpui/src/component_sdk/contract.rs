@@ -30,6 +30,11 @@ pub trait CditorViewContract: Sized + 'static {
     fn sdk_undo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError>;
     fn sdk_redo(&mut self, cx: &mut Context<Self>) -> Result<bool, CditorError>;
     fn sdk_document_info(&self) -> Option<DocumentInfo>;
+    fn sdk_set_document_name(
+        &mut self,
+        name: String,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, CditorError>;
     fn sdk_text_statistics(&self) -> Option<TextStatistics>;
     fn sdk_is_dirty(&self) -> bool;
     fn sdk_save_status(&self) -> SaveStatus;

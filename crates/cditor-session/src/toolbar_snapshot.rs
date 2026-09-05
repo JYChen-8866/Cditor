@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn gutter_snapshot_owns_payload_attrs_and_capabilities() {
         let runtime = DocumentRuntime::demo();
-        let block_id = runtime.visible_block_ids()[0];
+        let block_id = runtime.visible_block_ids()[1];
         let handle = EditorSession::new(runtime, false).into_handle();
         let snapshot = handle
             .toolbar_context(ToolbarContextRequest {

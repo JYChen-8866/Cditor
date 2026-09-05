@@ -45,6 +45,7 @@ const MAX_DECODED_IMAGE_WIDTH: u32 = 8192;
 const MAX_DECODED_IMAGE_HEIGHT: u32 = 8192;
 const MAX_DECODED_IMAGE_ALLOC_BYTES: u64 = 64 * 1024 * 1024;
 const DISPLAY_IMAGE_MAX_EDGE_PX: u32 = 2048;
+const HOST_THUMBNAIL_MAX_EDGE_PX: u32 = 512;
 
 struct BuiltinRemoteImageDataSource {
     client: reqwest::blocking::Client,
@@ -556,6 +557,76 @@ pub fn load_render_image(
     None
 }
 
+/// Resolve a bounded thumbnail for a host-owned preview such as a document card.
+///
+/// Unlike `load_render_image`, this path does not enqueue work on a specific
+/// editor's main-thread queue. The thumbnail has its own cache variant so a
+/// list of cards cannot evict the active editor's higher-resolution image.
+pub(crate) fn load_host_render_image(
+    src: &str,
+    workers: &EditorWorkerAdmission,
+    asset_provider: Option<Arc<dyn cditor_sdk::providers::AssetProvider>>,
+    cx: &mut App,
+) -> Option<Arc<RenderImage>> {
+    if !image_source_allowed(src) {
+        return None;
+    }
+
+    let cache_key = host_thumbnail_cache_key(src);
+    let lookup = image_cache()
+        .lock()
+        .ok()
+        .map(|mut cache| cache.lookup_or_start(&cache_key))?;
+    let generation = match lookup {
+        ImageCacheLookup::Existing(state) => return ready_image(&state).cloned(),
+        ImageCacheLookup::AtCapacity => return None,
+        ImageCacheLookup::StartLoad { generation } => generation,
+    };
+
+    let Some(permit) = workers.try_acquire(WorkerTaskKind::ImageDecode) else {
+        if let Ok(mut cache) = image_cache().lock() {
+            cache.abort_start(&cache_key, generation);
+        }
+        return None;
+    };
+
+    let src = src.to_owned();
+    let remote_source = cx
+        .try_global::<RemoteImageDataSourceGlobal>()
+        .map(|source| source.0.clone());
+    let async_cx = cx.to_async();
+    let executor = cx.background_executor().clone();
+    cx.foreground_executor()
+        .spawn(async move {
+            let fetch_src = src;
+            let state = executor
+                .spawn(async move {
+                    let _permit = permit;
+                    fetch_image_bytes(&fetch_src, remote_source.as_deref(), asset_provider)
+                        .await
+                        .as_deref()
+                        .and_then(decode_host_thumbnail_render_image)
+                })
+                .await
+                .map_or(ImageState::Failed, ImageState::Ready);
+            async_cx.update(|cx| {
+                let retired = image_cache()
+                    .lock()
+                    .map(|mut cache| cache.finish(cache_key, generation, state))
+                    .unwrap_or_default();
+                retire_images_after_effect(retired, cx);
+                cx.refresh_windows();
+            });
+        })
+        .detach();
+
+    None
+}
+
+fn host_thumbnail_cache_key(src: &str) -> String {
+    format!("host-thumbnail:{HOST_THUMBNAIL_MAX_EDGE_PX}:{src}")
+}
+
 fn image_source_allowed(src: &str) -> bool {
     !src.trim().is_empty() && src.len() <= MAX_IMAGE_SOURCE_BYTES
 }
@@ -638,6 +709,10 @@ fn parse_local_path(src: &str) -> PathBuf {
 
 fn decode_display_render_image(bytes: &[u8]) -> Option<Arc<RenderImage>> {
     decode_render_image(bytes, Some(DISPLAY_IMAGE_MAX_EDGE_PX))
+}
+
+fn decode_host_thumbnail_render_image(bytes: &[u8]) -> Option<Arc<RenderImage>> {
+    decode_render_image(bytes, Some(HOST_THUMBNAIL_MAX_EDGE_PX))
 }
 
 fn decode_preview_render_image(bytes: &[u8]) -> Option<Arc<RenderImage>> {
@@ -856,7 +931,14 @@ impl Element for RasterImageElement {
             |position_y| positioned_cover_bounds(bounds, self.image.size(0), position_y),
         );
         let corner_radii = Corners::all(self.radius).clamp_radii_for_quad_size(image_bounds.size);
-        let result = window.paint_image(image_bounds, corner_radii, self.image.clone(), 0, false);
+        let result = window.paint_image(
+            image_bounds,
+            image_bounds,
+            corner_radii,
+            self.image.clone(),
+            0,
+            false,
+        );
         if let Some((block_id, content_version)) = self.trace_identity {
             crate::diagnostics::image_resize::trace(
                 "raster.paint",
@@ -1051,6 +1133,29 @@ mod tests {
             cache.lookup_or_start("large"),
             ImageCacheLookup::Existing(ImageState::Ready(image)) if Arc::ptr_eq(&image, &display)
         ));
+    }
+
+    #[test]
+    fn host_thumbnail_cache_reuses_the_same_render_image_between_card_renders() {
+        let mut cache = ImageCache::new(IMAGE_CACHE_MAX_ENTRIES, IMAGE_CACHE_MAX_DECODED_BYTES);
+        let key = host_thumbnail_cache_key("shared-cover");
+        let generation = start_load(&mut cache, &key);
+        let image = test_image(8, 8);
+        cache.finish(key.clone(), generation, ImageState::Ready(image.clone()));
+
+        let ImageCacheLookup::Existing(ImageState::Ready(card_image)) = cache.lookup_or_start(&key)
+        else {
+            panic!("expected the shared cover to be cached");
+        };
+        assert!(Arc::ptr_eq(&image, &card_image));
+        assert!(!cache.entries.contains_key("shared-cover"));
+    }
+
+    #[test]
+    fn host_thumbnail_decode_is_bounded_for_document_cards() {
+        let image = decode_host_thumbnail_render_image(&png_bytes(3200, 1920)).unwrap();
+
+        assert_eq!(image.size(0), size(DevicePixels(512), DevicePixels(307)));
     }
 
     #[test]

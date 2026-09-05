@@ -86,7 +86,7 @@ impl DrafftBoardView {
             self.board.cancel_pointer();
             self.board.canvas.clear_selection();
             self.pointer_interaction_active = false;
-            window.blur();
+            window.blur(cx);
         }
         self.finish_action(cx);
     }

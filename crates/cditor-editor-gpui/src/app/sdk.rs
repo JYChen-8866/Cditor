@@ -7,6 +7,7 @@ use crate::persistence::{
 };
 use cditor_core::edit::{ChangeOrigin, EditTransaction};
 use cditor_core::ids::BlockId;
+use cditor_core::rich_text::DocumentMetadata;
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcome, CommandSource};
 use cditor_sdk::diagnostics::{
     CditorDiagnostics, ExactRasterDiagnostics, ImageCacheDiagnostics, MermaidDiagnostics,
@@ -20,6 +21,8 @@ use cditor_sdk::document::{
 use cditor_sdk::event::CditorEvent;
 use cditor_sdk::{CditorError, command::CommandState};
 use cditor_session::{AgentEditOutcome, AgentEditRequest, AgentOutline, AgentOutlineRequest};
+use gpui::RenderImage;
+use std::sync::Arc;
 
 impl EventEmitter<CditorEvent> for CditorV2View {}
 
@@ -111,6 +114,14 @@ impl CditorViewContract for CditorV2View {
 
     fn sdk_document_info(&self) -> Option<DocumentInfo> {
         CditorV2View::sdk_document_info(self)
+    }
+
+    fn sdk_set_document_name(
+        &mut self,
+        name: String,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, CditorError> {
+        CditorV2View::sdk_set_document_name(self, name, cx)
     }
 
     fn sdk_text_statistics(&self) -> Option<TextStatistics> {
@@ -224,6 +235,44 @@ impl CditorViewContract for CditorV2View {
 }
 
 impl CditorV2View {
+    /// Focuses the reserved document-name block through the normal document
+    /// selection/input pipeline. Hosts use this after installing a new page.
+    pub fn sdk_focus_document_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let block_id = self
+            .ready_session()
+            .and_then(|session| session.document_title_block_id().ok().flatten());
+        let Some(block_id) = block_id else {
+            return;
+        };
+        let position = DocumentPosition {
+            block_id,
+            offset: TextOffset::Utf8Bytes(0),
+            affinity: Affinity::Downstream,
+        };
+        let _ = self.sdk_set_selection(DocumentSelection::caret(position), cx);
+        self.sdk_focus(window, cx);
+    }
+
+    pub fn sdk_document_metadata(&self) -> Option<DocumentMetadata> {
+        self.ready_session()?.document_metadata().ok()
+    }
+
+    pub fn sdk_document_cover_render_image(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<Arc<RenderImage>> {
+        let source = match self.sdk_document_metadata()?.cover? {
+            cditor_core::rich_text::PageCover::External { url, .. } => url,
+            cditor_core::rich_text::PageCover::Asset { asset, .. } => asset.source,
+        };
+        crate::image_loader::load_host_render_image(
+            &source,
+            &self.scheduling.workers,
+            self.features.asset_provider.clone(),
+            cx,
+        )
+    }
+
     pub fn sdk_set_search_decorations(
         &mut self,
         decorations: Vec<SearchDecoration>,
@@ -403,9 +452,9 @@ impl CditorV2View {
         }
     }
 
-    pub fn sdk_blur(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
+    pub fn sdk_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.focus.editor.is_focused(window) {
-            window.blur();
+            window.blur(cx);
         }
     }
 
@@ -439,6 +488,7 @@ impl CditorV2View {
         let snapshot = self.ready_session()?.document_snapshot().ok()?;
         Some(DocumentInfo {
             document_id: snapshot.document_id,
+            name: snapshot.name,
             title: snapshot.title,
             title_from_heading: snapshot.title_from_heading,
             icon: snapshot.icon.clone(),
@@ -446,6 +496,24 @@ impl CditorV2View {
             block_count: snapshot.block_count,
             readonly: snapshot.readonly,
         })
+    }
+
+    pub fn sdk_set_document_name(
+        &mut self,
+        name: String,
+        cx: &mut Context<Self>,
+    ) -> Result<bool, CditorError> {
+        let revision = self
+            .ready_session()
+            .ok_or(CditorError::NotReady)?
+            .set_document_name(name.clone())
+            .map_err(|error| CditorError::Internal(error.to_string()))?;
+        let Some(revision) = revision else {
+            return Ok(false);
+        };
+        cx.emit(CditorEvent::DocumentNameChanged { name, revision });
+        cx.notify();
+        Ok(true)
     }
 
     pub fn sdk_text_statistics(&self) -> Option<TextStatistics> {
@@ -888,6 +956,30 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[gpui::test]
+    fn sdk_document_name_focus_uses_the_document_selection_pipeline(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            CditorV2View::from_runtime_with_options(
+                cditor_runtime::DocumentRuntime::empty(),
+                false,
+                false,
+                cx,
+            )
+        });
+
+        cx.update(|window, cx| {
+            view.update(cx, |view, cx| view.sdk_focus_document_name(window, cx));
+        });
+
+        cx.update(|window, cx| {
+            let view = view.read(cx);
+            let selection = view.sdk_selection().expect("document name selection");
+            assert_eq!(selection.head.block_id, 2);
+            assert_eq!(selection.head.offset, TextOffset::Utf8Bytes(0));
+            assert!(view.focus.editor.is_focused(window));
+        });
     }
 
     #[gpui::test]

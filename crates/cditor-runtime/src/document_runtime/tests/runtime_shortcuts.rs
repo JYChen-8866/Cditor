@@ -89,7 +89,7 @@ fn select_all_marks_visible_projection_without_ui_truth() {
 
     let projection = runtime.full_projection_for_tests();
     assert!(projection.blocks.iter().all(|block| block.selected));
-    assert_eq!(projection.blocks.len(), 4);
+    assert_eq!(projection.blocks.len(), 5);
 }
 
 #[test]
@@ -233,13 +233,13 @@ fn ctrl_enter_inserts_new_paragraph_after_focused_block() {
 
     let new_block_id = runtime.insert_paragraph_after_focused().unwrap();
 
-    assert_eq!(new_block_id, 5);
-    assert_eq!(runtime.focused_block_id(), Some(5));
+    assert_eq!(new_block_id, 6);
+    assert_eq!(runtime.focused_block_id(), Some(6));
     let projection = runtime.full_projection_for_tests();
-    assert_eq!(projection.blocks.len(), 5);
-    assert_eq!(projection.blocks[3].block_id, 5);
+    assert_eq!(projection.blocks.len(), 6);
+    assert_eq!(projection.blocks[4].block_id, 6);
     assert!(matches!(
-        projection.blocks[3].kind,
+        projection.blocks[4].kind,
         RichBlockKind::Paragraph
     ));
 }

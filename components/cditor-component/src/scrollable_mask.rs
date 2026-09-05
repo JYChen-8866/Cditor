@@ -1,11 +1,12 @@
 //! Scroll container with configurable top and bottom edge masks.
 
 use gpui::{
-    AnyElement, App, Component, ElementId, IntoElement, Pixels, RenderOnce, Rgba, Styled, Window,
-    div, prelude::*, px, rgb,
+    AnyElement, App, ElementId, IntoElement, Pixels, RenderOnce, Rgba, Styled, Window, div,
+    prelude::*, px, rgb,
 };
 
 /// A reusable vertical scroll viewport with subtle edge affordances.
+#[derive(IntoElement)]
 pub struct ScrollableMask {
     id: ElementId,
     child: AnyElement,
@@ -44,14 +45,6 @@ impl ScrollableMask {
     pub fn mask_opacity(mut self, opacity: f32) -> Self {
         self.mask_opacity = opacity.clamp(0.0, 1.0);
         self
-    }
-}
-
-impl IntoElement for ScrollableMask {
-    type Element = Component<Self>;
-
-    fn into_element(self) -> Self::Element {
-        Component::new(self)
     }
 }
 

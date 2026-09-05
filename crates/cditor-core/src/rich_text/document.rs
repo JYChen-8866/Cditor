@@ -73,6 +73,11 @@ impl RichTextDocument {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentMetadata {
+    /// User-facing document name. This is page metadata, not a rich-text H1.
+    #[serde(default, alias = "title")]
+    pub name: Option<String>,
+    /// Deprecated compatibility alias for older callers and snapshots.
+    #[serde(skip)]
     pub title: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,

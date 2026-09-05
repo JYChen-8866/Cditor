@@ -1,7 +1,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    AnyElement, App, InteractiveElement, IntoElement, MouseButton, MouseMoveEvent, ParentElement,
-    Styled, div, px, rgb,
+    AnyElement, App, InteractiveElement, IntoElement, MouseMoveEvent, ParentElement, Styled, div,
+    px, rgb,
 };
 
 use crate::block::chrome::{
@@ -55,6 +55,7 @@ pub fn block_shell(
     block: &ViewBlockSnapshot,
     theme: GuiTheme,
     content: AnyElement,
+    document_title_footer: Option<gpui::AnyView>,
     hovered: bool,
     action: BlockActionState,
     collapsed_code_block: bool,
@@ -67,7 +68,8 @@ pub fn block_shell(
 ) -> AnyElement {
     let chrome = BlockChromeStyle::from_snapshot(block, theme);
     let horizontal = chrome.horizontal_geometry();
-    let gutter_visible = should_show_gutter(hovered, action.action_root);
+    let is_document_title = block.kind.is_document_title();
+    let gutter_visible = !is_document_title && should_show_gutter(hovered, action.action_root);
     let outer_background = outer_background_for_action(chrome.outer_background, theme, action);
     let content_background = content_background_for_action(
         chrome.content_background,
@@ -79,6 +81,9 @@ pub fn block_shell(
     let content_border = border_for_action(chrome.content_border, theme, action);
     let content_min_height_px =
         content_min_height_px(collapsed_code_block, chrome.content_min_height_px);
+    let title_footer = is_document_title.then(|| {
+        render_document_title_footer(chrome.outer_padding_bottom_px, document_title_footer)
+    });
     trace_render(
         block.block_id,
         &block.attrs,
@@ -99,7 +104,10 @@ pub fn block_shell(
         .text_color(rgb(chrome.text_color))
         .px(px(BLOCK_SHELL_OUTER_PADDING_X_PX))
         .pt(px(chrome.outer_padding_top_px))
-        .pb(px(chrome.outer_padding_bottom_px));
+        .pb(px(shell_bottom_padding_px(
+            is_document_title,
+            chrome.outer_padding_bottom_px,
+        )));
     on_text_activation(shell, on_mouse_down)
         .when_some(on_mouse_move, |this, handler| this.on_mouse_move(handler))
         .child(
@@ -123,8 +131,10 @@ pub fn block_shell(
                         } else {
                             crate::block::chrome::BLOCK_GUTTER_HEIGHT_PX
                         },
-                        on_gutter_add,
-                        on_gutter_mouse_down,
+                        (!is_document_title).then_some(on_gutter_add).flatten(),
+                        (!is_document_title)
+                            .then_some(on_gutter_mouse_down)
+                            .flatten(),
                     ))
                     .child(
                         div()
@@ -137,7 +147,7 @@ pub fn block_shell(
                                 chrome.marker_lane_width_px,
                                 theme,
                                 true,
-                                on_fold_toggle,
+                                (!is_document_title).then_some(on_fold_toggle).flatten(),
                                 block.focused,
                                 chrome.content_min_height_px,
                                 hovered,
@@ -172,17 +182,43 @@ pub fn block_shell(
                                         render_block_content_prefix(
                                             &block.chrome.prefix,
                                             theme,
-                                            true,
-                                            on_todo_toggle,
+                                            !is_document_title,
+                                            (!is_document_title)
+                                                .then_some(on_todo_toggle)
+                                                .flatten(),
                                         ),
                                         |this, prefix| this.child(prefix),
                                     )
-                                    .child(div().min_w(px(0.0)).w_full().child(content)),
+                                    .child(
+                                        div()
+                                            .min_w(px(0.0))
+                                            .w_full()
+                                            .flex()
+                                            .flex_col()
+                                            .child(content)
+                                            .when_some(title_footer, |this, footer| {
+                                                this.child(footer)
+                                            }),
+                                    ),
                             ),
                     ),
             ),
         )
         .into_any_element()
+}
+
+fn render_document_title_footer(height_px: f32, footer: Option<gpui::AnyView>) -> AnyElement {
+    div()
+        .w_full()
+        .h(px(height_px))
+        .flex()
+        .items_center()
+        .when_some(footer, |this, footer| this.child(footer))
+        .into_any_element()
+}
+
+const fn shell_bottom_padding_px(is_document_title: bool, padding_px: f32) -> f32 {
+    if is_document_title { 0.0 } else { padding_px }
 }
 
 fn gutter_control_top_px(kind: &RichBlockKind, first_line_height_px: f32) -> f32 {
@@ -307,6 +343,18 @@ mod tests {
             ),
             Some(93.0)
         );
+    }
+
+    #[test]
+    fn document_title_footer_consumes_the_reserved_bottom_chrome() {
+        let footer_height = cditor_core::layout::block_metrics::DOCUMENT_TITLE_FOOTER_HEIGHT_PX;
+        let title = cditor_core::layout::block_metrics::text_block_chrome_metrics_for_kind(
+            &RichBlockKind::DocumentTitle,
+        );
+
+        assert_eq!(title.outer_padding_bottom, footer_height);
+        assert_eq!(shell_bottom_padding_px(true, footer_height as f32), 0.0);
+        assert_eq!(shell_bottom_padding_px(false, 8.0), 8.0);
     }
 
     #[test]

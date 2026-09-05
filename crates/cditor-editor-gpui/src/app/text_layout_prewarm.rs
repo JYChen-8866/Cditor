@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    block::block_content::{page_title_typography, parse_block_hex_color},
+    block::block_content::parse_block_hex_color,
     diagnostics::text_layout::trace as trace_text_layout,
     document::{DocumentLayoutMetrics, DocumentTextGeometry},
     editor_view::CditorV2View,
@@ -269,7 +269,7 @@ impl CditorV2View {
                 FontStyle::Normal,
                 scale,
                 Some(text_geometry.width_px as f32),
-                page_title_typography(block).unwrap_or_default(),
+                Default::default(),
                 Vec::new(),
             );
             let request = if block.focused {

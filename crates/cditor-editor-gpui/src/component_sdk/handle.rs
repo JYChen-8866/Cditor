@@ -105,6 +105,16 @@ impl<V: CditorViewContract> CditorHandle<V> {
             .flatten()
     }
 
+    pub fn set_document_name(
+        &self,
+        name: impl Into<String>,
+        cx: &mut App,
+    ) -> Result<bool, CditorError> {
+        self.entity
+            .update(cx, |view, cx| view.sdk_set_document_name(name.into(), cx))
+            .map_err(|_| CditorError::ComponentDropped)?
+    }
+
     pub fn is_dirty(&self, cx: &App) -> bool {
         self.entity
             .read_with(cx, |view, _| view.sdk_is_dirty())

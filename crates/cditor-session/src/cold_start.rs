@@ -336,14 +336,16 @@ mod tests {
 
         let snapshot = result.session.snapshot().unwrap();
         assert_eq!(snapshot.document_id, 9);
-        assert_eq!(snapshot.block_count, 2);
+        assert_eq!(snapshot.block_count, 3);
         assert_eq!(
             result.session.block_plain_text(1).unwrap().as_deref(),
             Some("1")
         );
-        assert_eq!(result.report.payloads_loaded, 2);
+        assert_eq!(result.report.payloads_loaded, 3);
         assert_eq!(result.report.payloads_missing, 0);
-        assert!(result.report.page_layout_cache_hit);
+        // Injecting the migrated title changes the cached page's block count,
+        // so the old body-only layout must be discarded.
+        assert!(!result.report.page_layout_cache_hit);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use cditor_component::{InteractiveScrollbar, InteractiveScrollbarStyle, ScrollbarAxis, SvgIcon};
 use gpui::{
-    AnyElement, AnyView, App, Entity, InteractiveElement, IntoElement, MouseButton, ObjectFit,
+    AnyElement, App, Entity, InteractiveElement, IntoElement, MouseButton, ObjectFit,
     ParentElement, ScrollHandle, StatefulInteractiveElement, Styled, Window, div,
     prelude::FluentBuilder, px, rgb,
 };
@@ -143,13 +143,14 @@ impl PageChromeGeometry {
         let available_width = (layout.page_width_px - 96.0).max(1.0);
         let body_width = (BODY_BLOCK_CONTENT_WIDTH_PX as f32).min(available_width);
         let content_left_px = page_left_px + (layout.page_width_px - body_width) / 2.0;
+        let icon_top_px = if has_cover {
+            PAGE_COVER_HEIGHT_PX - PAGE_ICON_COVER_OVERLAP_PX
+        } else {
+            PAGE_ICON_TOP_WITHOUT_COVER_PX
+        };
         Self {
             content_left_px,
-            icon_top_px: if has_cover {
-                PAGE_COVER_HEIGHT_PX - PAGE_ICON_COVER_OVERLAP_PX
-            } else {
-                PAGE_ICON_TOP_WITHOUT_COVER_PX
-            },
+            icon_top_px,
             actions_top_px: if has_cover {
                 PAGE_COVER_HEIGHT_PX + PAGE_ACTIONS_COVER_BOTTOM_GAP_PX
             } else {
@@ -166,7 +167,6 @@ pub(crate) fn render_page_chrome(
     layout: DocumentLayoutMetrics,
     scroll_top: f64,
     readonly: bool,
-    page_chrome_extras: Option<AnyView>,
     theme: GuiTheme,
     workers: &EditorWorkerAdmission,
     asset_provider: Option<std::sync::Arc<dyn cditor_sdk::providers::AssetProvider>>,
@@ -222,7 +222,6 @@ pub(crate) fn render_page_chrome(
         viewport_width_px,
         theme,
         view.clone(),
-        page_chrome_extras,
         readonly,
     ) {
         chrome = chrome.child(actions);
@@ -348,11 +347,10 @@ fn render_page_actions(
     viewport_width_px: f32,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
-    page_chrome_extras: Option<AnyView>,
     readonly: bool,
 ) -> Option<AnyElement> {
     let actions_left_px = page_actions_left_px(geometry, decorations.icon.is_some());
-    if readonly && page_chrome_extras.is_none() {
+    if readonly {
         return None;
     }
     let row_width_px = (viewport_width_px - actions_left_px - 24.0).max(0.0);
@@ -366,14 +364,18 @@ fn render_page_actions(
         .flex()
         .items_center()
         .gap_1()
-        .opacity(0.0)
-        .group_hover("cditor-page-chrome", |style| style.opacity(1.0))
-        .hover(|style| style.opacity(1.0))
         .when(!readonly, |row| {
-            row.children(action_buttons(decorations, theme, view))
-        })
-        .when_some(page_chrome_extras, |row, extra| {
-            row.child(div().flex_1().min_w(px(0.0)).child(extra))
+            row.child(
+                div()
+                    .id("cditor-page-decoration-controls")
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .opacity(0.0)
+                    .group_hover("cditor-page-chrome", |style| style.opacity(1.0))
+                    .hover(|style| style.opacity(1.0))
+                    .children(action_buttons(decorations, theme, view)),
+            )
         });
     Some(row.into_any_element())
 }
@@ -894,16 +896,7 @@ fn set_page_cover_command(path: &std::path::Path) -> EditorCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{AppContext, Context, Render, TestAppContext, Window};
-
-    #[derive(Clone)]
-    struct TagBarExtra;
-
-    impl Render for TagBarExtra {
-        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-            "tag-extra"
-        }
-    }
+    use gpui::TestAppContext;
 
     #[test]
     fn page_chrome_geometry_centers_on_the_body_track() {
@@ -914,6 +907,7 @@ mod tests {
         assert_eq!(plain.content_left_px, 320.0);
         assert_eq!(plain.icon_top_px, 36.0);
         assert_eq!(covered.icon_top_px, 158.0);
+        assert_eq!(plain.actions_top_px, 54.0);
         assert_eq!(covered.actions_top_px, 212.0);
     }
 
@@ -996,8 +990,8 @@ mod tests {
     }
 
     #[gpui::test]
-    fn page_actions_render_host_extras_alongside_icon_actions(cx: &mut TestAppContext) {
-        let (view, cx) = cx.add_window_view(|_window, cx| {
+    fn page_actions_are_hidden_in_readonly_mode(cx: &mut TestAppContext) {
+        let (view, _cx) = cx.add_window_view(|_window, cx| {
             CditorV2View::from_runtime_with_options(
                 cditor_runtime::DocumentRuntime::demo(),
                 false,
@@ -1005,7 +999,6 @@ mod tests {
                 cx,
             )
         });
-        let extra = cx.new(|_cx| TagBarExtra);
         let layout = DocumentLayoutMetrics::for_viewport(1_440.0);
         let geometry = PageChromeGeometry::new(1_440.0, layout, false);
         let decorations = PageDecorationSnapshot::default();
@@ -1017,7 +1010,6 @@ mod tests {
                 1_440.0,
                 GuiTheme::light(),
                 view.clone(),
-                None,
                 true,
             )
             .is_none()
@@ -1028,20 +1020,7 @@ mod tests {
                 geometry,
                 1_440.0,
                 GuiTheme::light(),
-                view.clone(),
-                Some(AnyView::from(extra)),
-                true,
-            )
-            .is_some()
-        );
-        assert!(
-            render_page_actions(
-                &decorations,
-                geometry,
-                1_440.0,
-                GuiTheme::light(),
                 view,
-                None,
                 false,
             )
             .is_some()

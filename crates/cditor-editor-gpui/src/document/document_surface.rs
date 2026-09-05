@@ -136,7 +136,6 @@ impl DocumentSurface {
             .overflow_hidden()
             .bg(rgb(theme.page))
             .pt(px(self.top_inset_px))
-            .when_some(page_chrome, |this, chrome| this.child(chrome))
             .child(
                 div()
                     .relative()
@@ -175,6 +174,10 @@ impl DocumentSurface {
                             .when_some(stable_failure_banner, |this, banner| this.child(banner)),
                     ),
             )
+            // Page chrome contains interactive host metadata rendered inside
+            // the DocumentTitle block's reserved bottom space. Paint it after
+            // blocks so the title shell background cannot cover it.
+            .when_some(page_chrome, |this, chrome| this.child(chrome))
             .when_some(page_icon_menu, |this, menu| {
                 this.child(
                     div()
@@ -200,7 +203,7 @@ mod tests {
         assert_eq!(surface.page_width_px, 1296.0);
         assert_eq!(surface.content_width_px, 1296.0);
         assert_eq!(surface.min_height_px, 640.0);
-        assert_eq!(surface.top_inset_px, 96.0);
+        assert_eq!(surface.top_inset_px, 88.0);
         assert_eq!(surface.before_window_height, 10.0);
         assert_eq!(surface.placeholder_window_height, None);
         assert_eq!(surface.after_window_height, 20.0);
@@ -227,6 +230,6 @@ mod tests {
         );
         assert_eq!(narrow_surface.page_width_px, 700.0);
         assert_eq!(narrow_surface.content_width_px, 700.0);
-        assert_eq!(narrow_surface.top_inset_px, 48.0);
+        assert_eq!(narrow_surface.top_inset_px, 88.0);
     }
 }

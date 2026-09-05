@@ -35,6 +35,9 @@ impl DocumentRuntime {
         let Some(record) = self.document.payload_window.get(block_id) else {
             return false;
         };
+        if record.kind.is_document_title() || target.is_document_title() {
+            return false;
+        }
         if &record.kind == target {
             return false;
         }
@@ -125,6 +128,9 @@ impl DocumentRuntime {
     /// Mirrors `delete_block_by_id`: the final visible block can be reset, but
     /// a block owning a subtree cannot currently be deleted by this command.
     pub fn can_delete_block(&self, block_id: BlockId) -> bool {
+        if self.is_document_title_block(block_id) {
+            return false;
+        }
         if self.document.visible_index.total_visible_count() <= 1 {
             return self.document.index.index_of(block_id).is_some();
         }

@@ -29,6 +29,10 @@ pub enum CditorEvent {
         revision: u64,
         origin: ChangeOrigin,
     },
+    DocumentNameChanged {
+        name: String,
+        revision: u64,
+    },
     SelectionChanged {
         selection: DocumentSelection,
     },

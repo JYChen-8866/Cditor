@@ -11,6 +11,8 @@ pub const CURRENT_DOCUMENT_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentInfo {
     pub document_id: DocumentId,
+    pub name: Option<String>,
+    /// Compatibility alias for hosts that still call the document name a title.
     pub title: Option<String>,
     pub title_from_heading: bool,
     pub icon: Option<PageIcon>,

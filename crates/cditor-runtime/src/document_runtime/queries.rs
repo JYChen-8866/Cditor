@@ -14,6 +14,20 @@ fn link_siblings(blocks: &mut [RichBlockRecord], parent_id: Option<BlockId>, sib
 }
 
 impl DocumentRuntime {
+    /// Returns the required first-root document-name block without
+    /// materializing the document or scanning its payload window.
+    pub fn document_title_block_id(&self) -> Option<BlockId> {
+        let block_id = self.document.index.block_ids.first().copied()?;
+        self.is_document_title_block(block_id).then_some(block_id)
+    }
+
+    pub(crate) fn is_document_title_block(&self, block_id: BlockId) -> bool {
+        self.document
+            .payload_window
+            .get(block_id)
+            .is_some_and(|record| record.kind.is_document_title())
+    }
+
     /// Materializes the complete rich-text document model behind this runtime.
     ///
     /// The runtime normally keeps the document decomposed for large-document
@@ -63,10 +77,14 @@ impl DocumentRuntime {
         }
         link_siblings(&mut blocks, None, &root_blocks);
 
+        let mut metadata = self.document.metadata.clone();
+        metadata.name = self.document_name().map(ToOwned::to_owned);
+        metadata.title = None;
+
         RichTextDocument {
             id: self.document_id,
             version: cditor_core::rich_text::document::CURRENT_RICH_TEXT_FORMAT_VERSION,
-            metadata: self.document.metadata.clone(),
+            metadata,
             root_blocks,
             blocks,
             structure_version: self.document.index.structure_version,
@@ -78,7 +96,25 @@ impl DocumentRuntime {
     }
 
     pub fn document_title(&self) -> Option<&str> {
-        self.document.metadata.title.as_deref()
+        self.document_name()
+    }
+
+    pub fn document_name(&self) -> Option<&str> {
+        if let Some(title) = self.document.index.block_ids.iter().find_map(|block_id| {
+            self.document
+                .payload_window
+                .get(*block_id)
+                .filter(|record| matches!(record.kind, RichBlockKind::DocumentTitle))
+                .and_then(|_| self.document.text_models.get(block_id))
+                .map(|model| model.text())
+        }) {
+            return (!title.trim().is_empty()).then_some(title);
+        }
+        self.document
+            .metadata
+            .name
+            .as_deref()
+            .or(self.document.metadata.title.as_deref())
     }
 
     pub fn document_metadata(&self) -> &DocumentMetadata {
@@ -104,35 +140,58 @@ impl DocumentRuntime {
     /// Records a committed content change at the document-kernel boundary.
     pub fn note_content_changed(&mut self) -> u64 {
         self.document.revision = self.document.revision.saturating_add(1);
-        self.sync_auto_document_title();
         self.document.revision
     }
 
-    /// Derives the display title from the first non-empty H1 block.
-    ///
-    /// An existing title is left untouched when the document has no H1 text,
-    /// so host-provided file names survive documents without headings.
-    pub(crate) fn sync_auto_document_title(&mut self) {
-        let Some(title) = self.auto_document_title() else {
-            return;
-        };
-        if self.document.metadata.title.as_deref() == Some(title.as_str()) {
-            return;
-        }
-        self.document.metadata.title = Some(title);
+    /// Kept as a compatibility query. H1 blocks no longer define the name.
+    pub fn auto_document_title(&self) -> Option<String> {
+        None
     }
 
-    /// Returns the trimmed first non-empty H1 text, if the document has one.
-    pub fn auto_document_title(&self) -> Option<String> {
-        self.document.index.block_ids.iter().find_map(|block_id| {
-            let record = self.document.payload_window.get_shared(*block_id)?;
-            if !matches!(&record.kind, RichBlockKind::Heading { level: 1 }) {
-                return None;
+    pub fn set_document_name(&mut self, name: impl Into<String>) -> bool {
+        let name = name.into();
+        if let Some(block_id) = self
+            .document
+            .index
+            .block_ids
+            .iter()
+            .copied()
+            .find(|block_id| {
+                self.document
+                    .payload_window
+                    .get(*block_id)
+                    .is_some_and(|record| matches!(record.kind, RichBlockKind::DocumentTitle))
+            })
+        {
+            let current = self
+                .document
+                .payload_window
+                .get(block_id)
+                .map(BlockPayloadRecord::plain_text)
+                .unwrap_or_default();
+            if current == name {
+                return false;
             }
-            let text = record.plain_text();
-            let text = text.trim();
-            (!text.is_empty()).then(|| text.to_owned())
-        })
+            if let Some(record) = self.document.payload_window.get_mut(block_id) {
+                record.payload = BlockPayload::RichText {
+                    spans: vec![InlineSpan::plain(name.clone())],
+                };
+                record.content_version = record.content_version.saturating_add(1);
+                sync_text_model_for_payload(&mut self.document.text_models, record);
+            }
+            self.document.metadata.name = (!name.trim().is_empty()).then_some(name);
+            self.document.metadata.title = None;
+            self.note_content_changed();
+            return true;
+        }
+        let name = (!name.trim().is_empty()).then_some(name);
+        if self.document.metadata.name == name {
+            return false;
+        }
+        self.document.metadata.name = name;
+        self.document.metadata.title = None;
+        self.document.revision = self.document.revision.saturating_add(1);
+        true
     }
 
     pub fn can_undo(&self) -> bool {
@@ -252,8 +311,8 @@ mod tests {
     }
 
     #[test]
-    fn document_title_derives_from_the_first_non_empty_h1() {
-        let runtime = DocumentRuntime::from_payloads(
+    fn document_name_is_independent_from_the_first_h1() {
+        let mut runtime = DocumentRuntime::from_payloads(
             1,
             vec![
                 BlockPayloadRecord::rich_text(1, RichBlockKind::Heading { level: 1 }, "My Doc"),
@@ -262,11 +321,13 @@ mod tests {
             720.0,
         );
 
-        assert_eq!(runtime.document_title(), Some("My Doc"));
+        assert_eq!(runtime.document_name(), None);
+        assert!(runtime.set_document_name("Named page"));
+        assert_eq!(runtime.document_name(), Some("Named page"));
     }
 
     #[test]
-    fn document_title_skips_an_empty_h1_and_uses_the_next_heading() {
+    fn h1_content_does_not_supply_a_document_name() {
         let runtime = DocumentRuntime::from_payloads(
             1,
             vec![
@@ -276,11 +337,11 @@ mod tests {
             720.0,
         );
 
-        assert_eq!(runtime.document_title(), Some("Real Title"));
+        assert_eq!(runtime.document_name(), None);
     }
 
     #[test]
-    fn document_title_follows_first_h1_edits_and_survives_deletion() {
+    fn document_name_does_not_follow_h1_edits_or_deletion() {
         let mut runtime = DocumentRuntime::from_payloads(
             1,
             vec![
@@ -290,6 +351,7 @@ mod tests {
             720.0,
         );
 
+        assert!(runtime.set_document_name("Stable name"));
         runtime.focus_block_at_offset(1, 0).unwrap();
         let expected = runtime.input_session_identity().unwrap();
         runtime
@@ -301,21 +363,25 @@ mod tests {
                 },
             })
             .unwrap();
-        assert_eq!(runtime.document_title(), Some("XMy Doc"));
+        assert_eq!(runtime.document_name(), Some("Stable name"));
 
         runtime.delete_block_by_id(1).unwrap();
-        assert_eq!(runtime.document_title(), Some("XMy Doc"));
+        assert_eq!(runtime.document_name(), Some("Stable name"));
     }
 
     #[test]
-    fn document_title_keeps_host_title_when_there_is_no_h1() {
+    fn legacy_title_is_migrated_to_document_name() {
         let mut document = RichTextDocument::empty(1);
         document.metadata.title = Some("Untitled".to_owned());
         document.push_root_block(RichBlockRecord::paragraph(1, "body"));
 
         let runtime = DocumentRuntime::from_rich_text_document(document, 720.0);
 
-        assert_eq!(runtime.document_title(), Some("Untitled"));
+        assert_eq!(runtime.document_name(), Some("Untitled"));
+        assert_eq!(
+            runtime.document_metadata().name.as_deref(),
+            Some("Untitled")
+        );
     }
 
     #[test]
@@ -335,7 +401,7 @@ mod tests {
     #[test]
     fn block_layout_version_reads_the_authoritative_index_identity() {
         let mut runtime = DocumentRuntime::empty();
-        runtime.document.index.layout_meta[0].layout_version = 37;
+        runtime.document.index.layout_meta[1].layout_version = 37;
 
         assert_eq!(runtime.block_layout_version(1), Some(37));
         assert_eq!(runtime.block_layout_version(999), None);

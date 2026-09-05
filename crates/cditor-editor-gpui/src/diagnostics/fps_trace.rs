@@ -4,7 +4,9 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use web_time::Instant;
 
-use gpui::{FrameTiming, FrameTimingCollector, WindowId};
+use gpui::WindowId;
+#[cfg(feature = "gpui-frame-timing")]
+use gpui::{FrameTiming, FrameTimingCollector};
 
 use super::frame_telemetry::AppFrameTelemetryInput;
 
@@ -228,6 +230,7 @@ struct WindowStatistics {
 }
 
 struct WindowTrace {
+    #[cfg(feature = "gpui-frame-timing")]
     previous_timing: Option<FrameTiming>,
     active: ActiveWindow,
     editor_render_ms: VecDeque<f64>,
@@ -237,6 +240,7 @@ struct WindowTrace {
 impl Default for WindowTrace {
     fn default() -> Self {
         Self {
+            #[cfg(feature = "gpui-frame-timing")]
             previous_timing: None,
             active: ActiveWindow::default(),
             editor_render_ms: VecDeque::new(),
@@ -246,6 +250,7 @@ impl Default for WindowTrace {
 }
 
 struct TraceState {
+    #[cfg(feature = "gpui-frame-timing")]
     collector: FrameTimingCollector,
     windows: HashMap<u64, WindowTrace>,
     last_poll_at: Instant,
@@ -253,8 +258,10 @@ struct TraceState {
 
 impl TraceState {
     fn new(now: Instant) -> Self {
+        #[cfg(feature = "gpui-frame-timing")]
         gpui::set_frame_trace_enabled(true);
         Self {
+            #[cfg(feature = "gpui-frame-timing")]
             collector: FrameTimingCollector::new(),
             windows: HashMap::new(),
             last_poll_at: now,
@@ -283,6 +290,7 @@ impl TraceState {
             .or_default()
             .context = Some(TraceContext::from(input));
 
+        #[cfg(feature = "gpui-frame-timing")]
         for timing in self.collector.collect_unseen() {
             let window_id = timing.window_id.as_u64();
             let window = self.windows.entry(window_id).or_default();

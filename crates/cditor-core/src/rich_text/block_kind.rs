@@ -5,6 +5,7 @@ use super::unknown::{UnknownWire, raw_json};
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(remote = "Self")]
 pub enum RichBlockKind {
+    DocumentTitle,
     Paragraph,
     Heading {
         level: u8,
@@ -104,9 +105,14 @@ pub enum LayoutBehavior {
 }
 
 impl RichBlockKind {
+    pub const fn is_document_title(&self) -> bool {
+        matches!(self, Self::DocumentTitle)
+    }
+
     pub fn layout_behavior(&self) -> LayoutBehavior {
         match self {
-            Self::Paragraph
+            Self::DocumentTitle
+            | Self::Paragraph
             | Self::Heading { .. }
             | Self::Quote
             | Self::Callout { .. }
@@ -179,6 +185,7 @@ impl RichBlockKind {
 
 pub fn kind_tag_for_rich_block_kind(kind: &RichBlockKind) -> u16 {
     match kind {
+        RichBlockKind::DocumentTitle => 34,
         RichBlockKind::Paragraph => 1,
         RichBlockKind::Heading { level: 1 } => 2,
         RichBlockKind::Heading { level: 2 } => 26,
@@ -223,6 +230,7 @@ pub const UNKNOWN_BLOCK_KIND_NAME: &str = "unknown";
 
 pub fn rich_block_kind_from_tag(tag: u16) -> RichBlockKind {
     match tag {
+        34 => RichBlockKind::DocumentTitle,
         1 => RichBlockKind::Paragraph,
         2 => RichBlockKind::Heading { level: 1 },
         26 => RichBlockKind::Heading { level: 2 },

@@ -181,6 +181,7 @@ impl DocumentRuntime {
         }
         validate_preorder(&staging.records)
             .map_err(TransactionApplyError::InvalidResultingStructure)?;
+        self.validate_document_title_staging(&staging.records)?;
 
         // ---- 提交（不再失败的区域） ----
         let StagingState {
@@ -478,6 +479,55 @@ impl DocumentRuntime {
             };
             if let Some(reason) = failure {
                 return Err(TransactionApplyError::StalePrecondition { index, reason });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_document_title_staging(
+        &self,
+        records: &[BlockIndexRecord],
+    ) -> Result<(), TransactionApplyError> {
+        let title_tag = kind_tag_for_rich_block_kind(&RichBlockKind::DocumentTitle);
+        let existing_title = self
+            .document
+            .index
+            .block_ids
+            .iter()
+            .zip(&self.document.index.kind_tags)
+            .find_map(|(id, tag)| (*tag == title_tag).then_some(*id));
+        let titles = records
+            .iter()
+            .filter(|record| record.kind_tag == title_tag)
+            .collect::<Vec<_>>();
+        if titles.len() > 1 {
+            return Err(TransactionApplyError::InvalidResultingStructure(
+                "document may contain only one DocumentTitle block".to_owned(),
+            ));
+        }
+        if let Some(existing_title) = existing_title {
+            let Some(title) = titles.first() else {
+                return Err(TransactionApplyError::InvalidResultingStructure(
+                    "DocumentTitle is a required system block".to_owned(),
+                ));
+            };
+            if title.id != existing_title || title.parent_id.is_some() || title.depth != 0 {
+                return Err(TransactionApplyError::InvalidResultingStructure(
+                    "DocumentTitle cannot be replaced, moved, or nested".to_owned(),
+                ));
+            }
+            if records.first().map(|record| record.id) != Some(existing_title) {
+                return Err(TransactionApplyError::InvalidResultingStructure(
+                    "DocumentTitle must remain the first root block".to_owned(),
+                ));
+            }
+            if records
+                .iter()
+                .any(|record| record.parent_id == Some(existing_title))
+            {
+                return Err(TransactionApplyError::InvalidResultingStructure(
+                    "DocumentTitle cannot own child blocks".to_owned(),
+                ));
             }
         }
         Ok(())

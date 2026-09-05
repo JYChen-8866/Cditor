@@ -129,5 +129,6 @@ fn scroll_phase_from_touch(phase: gpui::TouchPhase) -> ScrollPhase {
         gpui::TouchPhase::Started => ScrollPhase::Began,
         gpui::TouchPhase::Moved => ScrollPhase::Changed,
         gpui::TouchPhase::Ended => ScrollPhase::Ended,
+        gpui::TouchPhase::Cancelled => ScrollPhase::Cancelled,
     }
 }

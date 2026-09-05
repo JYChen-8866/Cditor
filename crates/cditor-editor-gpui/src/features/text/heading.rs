@@ -26,6 +26,18 @@ pub const HEADING_4_TEXT_SIZE_PX: f32 = cditor_config::APP_CONFIG
     .size_px;
 pub const HEADING_5_TEXT_SIZE_PX: f32 = 16.0;
 pub const HEADING_6_TEXT_SIZE_PX: f32 = 14.0;
+pub const DOCUMENT_TITLE_TEXT_SIZE_PX: f32 = 40.0;
+pub const DOCUMENT_TITLE_LINE_HEIGHT_PX: f32 =
+    cditor_core::layout::block_metrics::DOCUMENT_TITLE_LINE_HEIGHT_PX as f32;
+pub const DOCUMENT_TITLE_FONT_WEIGHT: FontWeight = FontWeight::BOLD;
+
+pub fn render_document_title(content: AnyElement) -> AnyElement {
+    div()
+        .text_size(px(DOCUMENT_TITLE_TEXT_SIZE_PX))
+        .font_weight(DOCUMENT_TITLE_FONT_WEIGHT)
+        .child(content)
+        .into_any_element()
+}
 
 pub fn render_heading(level: u8, content: AnyElement) -> AnyElement {
     div()

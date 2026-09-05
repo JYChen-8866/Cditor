@@ -128,6 +128,9 @@ pub(in crate::text) fn text_rect_to_bounds(
 pub(in crate::text) fn text_size_for_kind(kind: &RichBlockKind) -> Pixels {
     let styles = cditor_config::APP_CONFIG.document.typography.styles;
     match kind {
+        RichBlockKind::DocumentTitle => {
+            px(crate::features::text::heading::DOCUMENT_TITLE_TEXT_SIZE_PX)
+        }
         RichBlockKind::Heading { level: 1 } => px(styles.heading_1.size_px),
         RichBlockKind::Heading { level: 2 } => px(styles.heading_2.size_px),
         RichBlockKind::Heading { level: 4 } => px(styles.heading_4.size_px),
@@ -144,6 +147,9 @@ pub(in crate::text) fn base_font_weight_for_kind(
 ) -> FontWeight {
     let styles = cditor_config::APP_CONFIG.document.typography.styles;
     let configured = match kind {
+        RichBlockKind::DocumentTitle => {
+            crate::features::text::heading::DOCUMENT_TITLE_FONT_WEIGHT.0 as u16
+        }
         RichBlockKind::Heading { level: 1 } => styles.heading_1.weight,
         RichBlockKind::Heading { level: 2 } => styles.heading_2.weight,
         RichBlockKind::Heading { level: 4 } => styles.heading_4.weight,
@@ -163,6 +169,9 @@ pub(in crate::text) fn base_font_weight_for_kind(
 pub(in crate::text) fn line_height_for_kind(kind: &RichBlockKind, _text_size: Pixels) -> Pixels {
     let styles = cditor_config::APP_CONFIG.document.typography.styles;
     match kind {
+        RichBlockKind::DocumentTitle => {
+            px(crate::features::text::heading::DOCUMENT_TITLE_LINE_HEIGHT_PX)
+        }
         RichBlockKind::Code { .. } => px(styles.code.line_height_px),
         RichBlockKind::Heading { level: 1 } => px(NOTION_HEADING_1_LINE_HEIGHT_PX as f32),
         RichBlockKind::Heading { level: 2 } => px(NOTION_HEADING_2_LINE_HEIGHT_PX as f32),

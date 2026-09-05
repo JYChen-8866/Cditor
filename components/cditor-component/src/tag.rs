@@ -5,8 +5,8 @@
 //! alignment, and optional overflow collapsing.
 
 use gpui::{
-    AnyElement, App, Component, ElementId, Hsla, InteractiveElement, IntoElement, Pixels,
-    RenderOnce, SharedString, Styled, Window, div, prelude::*, px,
+    AnyElement, App, ElementId, Hsla, InteractiveElement, IntoElement, Pixels, RenderOnce,
+    SharedString, Styled, Window, div, prelude::*, px,
 };
 
 use crate::SvgIcon;
@@ -172,6 +172,7 @@ impl TagStyle {
 }
 
 /// Fluent GPUI component for rendering a tag/chip.
+#[derive(IntoElement)]
 pub struct Tag {
     label: SharedString,
     style: Option<TagStyle>,
@@ -291,14 +292,6 @@ impl Tag {
     }
 }
 
-impl IntoElement for Tag {
-    type Element = Component<Self>;
-
-    fn into_element(self) -> Self::Element {
-        Component::new(self)
-    }
-}
-
 impl RenderOnce for Tag {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let color = match self.tag_type {
@@ -374,6 +367,7 @@ pub enum TagFlowAlign {
 }
 
 /// Fluent GPUI component for rendering a flow of tags.
+#[derive(IntoElement)]
 pub struct TagFlow {
     tags: Vec<AnyElement>,
     gap: Pixels,
@@ -471,14 +465,6 @@ impl TagFlow {
             .map(|rows| rows.saturating_mul(self.estimated_items_per_row))
             .unwrap_or(self.tags.len())
             .min(self.tags.len())
-    }
-}
-
-impl IntoElement for TagFlow {
-    type Element = Component<Self>;
-
-    fn into_element(self) -> Self::Element {
-        Component::new(self)
     }
 }
 

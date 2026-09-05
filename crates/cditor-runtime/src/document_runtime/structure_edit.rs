@@ -94,6 +94,15 @@ impl DocumentRuntime {
             .map(|payload| payload.kind.clone())
             .unwrap_or_else(|| RichBlockKind::Paragraph);
 
+        if kind.is_document_title() {
+            if let Some(next_block_id) = self.adjacent_visible_block_id(block_id, 1) {
+                self.focus_block_at_offset(next_block_id, 0)?;
+            } else {
+                self.insert_paragraph_after_block(block_id)?;
+            }
+            return Ok(());
+        }
+
         if let RichBlockKind::Heading { level } = &kind
             && self.document.visible_index.is_folded(block_id)
         {
@@ -246,6 +255,11 @@ impl DocumentRuntime {
         block_id: BlockId,
         before_block_id: Option<BlockId>,
     ) -> Result<bool, String> {
+        if self.is_document_title_block(block_id)
+            || before_block_id.is_some_and(|id| self.is_document_title_block(id))
+        {
+            return Ok(false);
+        }
         let Some(source_start) = self.document.index.index_of(block_id) else {
             return Ok(false);
         };
@@ -286,6 +300,11 @@ impl DocumentRuntime {
         new_parent_id: Option<BlockId>,
         sibling_index: usize,
     ) -> Result<bool, String> {
+        if self.is_document_title_block(block_id)
+            || new_parent_id.is_some_and(|id| self.is_document_title_block(id))
+        {
+            return Ok(false);
+        }
         let before_selection = self.document_selection_snapshot();
         let before_selected_blocks = self.selected_block_ids_snapshot();
         let Some(source_start) = self.document.index.index_of(block_id) else {
@@ -432,6 +451,12 @@ impl DocumentRuntime {
         let normalized = selection
             .normalize(&self.document.index)
             .map_err(|error| format!("{error:?}"))?;
+        if normalized.start.block_id != normalized.end.block_id
+            && (self.is_document_title_block(normalized.start.block_id)
+                || self.is_document_title_block(normalized.end.block_id))
+        {
+            return Ok(false);
+        }
         if normalized.start.block_id == normalized.end.block_id {
             let range = normalized.start.offset..normalized.end.offset;
             trace_input(

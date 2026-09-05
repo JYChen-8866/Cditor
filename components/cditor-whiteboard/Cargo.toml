@@ -8,7 +8,7 @@ license = "GPL-3.0-or-later"
 [dependencies]
 # Same git spec (no rev) as the workspace root so Cargo unifies to one gpui;
 # the lock pins the actual revision.
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
+gpui = { package = "gpui-pre", version = "0.3.3" }
 
 # The board model (`Scene` + camera, and elements once drawing lands) is owned
 # and (de)serialized by this crate, so the host can persist it as an opaque
@@ -26,7 +26,7 @@ log = "0.4"
 ttf-parser = "0.25"
 
 [dev-dependencies]
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe" }
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.3" }
 
 [[example]]
 name = "minimal_board"

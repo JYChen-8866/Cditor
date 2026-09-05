@@ -354,7 +354,14 @@ pub(super) fn paint_exact_glyph(
         ),
     );
     window
-        .paint_image(bounds, Corners::default(), glyph.image.clone(), 0, false)
+        .paint_image(
+            bounds,
+            bounds,
+            Corners::default(),
+            glyph.image.clone(),
+            0,
+            false,
+        )
         .map_err(|_| ExactRasterError::RasterizationFailed(glyph_id))?;
     Ok(ExactRasterPaintResult {
         painted: true,

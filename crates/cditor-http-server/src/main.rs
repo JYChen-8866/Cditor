@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -110,23 +110,24 @@ async fn import_document(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ImportRequest>,
 ) -> Result<Json<ImportResponse>, (StatusCode, Json<ErrorResponse>)> {
-    tracing::info!("Import request: type={}, source_len={}",
-        payload.source_type, payload.source.len());
+    tracing::info!(
+        "Import request: type={}, source_len={}",
+        payload.source_type,
+        payload.source.len()
+    );
 
     let markdown_content = match payload.source_type.as_str() {
-        "file" => {
-            tokio::fs::read_to_string(&payload.source)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to read file {}: {}", payload.source, e);
-                    (
-                        StatusCode::BAD_REQUEST,
-                        Json(ErrorResponse {
-                            error: format!("Failed to read file: {}", e),
-                        }),
-                    )
-                })?
-        }
+        "file" => tokio::fs::read_to_string(&payload.source)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to read file {}: {}", payload.source, e);
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: format!("Failed to read file: {}", e),
+                    }),
+                )
+            })?,
         "content" => payload.source,
         _ => {
             return Err((
@@ -134,7 +135,7 @@ async fn import_document(
                 Json(ErrorResponse {
                     error: "source_type must be 'file' or 'content'".to_string(),
                 }),
-            ))
+            ));
         }
     };
 
@@ -181,8 +182,11 @@ async fn export_document(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ExportRequest>,
 ) -> Result<Json<ExportResponse>, (StatusCode, Json<ErrorResponse>)> {
-    tracing::info!("Export request: doc_id={}, format={}",
-        payload.document_id, payload.format);
+    tracing::info!(
+        "Export request: doc_id={}, format={}",
+        payload.document_id,
+        payload.format
+    );
 
     let documents = state.documents.read().await;
 
@@ -211,12 +215,15 @@ async fn export_document(
                 Json(ErrorResponse {
                     error: "format must be 'markdown' or 'json'".to_string(),
                 }),
-            ))
+            ));
         }
     };
 
-    tracing::info!("Document exported: id={}, size={}",
-        payload.document_id, exported.len());
+    tracing::info!(
+        "Document exported: id={}, size={}",
+        payload.document_id,
+        exported.len()
+    );
 
     Ok(Json(ExportResponse {
         success: true,
@@ -225,9 +232,7 @@ async fn export_document(
     }))
 }
 
-async fn list_documents(
-    State(state): State<Arc<AppState>>,
-) -> Json<Vec<DocumentInfo>> {
+async fn list_documents(State(state): State<Arc<AppState>>) -> Json<Vec<DocumentInfo>> {
     let documents = state.documents.read().await;
 
     let infos: Vec<DocumentInfo> = documents
@@ -240,10 +245,7 @@ async fn list_documents(
                 .map(|l| l.trim_start_matches('#').trim().to_string())
                 .unwrap_or_else(|| format!("Document {}", id));
 
-            let block_count = content
-                .lines()
-                .filter(|l| !l.trim().is_empty())
-                .count();
+            let block_count = content.lines().filter(|l| !l.trim().is_empty()).count();
 
             DocumentInfo {
                 id: id.clone(),

@@ -3,15 +3,12 @@
 
 use std::rc::Rc;
 
-#[cfg(not(feature = "mobile-text-session"))]
-use gpui::MouseDownEvent;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, ElementId, FocusHandle, Hsla, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Pixels, RenderOnce, Styled, Window, div, px,
+    AnyElement, App, ClickEvent, ElementId, FocusHandle, Hsla, InteractiveElement, IntoElement,
+    MouseButton, ParentElement, Pixels, RenderOnce, StatefulInteractiveElement as _, Styled,
+    Window, div, px,
 };
-#[cfg(feature = "mobile-text-session")]
-use gpui::{PressEvent, StatefulInteractiveElement};
 
 use crate::SvgIcon;
 
@@ -21,10 +18,7 @@ const CLEAR_BUTTON_SIZE_PX: f32 = 24.0;
 const CLEAR_ICON_SIZE_PX: f32 = 16.0;
 
 type CleanHandler = Rc<dyn Fn(&mut Window, &mut App)>;
-#[cfg(feature = "mobile-text-session")]
-type PressHandler = Rc<dyn Fn(&PressEvent, &mut Window, &mut App)>;
-#[cfg(not(feature = "mobile-text-session"))]
-type PressHandler = Rc<dyn Fn(&MouseDownEvent, &mut Window, &mut App)>;
+type PressHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct InputStyle {
@@ -149,23 +143,13 @@ impl Input {
 
     /// Handle a completed pointer press on the input shell.
     ///
-    /// Registering the paired long-press recognizer prevents a long press from
-    /// falling through as an ordinary activation when it ends.
-    #[cfg(feature = "mobile-text-session")]
+    /// GPUI's `ClickEvent` already unifies mouse, keyboard, and touch
+    /// activation, so a single handler covers the desktop and direct-touch
+    /// paths. Touch long presses arrive as aux activations rather than primary
+    /// clicks, so they do not fall through as ordinary presses here.
     pub fn on_press(
         mut self,
-        handler: impl Fn(&PressEvent, &mut Window, &mut App) + 'static,
-    ) -> Self {
-        self.on_press = Some(Rc::new(handler));
-        self
-    }
-
-    /// Handles the desktop fallback at mouse-down when the mobile gesture API
-    /// is not part of the selected GPUI revision.
-    #[cfg(not(feature = "mobile-text-session"))]
-    pub fn on_press(
-        mut self,
-        handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_press = Some(Rc::new(handler));
         self
@@ -204,24 +188,11 @@ impl RenderOnce for Input {
             })
             .when(self.disabled, |input| input.opacity(0.5))
             .when_some(focus.clone(), |input, focus| input.track_focus(&focus));
-        #[cfg(feature = "mobile-text-session")]
-        let input = input.when(manual_focus, |input| input.manual_focus());
-        #[cfg(not(feature = "mobile-text-session"))]
-        let input = {
-            let _ = manual_focus;
-            input
-        };
-        #[cfg(feature = "mobile-text-session")]
+        // GPUI's tap recognizer commits touch activations through `on_click`,
+        // so the shell no longer needs a separate manual-focus handshake.
+        let _ = manual_focus;
         let input = input.when_some(on_press, |input, handler| {
-            input
-                .on_press(move |event, window, cx| handler(event, window, cx))
-                .on_long_press(|_event, _window, _cx| {})
-        });
-        #[cfg(not(feature = "mobile-text-session"))]
-        let input = input.when_some(on_press, |input, handler| {
-            input.on_mouse_down(MouseButton::Left, move |event, window, cx| {
-                handler(event, window, cx)
-            })
+            input.on_click(move |event, window, cx| handler(event, window, cx))
         });
 
         input

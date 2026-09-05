@@ -1,7 +1,8 @@
 use crate::theme::GuiTheme;
 use cditor_core::layout::block_metrics::{
     NOTION_BODY_LINE_HEIGHT_PX, NOTION_HEADING_1_LINE_HEIGHT_PX, NOTION_HEADING_2_LINE_HEIGHT_PX,
-    NOTION_HEADING_3_LINE_HEIGHT_PX, NOTION_HEADING_4_LINE_HEIGHT_PX, block_outer_padding_for_kind,
+    NOTION_HEADING_3_LINE_HEIGHT_PX, NOTION_HEADING_4_LINE_HEIGHT_PX,
+    text_block_chrome_metrics_for_kind,
 };
 use cditor_core::rich_text::RichBlockKind;
 use cditor_runtime::ViewBlockSnapshot;
@@ -123,27 +124,16 @@ impl BlockChromeStyle {
             .as_deref()
             .and_then(parse_hex_color)
             .unwrap_or(kind_style.text);
-        let is_page_title = block.visible_index == 0
-            && block.depth == 0
-            && matches!(block.kind, RichBlockKind::Heading { level: 1 });
-        let (outer_padding_top_px, outer_padding_bottom_px) = if is_page_title {
-            (28.0, 20.0)
-        } else {
-            block_outer_padding_for_kind(&block.kind)
-        };
+        let vertical_metrics = text_block_chrome_metrics_for_kind(&block.kind);
         Self {
             indent_px: block.chrome.list_info.depth as f32 * BLOCK_INDENT_STEP_PX,
             gutter_width_px: BLOCK_GUTTER_WIDTH_PX,
             gutter_height_px: BLOCK_GUTTER_HEIGHT_PX,
             marker_lane_width_px: BLOCK_PREFIX_WIDTH_PX,
             content_prefix_width_px: block_content_prefix_width_px(block),
-            outer_padding_top_px: outer_padding_top_px as f32,
-            outer_padding_bottom_px: outer_padding_bottom_px as f32,
-            content_min_height_px: if is_page_title {
-                48.0
-            } else {
-                kind_style.min_height_px
-            },
+            outer_padding_top_px: vertical_metrics.outer_padding_top as f32,
+            outer_padding_bottom_px: vertical_metrics.outer_padding_bottom as f32,
+            content_min_height_px: kind_style.min_height_px,
             content_padding_y_px: kind_style.padding_y_px,
             content_padding_left_px: kind_style.padding_left_px,
             content_padding_right_px: kind_style.padding_right_px,
@@ -217,6 +207,7 @@ struct KindChromeStyle {
 impl KindChromeStyle {
     fn from_kind(kind: &RichBlockKind, theme: GuiTheme) -> Self {
         match kind {
+            RichBlockKind::DocumentTitle => Self::document_title(theme),
             RichBlockKind::Heading { level } => Self::heading(*level, theme),
             RichBlockKind::Quote => Self::quote(theme),
             RichBlockKind::Callout { .. } => Self::callout(theme),
@@ -263,6 +254,13 @@ impl KindChromeStyle {
         Self {
             padding_y_px: 0.0,
             min_height_px,
+            ..Self::paragraph(theme)
+        }
+    }
+
+    fn document_title(theme: GuiTheme) -> Self {
+        Self {
+            min_height_px: crate::features::text::heading::DOCUMENT_TITLE_LINE_HEIGHT_PX,
             ..Self::paragraph(theme)
         }
     }
@@ -483,6 +481,7 @@ mod tests {
     #[test]
     fn every_nested_block_kind_uses_the_same_depth_geometry() {
         for kind in [
+            RichBlockKind::DocumentTitle,
             RichBlockKind::Paragraph,
             RichBlockKind::BulletedList,
             RichBlockKind::NumberedList,
@@ -611,6 +610,7 @@ mod tests {
     #[test]
     fn gui_chrome_padding_and_min_height_match_core_height_metrics() {
         for kind in [
+            RichBlockKind::DocumentTitle,
             RichBlockKind::Paragraph,
             RichBlockKind::BulletedList,
             RichBlockKind::Todo { checked: false },
@@ -631,6 +631,11 @@ mod tests {
                 metrics.content_min_height
             );
             assert_eq!(style.content_padding_y_px as f64, metrics.content_padding_y);
+            assert_eq!(style.outer_padding_top_px as f64, metrics.outer_padding_top);
+            assert_eq!(
+                style.outer_padding_bottom_px as f64,
+                metrics.outer_padding_bottom
+            );
         }
     }
 

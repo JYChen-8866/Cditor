@@ -586,7 +586,7 @@ mod tests {
 
         let report = receiver.await.unwrap().unwrap();
         assert_eq!(report.revision, 7);
-        assert_eq!(report.saved_blocks, 1);
+        assert_eq!(report.saved_blocks, 2);
         assert!(pipeline.has_unpersisted_changes());
     }
 

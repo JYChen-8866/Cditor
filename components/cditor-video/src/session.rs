@@ -1050,7 +1050,11 @@ mod tests {
     #[test]
     fn bundled_ffmpeg_generates_and_decodes_a_real_video_frame_when_available() {
         let ffmpeg = crate::ffmpeg_executable();
-        if crate::media_command(&ffmpeg).arg("-version").output().is_err() {
+        if crate::media_command(&ffmpeg)
+            .arg("-version")
+            .output()
+            .is_err()
+        {
             return;
         }
         let source =

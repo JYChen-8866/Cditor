@@ -9,7 +9,7 @@ description = "Reusable FFmpeg-backed video preview component for Cditor GPUI ap
 name = "cditor_video"
 
 [dependencies]
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false }
+gpui = { package = "gpui-pre", version = "0.3.3", default-features = false }
 image = "0.25.10"
 smallvec = "1.15"
 serde = { version = "1", features = ["derive"] }
@@ -20,4 +20,4 @@ thiserror = "2"
 cpal = "=0.18.1"
 
 [dev-dependencies]
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["test-support"] }
+gpui = { package = "gpui-pre", version = "0.3.3", default-features = false, features = ["test-support"] }

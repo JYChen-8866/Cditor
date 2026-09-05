@@ -48,6 +48,8 @@ pub const NOTION_HEADING_4_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
     .styles
     .heading_4
     .line_height_px as f64;
+pub const DOCUMENT_TITLE_LINE_HEIGHT_PX: f64 = 48.0;
+pub const DOCUMENT_TITLE_FOOTER_HEIGHT_PX: f64 = 54.0;
 pub const V1_CODE_TEXT_LINE_HEIGHT_PX: f64 = cditor_config::APP_CONFIG
     .document
     .typography
@@ -108,12 +110,13 @@ impl TextBlockChromeMetrics {
     }
 }
 
-/// Notion-style vertical spacing per block kind. Body-like blocks reserve 8px
-/// on each side, headings get progressively more breathing room above than
-/// below, and container blocks (callout/code/table/media) keep a stable 4px.
+/// Vertical chrome reserved by the runtime and consumed by every renderer.
+/// The document title's bottom slot contains host-owned properties rather than
+/// empty spacing, so it must remain part of the same block-height contract.
 pub fn block_outer_padding_for_kind(kind: &RichBlockKind) -> (f64, f64) {
     match kind {
         RichBlockKind::Divider | RichBlockKind::Separator => (0.0, 0.0),
+        RichBlockKind::DocumentTitle => (0.0, DOCUMENT_TITLE_FOOTER_HEIGHT_PX),
         RichBlockKind::Heading { level: 1 | 2 } => (28.0, 8.0),
         RichBlockKind::Heading { level: 3 } => (24.0, 8.0),
         RichBlockKind::Heading { level: 4 } => (20.0, 8.0),
@@ -143,6 +146,13 @@ pub fn text_block_chrome_metrics_for_kind(kind: &RichBlockKind) -> TextBlockChro
         _ => NOTION_HEADING_3_LINE_HEIGHT_PX,
     };
     let metrics = match kind {
+        RichBlockKind::DocumentTitle => TextBlockChromeMetrics {
+            content_min_height: DOCUMENT_TITLE_LINE_HEIGHT_PX,
+            content_padding_y: 0.0,
+            extra_inner_chrome_y: 0.0,
+            outer_padding_top,
+            outer_padding_bottom,
+        },
         RichBlockKind::Heading { level } => TextBlockChromeMetrics {
             content_min_height: heading_min(*level),
             content_padding_y: 0.0,
@@ -244,6 +254,11 @@ pub enum BlockHeightRule {
 
 pub fn height_rule_for_kind(kind: &RichBlockKind) -> BlockHeightRule {
     match kind {
+        RichBlockKind::DocumentTitle => BlockHeightRule::TextLike(text_metrics(
+            text_block_chrome_metrics_for_kind(kind),
+            DOCUMENT_TITLE_LINE_HEIGHT_PX,
+            18.0,
+        )),
         RichBlockKind::Paragraph => BlockHeightRule::TextLike(text_metrics(
             text_block_chrome_metrics_for_kind(kind),
             NOTION_BODY_LINE_HEIGHT_PX,
@@ -665,6 +680,22 @@ mod tests {
         assert_eq!(raw_markdown.content_min_height, 24.0);
         assert_eq!(raw_markdown.content_padding_y, 14.0);
         assert_eq!(raw_markdown.outer_chrome_y(), 36.0);
+    }
+
+    #[test]
+    fn document_title_height_adds_the_footer_after_every_wrapped_line() {
+        let kind = RichBlockKind::DocumentTitle;
+        let chrome = text_block_chrome_metrics_for_kind(&kind);
+        let outer_padding = block_outer_padding_for_kind(&kind);
+        let one_line = normalize_text_inner_measured_height(&kind, DOCUMENT_TITLE_LINE_HEIGHT_PX);
+        let three_lines =
+            normalize_text_inner_measured_height(&kind, DOCUMENT_TITLE_LINE_HEIGHT_PX * 3.0);
+
+        assert_eq!(outer_padding, (0.0, DOCUMENT_TITLE_FOOTER_HEIGHT_PX));
+        assert_eq!(chrome.outer_padding_bottom, DOCUMENT_TITLE_FOOTER_HEIGHT_PX);
+        assert_eq!(one_line.height, 102.0);
+        assert_eq!(three_lines.height, 198.0);
+        assert_eq!(three_lines.height - one_line.height, 96.0);
     }
 
     #[test]

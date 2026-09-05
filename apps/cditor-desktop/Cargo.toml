@@ -9,7 +9,7 @@ default = ["full"]
 full = [
     "ai",
     "code-highlight",
-    "mermaid",
+    # "mermaid",  # gpui-pre 迁移未完成，见 cditor-editor-gpui/Cargo.toml
     "whiteboard",
 ]
 ai = ["dep:cditor-ai-openai"]
@@ -25,12 +25,12 @@ cditor-core = { path = "../../crates/cditor-core" }
 cditor-runtime = { path = "../../crates/cditor-runtime" }
 cditor-session = { path = "../../crates/cditor-session" }
 cditor-storage = { path = "../../crates/cditor-storage" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit"] }
+gpui = { package = "gpui-pre", version = "0.3.3", default-features = false }
+gpui_platform = { package = "gpui-pre-platform", version = "0.3.3", default-features = false, features = ["font-kit"] }
 tokio = { version = "1", features = ["sync", "time"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 serde_json = "1"
 
 [dev-dependencies]
-gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false, features = ["font-kit", "test-support"] }
+gpui = { package = "gpui-pre", version = "0.3.3", default-features = false, features = ["test-support"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

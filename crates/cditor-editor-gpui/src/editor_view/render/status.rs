@@ -68,7 +68,7 @@ mod tests {
         let editable = document_layout_metrics_for_status(1_200.0, false, false, false);
         let readonly = document_layout_metrics_for_status(1_200.0, false, false, true);
 
-        assert_eq!(editable.top_inset_px, 96.0);
+        assert_eq!(editable.top_inset_px, 88.0);
         assert_eq!(
             readonly.top_inset_px,
             editable.top_inset_px + READONLY_NOTICE_HEIGHT_PX
@@ -80,7 +80,7 @@ mod tests {
         let decorated = document_layout_metrics_for_status(1_200.0, true, true, false);
         let readonly = document_layout_metrics_for_status(1_200.0, true, true, true);
 
-        assert_eq!(decorated.top_inset_px, 300.0);
-        assert_eq!(readonly.top_inset_px, 300.0 + READONLY_NOTICE_HEIGHT_PX);
+        assert_eq!(decorated.top_inset_px, 248.0);
+        assert_eq!(readonly.top_inset_px, 248.0 + READONLY_NOTICE_HEIGHT_PX);
     }
 }

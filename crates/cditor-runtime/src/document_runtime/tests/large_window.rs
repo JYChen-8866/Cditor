@@ -196,11 +196,11 @@ fn toggle_todo_checked_updates_payload_kind_and_projection_prefix() {
     ));
     let projection = runtime.projection_for_window();
     assert!(matches!(
-        projection.blocks[0].kind,
+        projection.blocks[1].kind,
         RichBlockKind::Todo { checked: true }
     ));
     assert_eq!(
-        projection.blocks[0].chrome.prefix,
+        projection.blocks[1].chrome.prefix,
         BlockPrefixSnapshot::Todo { checked: true }
     );
 }

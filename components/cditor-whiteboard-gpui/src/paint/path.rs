@@ -88,7 +88,7 @@ fn paint_image(
             px(image.bounds.height().max(0.0) as f32),
         ),
     );
-    let _ = window.paint_image(bounds, Corners::default(), render_image, 0, false);
+    let _ = window.paint_image(bounds, bounds, Corners::default(), render_image, 0, false);
 }
 
 fn paint_text_editing(

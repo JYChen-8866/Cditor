@@ -100,7 +100,8 @@ impl BlockInputCapability {
     /// Returns the input capability for a given block kind
     pub fn for_kind(kind: &RichBlockKind) -> Self {
         match kind {
-            RichBlockKind::Paragraph
+            RichBlockKind::DocumentTitle
+            | RichBlockKind::Paragraph
             | RichBlockKind::Heading { .. }
             | RichBlockKind::Quote
             | RichBlockKind::Callout { .. }

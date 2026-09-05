@@ -524,12 +524,12 @@ fn zero_height_layout_history_cannot_expand_the_visible_payload_core_past_the_wi
 fn document_runtime_projects_v2_blocks_without_ui_truth() {
     let runtime = DocumentRuntime::demo();
     let projection = runtime.full_projection_for_tests();
-    assert_eq!(projection.total_visible_blocks, 4);
-    assert_eq!(projection.blocks.len(), 4);
-    assert_eq!(projection.blocks[0].block_id, 1);
+    assert_eq!(projection.total_visible_blocks, 5);
+    assert_eq!(projection.blocks.len(), 5);
+    assert_eq!(projection.blocks[0].block_id, 5);
     assert!(matches!(
-        projection.blocks[0].kind,
-        RichBlockKind::Heading { level: 1 }
+        projection.blocks[1].kind,
+        RichBlockKind::Paragraph
     ));
 }
 

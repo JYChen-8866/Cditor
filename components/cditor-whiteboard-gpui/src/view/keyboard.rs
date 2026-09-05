@@ -63,7 +63,7 @@ impl DrafftBoardView {
                     self.board.cancel_pointer();
                     self.board.canvas.clear_selection();
                     self.pointer_interaction_active = false;
-                    window.blur();
+                    window.blur(cx);
                     true
                 }
                 "backspace" | "delete" => self.board.delete_selected(),

@@ -1,5 +1,6 @@
 use gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle, Styled, div, px,
+    AnyElement, AnyView, App, Entity, FocusHandle, IntoElement, ParentElement, ScrollHandle,
+    Styled, div, px,
 };
 
 use crate::app::worker_admission::EditorWorkerAdmission;
@@ -16,7 +17,7 @@ use crate::features::table::{
     TableAxisSelection, TableCellRangeSelection, TableCellSelection, TableReorderPreview,
     TableResizePreview,
 };
-use crate::features::text::heading::render_heading;
+use crate::features::text::heading::{render_document_title, render_heading};
 use crate::features::text::paragraph::render_paragraph;
 use crate::features::video::VideoPlaybackCache;
 use crate::features::whiteboard::WhiteboardThumbnailCache;
@@ -48,6 +49,7 @@ impl BlockView {
         text_layout_width_px: f64,
         text_viewport: DocumentTextViewport,
         view: Entity<CditorV2View>,
+        document_title_footer: Option<AnyView>,
         focus: FocusHandle,
         code_language_focus: FocusHandle,
         image_caption_state: Option<TextSurfaceRenderState>,
@@ -93,6 +95,7 @@ impl BlockView {
     ) -> AnyElement {
         let theme = self.theme;
         let block_id = block.block_id;
+        let is_document_title = block.kind.is_document_title();
         let content = render_kind_content(
             block,
             text_layout_width_px,
@@ -181,10 +184,32 @@ impl BlockView {
                 },
             ) as crate::block::prefix::FoldToggleHandler
         });
+        let action = if is_document_title {
+            BlockActionState::default()
+        } else {
+            action
+        };
+        let on_mouse_move: Option<crate::block::block_shell::BlockMouseMoveHandler> =
+            (!is_document_title).then_some(Box::new(move |event, _window, cx| {
+                hover_block_from_mouse(&hover_view, block_id, event, cx);
+            }));
+        let on_gutter_add: Option<crate::block::gutter::GutterAddHandler> = (!is_document_title)
+            .then_some(Box::new(move |_event, window, cx| {
+                add_view.update(cx, |view, cx| {
+                    view.insert_paragraph_after_block_from_gui(block_id, window, cx);
+                });
+                cx.stop_propagation();
+            }));
+        let on_gutter_mouse_down: Option<crate::block::gutter::GutterMouseDownHandler> =
+            (!is_document_title).then_some(Box::new(move |event, window, cx| {
+                gutter_mouse_down_from_mouse(&gutter_view, block_id, event, window, cx);
+                cx.stop_propagation();
+            }));
         block_shell(
             block,
             theme,
             content,
+            document_title_footer,
             hovered,
             action,
             collapsed_code_block,
@@ -196,19 +221,9 @@ impl BlockView {
                 focus_block_from_mouse(&focus_view, block_id, event, window, cx);
                 cx.stop_propagation();
             },
-            Some(Box::new(move |event, _window, cx| {
-                hover_block_from_mouse(&hover_view, block_id, event, cx);
-            })),
-            Some(Box::new(move |_event, window, cx| {
-                add_view.update(cx, |view, cx| {
-                    view.insert_paragraph_after_block_from_gui(block_id, window, cx);
-                });
-                cx.stop_propagation();
-            })),
-            Some(Box::new(move |event, window, cx| {
-                gutter_mouse_down_from_mouse(&gutter_view, block_id, event, window, cx);
-                cx.stop_propagation();
-            })),
+            on_mouse_move,
+            on_gutter_add,
+            on_gutter_mouse_down,
             on_todo_toggle,
             on_fold_toggle,
         )
@@ -299,6 +314,7 @@ fn render_kind_content(
         cx,
     );
     match block.kind {
+        RichBlockKind::DocumentTitle => render_document_title(content),
         RichBlockKind::Heading { level } => render_heading(level, content),
         RichBlockKind::Quote => content,
         RichBlockKind::Code { ref language } => {
