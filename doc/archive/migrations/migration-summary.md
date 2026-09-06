@@ -45,7 +45,7 @@
 ## 项目结构
 
 ```
-CDitor-V2/
+CDitor/
 ├── Cargo.toml (workspace)
 ├── crates/
 │   ├── cditor-core/           ✅ 编译成功

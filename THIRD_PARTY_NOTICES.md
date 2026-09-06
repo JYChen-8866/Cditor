@@ -2,11 +2,12 @@
 
 ## Zed Mermaid renderer
 
-Cditor uses the `mermaid_render` crate from the Zed repository, pinned to commit
-`1d217ee39d381ac101b7cf49d3d22451ac1093fe`.
+Cditor vendors the `mermaid_render` crate from the Zed repository, pinned to
+commit `1d217ee39d381ac101b7cf49d3d22451ac1093fe`.
 
 - Project: <https://github.com/zed-industries/zed>
 - Component: `crates/mermaid_render`
+- Vendored source: `vendor/mermaid_render`
 - License: GPL-3.0-or-later
 
 The renderer uses the patched `merman` release selected by that Zed commit:
@@ -19,21 +20,16 @@ The exact resolved revisions and transitive dependencies are recorded in
 `Cargo.lock`. Binary and source distributions must retain the license material
 required by these components.
 
-## drafft-ink whiteboard
+## drafft-ink-derived whiteboard
 
-Cditor includes a GPUI adaptation of the whiteboard from `drafft-ink`. The user
-interface and Cditor integration were adapted to GPUI; upstream copyright and
-license terms remain applicable to the derived component.
+The active GPUI whiteboard contains code derived from `drafft-ink`. The former
+standalone experiment has been removed; the maintained integration now lives in
+`components/cditor-whiteboard-gpui`.
 
 - Project: <https://github.com/PatWie/drafft-ink>
-- Component: `components/cditor-whiteboard-drafft`
-- Vendored upstream source: `components/cditor-whiteboard-drafft/vendor/drafft-ink`
+- Component: `components/cditor-whiteboard-gpui`
 - Upstream license: GNU Affero General Public License v3
-- License text: `components/cditor-whiteboard-drafft/vendor/drafft-ink/LICENSE`
-
-Redistributors and operators of modified network-accessible versions must review
-and comply with the AGPL-3.0 source-availability requirements applicable to this
-component.
+- License text: `components/cditor-whiteboard-gpui/DRAFFT-INK-LICENSE-AGPL`
 
 ## cditor-whiteboard assets
 

@@ -3,7 +3,7 @@
 ## 项目结构
 
 ```
-CDitor-V2/
+CDitor/
 ├── Cargo.toml                 # Workspace 配置
 ├── crates/
 │   ├── cditor-core/          # 核心类型和 trait（无 async、无 storage、无 UI）

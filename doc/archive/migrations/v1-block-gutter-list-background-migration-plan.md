@@ -1,6 +1,6 @@
 # V1 Block Gutter / List 层级 / 背景逻辑迁移方案
 
-> 目标：把 `/Users/jychen/Desktop/Cditor` V1/editor2 里已经验证过的 block gutter、列表层级、有序列表编号、任务列表 checkbox、不同 block 背景逻辑，体系化迁移到 CDitor-V2。不能破坏 10w block 大文档虚拟滚动性能，必须符合 V2 架构：runtime 是真相，UI 不是数据真相，global scroll 是唯一滚动真相，block 高度由统一 layout/metrics/provider 管理。
+> 目标：把 `/Users/jychen/Desktop/Cditor` V1/editor2 里已经验证过的 block gutter、列表层级、有序列表编号、任务列表 checkbox、不同 block 背景逻辑，体系化迁移到 CDitor。不能破坏 10w block 大文档虚拟滚动性能，必须符合 V2 架构：runtime 是真相，UI 不是数据真相，global scroll 是唯一滚动真相，block 高度由统一 layout/metrics/provider 管理。
 
 ---
 

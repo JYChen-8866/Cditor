@@ -95,7 +95,7 @@ slices.
 ### Reproduction
 
 ```bash
-CDITOR_SQLITE_PATH=/Users/jychen/Desktop/CDitor-V2/workspace.cditor.db \
+CDITOR_SQLITE_PATH=/Users/jychen/Desktop/CDitor/workspace.cditor.db \
 CDITOR_DOCUMENT_ID=1 \
 CDITOR_TRACE_PAYLOAD=1 \
 scripts/dev/run_editor_sqlite.sh
@@ -106,7 +106,7 @@ reverse direction and revisit each range. Also verify that closing a diagnostic
 consumer does not terminate the editor:
 
 ```bash
-CDITOR_SQLITE_PATH=/Users/jychen/Desktop/CDitor-V2/workspace.cditor.db \
+CDITOR_SQLITE_PATH=/Users/jychen/Desktop/CDitor/workspace.cditor.db \
 CDITOR_DOCUMENT_ID=1 \
 CDITOR_TRACE_PAYLOAD=1 \
 scripts/dev/run_editor_sqlite.sh 2>&1 | head -80

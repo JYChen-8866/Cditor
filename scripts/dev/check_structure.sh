@@ -900,7 +900,6 @@ fi
 
 oversized=$(
   find crates components apps \
-    -path 'components/cditor-whiteboard-drafft' -prune -o \
     -type f -name '*.rs' -exec wc -l {} + \
     | awk '$2 != "total" && $1 > 700 { print $1 " " $2 }'
 )

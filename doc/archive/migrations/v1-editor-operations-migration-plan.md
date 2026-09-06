@@ -1,6 +1,6 @@
 # V1 编辑器操作迁移总表：Block 合并 / 分列 / 方向键跨 Block / 删除移动
 
-> 目标：把 `/Users/jychen/Desktop/Cditor` V1/editor2 中已经验证过的编辑器交互系统迁移到 CDitor-V2。本文先列完整操作表和任务拆解，后续实现时每完成一项勾选一项。
+> 目标：把 `/Users/jychen/Desktop/Cditor` V1/editor2 中已经验证过的编辑器交互系统迁移到 CDitor。本文先列完整操作表和任务拆解，后续实现时每完成一项勾选一项。
 >
 > 硬约束：继续遵守 `doc/large-document-rich-text-architecture.md`：runtime/document index/selection/layout/scroll 是真相；UI 只发 command 和渲染 projection；不能用 GPUI entity / ListState 作为 10w 文档结构或滚动真相；输入/IME hot path 不同步等待 PostgreSQL、全量 payload、全局 layout。
 

@@ -51,7 +51,7 @@
 ### 步骤1：创建项目结构
 
 ```bash
-cd /Users/jychen/Desktop/CDitor-V2
+cd /Users/jychen/Desktop/CDitor
 
 # 创建HTTP服务器crate
 mkdir -p crates/cditor-http-server/src
@@ -161,7 +161,7 @@ curl -X POST http://127.0.0.1:3737/api/import \
 在Zed中：
 1. 打开命令面板：`Cmd+Shift+P` (macOS) 或 `Ctrl+Shift+P` (Windows/Linux)
 2. 搜索并执行：`zed: install dev extension`
-3. 选择目录：`/Users/jychen/Desktop/CDitor-V2/extensions/zed-cditor`
+3. 选择目录：`/Users/jychen/Desktop/CDitor/extensions/zed-cditor`
 
 #### 4.4 使用扩展
 

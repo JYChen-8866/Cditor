@@ -666,7 +666,7 @@ zed::register_extension!(CditorExtension);
 ### 1. 启动HTTP服务器
 
 ```bash
-cd /Users/jychen/Desktop/CDitor-V2
+cd /Users/jychen/Desktop/CDitor
 cargo run -p cditor-http-server
 ```
 

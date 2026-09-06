@@ -3,7 +3,7 @@ name = "cditor-whiteboard-gpui"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
-license = "GPL-3.0-or-later"
+license = "AGPL-3.0-only"
 description = "GPUI-native whiteboard — unified core model + rendering adapter."
 
 [features]

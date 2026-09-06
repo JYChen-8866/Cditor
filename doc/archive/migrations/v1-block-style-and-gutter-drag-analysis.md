@@ -1,6 +1,6 @@
 # V1 Block 样式与 Gutter 拖拽迁移分析
 
-> 目标：深入分析 `/Users/jychen/Desktop/Cditor` V1/editor2 中“每个 block 的样式”和“gutter 可拖动 block”的实现方式，并给出 CDitor-V2 的完整迁移方案。本文只写方案，不做临时 patch。V2 必须继续遵守大文档架构：runtime 是文档真相，UI 只消费 projection window；不能把 GPUI entity / ListState 变成滚动或结构真相。
+> 目标：深入分析 `/Users/jychen/Desktop/Cditor` V1/editor2 中“每个 block 的样式”和“gutter 可拖动 block”的实现方式，并给出 CDitor 的完整迁移方案。本文只写方案，不做临时 patch。V2 必须继续遵守大文档架构：runtime 是文档真相，UI 只消费 projection window；不能把 GPUI entity / ListState 变成滚动或结构真相。
 
 ---
 

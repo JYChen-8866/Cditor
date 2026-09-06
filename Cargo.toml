@@ -22,8 +22,9 @@ members = [
     "components/cditor-whiteboard",
     "components/cditor-whiteboard-gpui",
     "apps/cditor-web",
+    "vendor/mermaid_render",
 ]
-exclude = ["components/cditor-whiteboard-drafft", "extensions/zed-cditor"]
+exclude = ["extensions/zed-cditor"]
 default-members = ["apps/cditor-desktop"]
 resolver = "3"
 

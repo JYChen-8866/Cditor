@@ -8,11 +8,10 @@ actual=$(mktemp)
 trap 'rm -f "$actual"' EXIT HUP INT TERM
 
 {
-  sed -n '1,3p' "$expected"
+  sed -n '1,2p' "$expected"
   cargo metadata --no-deps --format-version 1 \
     | jq -r '
       .packages[]
-      | select(.name != "cditor-whiteboard-drafft")
       | .name as $name
       | ([.dependencies[] | select(.path != null and .kind == null) | .name]
           | unique | sort) as $production

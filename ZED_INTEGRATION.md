@@ -55,7 +55,7 @@ cargo run -p cditor-http-server
 3. 输入并选择：`zed: install dev extension`
 4. 浏览到并选择目录：
    ```
-   /Users/jychen/Desktop/CDitor-V2/extensions/zed-cditor
+   /Users/jychen/Desktop/CDitor/extensions/zed-cditor
    ```
 5. 点击"安装"
 

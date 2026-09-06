@@ -237,20 +237,26 @@ impl CditorViewContract for CditorV2View {
 impl CditorV2View {
     /// Focuses the reserved document-name block through the normal document
     /// selection/input pipeline. Hosts use this after installing a new page.
-    pub fn sdk_focus_document_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn sdk_focus_document_name(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let block_id = self
             .ready_session()
             .and_then(|session| session.document_title_block_id().ok().flatten());
         let Some(block_id) = block_id else {
-            return;
+            return false;
         };
         let position = DocumentPosition {
             block_id,
             offset: TextOffset::Utf8Bytes(0),
             affinity: Affinity::Downstream,
         };
-        let _ = self.sdk_set_selection(DocumentSelection::caret(position), cx);
+        if self
+            .sdk_set_selection(DocumentSelection::caret(position), cx)
+            .is_err()
+        {
+            return false;
+        }
         self.sdk_focus(window, cx);
+        true
     }
 
     pub fn sdk_document_metadata(&self) -> Option<DocumentMetadata> {
@@ -970,7 +976,7 @@ mod tests {
         });
 
         cx.update(|window, cx| {
-            view.update(cx, |view, cx| view.sdk_focus_document_name(window, cx));
+            assert!(view.update(cx, |view, cx| view.sdk_focus_document_name(window, cx)));
         });
 
         cx.update(|window, cx| {
@@ -979,6 +985,20 @@ mod tests {
             assert_eq!(selection.head.block_id, 2);
             assert_eq!(selection.head.offset, TextOffset::Utf8Bytes(0));
             assert!(view.focus.editor.is_focused(window));
+        });
+    }
+
+    #[gpui::test]
+    fn sdk_document_name_focus_reports_not_ready_without_stealing_focus(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|_, cx| CditorV2View::loading("Loading", false, cx));
+
+        cx.update(|window, cx| {
+            assert!(!view.update(cx, |view, cx| view.sdk_focus_document_name(window, cx)));
+        });
+
+        cx.update(|window, cx| {
+            assert!(!view.read(cx).focus.editor.is_focused(window));
+            assert!(view.read(cx).sdk_selection().is_none());
         });
     }
 

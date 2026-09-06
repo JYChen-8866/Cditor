@@ -1,6 +1,6 @@
 # V1 IME / 编辑输入能力迁移分析与任务清单
 
-> 目标：把 `/Users/jychen/Desktop/Cditor` V1/editor2 的文本输入、IME composition、点击定位、选区替换能力迁移到 CDitor-V2，并解释“为什么不能在字符中间插入字符”。
+> 目标：把 `/Users/jychen/Desktop/Cditor` V1/editor2 的文本输入、IME composition、点击定位、选区替换能力迁移到 CDitor，并解释“为什么不能在字符中间插入字符”。
 >
 > 架构约束：继续遵守 `doc/large-document-rich-text-architecture.md`。runtime 是文本/selection/IME 状态真相；GUI text element 只负责 hit-test、layout cache、paint、`window.handle_input`。不能恢复 root IME bridge，不能让 GPUI entity 成为文档真相。
 

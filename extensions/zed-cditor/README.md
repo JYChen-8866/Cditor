@@ -17,7 +17,7 @@ Integrate Cditor's rich-text document capabilities into Zed editor through slash
 The extension requires a local HTTP server to be running:
 
 ```bash
-# From the CDitor-V2 root directory
+# From the CDitor root directory
 cargo run -p cditor-http-server
 
 # Or use the convenience script
@@ -31,7 +31,7 @@ The server will start at `http://127.0.0.1:3737`
 1. Open Zed editor
 2. Press `Cmd+Shift+P` (macOS) or `Ctrl+Shift+P` (Windows/Linux)
 3. Type and select: `zed: install dev extension`
-4. Navigate to and select: `/path/to/CDitor-V2/extensions/zed-cditor`
+4. Navigate to and select: `/path/to/CDitor/extensions/zed-cditor`
 5. The extension will be installed in development mode
 
 ### Step 3: Verify Installation

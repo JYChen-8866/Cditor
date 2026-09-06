@@ -31,9 +31,9 @@ composition root 实现 `CditorViewFactory`。
 
 ```toml
 [dependencies]
-cditor-sdk = { path = "../CDitor-V2/crates/cditor-sdk" }
-cditor-editor-gpui = { path = "../CDitor-V2/crates/cditor-editor-gpui" }
-cditor-desktop = { path = "../CDitor-V2/apps/cditor-desktop" }
+cditor-sdk = { path = "../CDitor/crates/cditor-sdk" }
+cditor-editor-gpui = { path = "../CDitor/crates/cditor-editor-gpui" }
+cditor-desktop = { path = "../CDitor/apps/cditor-desktop" }
 
 gpui = {
     git = "https://github.com/zed-industries/zed",

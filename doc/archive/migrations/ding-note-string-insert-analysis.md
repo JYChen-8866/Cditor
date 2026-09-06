@@ -1,6 +1,6 @@
 # ding-note2 字符串插入行为分析与 V2 修复方案
 
-> 目标：分析 `/Users/jychen/Desktop/ding-note2/crates/gpui-markdown-editor` 如何处理字符串插入、selection replacement、IME marked replacement，并修复 CDitor-V2 中“插入字符串会替换字符串，然后 caret 跑到最后面”的问题。
+> 目标：分析 `/Users/jychen/Desktop/ding-note2/crates/gpui-markdown-editor` 如何处理字符串插入、selection replacement、IME marked replacement，并修复 CDitor 中“插入字符串会替换字符串，然后 caret 跑到最后面”的问题。
 >
 > 架构约束：继续遵守 `doc/large-document-rich-text-architecture.md`。runtime 是 selection/caret/IME/text truth；GUI 只发 command 或 platform input 请求，不能在输入前重置 runtime caret。
 

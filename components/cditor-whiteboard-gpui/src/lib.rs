@@ -21,7 +21,7 @@ pub mod sync;
 pub mod tools;
 pub mod widget;
 
-// --- GPUI adapter modules (from cditor-whiteboard-drafft) ---
+// --- GPUI adapter modules derived from the Drafft Ink integration ---
 pub mod font;
 pub mod model_host;
 pub mod paint;

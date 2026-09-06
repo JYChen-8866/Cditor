@@ -72,8 +72,7 @@ git diff --check
 ./scripts/dev/check_dependency_graph.sh
 ```
 
-机器生成的 workspace 依赖快照位于 `dependency-graph-v2.txt`。未完成且独立演进的
-`cditor-whiteboard-drafft` 暂不进入当前编辑器架构验收。
+机器生成的 workspace 依赖快照位于 `dependency-graph-v2.txt`。
 
 涉及 Runtime、Viewport、Text 或 Session 热路径时，还必须运行对应 benchmark，并与
 `doc/acceptance/2026-07-22-refactor-architecture-baseline.md` 比较 p95/max、resident

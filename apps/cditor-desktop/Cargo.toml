@@ -9,7 +9,7 @@ default = ["full"]
 full = [
     "ai",
     "code-highlight",
-    # "mermaid",  # gpui-pre 迁移未完成，见 cditor-editor-gpui/Cargo.toml
+    "mermaid",
     "whiteboard",
 ]
 ai = ["dep:cditor-ai-openai"]

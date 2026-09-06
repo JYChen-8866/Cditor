@@ -14,8 +14,6 @@ crate-type = ["cdylib", "rlib"]
 cditor-editor-gpui = { path = "../../crates/cditor-editor-gpui", default-features = false, features = ["whiteboard"] }
 cditor-runtime = { path = "../../crates/cditor-runtime" }
 cditor-sdk = { path = "../../crates/cditor-sdk" }
-cditor-whiteboard-drafft = { path = "../../components/cditor-whiteboard-drafft" }
-
 # GPUI — no font-kit on WASM
 gpui = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "1d217ee39d381ac101b7cf49d3d22451ac1093fe", default-features = false }

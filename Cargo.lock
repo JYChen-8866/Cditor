@@ -1506,7 +1506,6 @@ dependencies = [
  "cditor-editor-gpui",
  "cditor-runtime",
  "cditor-sdk",
- "cditor-whiteboard-drafft",
  "console_error_panic_hook",
  "console_log",
  "gpui",
@@ -1524,25 +1523,6 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
- "ttf-parser",
-]
-
-[[package]]
-name = "cditor-whiteboard-drafft"
-version = "0.1.0"
-dependencies = [
- "drafftink-core",
- "gpui",
- "image",
- "kurbo 0.12.0",
- "memmap2",
- "parley",
- "peniko",
- "rex",
- "rfd",
- "roughr",
- "serde_json",
- "tiny-skia",
  "ttf-parser",
 ]
 
@@ -2598,34 +2578,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
-name = "drafftink-core"
-version = "0.1.1"
-dependencies = [
- "base64",
- "dirs 5.0.1",
- "js-sys",
- "kurbo 0.12.0",
- "log",
- "loro",
- "pathfinding",
- "peniko",
- "rexie",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "thiserror 2.0.18",
- "tungstenite",
- "url",
- "uuid",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "web-time",
- "winit",
- "winit_input_helper",
-]
-
-[[package]]
 name = "dtoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3663,7 +3615,6 @@ dependencies = [
  "async-channel 2.5.0",
  "async-task",
  "bindgen 0.71.1",
- "bitflags 2.13.0",
  "block",
  "cbindgen",
  "chrono",
@@ -3731,8 +3682,6 @@ dependencies = [
  "waker-fn",
  "web-time",
  "windows 0.61.3",
- "zed-font-kit 0.14.1-zed (git+https://github.com/zed-industries/font-kit?rev=94b0f28166665e8fd2f53ff6d268a14955c82269)",
- "zed-scap 0.0.8-zed (git+https://github.com/zed-industries/scap?rev=4afea48c3b002197176fb19cd0f9b180dd36eaac)",
 ]
 
 [[package]]
@@ -3803,8 +3752,8 @@ dependencies = [
  "waker-fn",
  "web-time",
  "windows 0.62.2",
- "zed-font-kit 0.14.1-zed (registry+https://github.com/rust-lang/crates.io-index)",
- "zed-scap 0.0.8-zed (registry+https://github.com/rust-lang/crates.io-index)",
+ "zed-font-kit",
+ "zed-scap",
 ]
 
 [[package]]
@@ -3947,7 +3896,7 @@ dependencies = [
  "smallvec",
  "strum 0.28.0",
  "uuid",
- "zed-font-kit 0.14.1-zed (registry+https://github.com/rust-lang/crates.io-index)",
+ "zed-font-kit",
 ]
 
 [[package]]
@@ -5951,10 +5900,9 @@ dependencies = [
 [[package]]
 name = "mermaid_render"
 version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=1d217ee39d381ac101b7cf49d3d22451ac1093fe#1d217ee39d381ac101b7cf49d3d22451ac1093fe"
 dependencies = [
  "anyhow",
- "gpui",
+ "gpui-pre",
  "merman",
  "quick-xml 0.38.4",
  "serde_json",
@@ -12216,55 +12164,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "zed-font-kit"
-version = "0.14.1-zed"
-source = "git+https://github.com/zed-industries/font-kit?rev=94b0f28166665e8fd2f53ff6d268a14955c82269#94b0f28166665e8fd2f53ff6d268a14955c82269"
-dependencies = [
- "bitflags 2.13.0",
- "byteorder",
- "core-foundation 0.10.0",
- "core-graphics 0.24.0",
- "core-text",
- "dirs 6.0.0",
- "dwrote",
- "float-ord",
- "freetype-sys",
- "lazy_static",
- "libc",
- "log",
- "pathfinder_geometry",
- "pathfinder_simd",
- "walkdir",
- "winapi",
- "yeslogic-fontconfig-sys",
-]
-
-[[package]]
 name = "zed-scap"
 version = "0.0.8-zed"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6b338d705ae33a43ca00287c11129303a7a0aa57b101b72a1c08c863f698ac8"
-dependencies = [
- "anyhow",
- "cocoa 0.25.0",
- "core-graphics-helmer-fork",
- "log",
- "objc",
- "rand 0.8.6",
- "screencapturekit",
- "screencapturekit-sys",
- "sysinfo",
- "tao-core-video-sys",
- "windows 0.61.3",
- "windows-capture",
- "x11",
- "xcb",
-]
-
-[[package]]
-name = "zed-scap"
-version = "0.0.8-zed"
-source = "git+https://github.com/zed-industries/scap?rev=4afea48c3b002197176fb19cd0f9b180dd36eaac#4afea48c3b002197176fb19cd0f9b180dd36eaac"
 dependencies = [
  "anyhow",
  "cocoa 0.25.0",

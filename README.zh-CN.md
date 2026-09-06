@@ -181,7 +181,7 @@ apps/
 components/
 ├── cditor-component/            共享 GPUI 组件
 ├── cditor-whiteboard/           Cditor 白板组件
-└── cditor-whiteboard-drafft/    drafft-ink 的 GPUI 适配
+└── cditor-whiteboard-gpui/      GPUI 白板渲染适配器
 crates/
 ├── cditor-core/                 文档模型、Block、Selection 和事务
 ├── cditor-viewport/             无框架依赖的视口算法
@@ -201,18 +201,6 @@ crates/
 ## 第三方组件
 
 Cditor 包含并适配了其他开源项目中的组件。原项目的版权声明与许可证条款继续有效。
-
-### drafft-ink 白板
-
-白板实现基于 [PatWie/drafft-ink](https://github.com/PatWie/drafft-ink)。Cditor 将其用户界面和集成层适配为 GPUI，同时保留上游绘图引擎和适用的版权声明。
-
-Vendored 上游代码位于：
-
-```text
-components/cditor-whiteboard-drafft/vendor/drafft-ink/
-```
-
-Vendored drafft-ink 源码附带上游的 **GNU Affero General Public License v3** 许可证文本。修改或分发该组件时，除了仓库其他部分适用的许可证外，还必须遵守这些上游条款。
 
 ### Zed Mermaid 渲染器
 
@@ -248,4 +236,4 @@ cargo test --workspace
 
 除非具体文件或打包的第三方组件另有声明，Cditor 使用 **GNU General Public License v3.0 or later**（`GPL-3.0-or-later`）发布，详见 [LICENSE-GPL](LICENSE-GPL)。
 
-第三方组件继续适用各自的许可证。尤其是基于 drafft-ink 的 Vendored 白板代码，适用上游的 **GNU Affero General Public License v3** 条款。重新分发前，请阅读 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 以及各组件随附的许可证文件。
+第三方组件继续适用各自的许可证。尤其是基于 drafft-ink 的白板代码，适用上游的 **GNU Affero General Public License v3** 条款。重新分发前，请阅读 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 以及各组件随附的许可证文件。

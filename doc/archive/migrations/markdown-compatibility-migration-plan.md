@@ -1,6 +1,6 @@
 # Markdown 兼容迁移方案与任务清单
 
-> 目标：让 CDitor-V2 在保持“大文档 runtime/projection 为真相”的前提下，逐步实现完整 Markdown 兼容。本文用于跟踪 Markdown 语法支持状态；完成一项勾选一项。不能为了兼容 Markdown 破坏输入/IME 热路径性能，也不能把 Markdown 文本变成文档结构真相。
+> 目标：让 CDitor 在保持“大文档 runtime/projection 为真相”的前提下，逐步实现完整 Markdown 兼容。本文用于跟踪 Markdown 语法支持状态；完成一项勾选一项。不能为了兼容 Markdown 破坏输入/IME 热路径性能，也不能把 Markdown 文本变成文档结构真相。
 
 ---
 
@@ -563,7 +563,7 @@ pub enum MarkdownImportMode {
 
 ## 9. 当前结论
 
-当前 CDitor-V2 是：
+当前 CDitor 是：
 
 ```txt
 常用 Markdown：部分支持

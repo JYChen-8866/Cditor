@@ -180,7 +180,7 @@ apps/
 components/
 ├── cditor-component/            Shared GPUI components
 ├── cditor-whiteboard/           Cditor whiteboard component
-└── cditor-whiteboard-drafft/    GPUI adaptation of drafft-ink
+└── cditor-whiteboard-gpui/      GPUI whiteboard rendering adapter
 crates/
 ├── cditor-core/                 Document model, blocks, selections, and transactions
 ├── cditor-viewport/             Framework-independent viewport algorithms
@@ -200,18 +200,6 @@ A more detailed responsibility and dependency breakdown is available in [Project
 ## Third-Party Components
 
 Cditor includes and adapts open-source components from other projects. Their original copyright notices and license terms remain applicable.
-
-### drafft-ink whiteboard
-
-The whiteboard implementation is based on [PatWie/drafft-ink](https://github.com/PatWie/drafft-ink). Cditor adapts its user interface and integration layer to GPUI while retaining the upstream drawing engine and applicable notices.
-
-The vendored upstream code is located under:
-
-```text
-components/cditor-whiteboard-drafft/vendor/drafft-ink/
-```
-
-The vendored drafft-ink source includes its upstream **GNU Affero General Public License v3** license text. Anyone modifying or distributing this component must comply with those terms in addition to the licensing terms applicable to the rest of the repository.
 
 ### Zed Mermaid renderer
 
@@ -247,4 +235,4 @@ cargo test --workspace
 
 Except where a file or bundled third-party component states otherwise, Cditor is licensed under the **GNU General Public License v3.0 or later** (`GPL-3.0-or-later`). See [LICENSE-GPL](LICENSE-GPL).
 
-Third-party components remain governed by their own licenses. In particular, the vendored drafft-ink-derived whiteboard code is provided under the upstream **GNU Affero General Public License v3** terms. Consult [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the license files distributed with each component before redistribution.
+Third-party components remain governed by their own licenses. In particular, the drafft-ink-derived whiteboard code is provided under the upstream **GNU Affero General Public License v3** terms. Consult [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the license files distributed with each component before redistribution.
