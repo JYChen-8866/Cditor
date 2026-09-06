@@ -25,7 +25,8 @@ pub use renderer::{
 };
 pub use session::{VideoCancellationToken, VideoSession};
 pub use types::{
-    VideoCommand, VideoDimensions, VideoFrame, VideoPlaybackSnapshot, VideoSessionConfig,
+    DEFAULT_PLAYBACK_RATE, MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE, VideoCommand, VideoDimensions,
+    VideoFrame, VideoPlaybackSnapshot, VideoSessionConfig,
 };
 
 pub(crate) use runtime_binaries::{ffmpeg_executable, ffprobe_executable, media_command};

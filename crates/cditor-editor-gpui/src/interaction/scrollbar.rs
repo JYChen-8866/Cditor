@@ -42,6 +42,7 @@ pub(crate) fn render_scrollbar(
         },
     )
     .id("document-scrollbar")
+    .auto_hide()
     .on_drag_start(move |_window, cx| {
         start_view.update(cx, |view, cx| view.begin_gui_scrollbar_drag(cx));
     })

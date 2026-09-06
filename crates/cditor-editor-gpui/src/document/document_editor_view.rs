@@ -187,17 +187,6 @@ impl DocumentEditorView {
                 let height = image_resize_preview
                     .filter(|(preview_block_id, _, _)| *preview_block_id == block.block_id)
                     .map(|(_, _, preview_height)| preview_height)
-                    .or_else(|| {
-                        // Live animated heights (code collapse/expand or Mermaid source<->preview)
-                        // must be used for absolute positioning so that the running block_y
-                        // for all following blocks moves continuously instead of jumping at the end.
-                        // 用本帧已解析的高度。这里若重新 `tween.height(now)` 采样，
-                        // 时间戳比布局那次晚，块的绝对位置就和锚点补偿依据的高度对不上，
-                        // 视口会漂掉两次采样之差。
-                        code_collapse_tweens.get(&block.block_id)
-                            .or_else(|| mermaid_source_tweens.get(&block.block_id))
-                            .map(|tween| tween.frame_height)
-                    })
                     .unwrap_or_else(|| block.layout.effective_height());
                 if image_resize_preview
                     .is_some_and(|(preview_block_id, _, _)| preview_block_id == block.block_id)
@@ -355,12 +344,27 @@ impl DocumentEditorView {
                         table_overlay_elements.push(reorder_preview);
                     }
                 }
+                let clips_rendered_mermaid = matches!(
+                    block.kind,
+                    cditor_core::rich_text::RichBlockKind::Mermaid
+                )
+                    || matches!(
+                        &block.kind,
+                        cditor_core::rich_text::RichBlockKind::Code { language }
+                            if crate::features::code::language_is_mermaid(language.as_deref())
+                                && mermaid_preview_code_blocks.contains(&block.block_id)
+                    );
                 div()
                     .absolute()
                     .left(px(block_geometry.shell_left_px))
                     .w(px(block_geometry.shell_width_px))
                     .top(px(top as f32))
                     .h(px(height as f32))
+                    // Projected block height is the placement contract. Mermaid's
+                    // raster may temporarily retain its old natural height while a
+                    // collapse tween settles; never let it paint through neighboring
+                    // absolutely-positioned blocks during that reconciliation frame.
+                    .when(clips_rendered_mermaid, |block| block.overflow_hidden())
                     .child({
                         let block_action =
                             block_action_state_for_projection(projection, block.block_id, action);

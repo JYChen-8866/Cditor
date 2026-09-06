@@ -87,6 +87,7 @@ impl AudioPlayback {
         start_seconds: f64,
         control: Arc<AudioControl>,
         stderr_lines: Arc<Mutex<VecDeque<String>>>,
+        playback_rate: f64,
     ) -> Result<Self, VideoError> {
         let host = cpal::default_host();
         let device = host.default_output_device().ok_or_else(|| {
@@ -100,7 +101,7 @@ impl AudioPlayback {
             channels: supported.channels(),
         };
         let mut child = crate::media_command(crate::ffmpeg_executable())
-            .args(build_audio_args(source, start_seconds, spec))
+            .args(build_audio_args(source, start_seconds, spec, playback_rate))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -286,7 +287,12 @@ impl AudioOutput {
     }
 }
 
-fn build_audio_args(source: &Path, start_seconds: f64, spec: AudioOutputSpec) -> Vec<String> {
+fn build_audio_args(
+    source: &Path,
+    start_seconds: f64,
+    spec: AudioOutputSpec,
+    playback_rate: f64,
+) -> Vec<String> {
     let mut args = vec![
         "-hide_banner".into(),
         "-loglevel".into(),
@@ -298,12 +304,14 @@ fn build_audio_args(source: &Path, start_seconds: f64, spec: AudioOutputSpec) ->
     }
     args.extend([
         "-readrate".into(),
-        "1".into(),
+        format!("{playback_rate:.3}"),
         "-i".into(),
         source.to_string_lossy().into_owned(),
         "-vn".into(),
         "-sn".into(),
         "-dn".into(),
+        "-af".into(),
+        format!("atempo={playback_rate:.3}"),
         "-ac".into(),
         spec.channels.to_string(),
         "-ar".into(),
@@ -426,11 +434,14 @@ mod tests {
                 sample_rate: 48_000,
                 channels: 2,
             },
+            1.5,
         );
         assert!(args.windows(2).any(|args| args == ["-ss", "2.500"]));
         assert!(args.windows(2).any(|args| args == ["-ar", "48000"]));
         assert!(args.windows(2).any(|args| args == ["-ac", "2"]));
         assert!(args.windows(2).any(|args| args == ["-f", "f32le"]));
+        assert!(args.windows(2).any(|args| args == ["-readrate", "1.500"]));
+        assert!(args.windows(2).any(|args| args == ["-af", "atempo=1.500"]));
     }
 
     #[test]

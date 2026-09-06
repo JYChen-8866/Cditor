@@ -72,7 +72,7 @@ cargo run -p cditor-http-server
 ```
 ✅ Cditor server is running
 
-Version: 0.2.6
+Version: 1.0.0
 Status: ok
 Features: import, export, markdown, tables
 ```

@@ -203,6 +203,7 @@ pub(crate) fn render_code_block_mermaid_preview(
     cache: &MermaidRenderCache,
     theme: GuiTheme,
     view: Entity<CditorV2View>,
+    report_stable_height: bool,
     cx: &mut App,
 ) -> AnyElement {
     let status = cache.status(block_id);
@@ -213,19 +214,28 @@ pub(crate) fn render_code_block_mermaid_preview(
     // 代码块的文字路径走 `normalize_text_inner_measured_height`：上报内容区高度，
     // chrome 由它自己补。这里必须走同一契约——报 mermaid 图的 inner 高度（图高加
     // 预览内边距），chrome 交给权威函数，否则会算两份 chrome。
-    if let Some(geometry) = geometry {
+    if let Some(total) = code_block_mermaid_height_report(report_stable_height, geometry) {
         // `clickable_preview` 只设图的宽高、自己不带内边距，而 chrome 里已经算了
         // 代码块的 content padding，所以 inner 就是图的裸高度。
-        let inner = f64::from(geometry.image_height_px);
-        let total = normalize_text_inner_measured_height(
-            &cditor_core::rich_text::RichBlockKind::Code { language: None },
-            inner,
-        )
-        .height;
         schedule_rendered_media_height_report(view, block_id, content_version, total, cx);
     }
 
     render_preview(status, source_content, theme, geometry)
+}
+
+fn code_block_mermaid_height_report(
+    report_stable_height: bool,
+    geometry: Option<MermaidPreviewGeometry>,
+) -> Option<f64> {
+    let geometry = report_stable_height.then_some(geometry).flatten()?;
+    let inner = f64::from(geometry.image_height_px);
+    Some(
+        normalize_text_inner_measured_height(
+            &cditor_core::rich_text::RichBlockKind::Code { language: None },
+            inner,
+        )
+        .height,
+    )
 }
 
 fn render_preview(
@@ -486,6 +496,22 @@ mod tests {
             mermaid_height_report(false, Some(geometry), 96.0),
             Some(288.0)
         );
+    }
+
+    #[test]
+    fn collapsed_or_animating_code_preview_does_not_report_natural_height() {
+        let geometry = MermaidPreviewGeometry {
+            image_width_px: 320.0,
+            image_height_px: 180.0,
+            body_height_px: 244.0,
+            block_height_px: 288.0,
+        };
+
+        assert_eq!(
+            code_block_mermaid_height_report(false, Some(geometry)),
+            None
+        );
+        assert!(code_block_mermaid_height_report(true, Some(geometry)).is_some());
     }
 }
 

@@ -19,8 +19,14 @@ pub(super) struct LayoutState {
     /// 正在进行高度动画的块。动画期间该块的高度所有权从正常测量转到动画路径：
     /// `apply_animated_block_height` 绕开容差门逐帧落值，而 `queue_measured_height`
     /// 对这里的块拒绝写入（否则文本布局会把自然全高挤进 pending 表，跟动画高度
-    /// 互相覆盖，折叠走到一半被拽回全高）。`end_block_height_animation` 交还所有权。
+    /// 互相覆盖，折叠走到一半被拽回全高）。动画落定后可交还给自然测量，或转入
+    /// `constrained_heights` 继续由稳定交互状态持有。
     pub(super) animating_heights: HashSet<BlockId>,
+    /// 已落定但仍由交互状态约束高度的块。
+    ///
+    /// 典型场景是收起后的代码块：文档高度真相必须保持在收起高度，隐藏内容的自然
+    /// 测量不能重新撑开 HeightIndex。再次开始高度动画时会释放该约束，由动画路径接管。
+    pub(super) constrained_heights: HashSet<BlockId>,
     pub(super) dirty: bool,
     pub(super) scrollbar_drag: Option<ScrollbarDragSession>,
 }

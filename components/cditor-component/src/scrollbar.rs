@@ -9,6 +9,7 @@ use gpui::{
 };
 
 const SCROLLBAR_HOVER_ANIMATION_DURATION: Duration = Duration::from_millis(120);
+const SCROLLBAR_AUTO_HIDE_IDLE: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrollbarAxis {
@@ -135,6 +136,7 @@ pub struct InteractiveScrollbar {
     style: InteractiveScrollbarStyle,
     on_drag_start: Option<ScrollbarLifecycleHandler>,
     on_drag_end: Option<ScrollbarLifecycleHandler>,
+    auto_hide: bool,
 }
 
 impl InteractiveScrollbar {
@@ -157,6 +159,7 @@ impl InteractiveScrollbar {
             style,
             on_drag_start: None,
             on_drag_end: None,
+            auto_hide: false,
         }
     }
 
@@ -181,6 +184,7 @@ impl InteractiveScrollbar {
             style,
             on_drag_start: None,
             on_drag_end: None,
+            auto_hide: false,
         }
     }
 
@@ -196,6 +200,13 @@ impl InteractiveScrollbar {
 
     pub fn on_drag_end(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
         self.on_drag_end = Some(Rc::new(handler));
+        self
+    }
+
+    /// Match gpui-component's scrolling scrollbar mode: reveal on scroll,
+    /// remain visible while hovered or dragged, then fade after the idle hold.
+    pub fn auto_hide(mut self) -> Self {
+        self.auto_hide = true;
         self
     }
 }
@@ -216,6 +227,7 @@ pub struct InteractiveScrollbarPrepaint {
     owner: u64,
     active: bool,
     dragging: bool,
+    visibility: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -223,6 +235,38 @@ struct ScrollbarAnimationState {
     active_progress: f32,
     target_active: bool,
     last_frame: Instant,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InteractiveScrollbarStateInner {
+    hover: ScrollbarAnimationState,
+    visibility: ScrollbarAnimationState,
+    last_scroll_offset_px: f32,
+    last_scroll_time: Option<Instant>,
+    idle_timer_scheduled: bool,
+}
+
+#[derive(Clone)]
+struct InteractiveScrollbarState(Rc<Cell<InteractiveScrollbarStateInner>>);
+
+impl InteractiveScrollbarState {
+    fn new(offset_px: f32, active: bool, auto_hide: bool, now: Instant) -> Self {
+        Self(Rc::new(Cell::new(InteractiveScrollbarStateInner {
+            hover: ScrollbarAnimationState::new(active, now),
+            visibility: ScrollbarAnimationState::new(!auto_hide, now),
+            last_scroll_offset_px: offset_px,
+            last_scroll_time: None,
+            idle_timer_scheduled: false,
+        })))
+    }
+
+    fn get(&self) -> InteractiveScrollbarStateInner {
+        self.0.get()
+    }
+
+    fn set(&self, state: InteractiveScrollbarStateInner) {
+        self.0.set(state);
+    }
 }
 
 impl ScrollbarAnimationState {
@@ -290,12 +334,12 @@ impl Element for InteractiveScrollbar {
 
     fn prepaint(
         &mut self,
-        id: Option<&GlobalElementId>,
+        _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         window: &mut Window,
-        _cx: &mut App,
+        cx: &mut App,
     ) -> Self::PrepaintState {
         let model = self.target.model(self.axis);
         let visible_fraction = match self.target {
@@ -322,22 +366,63 @@ impl Element for InteractiveScrollbar {
         let hitbox = window.insert_hitbox(hitbox_bounds, HitboxBehavior::Normal);
         let owner = scrollbar_owner(window.current_view(), hitbox_bounds, self.axis);
         let dragging = drag_state().is_some_and(|state| state.owner == owner);
-        let active = hitbox.is_hovered(window)
-            || dragging
-            || hitbox_bounds.contains(&window.mouse_position());
-        let active_progress = window.with_optional_element_state(id, |state, window| match state {
-            Some(previous) => {
-                let now = Instant::now();
-                let mut animation =
-                    previous.unwrap_or_else(|| ScrollbarAnimationState::new(active, now));
-                let progress = animation.update(active, now);
-                if animation.animating() {
-                    window.request_animation_frame();
-                }
-                (progress, Some(animation))
+        let pointer_over_track =
+            hitbox.is_hovered(window) || hitbox_bounds.contains(&window.mouse_position());
+        let now = Instant::now();
+        let state = window
+            .use_state(cx, |_, _| {
+                InteractiveScrollbarState::new(
+                    model.offset_px,
+                    pointer_over_track || dragging,
+                    self.auto_hide,
+                    now,
+                )
+            })
+            .read(cx)
+            .clone();
+        let mut inner = state.get();
+        if (model.offset_px - inner.last_scroll_offset_px).abs() > f32::EPSILON {
+            inner.last_scroll_offset_px = model.offset_px;
+            inner.last_scroll_time = Some(now);
+        }
+        let currently_visible = inner.visibility.active_progress > 0.0;
+        let visible = scrollbar_should_be_visible(
+            self.auto_hide,
+            pointer_over_track,
+            dragging,
+            currently_visible,
+            inner.last_scroll_time,
+            now,
+        );
+        let visibility = inner.visibility.update(visible, now);
+        let active = dragging || (visibility > 0.0 && pointer_over_track);
+        let active_progress = inner.hover.update(active, now);
+        if inner.hover.animating() || inner.visibility.animating() {
+            window.request_animation_frame();
+        }
+        if self.auto_hide
+            && !pointer_over_track
+            && !dragging
+            && let Some(last_scroll_time) = inner.last_scroll_time
+        {
+            let elapsed = now.saturating_duration_since(last_scroll_time);
+            if elapsed < SCROLLBAR_AUTO_HIDE_IDLE && !inner.idle_timer_scheduled {
+                inner.idle_timer_scheduled = true;
+                let state = state.clone();
+                let current_view = window.current_view();
+                let delay = SCROLLBAR_AUTO_HIDE_IDLE - elapsed;
+                window
+                    .spawn(cx, async move |cx| {
+                        cx.background_executor().timer(delay).await;
+                        let mut inner = state.get();
+                        inner.idle_timer_scheduled = false;
+                        state.set(inner);
+                        cx.update(|_, cx| cx.notify(current_view)).ok();
+                    })
+                    .detach();
             }
-            None => (if active { 1.0 } else { 0.0 }, None),
-        });
+        }
+        state.set(inner);
         let thickness_px = animated_scrollbar_thickness(self.style, active_progress);
         let thumb_bounds = metrics.map(|metrics| {
             scrollbar_thumb_bounds_for_thickness(metrics.thumb_bounds, self.axis, thickness_px)
@@ -349,6 +434,7 @@ impl Element for InteractiveScrollbar {
             owner,
             active,
             dragging,
+            visibility,
         }
     }
 
@@ -368,6 +454,9 @@ impl Element for InteractiveScrollbar {
         let Some(thumb_bounds) = prepaint.thumb_bounds else {
             return;
         };
+        if prepaint.visibility <= 0.0 {
+            return;
+        }
         let owner = prepaint.owner;
         let current_view = window.current_view();
         let was_active = prepaint.active;
@@ -387,9 +476,11 @@ impl Element for InteractiveScrollbar {
         let on_drag_start = self.on_drag_start.clone();
         let axis = self.axis;
         let hitbox = prepaint.hitbox.clone();
+        let is_visible = prepaint.visibility > 0.0;
         window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
             if phase == DispatchPhase::Capture
                 && event.button == MouseButton::Left
+                && is_visible
                 && hitbox.is_hovered(window)
             {
                 if let Some(on_drag_start) = on_drag_start.as_ref() {
@@ -473,12 +564,27 @@ impl Element for InteractiveScrollbar {
         window.paint_quad(PaintQuad {
             bounds: thumb_bounds,
             corner_radii: gpui::Corners::all(self.axis.cross_extent(thumb_bounds) / 2.0),
-            background: rgb(color).into(),
+            background: rgb(color).opacity(prepaint.visibility).into(),
             border_widths: gpui::Edges::all(px(0.0)),
             border_color: gpui::transparent_black(),
             border_style: gpui::BorderStyle::Solid,
         });
     }
+}
+
+fn scrollbar_should_be_visible(
+    auto_hide: bool,
+    hovered: bool,
+    dragging: bool,
+    currently_visible: bool,
+    last_scroll_time: Option<Instant>,
+    now: Instant,
+) -> bool {
+    !auto_hide
+        || dragging
+        || (hovered && currently_visible)
+        || last_scroll_time
+            .is_some_and(|last| now.saturating_duration_since(last) < SCROLLBAR_AUTO_HIDE_IDLE)
 }
 
 fn smoothstep(progress: f32) -> f32 {

@@ -155,6 +155,7 @@ pub(super) fn render_video_controls(
     let volume = snapshot.map_or(0.0, |s| f64::from(s.volume.clamp(0.0, 1.0)));
     let duration = snapshot.and_then(|s| s.duration_seconds);
     let position = snapshot.map_or(0.0, |s| s.position_seconds);
+    let playback_rate = snapshot.map_or(cditor_video::DEFAULT_PLAYBACK_RATE, |s| s.playback_rate);
     let play_view = view.clone();
     let mute_view = view.clone();
     let seek_view = view.clone();
@@ -164,6 +165,7 @@ pub(super) fn render_video_controls(
     let seek_drag_view = view.clone();
     let volume_drag_view = view.clone();
     let fullscreen_view = view.clone();
+    let speed_view = view.clone();
     let play_id = if is_fullscreen {
         "video-fullscreen-playback"
     } else {
@@ -188,6 +190,11 @@ pub(super) fn render_video_controls(
         "video-fullscreen-volume"
     } else {
         "video-volume"
+    };
+    let speed_id = if is_fullscreen {
+        "video-fullscreen-speed"
+    } else {
+        "video-speed"
     };
 
     div()
@@ -399,6 +406,32 @@ pub(super) fn render_video_controls(
                 }),
         )
         .child(
+            div()
+                .id((speed_id, block_id))
+                .w(px(40.0))
+                .h(px(28.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(4.0))
+                .cursor_pointer()
+                .text_size(px(11.0))
+                .text_color(gpui::rgba(0xffffffff))
+                .hover(|element| element.bg(gpui::rgba(0xffffff24)))
+                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                    speed_view.update(cx, |view, cx| {
+                        view.cache.video_playbacks.command(
+                            block_id,
+                            cditor_video::VideoCommand::SetPlaybackRate(next_playback_rate(
+                                playback_rate,
+                            )),
+                        );
+                        cx.notify();
+                    });
+                })
+                .child(format_playback_rate(playback_rate)),
+        )
+        .child(
             icon_button(
                 fullscreen_id,
                 if is_fullscreen {
@@ -445,6 +478,25 @@ fn playback_fraction(snapshot: Option<cditor_video::VideoPlaybackSnapshot>) -> f
     (snapshot.position_seconds / duration.max(0.001)).clamp(0.0, 1.0)
 }
 
+const PLAYBACK_RATES: [f64; 6] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+fn next_playback_rate(current: f64) -> f64 {
+    PLAYBACK_RATES
+        .iter()
+        .position(|rate| (current - rate).abs() < 0.001)
+        .map_or(cditor_video::DEFAULT_PLAYBACK_RATE, |index| {
+            PLAYBACK_RATES[(index + 1) % PLAYBACK_RATES.len()]
+        })
+}
+
+fn format_playback_rate(playback_rate: f64) -> String {
+    if playback_rate.fract().abs() <= f64::EPSILON {
+        format!("{playback_rate:.0}x")
+    } else {
+        format!("{playback_rate}x")
+    }
+}
+
 fn fraction_from_bounds(x: Pixels, bounds: Bounds<Pixels>) -> f64 {
     let width = bounds.size.width.as_f32();
     if width <= 0.0 {
@@ -484,7 +536,17 @@ mod tests {
             ended: true,
             volume: 1.0,
             muted: false,
+            playback_rate: 1.0,
         };
         assert_eq!(playback_fraction(Some(snapshot)), 1.0);
+    }
+
+    #[test]
+    fn playback_rate_control_cycles_supported_rates() {
+        assert_eq!(next_playback_rate(0.5), 0.75);
+        assert_eq!(next_playback_rate(1.0), 1.25);
+        assert_eq!(next_playback_rate(2.0), 0.5);
+        assert_eq!(format_playback_rate(1.0), "1x");
+        assert_eq!(format_playback_rate(1.25), "1.25x");
     }
 }

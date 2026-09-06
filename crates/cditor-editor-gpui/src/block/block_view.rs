@@ -350,6 +350,8 @@ fn render_kind_content(
                     mermaid_renders,
                     theme,
                     view.clone(),
+                    !code_collapse_tweens.contains_key(&block.block_id)
+                        && !collapsed_code_blocks.contains(&block.block_id),
                     cx,
                 )
             } else {

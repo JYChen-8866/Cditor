@@ -912,18 +912,18 @@ fn retire_video_resources_after_effect(
 }
 
 #[cfg(feature = "gpui-dynamic-image")]
-fn render_video_frame(image: Arc<VideoRenderImage>) -> AnyElement {
+fn render_video_frame(image: Arc<VideoRenderImage>, width: f32, height: f32) -> AnyElement {
     gpui::dynamic_img(image)
-        .size_full()
-        .object_fit(gpui::ObjectFit::Contain)
+        .w(px(width))
+        .h(px(height))
         .into_any_element()
 }
 
 #[cfg(not(feature = "gpui-dynamic-image"))]
-fn render_video_frame(image: Arc<VideoRenderImage>) -> AnyElement {
+fn render_video_frame(image: Arc<VideoRenderImage>, width: f32, height: f32) -> AnyElement {
     gpui::img(image)
-        .size_full()
-        .object_fit(gpui::ObjectFit::Contain)
+        .w(px(width))
+        .h(px(height))
         .into_any_element()
 }
 
@@ -940,15 +940,27 @@ pub(crate) fn render_video_block(
     _focus: FocusHandle,
     cx: &mut App,
 ) -> AnyElement {
-    // The video owns the width offered by its host block. Capping this at the
-    // note column width left unused space in wide and immersive layouts.
-    let width = (available_width_px as f32).max(240.0);
+    // CrabMD keeps the black player surface at the full document width, while
+    // sizing the contained frame from a 560px media width. This preserves a
+    // strong block shape without enlarging the actual video content.
+    let width = available_width_px.max(1.0) as f32;
     // The payload may not carry dimensions for newly imported videos. Once
     // ffprobe has opened the source, prefer the decoder's dimensions so the
     // layout and the rendered frame use the same aspect ratio.
     let decoded_dimensions = cache.dimensions_for_source(block_id, &video.source);
     let block_height = video_block_height_px(video, decoded_dimensions, f64::from(width));
     let height = (block_height - cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX) as f32;
+    let content_width = cditor_core::layout::video_content_width_px(f64::from(width)) as f32;
+    let display_dimensions = decoded_dimensions.unwrap_or(cditor_video::VideoDimensions {
+        width: video.intrinsic_width.unwrap_or(16),
+        height: video.intrinsic_height.unwrap_or(9),
+    });
+    let (frame_width, frame_height) = fullscreen_video_size(
+        display_dimensions.width,
+        display_dimensions.height,
+        content_width,
+        height,
+    );
     crate::features::media::schedule_rendered_media_height_report(
         view.clone(),
         block_id,
@@ -987,6 +999,9 @@ pub(crate) fn render_video_block(
         .group(VIDEO_PLAYER_HOVER_GROUP)
         .w(px(width))
         .h(px(height))
+        .flex()
+        .items_center()
+        .justify_center()
         .bg(gpui::rgb(theme.code_background));
     if let Some(status) = cache.import_status(block_id) {
         surface = surface.child(
@@ -1008,12 +1023,10 @@ pub(crate) fn render_video_block(
                 .child(upload),
         );
     } else if let Some(image) = cache.render_image(block_id, cx) {
-        surface = surface.child(render_video_frame(image));
+        surface = surface.child(render_video_frame(image, frame_width, frame_height));
     } else if let Some(poster) = poster {
-        surface = surface.child(crate::image_loader::RasterImageElement::new(
-            poster,
-            gpui::ObjectFit::Contain,
-            px(0.0),
+        surface = surface.child(div().w(px(content_width)).h_full().child(
+            crate::image_loader::RasterImageElement::new(poster, gpui::ObjectFit::Contain, px(0.0)),
         ));
     } else if let Some(status) = cache.status(block_id) {
         surface = surface.child(
@@ -1047,6 +1060,7 @@ pub(crate) fn render_video_block(
     );
     let drop_surface = surface
         .id(("video-drop-target", block_id))
+        .rounded(px(6.0))
         .overflow_hidden()
         .child(
             div()
@@ -1095,26 +1109,31 @@ pub(crate) fn render_fullscreen_video_overlay(
         width: 16,
         height: 9,
     });
-    let (width, height) = fullscreen_video_size(
+    let surface_width = window_width.max(1.0);
+    let surface_height = window_height.max(1.0);
+    let (frame_width, frame_height) = fullscreen_video_size(
         dimensions.width,
         dimensions.height,
-        window_width,
-        window_height,
+        surface_width,
+        surface_height,
     );
     let controls_bounds = controls::ControlBounds::default();
     let mut surface = div()
         .relative()
         .group(VIDEO_PLAYER_HOVER_GROUP)
-        .w(px(width))
-        .h(px(height))
+        .w(px(surface_width))
+        .h(px(surface_height))
+        .flex()
+        .items_center()
+        .justify_center()
         .bg(gpui::rgb(theme.code_background))
         .overflow_hidden();
     if let Some(image) = image {
-        surface = surface.child(render_video_frame(image));
+        surface = surface.child(render_video_frame(image, frame_width, frame_height));
     }
     let controls = controls::render_video_controls(
         block_id,
-        width,
+        surface_width,
         cache.snapshot(block_id),
         controls_bounds,
         theme,
@@ -1137,14 +1156,11 @@ pub(crate) fn render_fullscreen_video_overlay(
                 .absolute()
                 .left_0()
                 .top_0()
-                .w(px(window_width.max(1.0)))
-                .h(px(window_height.max(1.0)))
-                .flex()
-                .items_center()
-                .justify_center()
+                .w(px(surface_width))
+                .h(px(surface_height))
                 .bg(gpui::rgba(0x000000f5))
                 .occlude()
-                .child(div().child(surface)),
+                .child(surface),
         )
         .into_any_element(),
     )
@@ -1250,14 +1266,19 @@ fn video_block_height_px(
     decoded_dimensions: Option<cditor_video::VideoDimensions>,
     width_px: f64,
 ) -> f64 {
-    if let Some(dimensions) = decoded_dimensions {
-        let aspect_ratio = f64::from(dimensions.width) / f64::from(dimensions.height.max(1));
-        if aspect_ratio.is_finite() && aspect_ratio > 0.0 {
-            return width_px.max(1.0) / aspect_ratio
-                + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX;
-        }
-    }
-    cditor_core::layout::video_payload_block_height_px(payload, width_px)
+    let aspect_ratio = decoded_dimensions
+        .map(|dimensions| f64::from(dimensions.width) / f64::from(dimensions.height.max(1)))
+        .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
+        .or_else(|| {
+            payload
+                .intrinsic_width
+                .map(f64::from)
+                .zip(payload.intrinsic_height.map(f64::from))
+                .map(|(width, height)| width / height.max(1.0))
+        })
+        .unwrap_or(cditor_core::layout::VIDEO_DEFAULT_ASPECT_RATIO);
+    let (_, height) = cditor_core::layout::video_viewport_size_px(width_px, aspect_ratio);
+    height + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
 }
 
 const fn video_controls_idle_opacity() -> f32 {
@@ -1300,13 +1321,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fullscreen_surface_uses_the_entire_window_viewport() {
+    fn fullscreen_surface_preserves_landscape_aspect_ratio() {
         let (width, height) = fullscreen_video_size(1920, 1080, 1200.0, 800.0);
-        assert_eq!((width, height), (1200.0, 800.0));
+        assert_eq!((width, height), (1200.0, 675.0));
     }
 
     #[test]
-    fn decoded_dimensions_drive_block_height_for_non_16_by_9_video() {
+    fn decoded_dimensions_are_bounded_for_portrait_video() {
         let payload = VideoPayload::default();
         let height = video_block_height_px(
             &payload,
@@ -1318,8 +1339,15 @@ mod tests {
         );
         assert_eq!(
             height,
-            640.0 * 1280.0 / 720.0 + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
+            400.0 + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
         );
+    }
+
+    #[test]
+    fn portrait_frame_is_fitted_inside_the_complete_inline_surface() {
+        let (width, height) = fullscreen_video_size(404, 720, 560.0, 400.0);
+        assert!((width - 224.44444).abs() < 0.001);
+        assert_eq!(height, 400.0);
     }
 
     #[test]
@@ -1331,7 +1359,7 @@ mod tests {
         };
         assert_eq!(
             video_block_height_px(&payload, None, 640.0),
-            360.0 + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
+            315.0 + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
         );
     }
 
@@ -1376,7 +1404,7 @@ mod tests {
         };
         assert_eq!(
             cditor_core::layout::video_payload_block_height_px(&payload, 640.0),
-            360.0 + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
+            315.0 + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
         );
     }
 
@@ -1391,9 +1419,9 @@ mod tests {
     }
 
     #[test]
-    fn fullscreen_surface_uses_the_entire_viewport_for_portrait_video() {
+    fn fullscreen_surface_preserves_portrait_aspect_ratio() {
         let (width, height) = fullscreen_video_size(720, 1280, 1200.0, 800.0);
-        assert_eq!((width, height), (1200.0, 800.0));
+        assert_eq!((width, height), (450.0, 800.0));
     }
 
     #[test]

@@ -80,6 +80,18 @@ pub fn project_end_block_height_animation(runtime: &mut DocumentRuntime, block_i
     runtime.end_block_height_animation(block_id);
 }
 
+pub fn project_finish_block_height_animation(
+    runtime: &mut DocumentRuntime,
+    block_id: BlockId,
+    content_version: u64,
+    height: f64,
+    constrain_height: bool,
+) -> Result<bool, ProtocolError> {
+    runtime
+        .finish_block_height_animation(block_id, content_version, height, constrain_height)
+        .map_err(|message| layout_error(runtime, message))
+}
+
 pub fn project_apply_animated_block_height(
     runtime: &mut DocumentRuntime,
     block_id: BlockId,
@@ -272,6 +284,23 @@ impl EditorSessionHandle {
     pub fn end_block_height_animation(&self, block_id: BlockId) -> Result<(), ProtocolError> {
         project_end_block_height_animation(&mut self.try_session_mut()?.runtime, block_id);
         Ok(())
+    }
+
+    /// 原子提交动画终值，并决定稳定态是否继续持有该高度。
+    pub fn finish_block_height_animation(
+        &self,
+        block_id: BlockId,
+        content_version: u64,
+        height: f64,
+        constrain_height: bool,
+    ) -> Result<bool, ProtocolError> {
+        project_finish_block_height_animation(
+            &mut self.try_session_mut()?.runtime,
+            block_id,
+            content_version,
+            height,
+            constrain_height,
+        )
     }
 
     /// 补间的每帧高度。容差是 epsilon，所以尾帧的亚像素增量也能落到布局。

@@ -736,8 +736,7 @@ fn dropped_video_inserts_video_and_trailing_paragraph_in_one_transaction() {
         .effective_height();
     assert_eq!(
         video_height,
-        cditor_core::layout::BODY_BLOCK_CONTENT_WIDTH_PX * 9.0 / 16.0
-            + cditor_core::layout::VIDEO_BLOCK_CHROME_HEIGHT_PX
+        cditor_core::layout::VIDEO_BLOCK_ESTIMATED_HEIGHT_PX
     );
     assert_eq!(
         runtime.attached_asset_ids(video_block),

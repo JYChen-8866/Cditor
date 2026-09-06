@@ -61,6 +61,7 @@ pub(crate) fn render_code_block_mermaid_preview(
     _cache: &MermaidRenderCache,
     _theme: GuiTheme,
     _view: Entity<CditorV2View>,
+    _report_stable_height: bool,
     _cx: &mut App,
 ) -> AnyElement {
     source_content

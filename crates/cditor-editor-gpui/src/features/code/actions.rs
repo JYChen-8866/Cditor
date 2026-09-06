@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
+#[cfg(test)]
+use super::collapse_motion::COLLAPSE_DURATION;
 use super::{CodeCollapseTween, HeightTween, V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX};
 use cditor_core::ids::BlockId;
 use cditor_editor_protocol::command::{CditorCommand, CommandOutcomeStatus, CommandSource};
@@ -26,13 +28,18 @@ pub(crate) fn toggle_code_block_collapsed_from_gui(
 
     if let Some(context) = context {
         let now = Instant::now();
+        let active_tween = view.overlay.code_collapse_tweens.remove(&block_id);
         let target_height = if collapsing {
             // Persist the pre-collapse height so expand can restore the exact size.
+            // If an expand tween is still in flight, context.effective_height is only
+            // the current interpolated sample. Saving it would make every rapid
+            // collapse/expand cycle permanently shorter. The taller tween endpoint is
+            // the authoritative expanded height across a mid-animation reversal.
             next_code_block_height(
                 &mut view.overlay.collapsed_code_block_heights,
                 block_id,
                 true,
-                context.effective_height,
+                expanded_height_for_collapse(context.effective_height, active_tween.as_ref()),
                 None,
                 context.estimated_height,
             )
@@ -59,7 +66,7 @@ pub(crate) fn toggle_code_block_collapsed_from_gui(
         let content_version = context.content_version.unwrap_or(0);
 
         // Create or retarget the height tween so a mid-animation toggle continues smoothly.
-        let tween = match view.overlay.code_collapse_tweens.remove(&block_id) {
+        let tween = match active_tween {
             Some(existing) => CodeCollapseTween::start(
                 existing.tween.retarget(target_height, now),
                 content_version,
@@ -92,6 +99,13 @@ pub(crate) fn toggle_code_block_collapsed_from_gui(
     }
 
     cx.notify();
+}
+
+fn expanded_height_for_collapse(
+    effective_height: f64,
+    active_tween: Option<&CodeCollapseTween>,
+) -> f64 {
+    active_tween.map_or(effective_height, |tween| tween.tween.expanded_end())
 }
 
 fn toggle_collapsed(collapsed: &mut HashSet<BlockId>, block_id: BlockId) -> bool {
@@ -259,6 +273,23 @@ mod tests {
     }
 
     #[test]
+    fn collapse_during_expand_preserves_the_full_expanded_height() {
+        let now = Instant::now();
+        let expanding = CodeCollapseTween::start(
+            HeightTween::new(V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX, 640.0, now),
+            3,
+            now,
+        );
+        let intermediate_height = expanding.tween.height(now + COLLAPSE_DURATION / 2);
+        assert!(intermediate_height < 640.0);
+
+        assert_eq!(
+            expanded_height_for_collapse(intermediate_height, Some(&expanding)),
+            640.0
+        );
+    }
+
+    #[test]
     fn expand_target_prefers_measured_height_over_the_estimate() {
         let mut heights = HashMap::new();
 
@@ -324,16 +355,11 @@ mod tests {
         // exactly as the animation driver would on completion.
         view.update(cx, |view, _| {
             if let Some(t) = view.overlay.code_collapse_tweens.remove(&2) {
-                // 与 `advance_height_tweens` 的落定顺序一致：先用动画通道落权威终值，
-                // 再交还高度所有权。反过来的话终值会被容差门按静态测量处理。
                 let _ = view.ready_session().and_then(|session| {
                     session
-                        .apply_animated_block_height(2, t.content_version, t.tween.target())
+                        .finish_block_height_animation(2, t.content_version, t.tween.target(), true)
                         .ok()
                 });
-                let _ = view
-                    .ready_session()
-                    .and_then(|session| session.end_block_height_animation(2).ok());
             }
         });
 
@@ -347,6 +373,16 @@ mod tests {
         assert_eq!(
             collapsed.effective_height,
             V1_CODE_COLLAPSED_BLOCK_HEIGHT_PX
+        );
+        let natural_height_was_applied = view.read_with(cx, |view, _| {
+            view.ready_session()
+                .unwrap()
+                .apply_measured_block_height(2, 1, original)
+                .unwrap()
+        });
+        assert!(
+            !natural_height_was_applied,
+            "稳定收起时，隐藏内容的自然高度不能重新撑开文档槽位"
         );
 
         // Expand.
@@ -362,16 +398,16 @@ mod tests {
         // Force settle to the restored original height.
         view.update(cx, |view, _| {
             if let Some(t) = view.overlay.code_collapse_tweens.remove(&2) {
-                // 与 `advance_height_tweens` 的落定顺序一致：先用动画通道落权威终值，
-                // 再交还高度所有权。反过来的话终值会被容差门按静态测量处理。
                 let _ = view.ready_session().and_then(|session| {
                     session
-                        .apply_animated_block_height(2, t.content_version, t.tween.target())
+                        .finish_block_height_animation(
+                            2,
+                            t.content_version,
+                            t.tween.target(),
+                            false,
+                        )
                         .ok()
                 });
-                let _ = view
-                    .ready_session()
-                    .and_then(|session| session.end_block_height_animation(2).ok());
             }
         });
 

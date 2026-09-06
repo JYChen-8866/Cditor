@@ -181,3 +181,39 @@ fn hover_animation_starts_when_the_target_changes_instead_of_consuming_idle_time
     );
     assert!(animation.animating());
 }
+
+#[test]
+fn auto_hide_visibility_matches_gpui_component_scrolling_mode() {
+    let now = Instant::now();
+    let recent = now - Duration::from_millis(250);
+    let idle = now - SCROLLBAR_AUTO_HIDE_IDLE;
+
+    assert!(scrollbar_should_be_visible(
+        true,
+        false,
+        false,
+        false,
+        Some(recent),
+        now,
+    ));
+    assert!(!scrollbar_should_be_visible(
+        true,
+        false,
+        false,
+        false,
+        Some(idle),
+        now,
+    ));
+    assert!(scrollbar_should_be_visible(
+        true, true, false, true, None, now,
+    ));
+    assert!(!scrollbar_should_be_visible(
+        true, true, false, false, None, now,
+    ));
+    assert!(scrollbar_should_be_visible(
+        true, false, true, false, None, now,
+    ));
+    assert!(scrollbar_should_be_visible(
+        false, false, false, false, None, now,
+    ));
+}

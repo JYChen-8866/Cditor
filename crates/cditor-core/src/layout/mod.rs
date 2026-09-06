@@ -27,11 +27,13 @@ pub use block_metrics::{
     V1_CODE_FRAME_BORDER_WIDTH_PX, V1_CODE_INNER_MIN_HEIGHT_PX, V1_CODE_SURFACE_GAP_PX,
     V1_CODE_TEXT_AVG_CHAR_WIDTH_PX, V1_CODE_TEXT_LINE_HEIGHT_PX, V1_CODE_TOOLBAR_SURFACE_HEIGHT_PX,
     VIDEO_BLOCK_CHROME_HEIGHT_PX, VIDEO_BLOCK_ESTIMATED_HEIGHT_PX, VIDEO_DEFAULT_ASPECT_RATIO,
+    VIDEO_MAX_CONTENT_WIDTH_PX, VIDEO_MAX_VIEWPORT_HEIGHT_PX, VIDEO_MIN_VIEWPORT_HEIGHT_PX,
     code_block_v1_outer_min_height, estimate_block_height, estimate_kind_fallback_height,
     estimate_mermaid_source_block_height_px, estimate_rich_spans_height,
     estimate_text_payload_height, estimate_wrapped_line_count, measured_height_tolerance_px,
     normalize_text_inner_measured_height, text_line_height_for_kind, video_block_height_px,
-    video_payload_block_height_px,
+    video_content_width_px, video_payload_block_height_px, video_viewport_height_px,
+    video_viewport_size_px,
 };
 pub use block_provider::{
     BlockLayoutProvider, CodeBlockLayoutProvider, ImageLayoutProvider, ParagraphLayoutProvider,

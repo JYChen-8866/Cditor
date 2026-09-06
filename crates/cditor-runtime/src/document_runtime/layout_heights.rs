@@ -27,12 +27,35 @@ impl DocumentRuntime {
     /// 期间：`apply_animated_block_height` 可以逐帧落亚像素增量，而 `queue_measured_height`
     /// 对该块一律拒绝——文本布局仍在按自然全高测量并上报，放它进来就会跟补间互抢。
     pub fn begin_block_height_animation(&mut self, block_id: BlockId) {
+        self.layout.constrained_heights.remove(&block_id);
         self.layout.animating_heights.insert(block_id);
     }
 
     /// 交还高度所有权。调用方应当在此之前先落权威终值。
     pub fn end_block_height_animation(&mut self, block_id: BlockId) {
         self.layout.animating_heights.remove(&block_id);
+    }
+
+    /// 把动画终值原子地提交为文档布局真相，并决定稳定态是否继续约束该高度。
+    ///
+    /// `constrain_height=true` 用于代码块收起态：自然内容仍可能在后台完成测量，但不能
+    /// 覆盖收起后的 HeightIndex。展开态和普通内容切换传 `false`，落定后恢复自然测量。
+    pub fn finish_block_height_animation(
+        &mut self,
+        block_id: BlockId,
+        content_version: u64,
+        height: f64,
+        constrain_height: bool,
+    ) -> Result<bool, String> {
+        let version_is_current = self.block_content_version(block_id) == Some(content_version);
+        let changed = self.apply_animated_block_height(block_id, content_version, height)?;
+        self.layout.animating_heights.remove(&block_id);
+        if constrain_height && version_is_current {
+            self.layout.constrained_heights.insert(block_id);
+        } else {
+            self.layout.constrained_heights.remove(&block_id);
+        }
+        Ok(changed)
     }
 
     pub fn is_block_height_animating(&self, block_id: BlockId) -> bool {
@@ -56,11 +79,13 @@ impl DocumentRuntime {
         // 该块正在做高度动画：所有权归动画路径。放行的话，文本布局上报的自然全高会
         // 挤进同一张 pending 表（HashMap，同块后写覆盖先写），跟补间高度互抢，折叠
         // 走到一半被拽回全高再拉下去。
-        if self.layout.animating_heights.contains(&block_id) {
+        if self.layout.animating_heights.contains(&block_id)
+            || self.layout.constrained_heights.contains(&block_id)
+        {
             trace_image_resize(
                 "height.reject",
                 format_args!(
-                    "block={block_id} version={content_version} height={height:.2} animating"
+                    "block={block_id} version={content_version} height={height:.2} owned_by_presentation"
                 ),
             );
             return Ok(false);

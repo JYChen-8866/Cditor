@@ -1167,6 +1167,7 @@ impl CditorV2View {
             BlockId,
             crate::features::code::CodeCollapseTween,
         >,
+        constrain_on_settle: fn(&Self, BlockId) -> bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1207,19 +1208,22 @@ impl CditorV2View {
             if !*done {
                 continue;
             }
-            // 落定：先落权威终值（插值算出来的是近似数），再把高度所有权交还给正常测量。
-            // 顺序不能反——交还之后动画通道就不再受信任了。
+            // 落定必须由 runtime 原子提交：终值先进入 HeightIndex，再切换稳定态的高度
+            // 所有权。projection 在本帧稍后生成，只会看到这份文档布局真相。
             let target = tweens(self).get(block_id).map(|tween| tween.tween.target());
             if let Some(target) = target {
+                let constrain_height = constrain_on_settle(self, *block_id);
                 let _ = self.ready_session().and_then(|session| {
                     session
-                        .apply_animated_block_height(*block_id, *version, target)
+                        .finish_block_height_animation(
+                            *block_id,
+                            *version,
+                            target,
+                            constrain_height,
+                        )
                         .ok()
                 });
             }
-            let _ = self
-                .ready_session()
-                .and_then(|session| session.end_block_height_animation(*block_id).ok());
             tweens(self).remove(block_id);
             any_settled = true;
         }
@@ -1242,7 +1246,12 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.advance_height_tweens(|view| &mut view.overlay.code_collapse_tweens, window, cx);
+        self.advance_height_tweens(
+            |view| &mut view.overlay.code_collapse_tweens,
+            |view, block_id| view.overlay.collapsed_code_blocks.contains(&block_id),
+            window,
+            cx,
+        );
     }
 
     /// 推进 mermaid 源码/预览切换的高度补间。
@@ -1251,6 +1260,11 @@ impl CditorV2View {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.advance_height_tweens(|view| &mut view.overlay.mermaid_source_tweens, window, cx);
+        self.advance_height_tweens(
+            |view| &mut view.overlay.mermaid_source_tweens,
+            |_view, _block_id| false,
+            window,
+            cx,
+        );
     }
 }

@@ -172,6 +172,57 @@ fn measurement_resumes_after_the_animation_ends() {
     assert_eq!(effective_height(&runtime, 2), EXPANDED);
 }
 
+#[test]
+fn settled_collapsed_height_remains_the_document_layout_truth() {
+    let mut runtime = runtime_with_code_block();
+
+    runtime.begin_block_height_animation(2);
+    runtime
+        .finish_block_height_animation(2, 1, COLLAPSED, true)
+        .unwrap();
+
+    assert_eq!(effective_height(&runtime, 2), COLLAPSED);
+    assert!(
+        !runtime.apply_measured_height(2, 1, EXPANDED).unwrap(),
+        "隐藏内容的自然高度不能覆盖稳定收起高度"
+    );
+    assert_eq!(effective_height(&runtime, 2), COLLAPSED);
+
+    let projection = runtime.projection(cditor_editor_protocol::projection::ProjectionRequest {
+        viewport_revision: runtime.revision(),
+        include_diagnostics: false,
+    });
+    let projected = projection
+        .blocks
+        .iter()
+        .find(|block| block.block_id == 2)
+        .expect("collapsed code block is projected");
+    assert_eq!(projected.layout.effective_height(), COLLAPSED);
+}
+
+#[test]
+fn expanding_releases_the_stable_height_constraint() {
+    let mut runtime = runtime_with_code_block();
+    runtime.begin_block_height_animation(2);
+    runtime
+        .finish_block_height_animation(2, 1, COLLAPSED, true)
+        .unwrap();
+
+    runtime.begin_block_height_animation(2);
+    runtime
+        .finish_block_height_animation(2, 1, EXPANDED, false)
+        .unwrap();
+
+    assert_eq!(effective_height(&runtime, 2), EXPANDED);
+    assert!(
+        runtime
+            .apply_measured_height(2, 1, EXPANDED + 80.0)
+            .unwrap(),
+        "展开落定后自然测量应重新拥有高度"
+    );
+    assert_eq!(effective_height(&runtime, 2), EXPANDED + 80.0);
+}
+
 /// 过期的 content_version 在动画通道同样要被拒。
 ///
 /// 绕开容差门不等于绕开版本校验：内容在补间途中被改过，那个补间的高度就是过期数据。

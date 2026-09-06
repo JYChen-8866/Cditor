@@ -83,9 +83,14 @@ pub const MERMAID_SOURCE_CHROME_HEIGHT_PX: f64 = MERMAID_TOOLBAR_HEIGHT_PX
 pub const MERMAID_LOADING_PREVIEW_BODY_HEIGHT_PX: f64 = 188.0;
 pub const IMAGE_BLOCK_ESTIMATED_HEIGHT_PX: f64 = 260.0;
 pub const VIDEO_DEFAULT_ASPECT_RATIO: f64 = 16.0 / 9.0;
+/// Videos use a media-sized preview rather than stretching to the whole note
+/// column. This keeps tall and panoramic clips from dominating the document.
+pub const VIDEO_MAX_CONTENT_WIDTH_PX: f64 = 560.0;
+pub const VIDEO_MIN_VIEWPORT_HEIGHT_PX: f64 = 180.0;
+pub const VIDEO_MAX_VIEWPORT_HEIGHT_PX: f64 = 400.0;
 pub const VIDEO_BLOCK_CHROME_HEIGHT_PX: f64 = COMPLEX_BLOCK_SHELL_CHROME_HEIGHT_PX + 6.0 + 26.0;
 pub const VIDEO_BLOCK_ESTIMATED_HEIGHT_PX: f64 =
-    DEFAULT_LAYOUT_WIDTH_PX / VIDEO_DEFAULT_ASPECT_RATIO + VIDEO_BLOCK_CHROME_HEIGHT_PX;
+    VIDEO_MAX_CONTENT_WIDTH_PX / VIDEO_DEFAULT_ASPECT_RATIO + VIDEO_BLOCK_CHROME_HEIGHT_PX;
 pub const NOTION_DIVIDER_BLOCK_HEIGHT_PX: f64 = 13.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -439,7 +444,10 @@ pub fn estimate_block_height(
 pub fn video_block_height_px(payload: &BlockPayload, width_px: f64) -> f64 {
     match payload {
         BlockPayload::Video(video) => video_payload_block_height_px(video, width_px),
-        _ => width_px.max(1.0) / VIDEO_DEFAULT_ASPECT_RATIO + VIDEO_BLOCK_CHROME_HEIGHT_PX,
+        _ => {
+            let (_, height) = video_viewport_size_px(width_px, VIDEO_DEFAULT_ASPECT_RATIO);
+            height + VIDEO_BLOCK_CHROME_HEIGHT_PX
+        }
     }
 }
 
@@ -451,7 +459,33 @@ pub fn video_payload_block_height_px(video: &VideoPayload, width_px: f64) -> f64
         .filter(|(width, height)| *width > 0.0 && *height > 0.0)
         .map(|(width, height)| width / height)
         .unwrap_or(VIDEO_DEFAULT_ASPECT_RATIO);
-    width_px.max(1.0) / aspect_ratio + VIDEO_BLOCK_CHROME_HEIGHT_PX
+    video_viewport_height_px(video_content_width_px(width_px), aspect_ratio)
+        + VIDEO_BLOCK_CHROME_HEIGHT_PX
+}
+
+/// Width and height of the stable video preview viewport. The source frame
+/// is contained inside this viewport by the renderer, so the viewport remains
+/// bounded even when the source is portrait or panoramic.
+pub fn video_viewport_size_px(width_px: f64, aspect_ratio: f64) -> (f64, f64) {
+    let viewport_width = width_px.max(1.0);
+    let content_width = video_content_width_px(viewport_width);
+    (
+        viewport_width,
+        video_viewport_height_px(content_width, aspect_ratio),
+    )
+}
+
+pub fn video_content_width_px(width_px: f64) -> f64 {
+    width_px.max(1.0).min(VIDEO_MAX_CONTENT_WIDTH_PX)
+}
+
+pub fn video_viewport_height_px(width_px: f64, aspect_ratio: f64) -> f64 {
+    let aspect_ratio = if aspect_ratio.is_finite() && aspect_ratio > 0.0 {
+        aspect_ratio
+    } else {
+        VIDEO_DEFAULT_ASPECT_RATIO
+    };
+    (width_px / aspect_ratio).clamp(VIDEO_MIN_VIEWPORT_HEIGHT_PX, VIDEO_MAX_VIEWPORT_HEIGHT_PX)
 }
 
 /// Mermaid 源码模式的块高度：源码区和代码块用同一套行度量，随内容增长，不设
@@ -775,7 +809,7 @@ mod tests {
     }
 
     #[test]
-    fn video_height_uses_payload_aspect_ratio_and_stable_chrome() {
+    fn video_height_uses_bounded_media_viewport_and_stable_chrome() {
         let payload = BlockPayload::Video(VideoPayload {
             intrinsic_width: Some(1920),
             intrinsic_height: Some(1080),
@@ -784,7 +818,7 @@ mod tests {
 
         let estimate = estimate_block_height(&RichBlockKind::Video, &payload, 800.0);
 
-        assert_eq!(estimate.height, 450.0 + VIDEO_BLOCK_CHROME_HEIGHT_PX);
+        assert_eq!(estimate.height, 315.0 + VIDEO_BLOCK_CHROME_HEIGHT_PX);
         assert_eq!(estimate.confidence, HeightConfidence::Predictive);
     }
 
@@ -794,8 +828,20 @@ mod tests {
 
         assert_eq!(
             video_block_height_px(&payload, 640.0),
-            360.0 + VIDEO_BLOCK_CHROME_HEIGHT_PX
+            315.0 + VIDEO_BLOCK_CHROME_HEIGHT_PX
         );
+    }
+
+    #[test]
+    fn video_viewport_caps_wide_notes_and_extreme_aspect_ratios() {
+        assert_eq!(video_viewport_size_px(800.0, 16.0 / 9.0), (800.0, 315.0));
+        assert_eq!(video_viewport_size_px(800.0, 9.0 / 16.0), (800.0, 400.0));
+        assert_eq!(video_viewport_size_px(800.0, 32.0 / 9.0), (800.0, 180.0));
+    }
+
+    #[test]
+    fn video_viewport_shrinks_with_a_narrow_note() {
+        assert_eq!(video_viewport_size_px(320.0, 16.0 / 9.0), (320.0, 180.0));
     }
 
     #[test]

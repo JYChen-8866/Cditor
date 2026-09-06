@@ -115,7 +115,8 @@ pub(crate) struct OverlayUiState {
     /// 收起/展开进行中的高度补间。空表示所有代码块都已稳定。
     ///
     /// 折叠高度要喂进布局引擎，下方每个块的位置都跟着它走，所以补间期间每帧推一个
-    /// 新高度。落定后条目移除，块回到由 `collapsed_code_blocks` 决定的静态高度。
+    /// 新高度。落定后条目移除；稳定收起高度由 runtime 持有并投影回来，
+    /// `collapsed_code_blocks` 只决定内容可见性和工具栏图标。
     pub(crate) code_collapse_tweens: HashMap<BlockId, crate::features::code::CodeCollapseTween>,
 
     /// Mermaid 源码/预览切换进行中的高度补间。

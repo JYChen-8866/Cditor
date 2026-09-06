@@ -255,6 +255,9 @@ impl DocumentRuntime {
             self.document.table_runtimes.remove(block_id);
             self.document.block_attrs.remove(block_id);
             self.document.block_asset_ids.remove(block_id);
+            self.layout.pending_measured_heights.remove(block_id);
+            self.layout.animating_heights.remove(block_id);
+            self.layout.constrained_heights.remove(block_id);
         }
         for (block_id, attrs) in block_attrs {
             if attrs == BlockAttrs::default() {

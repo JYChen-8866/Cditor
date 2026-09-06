@@ -19,8 +19,9 @@ use crate::stderr::{
     STDERR_MAX_DIAGNOSTIC_BYTES, STDERR_MAX_LINE_BYTES, read_bounded_lines, truncate_utf8,
 };
 use crate::{
-    VideoCommand, VideoDimensions, VideoError, VideoFrame, VideoFrameStore, VideoPlaybackSnapshot,
-    VideoSessionConfig, types::fit_dimensions,
+    DEFAULT_PLAYBACK_RATE, MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE, VideoCommand, VideoDimensions,
+    VideoError, VideoFrame, VideoFrameStore, VideoPlaybackSnapshot, VideoSessionConfig,
+    types::fit_dimensions,
 };
 
 const STDERR_RING_LINES: usize = 24;
@@ -28,6 +29,8 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 const PROBE_MAX_STDOUT_BYTES: usize = 64 * 1024;
 const INITIAL_FRAME_TIMEOUT: Duration = Duration::from_secs(3);
 const INITIAL_FRAME_POLL_INTERVAL: Duration = Duration::from_millis(2);
+const VIDEO_START_WAIT_INTERVAL: Duration = Duration::from_millis(2);
+const VIDEO_FRAME_TIMING_EPSILON_SECONDS: f64 = 0.002;
 
 /// A reusable FFmpeg-backed playback session adapted from Frame's preview engine.
 ///
@@ -188,6 +191,14 @@ struct PlaybackState {
     playing: bool,
     ended: bool,
     started_at: Option<Instant>,
+    playback_rate: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PlaybackStreamState {
+    Ready,
+    Waiting,
+    Stale,
 }
 
 #[derive(Debug, Deserialize)]
@@ -202,6 +213,20 @@ struct ProbeStream {
     codec_type: Option<String>,
     width: Option<u32>,
     height: Option<u32>,
+    #[serde(default)]
+    tags: Option<ProbeStreamTags>,
+    #[serde(default)]
+    side_data_list: Vec<ProbeSideData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProbeStreamTags {
+    rotate: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProbeSideData {
+    rotation: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -258,6 +283,7 @@ impl VideoSession {
                 playing: false,
                 ended: false,
                 started_at: None,
+                playback_rate: DEFAULT_PLAYBACK_RATE,
             })),
             stderr: Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_RING_LINES))),
             has_audio,
@@ -362,7 +388,7 @@ impl VideoSession {
             state.position
                 + state
                     .started_at
-                    .map_or(0.0, |at| at.elapsed().as_secs_f64())
+                    .map_or(0.0, |at| at.elapsed().as_secs_f64() * state.playback_rate)
         } else {
             state.position
         };
@@ -375,6 +401,7 @@ impl VideoSession {
             ended: state.ended,
             volume: self.volume(),
             muted: self.muted(),
+            playback_rate: state.playback_rate,
         }
     }
 
@@ -388,6 +415,7 @@ impl VideoSession {
                 self.set_muted(muted);
                 Ok(())
             }
+            VideoCommand::SetPlaybackRate(playback_rate) => self.set_playback_rate(playback_rate),
         }
     }
 
@@ -407,6 +435,19 @@ impl VideoSession {
         self.audio_control.set_muted(muted);
         #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         let _ = muted;
+    }
+
+    fn set_playback_rate(self: &Arc<Self>, playback_rate: f64) -> Result<(), VideoError> {
+        validate_playback_rate(playback_rate)?;
+        let snapshot = self.snapshot();
+        if (snapshot.playback_rate - playback_rate).abs() <= f64::EPSILON {
+            return Ok(());
+        }
+        lock(&self.playback).playback_rate = playback_rate;
+        if snapshot.playing {
+            self.start_process(snapshot.position_seconds, true)?;
+        }
+        Ok(())
     }
 
     pub fn stop(&self) -> Result<(), VideoError> {
@@ -429,13 +470,7 @@ impl VideoSession {
         } else {
             snapshot.position_seconds
         };
-        self.start_process(position, true)?;
-        let mut state = lock(&self.playback);
-        state.position = position;
-        state.playing = true;
-        state.ended = false;
-        state.started_at = Some(Instant::now());
-        Ok(())
+        self.start_process(position, true)
     }
 
     fn pause(&self) -> Result<(), VideoError> {
@@ -460,14 +495,7 @@ impl VideoSession {
         // Don't clamp seek position - metadata duration may be inaccurate
         // Let ffmpeg handle invalid seeks naturally
         let was_playing = self.snapshot().playing;
-        self.start_process(seconds, was_playing)?;
-        let mut state = lock(&self.playback);
-        state.position = seconds;
-        state.playing = was_playing;
-        // Don't mark as ended based on metadata duration - let playback determine it
-        state.ended = false;
-        state.started_at = was_playing.then(Instant::now);
-        Ok(())
+        self.start_process(seconds, was_playing)
     }
 
     fn start_process(
@@ -476,10 +504,14 @@ impl VideoSession {
         realtime: bool,
     ) -> Result<(), VideoError> {
         self.stop_process()?;
-        let generation = {
+        let (generation, playback_rate) = {
             let mut state = lock(&self.playback);
             state.generation = state.generation.saturating_add(1);
-            state.generation
+            state.position = start_seconds;
+            state.playing = false;
+            state.ended = false;
+            state.started_at = None;
+            (state.generation, state.playback_rate)
         };
         let ffmpeg = crate::ffmpeg_executable();
         let args = build_ffmpeg_args(
@@ -488,6 +520,7 @@ impl VideoSession {
             self.config.fps,
             start_seconds,
             realtime,
+            playback_rate,
         );
         let mut child = crate::media_command(ffmpeg)
             .args(&args)
@@ -536,11 +569,25 @@ impl VideoSession {
                     let frame_len = dimensions.width as usize * dimensions.height as usize * 4;
                     let mut bytes = vec![0; frame_len];
                     let mut index = 0_u64;
-                    while !stdout_stop.load(Ordering::SeqCst)
-                        && stdout.read_exact(&mut bytes).is_ok()
-                    {
+                    loop {
+                        if stdout_stop.load(Ordering::SeqCst) {
+                            break;
+                        }
                         let timestamp_us = timestamp_offset_us
                             .saturating_add(index.saturating_mul(1_000_000) / u64::from(fps));
+                        if realtime
+                            && wait_for_frame_presentation_time(
+                                &playback,
+                                &stdout_stop,
+                                generation,
+                                timestamp_us as f64 / 1_000_000.0,
+                            ) != PlaybackStreamState::Ready
+                        {
+                            break;
+                        }
+                        if stdout.read_exact(&mut bytes).is_err() {
+                            break;
+                        }
                         if frames.has_unpresented_frame() {
                             index = index.saturating_add(1);
                             continue;
@@ -586,6 +633,7 @@ impl VideoSession {
                     start_seconds,
                     Arc::clone(&self.audio_control),
                     Arc::clone(&self.stderr),
+                    playback_rate,
                 ) {
                     Ok(audio) => Some(audio),
                     Err(error) => {
@@ -599,6 +647,15 @@ impl VideoSession {
         }
 
         *lock(&self.process) = Some(process);
+        if realtime {
+            let mut state = lock(&self.playback);
+            if state.generation == generation {
+                state.position = start_seconds;
+                state.playing = true;
+                state.ended = false;
+                state.started_at = Some(Instant::now());
+            }
+        }
         Ok(())
     }
 
@@ -655,6 +712,55 @@ impl VideoSession {
     }
 }
 
+fn validate_playback_rate(playback_rate: f64) -> Result<(), VideoError> {
+    if playback_rate.is_finite() && (MIN_PLAYBACK_RATE..=MAX_PLAYBACK_RATE).contains(&playback_rate)
+    {
+        Ok(())
+    } else {
+        Err(VideoError::InvalidInput(format!(
+            "video playback rate must be between {MIN_PLAYBACK_RATE} and {MAX_PLAYBACK_RATE}"
+        )))
+    }
+}
+
+fn frame_presentation_state(
+    playback: &Arc<Mutex<PlaybackState>>,
+    generation: u64,
+    timestamp_seconds: f64,
+) -> PlaybackStreamState {
+    let state = lock(playback);
+    if state.generation != generation || state.ended {
+        return PlaybackStreamState::Stale;
+    }
+    let Some(started_at) = state.started_at.filter(|_| state.playing) else {
+        return PlaybackStreamState::Waiting;
+    };
+    let clock_seconds = state.position + started_at.elapsed().as_secs_f64() * state.playback_rate;
+    if clock_seconds + VIDEO_FRAME_TIMING_EPSILON_SECONDS >= timestamp_seconds {
+        PlaybackStreamState::Ready
+    } else {
+        PlaybackStreamState::Waiting
+    }
+}
+
+fn wait_for_frame_presentation_time(
+    playback: &Arc<Mutex<PlaybackState>>,
+    stop_requested: &AtomicBool,
+    generation: u64,
+    timestamp_seconds: f64,
+) -> PlaybackStreamState {
+    loop {
+        if stop_requested.load(Ordering::SeqCst) {
+            return PlaybackStreamState::Stale;
+        }
+        match frame_presentation_state(playback, generation, timestamp_seconds) {
+            PlaybackStreamState::Ready => return PlaybackStreamState::Ready,
+            PlaybackStreamState::Stale => return PlaybackStreamState::Stale,
+            PlaybackStreamState::Waiting => thread::sleep(VIDEO_START_WAIT_INTERVAL),
+        }
+    }
+}
+
 impl Drop for VideoSession {
     fn drop(&mut self) {
         let _ = self.stop_process();
@@ -679,7 +785,7 @@ fn probe_metadata(
             "-v",
             "error",
             "-show_entries",
-            "stream=codec_type,width,height:format=duration",
+            "stream=codec_type,width,height:stream_tags=rotate:stream_side_data=rotation:format=duration",
             "-of",
             "json",
         ])
@@ -796,7 +902,8 @@ fn parse_probe_output(bytes: &[u8], max_width: u32, max_height: u32) -> Option<V
             && stream.width.is_some()
             && stream.height.is_some()
     })?;
-    let dimensions = fit_dimensions(stream.width?, stream.height?, max_width, max_height);
+    let (source_width, source_height) = display_dimensions(stream)?;
+    let dimensions = fit_dimensions(source_width, source_height, max_width, max_height);
     let duration_seconds = probe
         .format
         .and_then(|format| format.duration)
@@ -813,12 +920,36 @@ fn parse_probe_output(bytes: &[u8], max_width: u32, max_height: u32) -> Option<V
     })
 }
 
+fn display_dimensions(stream: &ProbeStream) -> Option<(u32, u32)> {
+    let width = stream.width?;
+    let height = stream.height?;
+    let rotation = stream
+        .side_data_list
+        .iter()
+        .find_map(|side_data| side_data.rotation)
+        .or_else(|| {
+            stream
+                .tags
+                .as_ref()
+                .and_then(|tags| tags.rotate.as_deref())
+                .and_then(|rotation| rotation.parse::<f64>().ok())
+        })
+        .unwrap_or(0.0);
+    let normalized = (rotation.round() as i32).rem_euclid(360);
+    if matches!(normalized, 90 | 270) {
+        Some((height, width))
+    } else {
+        Some((width, height))
+    }
+}
+
 fn build_ffmpeg_args(
     source: &Path,
     dimensions: VideoDimensions,
     fps: u32,
     start_seconds: f64,
     realtime: bool,
+    playback_rate: f64,
 ) -> Vec<String> {
     let mut args = vec![
         "-hide_banner".into(),
@@ -830,7 +961,7 @@ fn build_ffmpeg_args(
         args.extend(["-ss".into(), format!("{start_seconds:.3}")]);
     }
     if realtime {
-        args.extend(["-readrate".into(), "1".into()]);
+        args.extend(["-readrate".into(), format_playback_rate_arg(playback_rate)]);
     }
     args.extend([
         "-i".into(),
@@ -855,6 +986,10 @@ fn build_ffmpeg_args(
     }
     args.push("pipe:1".into());
     args
+}
+
+fn format_playback_rate_arg(playback_rate: f64) -> String {
+    format!("{playback_rate:.3}")
 }
 
 fn spawn_stderr_worker(
@@ -972,6 +1107,7 @@ mod tests {
             30,
             1.25,
             false,
+            DEFAULT_PLAYBACK_RATE,
         );
         let frame_limit = args.iter().position(|arg| arg == "-frames:v").unwrap();
         let output = args.iter().position(|arg| arg == "pipe:1").unwrap();
@@ -992,10 +1128,109 @@ mod tests {
             30,
             0.0,
             true,
+            1.5,
         );
-        assert!(args.windows(2).any(|args| args == ["-readrate", "1"]));
+        assert!(args.windows(2).any(|args| args == ["-readrate", "1.500"]));
         assert!(!args.iter().any(|arg| arg == "-frames:v"));
         assert_eq!(args.last().map(String::as_str), Some("pipe:1"));
+    }
+
+    fn playback_state(
+        generation: u64,
+        position: f64,
+        playing: bool,
+        started_at: Option<Instant>,
+    ) -> Arc<Mutex<PlaybackState>> {
+        Arc::new(Mutex::new(PlaybackState {
+            generation,
+            position,
+            playing,
+            ended: false,
+            started_at,
+            playback_rate: DEFAULT_PLAYBACK_RATE,
+        }))
+    }
+
+    #[test]
+    fn playback_clock_advances_media_time_at_selected_rate() {
+        let started_at = Instant::now()
+            .checked_sub(Duration::from_millis(100))
+            .expect("test timestamp should be representable");
+        let playback = playback_state(1, 10.0, true, Some(started_at));
+        lock(&playback).playback_rate = 2.0;
+
+        assert_eq!(
+            frame_presentation_state(&playback, 1, 10.15),
+            PlaybackStreamState::Ready
+        );
+        assert_eq!(
+            frame_presentation_state(&playback, 1, 10.3),
+            PlaybackStreamState::Waiting
+        );
+    }
+
+    #[test]
+    fn playback_rate_rejects_non_finite_and_out_of_range_values() {
+        assert!(validate_playback_rate(f64::NAN).is_err());
+        assert!(validate_playback_rate(f64::INFINITY).is_err());
+        assert!(validate_playback_rate(0.25).is_err());
+        assert!(validate_playback_rate(3.0).is_err());
+        assert!(validate_playback_rate(MIN_PLAYBACK_RATE).is_ok());
+        assert!(validate_playback_rate(MAX_PLAYBACK_RATE).is_ok());
+    }
+
+    #[test]
+    fn frame_presentation_waits_until_playback_clock_starts() {
+        let playback = playback_state(1, 2.5, false, None);
+
+        assert_eq!(
+            frame_presentation_state(&playback, 1, 2.5),
+            PlaybackStreamState::Waiting
+        );
+    }
+
+    #[test]
+    fn frame_presentation_waits_for_future_timestamp() {
+        let playback = playback_state(1, 10.0, true, Some(Instant::now()));
+
+        assert_eq!(
+            frame_presentation_state(&playback, 1, 10.5),
+            PlaybackStreamState::Waiting
+        );
+    }
+
+    #[test]
+    fn frame_presentation_allows_due_timestamp() {
+        let started_at = Instant::now()
+            .checked_sub(Duration::from_millis(40))
+            .expect("test timestamp should be representable");
+        let playback = playback_state(1, 10.0, true, Some(started_at));
+
+        assert_eq!(
+            frame_presentation_state(&playback, 1, 10.033),
+            PlaybackStreamState::Ready
+        );
+    }
+
+    #[test]
+    fn frame_presentation_rejects_stale_generation() {
+        let playback = playback_state(2, 0.0, true, Some(Instant::now()));
+
+        assert_eq!(
+            frame_presentation_state(&playback, 1, 0.0),
+            PlaybackStreamState::Stale
+        );
+    }
+
+    #[test]
+    fn frame_presentation_wait_exits_when_stop_is_requested() {
+        let playback = playback_state(1, 0.0, false, None);
+        let stop_requested = AtomicBool::new(true);
+
+        assert_eq!(
+            wait_for_frame_presentation_time(&playback, &stop_requested, 1, 1.0),
+            PlaybackStreamState::Stale
+        );
     }
 
     #[test]
@@ -1015,6 +1250,23 @@ mod tests {
         );
         assert_eq!(metadata.duration_seconds, Some(12.5));
         assert!(metadata.has_audio);
+    }
+
+    #[test]
+    fn parses_phone_rotation_as_portrait_dimensions() {
+        let metadata = parse_probe_output(
+            br#"{"streams":[{"codec_type":"video","width":1920,"height":1080,"side_data_list":[{"rotation":-90}]}],"format":{"duration":"3.0"}}"#,
+            1280,
+            720,
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.dimensions,
+            VideoDimensions {
+                width: 404,
+                height: 720
+            }
+        );
     }
 
     #[test]
@@ -1067,7 +1319,7 @@ mod tests {
                 "-f",
                 "lavfi",
                 "-i",
-                "color=c=blue:s=64x48:d=0.2",
+                "color=c=blue:s=64x48:r=10:d=0.8",
                 "-pix_fmt",
                 "yuv420p",
                 "-y",
@@ -1100,6 +1352,40 @@ mod tests {
             .command(VideoCommand::Play)
             .expect("playback decoder should start");
         assert!(lock(&session.process).is_some());
+        let playback_started_at = Instant::now();
+        while !session.snapshot().ended && playback_started_at.elapsed() < Duration::from_secs(3) {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let normal_elapsed = playback_started_at.elapsed();
+        assert!(
+            session.snapshot().ended,
+            "playback should reach end of stream"
+        );
+        assert!(
+            normal_elapsed >= Duration::from_millis(650),
+            "real-time playback must not consume an 800ms stream early"
+        );
+
+        session
+            .command(VideoCommand::SetPlaybackRate(2.0))
+            .expect("2x playback rate should be accepted");
+        session
+            .command(VideoCommand::Play)
+            .expect("ended playback should restart at 2x");
+        let fast_started_at = Instant::now();
+        while !session.snapshot().ended && fast_started_at.elapsed() < Duration::from_secs(2) {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let fast_elapsed = fast_started_at.elapsed();
+        assert!(session.snapshot().ended, "2x playback should reach end");
+        assert!(
+            fast_elapsed >= Duration::from_millis(300),
+            "2x playback must still honor the media clock"
+        );
+        assert!(
+            fast_elapsed < normal_elapsed.saturating_sub(Duration::from_millis(150)),
+            "2x playback should complete materially faster than 1x: 1x={normal_elapsed:?}, 2x={fast_elapsed:?}"
+        );
         session.stop().expect("playback decoder should stop");
         assert!(lock(&session.process).is_none());
         drop(session);

@@ -337,6 +337,7 @@ impl DocumentRuntime {
                 projection: ProjectionState::default(),
                 pending_measured_heights: HashMap::new(),
                 animating_heights: HashSet::new(),
+                constrained_heights: HashSet::new(),
                 dirty: false,
                 scrollbar_drag: None,
             },

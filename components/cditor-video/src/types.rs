@@ -5,6 +5,9 @@ use crate::VideoError;
 pub const DEFAULT_VIDEO_MAX_WIDTH: u32 = 1280;
 pub const DEFAULT_VIDEO_MAX_HEIGHT: u32 = 720;
 pub const DEFAULT_VIDEO_FPS: u32 = 30;
+pub const DEFAULT_PLAYBACK_RATE: f64 = 1.0;
+pub const MIN_PLAYBACK_RATE: f64 = 0.5;
+pub const MAX_PLAYBACK_RATE: f64 = 2.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VideoDimensions {
@@ -123,6 +126,7 @@ pub struct VideoPlaybackSnapshot {
     pub ended: bool,
     pub volume: f32,
     pub muted: bool,
+    pub playback_rate: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -132,6 +136,7 @@ pub enum VideoCommand {
     Seek(f64),
     SetVolume(f32),
     SetMuted(bool),
+    SetPlaybackRate(f64),
 }
 
 pub(crate) fn validate_frame_layout(
