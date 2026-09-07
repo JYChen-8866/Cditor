@@ -35,7 +35,6 @@ const ICON_QUOTE: &[u8] = include_bytes!("../../../../assets/icons/quote.svg");
 const ICON_CALLOUT: &[u8] = include_bytes!("../../../../assets/icons/callout.svg");
 const ICON_CODE: &[u8] = include_bytes!("../../../../assets/icons/code.svg");
 const ICON_MATH: &[u8] = include_bytes!("../../../../assets/icons/math.svg");
-const ICON_MERMAID: &[u8] = include_bytes!("../../../../assets/icons/mermaid.svg");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockTransformAction(u16);
@@ -69,7 +68,12 @@ impl BlockTransformAction {
         block_presentation_registry()
             .transform_presentations()
             .into_iter()
-            .filter(|presentation| !matches!(presentation.kind, RichBlockKind::Toggle))
+            .filter(|presentation| {
+                !matches!(
+                    presentation.kind,
+                    RichBlockKind::Toggle | RichBlockKind::Mermaid
+                )
+            })
             .map(|presentation| Self(presentation.kind_tag))
             .collect()
     }
@@ -107,7 +111,6 @@ impl BlockTransformAction {
             RichBlockKind::Callout { .. } => "选择提示区块类型",
             RichBlockKind::Code { .. } => "转换为代码区块",
             RichBlockKind::Math => "转换为数学公式",
-            RichBlockKind::Mermaid => "转换为 Mermaid 图表",
             _ => "转换当前区块类型",
         }
     }
@@ -267,7 +270,6 @@ fn transform_icon_source(kind: &RichBlockKind) -> (&'static str, &'static [u8]) 
         RichBlockKind::Callout { .. } => ("block-transform-callout", ICON_CALLOUT),
         RichBlockKind::Code { .. } => ("block-transform-code", ICON_CODE),
         RichBlockKind::Math => ("block-transform-math", ICON_MATH),
-        RichBlockKind::Mermaid => ("block-transform-mermaid", ICON_MERMAID),
         _ => ("block-transform-text", ICON_TEXT),
     }
 }
@@ -283,9 +285,13 @@ mod tests {
     #[test]
     fn transform_actions_roundtrip_supported_block_kinds() {
         let actions = BlockTransformAction::all();
-        assert_eq!(actions.len(), 12);
+        assert_eq!(actions.len(), 11);
         assert_eq!(actions[0], BlockTransformAction::TEXT);
-        assert_eq!(actions[11].kind(), RichBlockKind::Mermaid);
+        assert!(
+            actions
+                .iter()
+                .all(|action| !matches!(action.kind(), RichBlockKind::Mermaid))
+        );
         assert!(
             actions
                 .iter()

@@ -42,7 +42,6 @@ const ICON_QUOTE: &[u8] = include_bytes!("../../../../assets/icons/quote.svg");
 const ICON_CALLOUT: &[u8] = include_bytes!("../../../../assets/icons/callout.svg");
 const ICON_CODE: &[u8] = include_bytes!("../../../../assets/icons/code.svg");
 const ICON_MATH: &[u8] = include_bytes!("../../../../assets/icons/math.svg");
-const ICON_MERMAID: &[u8] = include_bytes!("../../../../assets/icons/mermaid.svg");
 const ICON_TABLE: &[u8] = include_bytes!("../../../../assets/icons/table.svg");
 const ICON_WHITEBOARD: &[u8] = include_bytes!("../../../../assets/icons/whiteboard.svg");
 const ICON_VIDEO: &[u8] = include_bytes!("../../../../assets/icons/video.svg");
@@ -180,6 +179,7 @@ fn slash_menu_supports_kind(kind: &RichBlockKind) -> bool {
             | RichBlockKind::FootnoteDefinition
             | RichBlockKind::Comment
             | RichBlockKind::RawMarkdown
+            | RichBlockKind::Mermaid
     )
 }
 
@@ -620,7 +620,6 @@ fn slash_menu_svg_icon(item: &SlashMenuItem) -> Option<(&'static str, &'static [
         RichBlockKind::Callout { .. } => Some(("slash-menu-callout", ICON_CALLOUT)),
         RichBlockKind::Code { .. } => Some(("slash-menu-code", ICON_CODE)),
         RichBlockKind::Math => Some(("slash-menu-math", ICON_MATH)),
-        RichBlockKind::Mermaid => Some(("slash-menu-mermaid", ICON_MERMAID)),
         RichBlockKind::Table => Some(("slash-menu-table", ICON_TABLE)),
         RichBlockKind::Whiteboard => Some(("slash-menu-whiteboard", ICON_WHITEBOARD)),
         RichBlockKind::Video => Some(("slash-menu-video", ICON_VIDEO)),
@@ -644,8 +643,12 @@ mod tests {
     #[test]
     fn provided_svg_icons_cover_the_matching_slash_menu_items() {
         let items = slash_menu_items();
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item.kind, RichBlockKind::Mermaid))
+        );
         for label in [
-            "Ask AI",
             "Text",
             "Heading 1",
             "Heading 2",
@@ -657,7 +660,6 @@ mod tests {
             "Callout",
             "Code",
             "Math",
-            "Mermaid",
             "Table",
             "Whiteboard",
             "Divider",
