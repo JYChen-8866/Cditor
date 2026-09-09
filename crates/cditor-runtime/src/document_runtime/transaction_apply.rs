@@ -294,6 +294,18 @@ impl DocumentRuntime {
         }
         self.remap_focused_table_cell_after_table_operations(&transaction.ops);
 
+        // Markdown source follows the same runtime history step. The initial
+        // user edit is applied by the pre-applied input bridge; undo/redo replay
+        // the carried inverse/forward source patch here.
+        if !transaction.markdown_changes.is_empty()
+            && matches!(origin, cditor_core::edit::ChangeOrigin::Undo | cditor_core::edit::ChangeOrigin::Redo)
+            && let Some(markdown) = self.markdown.as_mut()
+        {
+            let reverse = matches!(origin, cditor_core::edit::ChangeOrigin::Undo);
+            markdown.commit(&transaction.markdown_changes, reverse)
+                .map_err(|reason| TransactionApplyError::InvalidResultingStructure(reason))?;
+        }
+
         // focus/selection 指向已删除块时清理（不变量：selection 指向存在的块）。
         if let Some(editing) = &self.editing.session
             && self.document.index.index_of(editing.block_id).is_none()

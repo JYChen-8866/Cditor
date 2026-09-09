@@ -208,6 +208,11 @@ impl EditorSessionHandle {
         Ok(session.runtime.document_title_block_id())
     }
 
+    pub fn first_body_block_id(&self) -> Result<Option<BlockId>, ProtocolError> {
+        let session = self.inner.try_borrow().map_err(|_| busy_error())?;
+        Ok(session.runtime.first_body_block_id())
+    }
+
     /// Word and line counts computed over the currently loaded payload window.
     pub fn text_statistics(&self) -> Result<(usize, usize), ProtocolError> {
         let session = self.inner.try_borrow().map_err(|_| {

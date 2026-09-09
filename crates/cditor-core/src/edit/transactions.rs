@@ -260,6 +260,16 @@ pub struct EditTransaction {
     pub after_anchor: Option<ScrollAnchor>,
     pub timestamp: u64,
     pub kind: EditTransactionKind,
+    /// Lossless block-local source patches, replayed in the same history step.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markdown_changes: Vec<MarkdownBlockChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarkdownBlockChange {
+    pub block_id: BlockId,
+    pub before: String,
+    pub after: String,
 }
 
 impl EditTransaction {
@@ -297,6 +307,7 @@ impl EditTransaction {
             after_anchor: None,
             timestamp,
             kind,
+            markdown_changes: Vec::new(),
         }
     }
 
@@ -401,6 +412,11 @@ impl EditTransaction {
             after_anchor: self.before_anchor,
             timestamp,
             kind: self.kind,
+            markdown_changes: self.markdown_changes.iter().map(|change| MarkdownBlockChange {
+                block_id: change.block_id,
+                before: change.after.clone(),
+                after: change.before.clone(),
+            }).collect(),
         }
     }
 

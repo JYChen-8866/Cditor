@@ -156,6 +156,13 @@ impl DocumentRuntime {
         )?;
         self.validate_preapplied_surface_truth(&before_surface)?;
 
+        if let Some(markdown) = self.markdown.as_ref()
+            && matches!(surface_id, SurfaceId::Block(_))
+            && !markdown.can_map_plain_text_edit(&before_surface.plain_text(), replaced_range.clone())
+        {
+            return Err("Markdown source mapping rejected edit: ambiguous or unavailable source anchor".to_owned());
+        }
+
         if !self.apply_resolved_focused_text_edit(
             edit,
             text,
@@ -178,6 +185,25 @@ impl DocumentRuntime {
             .then(|| self.document_selection_snapshot())
             .flatten();
         let after_anchor = self.capture_undo_scroll_snapshot().anchor;
+        let markdown_change = self.markdown.as_ref().and_then(|_markdown| {
+            matches!(surface_id, SurfaceId::Block(_)).then(|| {
+                cditor_core::edit::MarkdownBlockChange {
+                    block_id,
+                    before: before_surface.plain_text(),
+                    after: after_record.plain_text(),
+                }
+            })
+        });
+        if let Some(markdown) = self.markdown.as_mut()
+            && matches!(surface_id, SurfaceId::Block(_))
+            && let Err(error) = markdown.apply_plain_text_edit(
+                &before_surface.plain_text(),
+                replaced_range.clone(),
+                text,
+            )
+        {
+            return Err(format!("Markdown source mapping rejected edit: {error}"));
+        }
         self.record_preapplied_text_replacement(super::local_transaction::PreappliedTextEdit {
             transaction_id,
             kind,
@@ -195,6 +221,12 @@ impl DocumentRuntime {
             after_anchor,
             before_layout_version,
         });
+        if let Some(change) = markdown_change
+            && let Some(transaction) = self.transactions.pending.last_mut()
+            && transaction.id == transaction_id
+        {
+            transaction.markdown_changes.push(change);
+        }
         Ok(true)
     }
 

@@ -5,11 +5,14 @@ use super::history_state::HistoryState;
 use super::layout_state::LayoutState;
 use super::selection_state::SelectionState;
 use super::transaction_state::TransactionState;
+use super::mode::{DocumentRuntimeMode, MarkdownRuntimeState};
 use super::*;
 
 #[derive(Debug)]
 pub struct DocumentRuntime {
     pub(super) document_id: DocumentId,
+    pub(super) mode: DocumentRuntimeMode,
+    pub(super) markdown: Option<MarkdownRuntimeState>,
     pub(super) document: DocumentState,
     pub(super) layout: LayoutState,
     pub(super) editing: EditingState,

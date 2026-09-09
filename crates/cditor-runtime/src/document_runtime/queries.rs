@@ -14,11 +14,69 @@ fn link_siblings(blocks: &mut [RichBlockRecord], parent_id: Option<BlockId>, sib
 }
 
 impl DocumentRuntime {
+    /// Returns the selected persistence truth for this runtime.
+    pub fn mode(&self) -> DocumentRuntimeMode {
+        self.mode
+    }
+
+    /// Returns the retained Markdown source when this runtime is in Markdown mode.
+    pub fn markdown_source(&self) -> Option<&cditor_core::markdown::MarkdownSource> {
+        self.markdown.as_ref().map(|state| state.source())
+    }
+
+    /// Applies a source transaction in Markdown mode.
+    ///
+    /// Source transactions are intentionally explicit: the host/parser bridge
+    /// must project the affected source range back into rich-text payloads before
+    /// the next layout frame. This keeps parsing off the keystroke hot path.
+    pub fn apply_markdown_source_transaction(
+        &mut self,
+        transaction: cditor_core::markdown::SourceTransaction,
+    ) -> Result<(), cditor_core::markdown::MarkdownError> {
+        let Some(state) = self.markdown.as_mut() else {
+            return Err(cditor_core::markdown::MarkdownError::Unsupported(
+                "runtime is not in Markdown mode".to_owned(),
+            ));
+        };
+        state.apply(transaction)
+    }
+
+    pub fn markdown_source_snapshot(&self) -> Option<(String, cditor_core::markdown::SourceSelection)> {
+        self.markdown.as_ref().map(MarkdownRuntimeState::snapshot)
+    }
+
+    pub fn undo_markdown_source(&mut self) -> Result<bool, cditor_core::markdown::MarkdownError> {
+        let Some(state) = self.markdown.as_mut() else {
+            return Err(cditor_core::markdown::MarkdownError::Unsupported(
+                "runtime is not in Markdown mode".to_owned(),
+            ));
+        };
+        state.undo()
+    }
+
+    pub fn redo_markdown_source(&mut self) -> Result<bool, cditor_core::markdown::MarkdownError> {
+        let Some(state) = self.markdown.as_mut() else {
+            return Err(cditor_core::markdown::MarkdownError::Unsupported(
+                "runtime is not in Markdown mode".to_owned(),
+            ));
+        };
+        state.redo()
+    }
+
     /// Returns the required first-root document-name block without
     /// materializing the document or scanning its payload window.
     pub fn document_title_block_id(&self) -> Option<BlockId> {
         let block_id = self.document.index.block_ids.first().copied()?;
         self.is_document_title_block(block_id).then_some(block_id)
+    }
+
+    /// Returns the first visible block belonging to the document body.
+    pub fn first_body_block_id(&self) -> Option<BlockId> {
+        let title_id = self.document_title_block_id();
+        self.visible_block_ids()
+            .iter()
+            .copied()
+            .find(|block_id| Some(*block_id) != title_id)
     }
 
     pub(crate) fn is_document_title_block(&self, block_id: BlockId) -> bool {

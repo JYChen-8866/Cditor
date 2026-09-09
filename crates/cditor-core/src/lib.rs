@@ -9,6 +9,7 @@ pub mod ids;
 pub mod import_plan;
 pub mod internal_link;
 pub mod layout;
+pub mod markdown;
 pub mod media_resource;
 pub mod rich_text;
 pub mod schema;

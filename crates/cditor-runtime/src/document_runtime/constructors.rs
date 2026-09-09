@@ -1,9 +1,48 @@
 use super::document_state::DocumentState;
 use super::editing_state::EditingState;
 use super::selection_state::SelectionState;
+use super::mode::{DocumentRuntimeMode, MarkdownRuntimeState};
 use super::*;
 
 impl DocumentRuntime {
+    /// Constructs a runtime whose persistence truth is SQLite/rich text.
+    pub fn sqlite(document: RichTextDocument, viewport_height: f64) -> Self {
+        let mut runtime = Self::from_rich_text_document(document, viewport_height);
+        runtime.mode = DocumentRuntimeMode::Sqlite;
+        runtime.markdown = None;
+        runtime
+    }
+
+    /// Constructs a runtime whose persistence truth is lossless Markdown source.
+    ///
+    /// `document` is the already parsed rich-text projection used by layout and
+    /// editing. `source` remains the authoritative bytes for Markdown saves.
+    pub fn markdown(
+        source: impl Into<String>,
+        document: RichTextDocument,
+        viewport_height: f64,
+    ) -> Result<Self, String> {
+        Self::from_markdown_source(
+            cditor_core::markdown::MarkdownSource::new(&source.into()), document, viewport_height,
+        )
+    }
+
+    /// Variant of [`Self::markdown`] for callers that already own a source model.
+    pub fn from_markdown_source(
+        source: cditor_core::markdown::MarkdownSource,
+        document: RichTextDocument,
+        viewport_height: f64,
+    ) -> Result<Self, String> {
+        if !viewport_height.is_finite() || viewport_height <= 0.0 {
+            return Err("Markdown viewport height must be positive and finite".into());
+        }
+        let state = MarkdownRuntimeState::new(source, &document.index_records(), &document.payload_records())?;
+        let mut runtime = Self::from_rich_text_document(document, viewport_height);
+        runtime.mode = DocumentRuntimeMode::Markdown;
+        runtime.markdown = Some(state);
+        Ok(runtime)
+    }
+
     pub fn empty() -> Self {
         let mut document = RichTextDocument::empty(1);
         document.push_root_block(RichBlockRecord::rich_text(
@@ -306,6 +345,8 @@ impl DocumentRuntime {
 
         let runtime = Self {
             document_id,
+            mode: DocumentRuntimeMode::Sqlite,
+            markdown: None,
             document: DocumentState {
                 metadata: DocumentMetadata::default(),
                 revision: structure_version,

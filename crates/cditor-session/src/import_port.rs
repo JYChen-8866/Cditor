@@ -75,6 +75,18 @@ pub fn project_markdown_import(
     runtime: &mut DocumentRuntime,
     markdown: &str,
 ) -> Result<ImportDispatchReport, ProtocolError> {
+    if runtime.focused_block_id().is_none()
+        || runtime.focused_block_id() == runtime.document_title_block_id()
+    {
+        let body_block_id = runtime.first_body_block_id().ok_or_else(|| {
+            ProtocolError::new(
+                ProtocolErrorCode::ApplyFailed,
+                "document has no body block for markdown import",
+            )
+            .with_document(runtime.document_id())
+        })?;
+        runtime.focus_block(body_block_id);
+    }
     let before_revision = runtime.revision();
     let before_transaction = runtime.last_committed_transaction_id();
     let focused = runtime.focused_block_id();
@@ -84,7 +96,7 @@ pub fn project_markdown_import(
         ImportSource::Markdown,
         target,
         first_block_id,
-        ImportLimits::default(),
+        ImportLimits::document_import(),
     );
     let ImportApplicationReport {
         changed,
@@ -250,6 +262,39 @@ mod tests {
             handle.text_block_context(4).unwrap().unwrap().text,
             "second paragraph"
         );
+    }
+
+    #[test]
+    fn whole_document_import_never_replaces_the_system_title_block() {
+        let mut runtime = DocumentRuntime::empty();
+        let title_id = runtime.document_title_block_id().unwrap();
+        let body_id = runtime.first_body_block_id().unwrap();
+        runtime.focus_block(title_id);
+
+        let report = project_markdown_import(&mut runtime, "# Imported\n\nBody")
+            .expect("whole-document import should be redirected to the body");
+
+        assert!(report.outcome.changed());
+        assert_eq!(runtime.document_title_block_id(), Some(title_id));
+        assert!(runtime.block_kind(title_id).unwrap().is_document_title());
+        assert!(matches!(
+            runtime.block_kind(body_id),
+            Some(RichBlockKind::Heading { level: 1 })
+        ));
+    }
+
+    #[test]
+    fn whole_document_import_accepts_input_above_the_clipboard_limit() {
+        let mut runtime = DocumentRuntime::empty();
+        runtime.focus_block(1);
+        let markdown = "x".repeat(ImportLimits::default().max_input_bytes + 1);
+
+        let report = project_markdown_import(&mut runtime, &markdown)
+            .expect("explicit document imports use the large-file limit profile");
+
+        assert!(report.outcome.changed());
+        assert_eq!(report.source_report.input_bytes, markdown.len());
+        assert!(!report.source_report.rejected());
     }
 
     #[test]

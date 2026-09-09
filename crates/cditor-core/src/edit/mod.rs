@@ -50,7 +50,7 @@ pub use transaction_codec::{
     transaction_envelope_from_raw,
 };
 pub use transactions::{
-    EditOperation, EditTransaction, EditTransactionKind, TableEditOperation,
+    EditOperation, EditTransaction, EditTransactionKind, MarkdownBlockChange, TableEditOperation,
     TransactionPrecondition,
 };
 pub use undo::{

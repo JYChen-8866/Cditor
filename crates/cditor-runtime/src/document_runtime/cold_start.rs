@@ -33,6 +33,24 @@ pub struct DocumentRuntimeColdStartReport {
 }
 
 impl DocumentRuntime {
+    /// Cold-start variant for Markdown-backed documents. The parsed/indexed
+    /// projection is supplied by the storage adapter while the original source
+    /// bytes remain owned by the runtime for lossless persistence.
+    pub fn from_markdown_cold_start_data(
+        data: DocumentRuntimeColdStartData,
+        source: impl Into<String>,
+        viewport_height: f64,
+    ) -> Result<(Self, DocumentRuntimeColdStartReport), String> {
+        let state = MarkdownRuntimeState::new(
+            cditor_core::markdown::MarkdownSource::new(&source.into()),
+            &data.records, &data.initial_payloads,
+        )?;
+        let (mut runtime, report) = Self::from_cold_start_data(data, viewport_height)?;
+        runtime.mode = DocumentRuntimeMode::Markdown;
+        runtime.markdown = Some(state);
+        Ok((runtime, report))
+    }
+
     /// Builds the live runtime from storage-neutral cold-start data.
     ///
     /// All database I/O and database identifier conversion must happen in the

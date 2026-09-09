@@ -29,7 +29,19 @@ impl DocumentRuntime {
     ) -> Result<ImportApplicationReport, String> {
         let target = plan.target();
         if plan.report().rejected() {
-            return Err("import plan was rejected during planning".to_owned());
+            let diagnostics = plan
+                .report()
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| {
+                    diagnostic.severity == cditor_core::import_plan::ImportDiagnosticSeverity::Error
+                })
+                .map(|diagnostic| format!("{}: {}", diagnostic.code, diagnostic.message))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(format!(
+                "import plan was rejected during planning: {diagnostics}"
+            ));
         }
         if target.document_id != self.document_id {
             return Err("import plan targets a different document".to_owned());
@@ -122,5 +134,39 @@ impl DocumentRuntime {
             | InputTarget::ComplexBlock { .. }
             | InputTarget::BlockChrome { .. } => true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cditor_core::import_plan::{
+        ImportContent, ImportDiagnostic, ImportDiagnosticSeverity, ImportLimits, ImportPlan,
+        ImportReport, ImportSource,
+    };
+
+    use super::*;
+
+    #[test]
+    fn rejected_import_reports_the_planning_diagnostic() {
+        let mut runtime = DocumentRuntime::empty();
+        let (target, _) = runtime.import_target();
+        let plan = ImportPlan::new(
+            ImportSource::Markdown,
+            target,
+            ImportLimits::default(),
+            ImportContent::PlainText(String::new()),
+            ImportReport {
+                diagnostics: vec![ImportDiagnostic {
+                    code: "input_bytes_exceeded",
+                    severity: ImportDiagnosticSeverity::Error,
+                    message: "markdown input exceeds byte limit".to_owned(),
+                }],
+                ..ImportReport::default()
+            },
+        );
+
+        let error = runtime.apply_import_plan(&plan).unwrap_err();
+        assert!(error.contains("input_bytes_exceeded"));
+        assert!(error.contains("markdown input exceeds byte limit"));
     }
 }

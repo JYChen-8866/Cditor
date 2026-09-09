@@ -40,6 +40,21 @@ impl Default for ImportLimits {
     }
 }
 
+impl ImportLimits {
+    /// Limits for an explicit whole-document import selected by the user.
+    /// Clipboard and AI imports continue to use the smaller default profile.
+    pub const fn document_import() -> Self {
+        Self {
+            max_input_bytes: 256 * 1024 * 1024,
+            max_blocks: 100_000,
+            max_spans: 1_000_000,
+            max_depth: 64,
+            max_table_cells: 1_000_000,
+            max_media: 10_000,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportDiagnosticSeverity {
     Info,
@@ -148,5 +163,25 @@ impl ImportPlan {
 
     pub fn report(&self) -> &ImportReport {
         &self.report
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ImportLimits;
+
+    #[test]
+    fn document_import_has_a_separate_large_file_profile() {
+        let clipboard = ImportLimits::default();
+        let document = ImportLimits::document_import();
+
+        assert_eq!(clipboard.max_input_bytes, 8 * 1024 * 1024);
+        assert_eq!(clipboard.max_blocks, 100_000);
+        assert_eq!(document.max_input_bytes, 256 * 1024 * 1024);
+        assert_eq!(document.max_blocks, clipboard.max_blocks);
+        assert_eq!(document.max_spans, clipboard.max_spans);
+        assert_eq!(document.max_depth, clipboard.max_depth);
+        assert_eq!(document.max_table_cells, clipboard.max_table_cells);
+        assert_eq!(document.max_media, clipboard.max_media);
     }
 }

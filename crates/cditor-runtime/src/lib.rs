@@ -25,6 +25,7 @@ pub use document_runtime::{
     AgentBlockOutline, AiApplyMode, AiRequestDispatch, AiRequestPresentation, AiSessionOutcome,
     AiSessionRequest, AiSessionSnapshot, AiSessionStatus, AiStreamApplyResult,
     CompositionFocusTransition, DocumentRuntime, DocumentTextSelectionFragment,
+    DocumentRuntimeMode,
     ImportApplicationReport, RealtimeInput, RealtimeInputError, RealtimeInputOutcome,
     RealtimeInputRequest, RichTextDelta, RichTextSelectionSnapshot, RuntimeAiTarget,
     SelectionMaterializationApplyDecision, SelectionMaterializationRequest, TableClipboardSnapshot,

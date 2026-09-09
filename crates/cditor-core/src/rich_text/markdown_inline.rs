@@ -1,13 +1,9 @@
-use super::*;
+use super::{InlineMark, InlineSpan};
+use crate::markdown::{MarkdownSyntax, SyntaxKind};
+use pulldown_cmark::TagEnd;
 
 pub fn parse_inline_markdown(markdown: &str) -> Vec<InlineSpan> {
-    let parsed = parse_inline_markdown_extended(markdown);
-    let mut spans = parsed.spans;
-    merge_inline_spans(&mut spans);
-    if spans.is_empty() {
-        spans.push(InlineSpan::plain(String::new()));
-    }
-    spans
+    parse_inline_markdown_extended(markdown).spans
 }
 
 pub struct InlineMarkdownParseResult {
@@ -15,439 +11,138 @@ pub struct InlineMarkdownParseResult {
     pub changed: bool,
 }
 
+/// CommonMark parsing and editor shortcut policy are separate: incomplete
+/// input stays literal; code/link boundaries come from the standards parser.
 pub fn parse_inline_markdown_extended(text: &str) -> InlineMarkdownParseResult {
-    // Phase 1: Find atomic spans (links, images, code) that block delimiter parsing inside them.
-    let atomics = find_atomic_spans(text);
-
-    // Phase 2: Find all balanced delimiter pairs (longest-first, properly nested).
-    let pairs = find_delimiter_pairs(text, &atomics);
-
-    // Phase 3: Check if there are unclosed delimiters — if so, don't trigger shortcut.
-    let has_unclosed = has_unclosed_delimiters(text, &pairs, &atomics);
-
-    if pairs.is_empty() && atomics.is_empty() {
-        return InlineMarkdownParseResult {
-            spans: vec![InlineSpan::plain(text.to_string())],
-            changed: false,
-        };
+    let unchanged = || InlineMarkdownParseResult {
+        spans: vec![InlineSpan::plain(text)], changed: false,
+    };
+    // A neutral prefix prevents paragraph text such as "# title" from becoming
+    // a block shortcut here. Block shortcuts have their own entry point.
+    let source = format!("x {text}");
+    let syntax = MarkdownSyntax::parse(&source);
+    // Keep CDitor's ++underline++ extension, but only in literal text tokens.
+    // Masking is byte-length preserving; code, escaped text and URLs are opaque.
+    let mut masked = source.clone();
+    for node in syntax.nodes() {
+        if let SyntaxKind::Text(value) = &node.kind
+            && source.get(node.source.clone()) == Some(value.as_str())
+        {
+            let replacement = value.replace("++", "~~");
+            masked.replace_range(node.source.clone(), &replacement);
+        }
     }
-
-    // changed=true when we have meaningful marks AND no unclosed delimiters.
-    // Atomics (links, code) always count as "changed" since they transform syntax.
-    let has_marks = !pairs.is_empty() || atomics.iter().any(|a| a.kind != AtomicKind::Image);
-    let changed = has_marks && !has_unclosed;
-
-    // Phase 4: Build spans from resolved pairs.
-    let spans = build_spans(text, &pairs, &atomics);
-
+    let syntax = MarkdownSyntax::parse(&masked);
+    let mut stack = vec![(0, Vec::<InlineMark>::new())];
+    let mut spans = Vec::new();
+    let mut unresolved = false;
+    let mut paragraphs = 0;
+    let mut removed_prefix = false;
+    while let Some((id, mut marks)) = stack.pop() {
+        let node = &syntax.nodes()[id];
+        let original = &source[node.source.clone()];
+        let value = match &node.kind {
+            SyntaxKind::Document => None,
+            SyntaxKind::Block(TagEnd::Paragraph) => { paragraphs += 1; None },
+            SyntaxKind::Strong => { marks.push(InlineMark::Bold); None },
+            SyntaxKind::Emphasis => { marks.push(InlineMark::Italic); None },
+            SyntaxKind::Strike => {
+                let underline = original.starts_with("++");
+                if underline != original.ends_with("++") { return unchanged(); }
+                marks.push(if underline { InlineMark::Underline } else { InlineMark::Strike });
+                None
+            },
+            SyntaxKind::Link { destination, .. } => {
+                marks.push(InlineMark::Link { href: destination.clone() }); None
+            },
+            SyntaxKind::Code(value) => { marks.push(InlineMark::Code); Some(value.clone()) },
+            SyntaxKind::Text(value) => {
+                let literal = if original.contains("++") { original } else { value };
+                // Escaped punctuation is not an unfinished shortcut. Only raw,
+                // unchanged text tokens participate in this conservative gate.
+                if original == literal && !escaped_at(&source, node.source.start) {
+                    unresolved |= literal.contains(['*', '_', '~']) || literal.contains("++");
+                }
+                Some(literal.to_owned())
+            },
+            SyntaxKind::SoftBreak => Some("\n".to_owned()),
+            // Unsupported objects/HTML must not be silently consumed by typing.
+            _ => return unchanged(),
+        };
+        if let Some(mut value) = value {
+            if !removed_prefix {
+                let Some(rest) = value.strip_prefix("x ") else { return unchanged(); };
+                value = rest.to_owned();
+                removed_prefix = true;
+            }
+            if !value.is_empty() {
+                append_with_auto_links(&mut spans, &value, &marks);
+            }
+        }
+        for &child in node.children.iter().rev() { stack.push((child, marks.clone())); }
+    }
+    if unresolved || paragraphs != 1 { return unchanged(); }
+    // pulldown-cmark omits trailing paragraph whitespace; shortcuts must not.
+    let trailing = text.len() - text.trim_end_matches([' ', '\t']).len();
+    if trailing > 0 {
+        push_span(&mut spans, &text[text.len() - trailing..], &[]);
+    }
+    let changed = spans.iter().any(|span| !span.marks.is_empty());
+    if !changed { return unchanged(); }
     InlineMarkdownParseResult { spans, changed }
 }
 
-// --- Data structures ---
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AtomicKind {
-    Code,
-    Link,
-    AutoLink,
-    Image,
+fn escaped_at(source: &str, offset: usize) -> bool {
+    source.as_bytes()[..offset].iter().rev().take_while(|&&b| b == b'\\').count() % 2 == 1
 }
 
-#[derive(Debug, Clone)]
-struct AtomicSpan {
-    start: usize,
-    end: usize,
-    kind: AtomicKind,
-    // For links: label and href
-    label: String,
-    href: String,
+fn push_span(spans: &mut Vec<InlineSpan>, text: &str, marks: &[InlineMark]) {
+    if text.is_empty() { return; }
+    let marks = canonical_marks(marks);
+    if let Some(last) = spans.last_mut().filter(|last| last.marks == marks) {
+        last.text.push_str(text);
+    } else {
+        spans.push(InlineSpan { text: text.to_owned(), marks });
+    }
 }
 
-#[derive(Debug, Clone)]
-struct DelimiterPair {
-    open_start: usize,
-    open_end: usize,
-    close_start: usize,
-    close_end: usize,
-    marks: Vec<InlineMark>,
+fn canonical_marks(marks: &[InlineMark]) -> Vec<InlineMark> {
+    let mut output = marks.to_vec();
+    output.sort_by_key(|mark| match mark {
+        InlineMark::Bold => 0,
+        InlineMark::Italic => 1,
+        InlineMark::Underline => 2,
+        InlineMark::Strike => 3,
+        InlineMark::Code => 4,
+        InlineMark::Link { .. } | InlineMark::DocumentLink { .. } => 5,
+        InlineMark::Color(_) => 6,
+        InlineMark::Background(_) => 7,
+    });
+    output
 }
 
-// --- Phase 1: Find atomic (non-nestable) spans ---
-
-fn find_atomic_spans(text: &str) -> Vec<AtomicSpan> {
-    let mut atomics = Vec::new();
-    let mut cursor = 0;
-
-    while cursor < text.len() {
-        let rest = &text[cursor..];
-
-        // Double backtick code: ``text``
-        if rest.starts_with("``")
-            && let Some(end) = rest[2..].find("``")
+fn append_with_auto_links(spans: &mut Vec<InlineSpan>, text: &str, marks: &[InlineMark]) {
+    if marks.iter().any(|mark| matches!(mark, InlineMark::Code | InlineMark::Link { .. })) {
+        push_span(spans, text, marks);
+        return;
+    }
+    let mut position = 0;
+    let mut plain_start = 0;
+    while position < text.len() {
+        if (position == 0 || text[..position].chars().next_back().is_some_and(char::is_whitespace))
+            && let Some((url, len)) = parse_auto_link(&text[position..])
         {
-            atomics.push(AtomicSpan {
-                start: cursor,
-                end: cursor + 2 + end + 2,
-                kind: AtomicKind::Code,
-                label: rest[2..2 + end].to_string(),
-                href: String::new(),
-            });
-            cursor += 2 + end + 2;
-            continue;
-        }
-
-        // Single backtick code: `text`
-        if rest.starts_with('`')
-            && let Some(end) = rest[1..].find('`')
-            && end > 0
-        {
-            atomics.push(AtomicSpan {
-                start: cursor,
-                end: cursor + 1 + end + 1,
-                kind: AtomicKind::Code,
-                label: rest[1..1 + end].to_string(),
-                href: String::new(),
-            });
-            cursor += 1 + end + 1;
-            continue;
-        }
-
-        // Image: ![alt](src) — consumed as plain text, not a mark
-        if rest.starts_with("![")
-            && let Some(consumed) = parse_markdown_image(rest)
-        {
-            atomics.push(AtomicSpan {
-                start: cursor,
-                end: cursor + consumed,
-                kind: AtomicKind::Image,
-                label: String::new(),
-                href: String::new(),
-            });
-            cursor += consumed;
-            continue;
-        }
-
-        // Link: [label](href)
-        if rest.starts_with('[')
-            && let Some((label, href, consumed)) = parse_markdown_link(rest)
-        {
-            atomics.push(AtomicSpan {
-                start: cursor,
-                end: cursor + consumed,
-                kind: AtomicKind::Link,
-                label: label.to_string(),
-                href: href.to_string(),
-            });
-            cursor += consumed;
-            continue;
-        }
-
-        // Auto-link: https://... or http://...
-        if (rest.starts_with("https://") || rest.starts_with("http://"))
-            && let Some((url, consumed)) = parse_auto_link(rest)
-        {
-            atomics.push(AtomicSpan {
-                start: cursor,
-                end: cursor + consumed,
-                kind: AtomicKind::AutoLink,
-                label: url.to_string(),
-                href: url.to_string(),
-            });
-            cursor += consumed;
-            continue;
-        }
-
-        cursor += rest.chars().next().map_or(1, char::len_utf8);
-    }
-
-    atomics
-}
-
-// --- Phase 2: Find delimiter pairs ---
-
-/// Delimiter types ordered by priority (longest first).
-const DELIMITER_TABLE: &[(&str, &[InlineMark])] = &[
-    ("***", &[InlineMark::Bold, InlineMark::Italic]),
-    ("___", &[InlineMark::Bold, InlineMark::Italic]),
-    ("**", &[InlineMark::Bold]),
-    ("~~", &[InlineMark::Strike]),
-    ("++", &[InlineMark::Underline]),
-    ("*", &[InlineMark::Italic]),
-    ("_", &[InlineMark::Italic]),
-];
-
-fn find_delimiter_pairs(text: &str, atomics: &[AtomicSpan]) -> Vec<DelimiterPair> {
-    let mut pairs = Vec::new();
-    // Track which byte positions are already claimed by a delimiter (open or close).
-    let mut claimed = vec![false; text.len()];
-
-    // Mark atomic spans as claimed so delimiters inside them are ignored.
-    for atomic in atomics {
-        claimed[atomic.start..atomic.end].fill(true);
-    }
-
-    // Process delimiters longest-first to give priority to `**` over `*`.
-    for &(delimiter, marks) in DELIMITER_TABLE {
-        let dlen = delimiter.len();
-        let mut cursor = 0;
-
-        while cursor + dlen <= text.len() {
-            // Ensure we're at a char boundary.
-            if !text.is_char_boundary(cursor) {
-                cursor += 1;
-                continue;
-            }
-
-            // Skip if any byte in this position is claimed.
-            if claimed[cursor..cursor + dlen].iter().any(|&c| c) {
-                cursor += 1;
-                continue;
-            }
-
-            // Check if this position matches the delimiter.
-            if !text[cursor..].starts_with(delimiter) {
-                cursor += 1;
-                continue;
-            }
-
-            // For single-char delimiters, don't match if preceded or followed by the same char
-            // (would indicate an unclosed longer delimiter like `**`).
-            if dlen == 1 {
-                let d = delimiter.as_bytes()[0];
-                if cursor > 0 && text.as_bytes()[cursor - 1] == d {
-                    cursor += 1;
-                    continue;
-                }
-                if cursor + 1 < text.len() && text.as_bytes()[cursor + 1] == d {
-                    cursor += 1;
-                    continue;
-                }
-            }
-
-            // Found a potential opener. Now find the closer.
-            let open_start = cursor;
-            let open_end = cursor + dlen;
-            let mut search = open_end;
-
-            let mut found_closer = false;
-            while search + dlen <= text.len() {
-                if !text.is_char_boundary(search) {
-                    search += 1;
-                    continue;
-                }
-                if claimed[search..search + dlen].iter().any(|&c| c) {
-                    search += 1;
-                    continue;
-                }
-                if !text[search..].starts_with(delimiter) {
-                    search += 1;
-                    continue;
-                }
-                // For single-char delimiters, don't match closer if followed by same char.
-                if dlen == 1
-                    && search + dlen < text.len()
-                    && text.as_bytes()[search + dlen] == delimiter.as_bytes()[0]
-                {
-                    search += 1;
-                    continue;
-                }
-
-                // Ensure content between opener and closer is non-empty.
-                if search == open_end {
-                    search += 1;
-                    continue;
-                }
-
-                // Found a valid closer.
-                let close_start = search;
-                let close_end = search + dlen;
-
-                // Claim the opener and closer bytes.
-                claimed[open_start..open_end].fill(true);
-                claimed[close_start..close_end].fill(true);
-
-                pairs.push(DelimiterPair {
-                    open_start,
-                    open_end,
-                    close_start,
-                    close_end,
-                    marks: marks.to_vec(),
-                });
-                found_closer = true;
-                cursor = close_end;
-                break;
-            }
-
-            if !found_closer {
-                // No closer found, skip this opener.
-                cursor = open_end;
-            }
+            push_span(spans, &text[plain_start..position], marks);
+            let mut linked = marks.to_vec();
+            linked.push(InlineMark::Link { href: url.to_owned() });
+            push_span(spans, url, &linked);
+            position += len;
+            plain_start = position;
+        } else {
+            position += text[position..].chars().next().unwrap().len_utf8();
         }
     }
-
-    // Sort pairs by open_start for span building.
-    pairs.sort_by_key(|p| p.open_start);
-    pairs
-}
-
-// --- Phase 3: Check for unclosed delimiters ---
-
-fn has_unclosed_delimiters(text: &str, pairs: &[DelimiterPair], atomics: &[AtomicSpan]) -> bool {
-    // Build a set of all positions covered by pairs or atomics.
-    let mut covered = vec![false; text.len()];
-    for pair in pairs {
-        covered[pair.open_start..pair.close_end].fill(true);
-    }
-    for atomic in atomics {
-        covered[atomic.start..atomic.end].fill(true);
-    }
-
-    // Scan for any delimiter characters in uncovered regions.
-    let mut cursor = 0;
-    while cursor < text.len() {
-        if !text.is_char_boundary(cursor) || covered[cursor] {
-            cursor += 1;
-            continue;
-        }
-        let rest = &text[cursor..];
-        for &(delimiter, _) in DELIMITER_TABLE {
-            if rest.starts_with(delimiter) {
-                return true;
-            }
-        }
-        cursor += rest.chars().next().map_or(1, char::len_utf8);
-    }
-    false
-}
-
-// --- Phase 4: Build spans ---
-
-fn build_spans(text: &str, pairs: &[DelimiterPair], atomics: &[AtomicSpan]) -> Vec<InlineSpan> {
-    let mut spans = Vec::new();
-    let mut cursor = 0;
-
-    // Merge events: we need to walk through text and at each position know
-    // which marks are active (from surrounding pairs).
-    while cursor < text.len() {
-        // Check if cursor is at an atomic span start.
-        if let Some(atomic) = atomics.iter().find(|a| a.start == cursor) {
-            let marks_at = active_marks_at(cursor, pairs);
-            match atomic.kind {
-                AtomicKind::Code => {
-                    spans.push(InlineSpan {
-                        text: atomic.label.clone(),
-                        marks: vec![InlineMark::Code],
-                    });
-                }
-                AtomicKind::Link => {
-                    let mut marks = marks_at;
-                    marks.push(InlineMark::Link {
-                        href: atomic.href.clone(),
-                    });
-                    spans.push(InlineSpan {
-                        text: atomic.label.clone(),
-                        marks,
-                    });
-                }
-                AtomicKind::AutoLink => {
-                    let mut marks = marks_at;
-                    marks.push(InlineMark::Link {
-                        href: atomic.href.clone(),
-                    });
-                    spans.push(InlineSpan {
-                        text: atomic.label.clone(),
-                        marks,
-                    });
-                }
-                AtomicKind::Image => {
-                    // Images are kept as plain text in the span model.
-                    spans.push(InlineSpan {
-                        text: text[atomic.start..atomic.end].to_string(),
-                        marks: marks_at,
-                    });
-                }
-            }
-            cursor = atomic.end;
-            continue;
-        }
-
-        // Check if cursor is at a delimiter boundary (opener or closer) — skip it.
-        if let Some(pair) = pairs.iter().find(|p| p.open_start == cursor) {
-            cursor = pair.open_end;
-            continue;
-        }
-        if let Some(pair) = pairs.iter().find(|p| p.close_start == cursor) {
-            cursor = pair.close_end;
-            continue;
-        }
-
-        // Regular character: collect a run with the same marks.
-        let marks = active_marks_at(cursor, pairs);
-        let run_start = cursor;
-        cursor += text[cursor..].chars().next().map_or(1, char::len_utf8);
-
-        // Extend run while marks remain the same and we don't hit a boundary.
-        while cursor < text.len() {
-            if atomics.iter().any(|a| a.start == cursor) {
-                break;
-            }
-            if pairs
-                .iter()
-                .any(|p| p.open_start == cursor || p.close_start == cursor)
-            {
-                break;
-            }
-            let next_marks = active_marks_at(cursor, pairs);
-            if next_marks != marks {
-                break;
-            }
-            cursor += text[cursor..].chars().next().map_or(1, char::len_utf8);
-        }
-
-        spans.push(InlineSpan {
-            text: text[run_start..cursor].to_string(),
-            marks,
-        });
-    }
-
-    if spans.is_empty() {
-        spans.push(InlineSpan::plain(text.to_string()));
-    }
-
-    merge_inline_spans(&mut spans);
-    spans
-}
-
-/// Compute which marks are active at a given byte position (inside which pairs).
-fn active_marks_at(pos: usize, pairs: &[DelimiterPair]) -> Vec<InlineMark> {
-    let mut marks = Vec::new();
-    for pair in pairs {
-        if pos >= pair.open_end && pos < pair.close_start {
-            for mark in &pair.marks {
-                if !marks.contains(mark) {
-                    marks.push(mark.clone());
-                }
-            }
-        }
-    }
-    marks
-}
-
-fn merge_inline_spans(spans: &mut Vec<InlineSpan>) {
-    let mut merged: Vec<InlineSpan> = Vec::new();
-    for span in spans.drain(..) {
-        if span.text.is_empty() {
-            continue;
-        }
-        if let Some(last) = merged.last_mut()
-            && last.marks == span.marks
-        {
-            last.text.push_str(&span.text);
-            continue;
-        }
-        merged.push(span);
-    }
-    *spans = merged;
+    push_span(spans, &text[plain_start..], marks);
 }
 
 fn parse_auto_link(text: &str) -> Option<(&str, usize)> {
@@ -475,30 +170,6 @@ fn parse_auto_link(text: &str) -> Option<(&str, usize)> {
         end -= text[..end].chars().next_back().map_or(0, char::len_utf8);
     }
     (end > prefix_len).then_some((&text[..end], end))
-}
-
-fn parse_markdown_image(text: &str) -> Option<usize> {
-    let inner = text.strip_prefix("![")?;
-    let label_end = inner.find("](")?;
-    let after_label = &inner[label_end + 2..];
-    let href_end = after_label.find(')')?;
-    Some(2 + label_end + 2 + href_end + 1)
-}
-
-fn parse_markdown_link(text: &str) -> Option<(&str, &str, usize)> {
-    let inner = text.strip_prefix('[')?;
-    let label_end = inner.find("](")?;
-    if label_end == 0 {
-        return None;
-    }
-    let after_label = &inner[label_end + 2..];
-    let href_end = after_label.find(')')?;
-    if href_end == 0 {
-        return None;
-    }
-    let label = &inner[..label_end];
-    let href = &after_label[..href_end];
-    Some((label, href, 1 + label_end + 2 + href_end + 1))
 }
 
 #[cfg(test)]

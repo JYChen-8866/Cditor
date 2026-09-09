@@ -32,6 +32,7 @@ mod layout_state;
 mod local_transaction;
 mod markdown_paste;
 mod markdown_transaction;
+mod mode;
 mod media;
 mod mermaid;
 mod page_local_layout;
@@ -86,6 +87,8 @@ pub use cold_start::{
 };
 pub use focus_transition::CompositionFocusTransition;
 pub use import_plan::ImportApplicationReport;
+pub use mode::DocumentRuntimeMode;
+use mode::MarkdownRuntimeState;
 pub use realtime::{RealtimeInput, RealtimeInputError, RealtimeInputOutcome, RealtimeInputRequest};
 pub use selection::DocumentTextSelectionFragment;
 pub use selection_materialization::{
