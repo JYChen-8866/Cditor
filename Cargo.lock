@@ -1232,7 +1232,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-ai"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-channel 2.5.0",
  "serde",
@@ -1240,7 +1240,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-ai-openai"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cditor-ai",
  "dotenvy",
@@ -1252,7 +1252,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-component"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "gpui-pre",
  "image",
@@ -1261,7 +1261,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-config"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "serde",
  "toml 0.8.23",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-core"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cditor-config",
  "getrandom 0.3.4",
@@ -1284,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-desktop"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cditor-ai-openai",
  "cditor-core",
@@ -1302,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-editor-gpui"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-channel 2.5.0",
  "async-trait",
@@ -1342,7 +1342,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-editor-protocol"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cditor-core",
  "serde",
@@ -1351,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-http-server"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -1371,7 +1371,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-import-export"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cditor-core",
  "cssparser 0.37.0",
@@ -1385,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-runtime"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cditor-ai",
  "cditor-core",
@@ -1400,7 +1400,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-sdk"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "cditor-ai",
@@ -1412,7 +1412,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-session"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-channel 2.5.0",
  "async-trait",
@@ -1433,7 +1433,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-storage"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "cditor-core",
@@ -1457,7 +1457,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-test-support"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "cditor-core",
@@ -1473,7 +1473,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-text"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "accesskit",
  "cditor-config",
@@ -1490,7 +1490,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-theme"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cditor-config",
  "serde",
@@ -1498,7 +1498,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-video"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cpal",
  "gpui-pre",
@@ -1511,7 +1511,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-viewport"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cditor-core",
  "unicode-segmentation",
@@ -1520,7 +1520,7 @@ dependencies = [
 
 [[package]]
 name = "cditor-web"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "cditor-editor-gpui",
  "cditor-runtime",
