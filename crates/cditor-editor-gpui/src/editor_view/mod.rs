@@ -4,6 +4,7 @@ use crate::cache::RenderCacheState;
 
 pub(crate) mod ai;
 mod block_actions;
+mod block_animation;
 mod folding;
 mod formatting;
 mod host_element;
@@ -26,6 +27,11 @@ pub(crate) use self::state::{
 pub(crate) use crate::app::persistence_bridge::save_status_for_mode;
 pub(crate) use crate::interaction::table_scroll::TableScrollSnapshot;
 pub(crate) use block_actions::block_focus_offset_after_missed_hit_test;
+pub(crate) use block_animation::{
+    BlockInsertionMotion, ProjectionTruthSnapshot, command_can_animate_block_layout,
+    command_can_insert_block, document_top_from_projection_slice, inserted_block_id,
+    snapshot_projection_truth, source_animates_block_insert,
+};
 pub(crate) use formatting::{
     SelectionToolbarDelay, floating_toolbar_passes_selection_delay, formatting_toolbar_context,
     formatting_toolbar_state,

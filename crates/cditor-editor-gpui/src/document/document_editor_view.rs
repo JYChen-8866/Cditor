@@ -13,8 +13,8 @@ use crate::document::{
     DocumentBlockGeometry, DocumentLayoutMetrics, DocumentSurface, DocumentTextGeometry,
     DocumentTextViewport, PageDecorationSnapshot, render_page_chrome,
 };
-use crate::editor_view::CditorV2View;
 use crate::editor_view::TableScrollSnapshot;
+use crate::editor_view::{BlockInsertionMotion, CditorV2View, document_top_from_projection_slice};
 use crate::features::code::highlight::CodeHighlightCache;
 use crate::features::mermaid::MermaidRenderCache;
 use crate::features::search::SearchDecorationState;
@@ -128,6 +128,8 @@ impl DocumentEditorView {
         editor_viewport_width_px: f32,
         editor_viewport_height_px: f32,
         document_layout: DocumentLayoutMetrics,
+        motion_now: web_time::Instant,
+        presented_scroll_top: f64,
         readonly: bool,
         image_resize_preview: Option<(BlockId, f32, f64)>,
         table_resize_preview: Option<TableResizePreview>,
@@ -150,6 +152,7 @@ impl DocumentEditorView {
             BlockId,
             crate::features::code::CodeCollapseTween,
         >,
+        block_insertion_motions: &HashMap<BlockId, BlockInsertionMotion>,
         code_highlights: &CodeHighlightCache,
         search_decorations: &SearchDecorationState,
         mermaid_renders: &MermaidRenderCache,
@@ -169,12 +172,17 @@ impl DocumentEditorView {
         let menu_viewport = document_overlay_menu_viewport(
             editor_viewport_width_px,
             editor_viewport_height_px,
-            projection.scroll.global_scroll_top,
+            presented_scroll_top,
             projection.before_window_height,
             document_layout,
         );
         let mut block_y = 0.0;
+        let active_motions = block_insertion_motions
+            .values()
+            .map(|motion| (motion.progress_at(motion_now), motion))
+            .collect::<Vec<_>>();
         let mut table_overlay_elements = Vec::new();
+        let mut motion_overlay_elements = Vec::new();
         let mut block_elements = projection
             .blocks
             .iter()
@@ -184,6 +192,8 @@ impl DocumentEditorView {
                     DocumentTextGeometry::for_block(block, self.theme, document_layout);
                 let text_layout_width_px = text_geometry.width_px;
                 let top = block_y;
+                let truth_document_top =
+                    document_top_from_projection_slice(projection.before_window_height, top);
                 let height = image_resize_preview
                     .filter(|(preview_block_id, _, _)| *preview_block_id == block.block_id)
                     .map(|(_, _, preview_height)| preview_height)
@@ -205,7 +215,50 @@ impl DocumentEditorView {
                         ),
                     );
                 }
+                let mut insertion_progress = None;
+                let mut insertion_opacity = None;
+                let mut projection_anchor_before_top = None;
+                let mut visual_offset_y = 0.0;
+                for (progress, motion) in &active_motions {
+                    if motion.inserted_block_id() == Some(block.block_id) {
+                        insertion_progress = Some(*progress);
+                        insertion_opacity = Some(motion.opacity_at(*progress));
+                    }
+                    if let Some(offset) =
+                        motion.block_offset(block.block_id, truth_document_top, *progress)
+                    {
+                        projection_anchor_before_top =
+                            projection_anchor_before_top.or(motion.before_top(block.block_id));
+                        visual_offset_y += offset;
+                    }
+                }
+                let visual_top = top + visual_offset_y;
+                let screen_top = truth_document_top + visual_offset_y - presented_scroll_top;
                 block_y += height;
+                if !active_motions.is_empty()
+                    && (insertion_progress.is_some()
+                        || visual_offset_y.abs() > 0.01
+                        || projection_anchor_before_top.is_some())
+                {
+                    crate::diagnostics::block_motion::trace(
+                        "frame",
+                        format_args!(
+                            "block={} visible_index={} kind={:?} layer={} anchor_before_top={projection_anchor_before_top:?} truth_top={truth_document_top:.2} slice_top={top:.2} window_base={:.2} truth_height={height:.2} progress={insertion_progress:?} opacity={insertion_opacity:?} visual_top={visual_top:.2} screen_top={screen_top:.2} screen_bottom={:.2} offset={visual_offset_y:.2} active={} scroll_top={:.2} presented_scroll={presented_scroll_top:.2}",
+                            block.block_id,
+                            block.visible_index,
+                            block.kind,
+                            if insertion_progress.is_some() {
+                                "inserted-overlay"
+                            } else {
+                                "normal"
+                            },
+                            projection.before_window_height,
+                            screen_top + height,
+                            active_motions.len(),
+                            projection.scroll.global_scroll_top,
+                        ),
+                    );
+                }
                 if block.placeholder
                     && !projection
                         .payload_visible_block_range
@@ -218,20 +271,20 @@ impl DocumentEditorView {
                         .absolute()
                         .left(px(block_geometry.shell_left_px))
                         .w(px(block_geometry.shell_width_px))
-                        .top(px(top as f32))
+                        .top(px(visual_top as f32))
                         .h(px(height as f32))
                         .into_any_element();
                 }
                 let text_viewport = DocumentTextViewport::for_block(
-                    top,
+                    visual_top,
                     text_geometry.origin_y_px,
                     projection.before_window_height,
-                    projection.scroll.global_scroll_top,
+                    presented_scroll_top,
                     editor_viewport_height_px,
                     document_layout.top_inset_px,
                 );
                 if let Some(table_view) = &block.table_view {
-                    let local_top = top as f32;
+                    let local_top = visual_top as f32;
                     let content_origin =
                         table_content_editor_origin(block, local_top, self.theme, document_layout);
                     let grid_origin =
@@ -354,23 +407,24 @@ impl DocumentEditorView {
                             if crate::features::code::language_is_mermaid(language.as_deref())
                                 && mermaid_preview_code_blocks.contains(&block.block_id)
                     );
-                div()
+                let clips_height_animation = clips_rendered_mermaid;
+                let block_element = div()
                     .absolute()
                     .left(px(block_geometry.shell_left_px))
                     .w(px(block_geometry.shell_width_px))
-                    .top(px(top as f32))
+                    .top(px(visual_top as f32))
                     .h(px(height as f32))
                     // Projected block height is the placement contract. Mermaid's
                     // raster may temporarily retain its old natural height while a
-                    // collapse tween settles; never let it paint through neighboring
-                    // absolutely-positioned blocks during that reconciliation frame.
-                    .when(clips_rendered_mermaid, |block| block.overflow_hidden())
+                    // collapse tween settles.
+                    .when(clips_height_animation, |block| block.overflow_hidden())
+                    .when_some(insertion_opacity, |block, opacity| block.opacity(opacity))
                     .child({
                         let block_action =
                             block_action_state_for_projection(projection, block.block_id, action);
                         let show_hover_gutter =
                             hovered_block_id == Some(block.block_id) && !action.dragging;
-                        block_view.render(
+                        let rendered = block_view.render(
                             block,
                             text_layout_width_px,
                             text_viewport,
@@ -424,11 +478,28 @@ impl DocumentEditorView {
                             video_playbacks,
                             whiteboard_thumbnails,
                             cx,
-                        )
+                        );
+                        rendered
                     })
-                    .into_any_element()
+                    .into_any_element();
+                if insertion_progress.is_some() {
+                    motion_overlay_elements.push(block_element);
+                    div()
+                        .absolute()
+                        .left(px(block_geometry.shell_left_px))
+                        .w(px(block_geometry.shell_width_px))
+                        .top(px(visual_top as f32))
+                        .h(px(height as f32))
+                        .into_any_element()
+                } else {
+                    block_element
+                }
             })
             .collect::<Vec<_>>();
+        // The inserted block is fully visible from frame zero. Paint it after the
+        // normally-moving blocks so a following block sliding into place can never
+        // cover it while the two visual positions overlap.
+        block_elements.extend(motion_overlay_elements);
         if projection
             .blocks
             .last()
@@ -476,7 +547,7 @@ impl DocumentEditorView {
             projection.before_window_height,
             projection.placeholder_window_height,
             projection.after_window_height,
-            projection.scroll.global_scroll_top,
+            presented_scroll_top,
             document_layout,
         );
         surface.placeholder_window_error = projection.placeholder_window_error.clone();
@@ -487,7 +558,7 @@ impl DocumentEditorView {
                 editor_viewport_width_px,
                 editor_viewport_height_px,
                 document_layout,
-                projection.scroll.global_scroll_top,
+                presented_scroll_top,
                 readonly,
                 self.theme,
                 workers,

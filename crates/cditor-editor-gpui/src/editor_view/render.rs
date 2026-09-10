@@ -72,6 +72,10 @@ impl Render for CditorV2View {
         // Same pattern for Mermaid source<->preview switch: continuous height
         // feed so the page does not jump when toggling "源码 / 预览".
         self.advance_mermaid_source_tweens(window, cx);
+        // Runtime has already committed the inserted block's final height. This
+        // advances only the render-side projection so following blocks slide from
+        // their previous positions without mutating layout truth.
+        self.advance_block_insertion_motions(window, cx);
         let theme = active_theme(cx);
         self.interaction.presented_theme = theme;
 
@@ -639,7 +643,12 @@ impl Render for CditorV2View {
                     .expect("ready editor session must project a render frame");
                 crate::text::sync_automatic_text_layout_pins(&frame.automatic_text_layout_pins);
                 let projection = frame.projection;
-                self.interaction.presented_scroll_top = projection.scroll.global_scroll_top;
+                let motion_now = web_time::Instant::now();
+                let presented_scroll_top = self.presented_scroll_top_for_frame(
+                    projection.scroll.global_scroll_top,
+                    motion_now,
+                );
+                self.interaction.presented_scroll_top = presented_scroll_top;
                 self.sync_document_viewport_origin(editor_viewport, document_layout);
                 self.prewarm_primary_text_layouts(
                     &projection,
@@ -788,6 +797,8 @@ impl Render for CditorV2View {
                         editor_viewport.width,
                         editor_viewport.height,
                         document_layout,
+                        motion_now,
+                        presented_scroll_top,
                         self.status.readonly,
                         self.image_resize_preview(),
                         table_resize_preview,
@@ -806,6 +817,7 @@ impl Render for CditorV2View {
                         self.overlay.code_copy_feedback_block_id,
                         &self.overlay.mermaid_preview_code_blocks,
                         &self.overlay.code_collapse_tweens,
+                        &self.overlay.block_insertion_motions,
                         &self.cache.code_highlights,
                         &self.features.search_decorations,
                         &self.cache.mermaid_renders,

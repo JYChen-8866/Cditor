@@ -118,6 +118,11 @@ pub(crate) struct OverlayUiState {
     /// 新高度。落定后条目移除；稳定收起高度由 runtime 持有并投影回来，
     /// `collapsed_code_blocks` 只决定内容可见性和工具栏图标。
     pub(crate) code_collapse_tweens: HashMap<BlockId, crate::features::code::CodeCollapseTween>,
+    /// 新插入 block 的纯视觉入场动画。
+    ///
+    /// runtime 已一次性提交最终高度。这里只让渲染层暂时裁剪新 block，并把
+    /// 后续 block 从旧位置投影到新位置，不改 `BlockHeightIndex` 真相。
+    pub(crate) block_insertion_motions: HashMap<BlockId, crate::editor_view::BlockInsertionMotion>,
 
     /// Mermaid 源码/预览切换进行中的高度补间。
     ///

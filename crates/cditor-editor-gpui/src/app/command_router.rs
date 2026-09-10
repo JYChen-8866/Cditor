@@ -200,6 +200,21 @@ impl CditorV2View {
 
         if runtime_dispatches(&command) {
             let mutates_document = command_mutates_document(&command);
+            let motion_before = if crate::editor_view::command_can_animate_block_layout(&command) {
+                self.ready_session().and_then(|session| {
+                    session.document_snapshot().ok().map(|snapshot| {
+                        let before_truth = crate::editor_view::snapshot_projection_truth(session);
+                        (
+                            snapshot.block_count,
+                            snapshot.focused_block_id,
+                            before_truth,
+                        )
+                    })
+                })
+            } else {
+                None
+            };
+            let insertion_command = command.clone();
             let dispatched = self
                 .ready_session()
                 .ok_or(CditorError::NotReady)?
@@ -230,6 +245,29 @@ impl CditorV2View {
             } else {
                 false
             };
+            if outcome.changed()
+                && crate::editor_view::source_animates_block_insert(source)
+                && let Some((before_block_count, before_focused_block_id, before_truth)) =
+                    motion_before
+                && let Some(after_snapshot) = self
+                    .ready_session()
+                    .and_then(|session| session.document_snapshot().ok())
+            {
+                if crate::editor_view::command_can_insert_block(&insertion_command) {
+                    if let Some(block_id) = crate::editor_view::inserted_block_id(
+                        &insertion_command,
+                        &outcome.affected_blocks,
+                        before_block_count,
+                        after_snapshot.block_count,
+                        before_focused_block_id,
+                        after_snapshot.focused_block_id,
+                    ) {
+                        self.start_block_insertion_animation(block_id, before_truth, cx);
+                    }
+                } else if after_snapshot.block_count < before_block_count {
+                    self.start_block_layout_animation(before_truth, cx);
+                }
+            }
             if outcome.selection_changed
                 && let Some(selection) = self.sdk_selection()
             {

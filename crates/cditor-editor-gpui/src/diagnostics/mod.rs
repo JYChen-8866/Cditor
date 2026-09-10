@@ -1,6 +1,7 @@
 //! Opt-in diagnostics kept outside rendering and interaction feature modules.
 
 pub(crate) mod block_color;
+pub(crate) mod block_motion;
 pub(crate) mod flash;
 pub(crate) mod fps_trace;
 pub mod frame_telemetry;
