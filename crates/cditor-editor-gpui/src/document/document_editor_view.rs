@@ -457,7 +457,7 @@ impl DocumentEditorView {
                             code_language_edit,
                             code_theme_menu_block_id == Some(block.block_id),
                             code_highlight_theme,
-                            suppress_document_text_input,
+                            suppress_document_text_input || action.dragging,
                             table_scroll_snapshots
                                 .get(&block.block_id)
                                 .map(|snapshot| snapshot.handle.clone()),
@@ -523,7 +523,6 @@ impl DocumentEditorView {
                 projection,
                 self.theme,
                 document_layout,
-                action.action_block_id,
             ))
             .children(table_overlay_elements)
             .when_some(drag_overlay, |this, overlay| {

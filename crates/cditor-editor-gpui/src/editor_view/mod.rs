@@ -29,8 +29,8 @@ pub(crate) use crate::interaction::table_scroll::TableScrollSnapshot;
 pub(crate) use block_actions::block_focus_offset_after_missed_hit_test;
 pub(crate) use block_animation::{
     BlockInsertionMotion, command_can_animate_block_layout, command_can_insert_block,
-    document_top_from_projection_slice, inserted_block_id, latest_block_insertion_motion,
-    snapshot_projection_truth, source_animates_block_insert,
+    document_top_from_projection_slice, inserted_block_id, inserted_block_opacity,
+    latest_block_insertion_motion, snapshot_projection_truth, source_animates_block_insert,
 };
 pub(crate) use formatting::{
     SelectionToolbarDelay, floating_toolbar_passes_selection_delay, formatting_toolbar_context,

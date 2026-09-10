@@ -296,7 +296,7 @@ impl Element for RichTextGpuiElement {
                             offset,
                             affinity: self.caret_affinity,
                         },
-                        2.0,
+                        super::CUSTOM_CARET_WIDTH_PX,
                     );
                     text_rect_to_bounds(bounds, rect)
                 })
@@ -324,7 +324,7 @@ impl Element for RichTextGpuiElement {
                             .resolve_and_drive(bounds, window)
                     })
                     .unwrap_or(bounds);
-                fill(painted, rgb(self.theme.focused))
+                fill(window.pixel_snap_bounds(painted), rgb(self.theme.focused))
             })
         } else {
             // 这一帧不画光标（失焦、IME 组字中）：丢掉历史位置，否则重新出现时

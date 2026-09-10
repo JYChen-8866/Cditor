@@ -286,7 +286,7 @@ impl Element for SegmentedRichTextElement {
                             offset,
                             affinity: self.caret_affinity,
                         },
-                        2.0,
+                        super::CUSTOM_CARET_WIDTH_PX,
                     ),
                 )
             })
@@ -311,7 +311,7 @@ impl Element for SegmentedRichTextElement {
                     .read(cx)
                     .caret_motion()
                     .resolve_and_drive(bounds, window);
-                fill(painted, rgb(self.theme.focused))
+                fill(window.pixel_snap_bounds(painted), rgb(self.theme.focused))
             });
         let mut backgrounds = Vec::new();
         if let (Some(layout), Some(range)) = (&platform, self.selection_range.clone()) {

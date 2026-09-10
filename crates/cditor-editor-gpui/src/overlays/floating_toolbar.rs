@@ -480,6 +480,7 @@ fn render_copy_menu(
     view: Entity<CditorV2View>,
     block_id: Option<BlockId>,
 ) -> AnyElement {
+    let hover_view = view.clone();
     div()
         .id("gutter-menu-copy-submenu")
         .absolute()
@@ -497,6 +498,11 @@ fn render_copy_menu(
         .bg(rgb(theme.panel))
         .shadow_lg()
         .occlude()
+        .on_hover(move |hovered, _window, cx| {
+            hover_view.update(cx, |view, cx| {
+                view.set_copy_menu_hovered(*hovered, cx);
+            });
+        })
         .child(render_copy_menu_item(
             "gutter-copy-block",
             "复制 block",

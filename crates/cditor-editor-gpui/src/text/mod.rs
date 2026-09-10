@@ -19,7 +19,9 @@ mod segmented_viewport;
 
 pub use caret_blink::CaretBlink;
 pub(crate) use caret_motion::CaretMotion;
-pub(crate) use caret_ownership::{platform_text_cursor_ownership, should_paint_custom_caret};
+pub(crate) use caret_ownership::{
+    CUSTOM_CARET_WIDTH_PX, platform_text_cursor_ownership, should_paint_custom_caret,
+};
 pub(crate) use diagnostics::{
     TextGeometryOperation, record_snapshot_geometry, record_synchronous_geometry_fallback,
     record_unavailable_geometry, text_geometry_telemetry,

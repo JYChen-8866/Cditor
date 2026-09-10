@@ -254,6 +254,10 @@ impl KindChromeStyle {
         Self {
             padding_y_px: 0.0,
             min_height_px,
+            // Headings are not framed surfaces. The inherited 1px paragraph
+            // border is invisible by color, but it still participates in the
+            // content box and can cut through tall H1/H2 carets.
+            content_border_width_px: 0.0,
             ..Self::paragraph(theme)
         }
     }
@@ -661,6 +665,7 @@ mod tests {
             );
             assert_eq!(heading.content_background, theme.surface);
             assert_eq!(heading.content_border, theme.surface);
+            assert_eq!(heading.content_border_width_px, 0.0);
             assert_eq!(heading.text_color, theme.text);
         }
 

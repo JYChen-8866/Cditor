@@ -77,8 +77,16 @@ pub fn block_shell(
         action,
         block.attrs.background_color.is_some(),
     );
-    let shell_border = border_for_action(theme.surface, theme, action);
-    let content_border = border_for_action(chrome.content_border, theme, action);
+    // Action/selection is a background treatment. Changing shell borders here
+    // draws a rectangle around both gutter and content, which is not part of
+    // the block visual contract.
+    let shell_border = theme.surface;
+    // Gutter drag keeps the block-level highlight. Match the existing 1px
+    // content border to the highlighted background so it remains invisible;
+    // otherwise the surface-colored border cuts across heading carets as a
+    // thin rectangle at the top of the text content.
+    let content_border =
+        content_border_for_action(chrome.content_border, content_background, action);
     let content_min_height_px =
         content_min_height_px(collapsed_code_block, chrome.content_min_height_px);
     let title_footer = is_document_title.then(|| {
@@ -242,12 +250,27 @@ pub fn should_show_gutter(hovered: bool, action_root: bool) -> bool {
 
 pub fn content_background_for_action(
     default_content_background: u32,
-    _theme: GuiTheme,
-    _action: BlockActionState,
+    theme: GuiTheme,
+    action: BlockActionState,
     _has_custom_background: bool,
 ) -> u32 {
-    // Subtree action highlighting is painted once by the document overlay.
-    default_content_background
+    if action.action_active {
+        theme.action_background
+    } else {
+        default_content_background
+    }
+}
+
+fn content_border_for_action(
+    default_content_border: u32,
+    content_background: u32,
+    action: BlockActionState,
+) -> u32 {
+    if action.action_active {
+        content_background
+    } else {
+        default_content_border
+    }
 }
 
 pub fn outer_background_for_action(
@@ -258,15 +281,6 @@ pub fn outer_background_for_action(
     // Outer shell (which includes gutter) never changes background on selection.
     // Only the content container shows the action/selection color.
     default_outer_background
-}
-
-pub fn border_for_action(default_border: u32, theme: GuiTheme, action: BlockActionState) -> u32 {
-    if action.dragging {
-        // Only show distinct border when actively dragging
-        theme.action_background
-    } else {
-        default_border
-    }
 }
 
 fn render_quote_bar(color: u32) -> AnyElement {
@@ -358,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn action_active_preserves_content_background_for_group_overlay() {
+    fn action_active_tints_block_content_without_changing_outer_background() {
         let theme = GuiTheme::light();
         let action = BlockActionState {
             action_active: true,
@@ -367,24 +381,20 @@ mod tests {
         };
         assert_eq!(
             content_background_for_action(0x123456, theme, action, false),
-            0x123456
+            theme.action_background
         );
-        // Once a block has an explicit background, keep it visible while its
-        // gutter menu is active instead of immediately painting over it with
-        // the generic action tint.
         assert_eq!(
             content_background_for_action(0x123456, theme, action, true),
-            0x123456
+            theme.action_background
+        );
+        assert_eq!(
+            content_border_for_action(0x123456, theme.action_background, action),
+            theme.action_background
         );
         // Outer background does NOT change on action_active (gutter stays uncolored)
         assert_eq!(
             outer_background_for_action(0xabcdef, theme, action),
             0xabcdef
-        );
-        // Border only changes when dragging
-        assert_eq!(
-            border_for_action(theme.surface, theme, action),
-            theme.action_background
         );
         assert_eq!(
             content_background_for_action(0x123456, theme, BlockActionState::default(), false,),
@@ -393,10 +403,6 @@ mod tests {
         assert_eq!(
             outer_background_for_action(0xabcdef, theme, BlockActionState::default()),
             0xabcdef
-        );
-        assert_eq!(
-            border_for_action(theme.surface, theme, BlockActionState::default()),
-            theme.surface
         );
     }
 

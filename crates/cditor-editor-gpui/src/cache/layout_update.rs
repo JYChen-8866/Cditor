@@ -249,7 +249,14 @@ fn accept_text_layout(view: &mut CditorV2View, layout: RichTextPlatformLayout) -
             return false;
         }
     }
-    queue_rendered_media_height(view, block_id, content_version, measured_height)
+    let changed = apply_rendered_media_height(view, block_id, content_version, measured_height);
+    crate::diagnostics::text_layout::trace(
+        "height.apply",
+        format_args!(
+            "block={block_id} content_v={content_version} measured={measured_height:.2} changed={changed}"
+        ),
+    );
+    changed
 }
 
 #[cfg(test)]

@@ -163,13 +163,13 @@ where
                     .max(0.0)
                     .min(single_line_input_max_x(bounds));
                 window.paint_quad(fill(
-                    Bounds {
+                    window.pixel_snap_bounds(Bounds {
                         origin: point(bounds.left() + px(x), bounds.top() + px(5.0)),
                         size: Size {
-                            width: px(1.0),
+                            width: px(crate::text::CUSTOM_CARET_WIDTH_PX),
                             height: bounds.size.height - px(10.0),
                         },
-                    },
+                    }),
                     rgb(self.caret_color),
                 ));
             }

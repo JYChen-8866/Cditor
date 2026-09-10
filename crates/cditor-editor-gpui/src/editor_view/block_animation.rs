@@ -107,6 +107,18 @@ impl BlockInsertionMotion {
     }
 }
 
+pub(crate) fn inserted_block_opacity(
+    motion: &BlockInsertionMotion,
+    progress: f32,
+    has_text_content: bool,
+) -> f32 {
+    if has_text_content {
+        1.0
+    } else {
+        motion.opacity_at(progress)
+    }
+}
+
 /// Every visual projection samples one shared clock. Keeping the selection in
 /// one place also makes the render path immune to accidentally accumulated
 /// motions if a caller ever inserts one without going through the guarded

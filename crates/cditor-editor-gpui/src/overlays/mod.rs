@@ -29,9 +29,7 @@ pub(crate) use floating_toolbar::{
     render_gutter_popup_menu, update_gutter_popup_menu,
 };
 pub(crate) use link_popup::render_link_edit_popup;
-use selection_overlay::{
-    action_selection_overlay_fragment, render_selection_overlay, selection_overlay_fragments,
-};
+use selection_overlay::{render_selection_overlay, selection_overlay_fragments};
 pub(crate) use slash_menu::{
     SlashMenuCommand, SlashMenuItem, SlashMenuState, slash_query_before_caret,
 };
@@ -51,11 +49,8 @@ pub(crate) fn render_editor_overlays(
     projection: &EditorViewProjection,
     theme: GuiTheme,
     document_layout: DocumentLayoutMetrics,
-    action_block_id: Option<cditor_core::ids::BlockId>,
 ) -> AnyElement {
     let selection = selection_overlay_fragments(projection, document_layout);
-    let action_selection =
-        action_selection_overlay_fragment(projection, document_layout, action_block_id);
     div()
         .absolute()
         .top_0()
@@ -63,8 +58,5 @@ pub(crate) fn render_editor_overlays(
         .right_0()
         .bottom_0()
         .child(render_selection_overlay(&selection, theme))
-        .when_some(action_selection, |this, fragment| {
-            this.child(render_selection_overlay(&[fragment], theme))
-        })
         .into_any_element()
 }

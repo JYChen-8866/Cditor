@@ -33,7 +33,13 @@ pub fn selection_overlay_fragments(
         // each list item's indentation, which would create stepped stripes
         // through nested blocks.
         let content_left = block_geometry.shell_left_px + selection_content_left_px(0);
-        if block.selected || block.selection_overlay {
+        // A focused, fully selected block already paints its block highlight as
+        // content background inside the shell. Drawing the full-block overlay
+        // above the text would cover the caret; leave that block to the shell
+        // layer, while non-focused selections still use the document overlay.
+        let should_paint =
+            !(block.selected && block.focused) && (block.selected || block.selection_overlay);
+        if should_paint {
             fragments.push(SelectionOverlayFragment {
                 block_id: block.block_id,
                 y: block_y,
@@ -46,43 +52,6 @@ pub fn selection_overlay_fragments(
         block_y += height;
     }
     fragments
-}
-
-pub fn action_selection_overlay_fragment(
-    projection: &EditorViewProjection,
-    document_layout: DocumentLayoutMetrics,
-    action_block_id: Option<BlockId>,
-) -> Option<SelectionOverlayFragment> {
-    let action_block_id = action_block_id?;
-    let source_index = projection
-        .blocks
-        .iter()
-        .position(|block| block.block_id == action_block_id)?;
-    let source = &projection.blocks[source_index];
-    let source_depth = source.chrome.list_info.depth;
-    let subtree_end = projection.blocks[source_index + 1..]
-        .iter()
-        .position(|block| block.chrome.list_info.depth <= source_depth)
-        .map(|offset| source_index + 1 + offset)
-        .unwrap_or(projection.blocks.len());
-    let y = projection.blocks[..source_index]
-        .iter()
-        .map(|block| block.layout.effective_height())
-        .sum();
-    let height = projection.blocks[source_index..subtree_end]
-        .iter()
-        .map(|block| block.layout.effective_height())
-        .sum();
-    let block_geometry = DocumentBlockGeometry::for_block(source, document_layout);
-
-    Some(SelectionOverlayFragment {
-        block_id: source.block_id,
-        y,
-        height,
-        full_block: true,
-        content_left_px: block_geometry.shell_left_px + selection_content_left_px(0),
-        content_right_px: block_geometry.track_right_px(),
-    })
 }
 
 fn selection_content_left_px(depth: usize) -> f32 {
@@ -232,49 +201,6 @@ mod tests {
                 DocumentLayoutMetrics::default(),
             )
             .is_empty()
-        );
-    }
-
-    #[test]
-    fn parent_action_selection_is_one_contiguous_subtree_fragment() {
-        let mut first = cditor_core::rich_text::RichBlockRecord::paragraph(1, "parent");
-        first.children = vec![2];
-        let mut child = cditor_core::rich_text::RichBlockRecord::paragraph(2, "child");
-        child.parent_id = Some(1);
-        child.depth = 1;
-        child.children = vec![3];
-        let mut grandchild = cditor_core::rich_text::RichBlockRecord::paragraph(3, "grandchild");
-        grandchild.parent_id = Some(2);
-        grandchild.depth = 2;
-        let next = cditor_core::rich_text::RichBlockRecord::paragraph(4, "next");
-        let mut document = cditor_core::rich_text::RichTextDocument::empty(1);
-        document.root_blocks = vec![1, 4];
-        document.blocks = vec![first, child, grandchild, next];
-        let runtime = DocumentRuntime::from_rich_text_document(document, 720.0);
-        let projection = runtime.projection_for_window();
-
-        let fragment = action_selection_overlay_fragment(
-            &projection,
-            DocumentLayoutMetrics::default(),
-            Some(1),
-        )
-        .unwrap();
-        let expected_height: f64 = projection.blocks[..3]
-            .iter()
-            .map(|block| block.layout.effective_height())
-            .sum();
-
-        assert_eq!(fragment.y, 0.0);
-        assert_eq!(fragment.height, expected_height);
-        assert_eq!(fragment.block_id, 1);
-        assert_eq!(
-            fragment.content_left_px,
-            DocumentBlockGeometry::for_block(
-                &projection.blocks[0],
-                DocumentLayoutMetrics::default()
-            )
-            .shell_left_px
-                + BlockHorizontalGeometry::for_depth(0).marker_lane_left_px
         );
     }
 }
