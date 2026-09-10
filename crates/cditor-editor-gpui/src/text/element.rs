@@ -313,7 +313,7 @@ impl Element for RichTextGpuiElement {
         // 目标矩形，否则会一路追着动画跑。
         let cursor = if caret_visible {
             caret_bounds.map(|bounds| {
-                let painted = self
+                let (painted, opacity) = self
                     .input_handler
                     .as_ref()
                     .map(|handler| {
@@ -321,10 +321,14 @@ impl Element for RichTextGpuiElement {
                             .view
                             .read(cx)
                             .caret_motion()
-                            .resolve_and_drive(bounds, window)
+                            .resolve_with_opacity_and_drive(bounds, window)
                     })
-                    .unwrap_or(bounds);
-                fill(window.pixel_snap_bounds(painted), rgb(self.theme.focused))
+                    .unwrap_or((bounds, 1.0));
+                let alpha = (opacity.clamp(0.0, 1.0) * 255.0).round() as u32;
+                fill(
+                    window.pixel_snap_bounds(painted),
+                    rgba((self.theme.focused << 8) | alpha),
+                )
             })
         } else {
             // 这一帧不画光标（失焦、IME 组字中）：丢掉历史位置，否则重新出现时

@@ -138,7 +138,7 @@ fn delete_at_end_merges_next_block_into_current() {
 }
 
 #[test]
-fn arrow_keys_cross_block_boundaries_and_shift_extends_selection() {
+fn arrow_keys_cross_block_boundaries_and_shift_extends_whole_block_selection() {
     let mut runtime = runtime_with_kind_depths_and_text(vec![
         (RichBlockKind::Paragraph, 0, None, "ab"),
         (RichBlockKind::Paragraph, 0, None, "cd"),
@@ -155,7 +155,8 @@ fn arrow_keys_cross_block_boundaries_and_shift_extends_selection() {
 
     runtime.focus_block_at_offset(1, 2).unwrap();
     assert!(runtime.move_caret_right(true).unwrap());
-    assert!(runtime.has_cross_block_text_selection());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2]);
+    assert!(!runtime.has_cross_block_text_selection());
 }
 
 #[test]

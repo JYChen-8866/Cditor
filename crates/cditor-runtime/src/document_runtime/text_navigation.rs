@@ -151,25 +151,23 @@ impl DocumentRuntime {
     }
 
     pub(crate) fn move_caret_up(&mut self, extend_selection: bool) -> Result<bool, String> {
+        if extend_selection {
+            return Ok(self.extend_visible_block_selection(-1));
+        }
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
-        if extend_selection {
-            self.extend_selection_to_adjacent_visible_block(block_id, -1, true)
-        } else {
-            self.focus_adjacent_visible_block(block_id, -1, true)
-        }
+        self.focus_adjacent_visible_block(block_id, -1, true)
     }
 
     pub(crate) fn move_caret_down(&mut self, extend_selection: bool) -> Result<bool, String> {
+        if extend_selection {
+            return Ok(self.extend_visible_block_selection(1));
+        }
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
-        if extend_selection {
-            self.extend_selection_to_adjacent_visible_block(block_id, 1, false)
-        } else {
-            self.focus_adjacent_visible_block(block_id, 1, false)
-        }
+        self.focus_adjacent_visible_block(block_id, 1, false)
     }
 
     pub(crate) fn move_focused_caret_to_offset(
@@ -268,6 +266,9 @@ impl DocumentRuntime {
         extend_selection: bool,
     ) -> Result<bool, String> {
         self.break_typing_coalescing();
+        if extend_selection && self.has_selected_blocks() {
+            return Ok(self.extend_visible_block_selection(if forward { 1 } else { -1 }));
+        }
         let Some(block_id) = self.focused_block_id() else {
             return Ok(false);
         };
@@ -362,41 +363,15 @@ impl DocumentRuntime {
 
     fn extend_selection_to_adjacent_visible_block(
         &mut self,
-        block_id: BlockId,
+        _block_id: BlockId,
         direction: i32,
-        target_end: bool,
+        _target_end: bool,
     ) -> Result<bool, String> {
-        let Some(target_id) = self.adjacent_visible_block_id(block_id, direction) else {
-            return Ok(false);
-        };
-        let caret = self.caret_offset_for_block(block_id).unwrap_or_else(|| {
-            self.document
-                .text_models
-                .get(&block_id)
-                .map(PieceTableTextModel::len)
-                .unwrap_or(0)
-        });
-        let anchor = self
-            .selection
-            .document_selection
-            .map(|selection| selection.anchor)
-            .unwrap_or_else(|| TextPosition::downstream(block_id, caret));
-        let target_offset = if target_end {
-            self.document
-                .text_models
-                .get(&target_id)
-                .map(PieceTableTextModel::len)
-                .unwrap_or(0)
-        } else {
-            0
-        };
-        self.focus_block_at_offset(target_id, target_offset)?;
-        self.selection.document_selection = Some(DocumentSelection {
-            anchor,
-            focus: TextPosition::downstream(target_id, target_offset),
-        });
-        self.selection.focused_text_selection = None;
-        Ok(true)
+        // Once the caret leaves the current text block, this is a whole-block
+        // selection, not a cross-block text selection. Reuse the same truth
+        // (`selected_block_ids`) as mouse block selection so projection,
+        // background, copy and delete all follow one selection model.
+        Ok(self.extend_visible_block_selection(direction))
     }
 
     pub(super) fn adjacent_visible_block_id(

@@ -312,6 +312,41 @@ fn delete_backward_after_select_all_block_selection_empties_the_document() {
 }
 
 #[test]
+fn select_all_excludes_document_title_and_delete_preserves_it() {
+    let mut runtime = DocumentRuntime::demo();
+    let title_id = runtime
+        .document_title_block_id()
+        .expect("demo has a document title");
+    let body_id = runtime
+        .visible_block_ids()
+        .iter()
+        .copied()
+        .find(|block_id| *block_id != title_id)
+        .expect("demo has a body block");
+    let body_len = runtime
+        .block_payload_record(body_id)
+        .map(|payload| payload.plain_text().len())
+        .unwrap_or(0);
+    runtime.focus_block_at_offset(body_id, body_len).unwrap();
+
+    assert!(runtime.select_all_command());
+    assert!(runtime.select_all_command());
+    let selected = runtime.selected_block_ids_snapshot();
+    assert!(
+        !selected.contains(&title_id),
+        "DocumentTitle must never enter block selection: {selected:?}"
+    );
+    assert!(selected.contains(&body_id));
+
+    assert!(runtime.delete_selected_block_selection().unwrap());
+    assert_eq!(
+        runtime.block_kind(title_id),
+        Some(RichBlockKind::DocumentTitle),
+        "deleting the body selection must preserve the system title block"
+    );
+}
+
+#[test]
 fn same_block_document_selection_deletes_its_explicit_range() {
     let mut runtime = DocumentRuntime::from_payloads(
         1,
@@ -704,4 +739,83 @@ fn projection_for_window_limits_blocks_for_100k_document() {
         projection.blocks.last().unwrap().visible_index + 1,
         projection.render_window.block_range.end
     );
+}
+
+#[test]
+fn shift_arrow_cross_block_selection_uses_whole_block_truth() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "a"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "b"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "c"),
+        ],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, 1).unwrap();
+
+    assert!(runtime.move_caret_down(true).unwrap());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2]);
+    assert_eq!(runtime.focused_block_id(), None);
+    assert_eq!(runtime.document_selection_snapshot(), None);
+    let projection = runtime.projection_for_window();
+    assert!(projection.blocks[0].selected);
+    assert!(projection.blocks[1].selected);
+
+    assert!(runtime.move_caret_down(true).unwrap());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2, 3]);
+}
+
+#[test]
+fn shift_arrow_cross_block_selection_extends_upward_in_visible_order() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "a"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "b"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "c"),
+        ],
+        720.0,
+    );
+    runtime.focus_block_at_offset(3, 0).unwrap();
+
+    assert!(runtime.move_caret_up(true).unwrap());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![2, 3]);
+    assert!(runtime.move_caret_up(true).unwrap());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2, 3]);
+}
+
+#[test]
+fn shift_horizontal_arrow_cross_block_selection_extends_after_the_focus_is_cleared() {
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "a"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "b"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "c"),
+        ],
+        720.0,
+    );
+    runtime.focus_block_at_offset(1, 1).unwrap();
+
+    assert!(runtime.move_caret_right(true).unwrap());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2]);
+    assert!(runtime.move_caret_right(true).unwrap());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2, 3]);
+
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "a"),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "b"),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, "c"),
+        ],
+        720.0,
+    );
+    runtime.focus_block_at_offset(3, 0).unwrap();
+
+    assert!(runtime.move_caret_left(true).unwrap());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![2, 3]);
+    assert!(runtime.move_caret_left(true).unwrap());
+    assert_eq!(runtime.selected_block_ids_snapshot(), vec![1, 2, 3]);
 }

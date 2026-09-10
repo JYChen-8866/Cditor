@@ -305,13 +305,17 @@ impl Element for SegmentedRichTextElement {
             .then_some(caret_bounds)
             .flatten()
             .map(|bounds| {
-                let painted = self
+                let (painted, opacity) = self
                     .input_handler
                     .view
                     .read(cx)
                     .caret_motion()
-                    .resolve_and_drive(bounds, window);
-                fill(window.pixel_snap_bounds(painted), rgb(self.theme.focused))
+                    .resolve_with_opacity_and_drive(bounds, window);
+                let alpha = (opacity.clamp(0.0, 1.0) * 255.0).round() as u32;
+                fill(
+                    window.pixel_snap_bounds(painted),
+                    rgba((self.theme.focused << 8) | alpha),
+                )
             });
         let mut backgrounds = Vec::new();
         if let (Some(layout), Some(range)) = (&platform, self.selection_range.clone()) {

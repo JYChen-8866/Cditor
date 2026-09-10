@@ -233,6 +233,13 @@ impl CditorV2View {
         truth_scroll_top: f64,
         now: Instant,
     ) -> f64 {
+        if let Some(scroll_top) = self
+            .focus
+            .caret_motion
+            .presented_scroll_top(truth_scroll_top, now)
+        {
+            return scroll_top;
+        }
         latest_block_insertion_motion(&self.overlay.block_insertion_motions)
             .map(|motion| motion.scroll_top_at(truth_scroll_top, now))
             .unwrap_or(truth_scroll_top)

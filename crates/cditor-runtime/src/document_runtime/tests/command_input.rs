@@ -58,14 +58,15 @@ fn block_range_selection_dispatch_reports_selection_without_document_mutation() 
         vec![anchor_block_id, focus_block_id]
     );
     assert_eq!(runtime.revision(), before_revision);
+    let selected = runtime.selected_block_ids_snapshot();
     assert_eq!(
         runtime.unified_document_selection_snapshot(),
         Some(cditor_core::edit::UnifiedDocumentSelection {
             anchor: cditor_core::edit::SelectionEndpoint::Block {
-                block_id: anchor_block_id,
+                block_id: selected[0],
             },
             focus: cditor_core::edit::SelectionEndpoint::Block {
-                block_id: focus_block_id,
+                block_id: *selected.last().unwrap(),
             },
         })
     );

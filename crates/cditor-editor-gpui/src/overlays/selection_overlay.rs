@@ -100,12 +100,18 @@ mod tests {
         crate::test_support::select_block_range(&mut runtime, first, last);
         let mut projection = runtime.projection_for_window();
         projection.before_window_height = 20_000_000.25;
+        let selectable_blocks = projection
+            .blocks
+            .iter()
+            .filter(|block| !block.kind.is_document_title())
+            .collect::<Vec<_>>();
 
         let fragments = selection_overlay_fragments(&projection, DocumentLayoutMetrics::default());
 
-        assert_eq!(fragments.len(), projection.blocks.len());
+        assert_eq!(fragments.len(), selectable_blocks.len());
         assert!(fragments.iter().all(|fragment| fragment.full_block));
-        assert_eq!(fragments[0].y, 0.0);
+        assert!(selectable_blocks.iter().all(|block| block.selected));
+        assert_eq!(fragments[0].block_id, selectable_blocks[0].block_id);
     }
 
     #[test]

@@ -26,4 +26,4 @@ pub(crate) use disabled::WhiteboardThumbnailCache;
 #[cfg(feature = "whiteboard")]
 pub(crate) use render::render_whiteboard_thumbnail;
 #[cfg(feature = "whiteboard")]
-pub(crate) use style::whiteboard_style_fn;
+pub(crate) use style::{whiteboard_grid_color, whiteboard_style_fn};

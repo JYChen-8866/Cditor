@@ -83,6 +83,8 @@ impl Render for CditorV2View {
         // theme. This must run before the whiteboard early-return below; the
         // board renders during this same pass and reads this global.
         #[cfg(feature = "whiteboard")]
+        let whiteboard_is_dark = is_dark_mode(cx);
+        #[cfg(feature = "whiteboard")]
         cditor_whiteboard_gpui::WhiteboardTheme::set(
             cx,
             cditor_whiteboard_gpui::WhiteboardTheme {
@@ -95,7 +97,7 @@ impl Render for CditorV2View {
                 accent: theme.action_accent,
                 on_accent: theme.checkbox_checked_text,
                 ink: theme.text,
-                grid: theme.border,
+                grid: crate::features::whiteboard::whiteboard_grid_color(whiteboard_is_dark),
                 danger: theme.danger,
             },
         );
@@ -648,6 +650,9 @@ impl Render for CditorV2View {
                     projection.scroll.global_scroll_top,
                     motion_now,
                 );
+                if self.focus.caret_motion.is_animating(motion_now) {
+                    window.request_animation_frame();
+                }
                 self.interaction.presented_scroll_top = presented_scroll_top;
                 self.sync_document_viewport_origin(editor_viewport, document_layout);
                 self.prewarm_primary_text_layouts(

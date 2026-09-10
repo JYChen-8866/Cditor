@@ -283,7 +283,16 @@ impl DocumentRuntime {
         if let Some(selected) = self.select_focused_auxiliary_text_all() {
             return selected;
         }
-        let all_block_ids = self.document.index.block_ids.clone();
+        // DocumentTitle is a required system block and is never part of the
+        // user's selectable/deletable body range.
+        let all_block_ids = self
+            .document
+            .index
+            .block_ids
+            .iter()
+            .copied()
+            .filter(|block_id| !self.is_document_title_block(*block_id))
+            .collect::<Vec<_>>();
         if !all_block_ids.is_empty()
             && all_block_ids
                 .iter()

@@ -3,16 +3,27 @@ use std::rc::Rc;
 use cditor_whiteboard::{WhiteboardStyle, WhiteboardStyleFn};
 use gpui::{Hsla, rgb};
 
-use crate::theme::{GuiTheme, active_theme};
+use crate::theme::{GuiTheme, active_theme, is_dark_mode};
 
-pub(crate) fn whiteboard_style_fn() -> WhiteboardStyleFn {
-    Rc::new(|app| whiteboard_style(active_theme(app)))
+const WHITEBOARD_GRID_LIGHT: u32 = 0xe3e3e1;
+const WHITEBOARD_GRID_DARK: u32 = 0x3a3a3a;
+
+pub(crate) const fn whiteboard_grid_color(is_dark: bool) -> u32 {
+    if is_dark {
+        WHITEBOARD_GRID_DARK
+    } else {
+        WHITEBOARD_GRID_LIGHT
+    }
 }
 
-fn whiteboard_style(theme: GuiTheme) -> WhiteboardStyle {
+pub(crate) fn whiteboard_style_fn() -> WhiteboardStyleFn {
+    Rc::new(|app| whiteboard_style(active_theme(app), is_dark_mode(app)))
+}
+
+fn whiteboard_style(theme: GuiTheme, is_dark: bool) -> WhiteboardStyle {
     WhiteboardStyle {
         bg: Hsla::from(rgb(theme.page)),
-        grid: Hsla::from(rgb(theme.border)),
+        grid: Hsla::from(rgb(whiteboard_grid_color(is_dark))),
         text: Hsla::from(rgb(theme.muted)),
         ink: Hsla::from(rgb(theme.text)),
         panel: Hsla::from(rgb(theme.surface)),
@@ -35,10 +46,10 @@ mod tests {
     #[test]
     fn whiteboard_style_maps_editor_theme_semantically() {
         let theme = GuiTheme::light();
-        let style = whiteboard_style(theme);
+        let style = whiteboard_style(theme, false);
 
         assert_eq!(style.bg, Hsla::from(rgb(theme.page)));
-        assert_eq!(style.grid, Hsla::from(rgb(theme.border)));
+        assert_eq!(style.grid, Hsla::from(rgb(whiteboard_grid_color(false))));
         assert_eq!(style.selection, Hsla::from(rgb(theme.action_accent)));
         assert_eq!(style.swatches.len(), 4);
     }

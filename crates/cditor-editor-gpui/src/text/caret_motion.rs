@@ -10,11 +10,17 @@ use std::time::{Duration, Instant};
 
 use gpui::{Bounds, Pixels, Point, Window, px};
 
-/// 补间时长。60~90ms 是手感区间：再长打字时会觉得糊。
+/// 同行小步移动的补间时长。
 const DURATION: Duration = Duration::from_millis(70);
+/// 跨行或跨 block 的 transition 总时长。
+const LONG_JUMP_DURATION: Duration = Duration::from_millis(200);
+const LONG_JUMP_FADE_OUT_DURATION: Duration = Duration::from_millis(60);
+const LONG_JUMP_FADE_IN_START: Duration = Duration::from_millis(140);
+const LONG_JUMP_FADE_IN_OFFSET_PX: f32 = 6.0;
+const LONG_JUMP_SCROLL_START: Duration = Duration::from_millis(40);
+const LONG_JUMP_SCROLL_END: Duration = Duration::from_millis(180);
 
-/// 超过这个横向距离就直接跳。点到行尾、翻页、切 block 时横穿整屏
-/// 看起来是坏的而不是顺的。
+/// 超过这个横向距离视为长距离移动，而不是纯同行打字。
 const SNAP_DISTANCE_PX: f32 = 120.0;
 
 /// 纵向只要动了就当换行处理，直接跳。
@@ -22,6 +28,14 @@ const SAME_LINE_TOLERANCE_PX: f32 = 1.0;
 
 fn ease_out_quint(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(5)
+}
+
+fn ease_in_out_cubic(t: f32) -> f32 {
+    if t < 0.5 {
+        4.0 * t * t * t
+    } else {
+        1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+    }
 }
 
 fn lerp(from: f32, to: f32, t: f32) -> f32 {
@@ -33,10 +47,24 @@ struct Motion {
     from: Point<Pixels>,
     to: Point<Pixels>,
     started: Instant,
+    duration: Duration,
+    long_jump: bool,
 }
 
-/// 是否该直接跳过去而不补间。
-fn should_snap(from: Point<Pixels>, to: Point<Pixels>) -> bool {
+#[derive(Clone, Copy, Debug)]
+struct MotionSample {
+    origin: Point<Pixels>,
+    opacity: f32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ScrollMotion {
+    from: f64,
+    to: f64,
+    started: Instant,
+}
+
+fn is_long_jump(from: Point<Pixels>, to: Point<Pixels>) -> bool {
     let dy = (f32::from(to.y) - f32::from(from.y)).abs();
     if dy > SAME_LINE_TOLERANCE_PX {
         return true;
@@ -52,20 +80,53 @@ fn should_snap(from: Point<Pixels>, to: Point<Pixels>) -> bool {
 #[derive(Default)]
 pub(crate) struct CaretMotion {
     motion: Cell<Option<Motion>>,
+    scroll_motion: Cell<Option<ScrollMotion>>,
 }
 
 impl CaretMotion {
     /// 当前该显示的原点。补间跑完返回终点。
-    fn displayed_origin(&self, now: Instant) -> Option<Point<Pixels>> {
+    fn sample(&self, now: Instant) -> Option<MotionSample> {
         let motion = self.motion.get()?;
         let elapsed = now.saturating_duration_since(motion.started);
-        if elapsed >= DURATION {
-            return Some(motion.to);
+        if elapsed >= motion.duration {
+            return Some(MotionSample {
+                origin: motion.to,
+                opacity: 1.0,
+            });
         }
-        let t = ease_out_quint(elapsed.as_secs_f32() / DURATION.as_secs_f32());
-        Some(Point {
-            x: px(lerp(f32::from(motion.from.x), f32::from(motion.to.x), t)),
-            y: px(lerp(f32::from(motion.from.y), f32::from(motion.to.y), t)),
+        if motion.long_jump {
+            if elapsed < LONG_JUMP_FADE_OUT_DURATION {
+                let t = elapsed.as_secs_f32() / LONG_JUMP_FADE_OUT_DURATION.as_secs_f32();
+                return Some(MotionSample {
+                    origin: motion.from,
+                    opacity: 1.0 - ease_in_out_cubic(t),
+                });
+            }
+            if elapsed < LONG_JUMP_FADE_IN_START {
+                return Some(MotionSample {
+                    origin: motion.from,
+                    opacity: 0.0,
+                });
+            }
+            let t = (elapsed - LONG_JUMP_FADE_IN_START).as_secs_f32()
+                / (motion.duration - LONG_JUMP_FADE_IN_START).as_secs_f32();
+            let t = ease_in_out_cubic(t);
+            return Some(MotionSample {
+                origin: Point {
+                    x: motion.to.x,
+                    y: motion.to.y - px(LONG_JUMP_FADE_IN_OFFSET_PX * (1.0 - t)),
+                },
+                opacity: t,
+            });
+        }
+        let t = elapsed.as_secs_f32() / motion.duration.as_secs_f32();
+        let t = ease_out_quint(t);
+        Some(MotionSample {
+            origin: Point {
+                x: px(lerp(f32::from(motion.from.x), f32::from(motion.to.x), t)),
+                y: px(lerp(f32::from(motion.from.y), f32::from(motion.to.y), t)),
+            },
+            opacity: 1.0,
         })
     }
 
@@ -78,8 +139,10 @@ impl CaretMotion {
             from: target.origin,
             to: target.origin,
             started: now,
+            duration: DURATION,
+            long_jump: false,
         };
-        let Some(current) = self.displayed_origin(now) else {
+        let Some(current) = self.sample(now) else {
             // 第一帧：没有历史，直接就位。
             self.motion.set(Some(settled));
             return target;
@@ -87,52 +150,103 @@ impl CaretMotion {
 
         let target_changed = self.motion.get().map(|m| m.to) != Some(target.origin);
         if target_changed {
-            if should_snap(current, target.origin) {
-                self.motion.set(Some(settled));
-                return target;
-            }
+            let long_jump = is_long_jump(current.origin, target.origin);
+            let duration = if long_jump {
+                LONG_JUMP_DURATION
+            } else {
+                DURATION
+            };
             self.motion.set(Some(Motion {
-                from: current,
+                from: current.origin,
                 to: target.origin,
                 started: now,
+                duration,
+                long_jump,
             }));
         }
 
+        let sample = self.sample(now).unwrap_or(MotionSample {
+            origin: target.origin,
+            opacity: 1.0,
+        });
         Bounds {
-            origin: self.displayed_origin(now).unwrap_or(target.origin),
+            origin: sample.origin,
             size: target.size,
         }
     }
 
-    /// 绘制阶段的入口：把目标矩形换成这一帧该画的矩形，并在补间未完成时
-    /// 预约下一帧。
-    ///
-    /// 光标本身不产生重绘——不预约下一帧的话，补间会停在按键那一刻的位置，
-    /// 直到下一次输入才继续。
-    pub(crate) fn resolve_and_drive(
+    pub(crate) fn resolve_with_opacity(
+        &self,
+        target: Bounds<Pixels>,
+        now: Instant,
+    ) -> (Bounds<Pixels>, f32) {
+        let bounds = self.resolve(target, now);
+        let opacity = self.sample(now).map_or(1.0, |sample| sample.opacity);
+        (bounds, opacity)
+    }
+
+    pub(crate) fn resolve_with_opacity_and_drive(
         &self,
         target: Bounds<Pixels>,
         window: &Window,
-    ) -> Bounds<Pixels> {
+    ) -> (Bounds<Pixels>, f32) {
         let now = Instant::now();
-        let displayed = self.resolve(target, now);
+        let sample = self.resolve_with_opacity(target, now);
         if self.is_animating(now) {
             window.request_animation_frame();
         }
-        displayed
+        sample
     }
 
     /// 补间还在跑吗。用来决定要不要请求下一帧。
     pub(crate) fn is_animating(&self, now: Instant) -> bool {
-        self.motion.get().is_some_and(|motion| {
-            motion.from != motion.to && now.saturating_duration_since(motion.started) < DURATION
-        })
+        self.scroll_is_animating(now)
+            || self.motion.get().is_some_and(|motion| {
+                motion.from != motion.to
+                    && now.saturating_duration_since(motion.started) < motion.duration
+            })
     }
 
     /// 丢掉历史位置。光标消失（失焦、IME 组字中）时调用，
     /// 否则下次出现会从一个过期位置滑过来。
     pub(crate) fn reset(&self) {
         self.motion.set(None);
+        self.scroll_motion.set(None);
+    }
+
+    pub(crate) fn begin_scroll_transition(&self, from: f64, to: f64) {
+        self.begin_scroll_transition_at(from, to, Instant::now());
+    }
+
+    fn begin_scroll_transition_at(&self, from: f64, to: f64, started: Instant) {
+        if (from - to).abs() < 0.5 {
+            self.scroll_motion.set(None);
+            return;
+        }
+        self.scroll_motion
+            .set(Some(ScrollMotion { from, to, started }));
+    }
+
+    pub(crate) fn presented_scroll_top(&self, truth_scroll_top: f64, now: Instant) -> Option<f64> {
+        let motion = self.scroll_motion.get()?;
+        let elapsed = now.saturating_duration_since(motion.started);
+        if elapsed <= LONG_JUMP_SCROLL_START {
+            return Some(motion.from);
+        }
+        if elapsed >= LONG_JUMP_SCROLL_END {
+            self.scroll_motion.set(None);
+            return Some(truth_scroll_top);
+        }
+        let t = (elapsed - LONG_JUMP_SCROLL_START).as_secs_f32()
+            / (LONG_JUMP_SCROLL_END - LONG_JUMP_SCROLL_START).as_secs_f32();
+        let t = ease_in_out_cubic(t);
+        Some(motion.from + (motion.to - motion.from) * f64::from(t))
+    }
+
+    fn scroll_is_animating(&self, now: Instant) -> bool {
+        self.scroll_motion.get().is_some_and(|motion| {
+            now.saturating_duration_since(motion.started) < LONG_JUMP_SCROLL_END
+        })
     }
 }
 
@@ -189,24 +303,56 @@ mod tests {
     }
 
     #[test]
-    fn line_change_snaps() {
+    fn line_change_fades_out_then_fades_in_at_the_target() {
         let motion = CaretMotion::default();
         let start = Instant::now();
         motion.resolve(bounds(80.0, 0.0), start);
-        // 换行：纵向变了，直接跳。
-        let next = motion.resolve(bounds(4.0, 18.0), start);
-        assert_eq!(next, bounds(4.0, 18.0));
-        assert!(!motion.is_animating(start));
+        let (next, opacity) = motion.resolve_with_opacity(bounds(4.0, 18.0), start);
+        assert_eq!(next.origin, bounds(80.0, 0.0).origin);
+        assert_eq!(opacity, 1.0);
+        assert!(motion.is_animating(start));
+
+        let (fading_out, opacity) =
+            motion.resolve_with_opacity(bounds(4.0, 18.0), start + LONG_JUMP_FADE_OUT_DURATION / 2);
+        assert_eq!(fading_out.origin, bounds(80.0, 0.0).origin);
+        assert!(opacity > 0.0 && opacity < 1.0);
+
+        let (hidden, opacity) =
+            motion.resolve_with_opacity(bounds(4.0, 18.0), start + LONG_JUMP_FADE_OUT_DURATION);
+        assert_eq!(hidden.origin, bounds(80.0, 0.0).origin);
+        assert_eq!(opacity, 0.0);
+
+        let (arriving, opacity) = motion.resolve_with_opacity(
+            bounds(4.0, 18.0),
+            start + LONG_JUMP_FADE_IN_START + Duration::from_millis(30),
+        );
+        assert_eq!(arriving.origin.x, bounds(4.0, 18.0).origin.x);
+        assert!(f32::from(arriving.origin.y) > 12.0 && f32::from(arriving.origin.y) < 18.0);
+        assert!(opacity > 0.0 && opacity < 1.0);
+
+        let done = motion.resolve(bounds(4.0, 18.0), start + LONG_JUMP_DURATION);
+        assert_eq!(done, bounds(4.0, 18.0));
+        let (_, opacity) =
+            motion.resolve_with_opacity(bounds(4.0, 18.0), start + LONG_JUMP_DURATION);
+        assert_eq!(opacity, 1.0);
+        assert!(!motion.is_animating(start + LONG_JUMP_DURATION));
     }
 
     #[test]
-    fn long_jump_on_same_line_snaps() {
+    fn long_jump_on_same_line_uses_the_same_fade_transition() {
         let motion = CaretMotion::default();
         let start = Instant::now();
         motion.resolve(bounds(10.0, 0.0), start);
         let far = 10.0 + SNAP_DISTANCE_PX + 1.0;
-        assert_eq!(motion.resolve(bounds(far, 0.0), start), bounds(far, 0.0));
-        assert!(!motion.is_animating(start));
+        assert_eq!(motion.resolve(bounds(far, 0.0), start).origin.x, px(10.0));
+        assert!(motion.is_animating(start));
+        let (_, opacity) =
+            motion.resolve_with_opacity(bounds(far, 0.0), start + LONG_JUMP_FADE_OUT_DURATION / 2);
+        assert!(opacity > 0.0 && opacity < 1.0);
+        let (done, opacity) =
+            motion.resolve_with_opacity(bounds(far, 0.0), start + LONG_JUMP_DURATION);
+        assert_eq!(done, bounds(far, 0.0));
+        assert_eq!(opacity, 1.0);
     }
 
     #[test]
@@ -233,6 +379,30 @@ mod tests {
         // 复位后第一帧直接就位，不从 100 滑过来。
         assert_eq!(motion.resolve(bounds(4.0, 0.0), start), bounds(4.0, 0.0));
         assert!(!motion.is_animating(start));
+    }
+
+    #[test]
+    fn document_jump_scroll_waits_then_eases_to_truth() {
+        let motion = CaretMotion::default();
+        let start = Instant::now();
+        motion.begin_scroll_transition_at(800.0, 0.0, start);
+
+        assert_eq!(motion.presented_scroll_top(0.0, start), Some(800.0));
+        assert_eq!(
+            motion.presented_scroll_top(0.0, start + LONG_JUMP_SCROLL_START),
+            Some(800.0)
+        );
+        let mid = motion
+            .presented_scroll_top(
+                0.0,
+                start + (LONG_JUMP_SCROLL_START + LONG_JUMP_SCROLL_END) / 2,
+            )
+            .unwrap();
+        assert!(mid > 0.0 && mid < 800.0, "mid = {mid}");
+        assert_eq!(
+            motion.presented_scroll_top(0.0, start + LONG_JUMP_SCROLL_END),
+            Some(0.0)
+        );
     }
 
     #[test]

@@ -279,6 +279,19 @@ impl CditorV2View {
             return Ok(outcome);
         }
         if let Some(gui_command) = gui_handler_for_command(&command) {
+            let animate_caret_scroll = source == CommandSource::Keyboard
+                && matches!(
+                    command,
+                    CditorCommand::MoveCaret {
+                        direction: CaretDirection::DocumentStart | CaretDirection::DocumentEnd,
+                        ..
+                    }
+                );
+            let before_scroll = animate_caret_scroll.then(|| {
+                self.ready_session()
+                    .and_then(|session| session.layout_viewport().ok())
+                    .map(|viewport| viewport.global_scroll_top)
+            });
             let before = self
                 .ready_session()
                 .and_then(|session| session.document_snapshot().ok());
@@ -296,6 +309,18 @@ impl CditorV2View {
                 .ready_session()
                 .and_then(|session| session.document_snapshot().ok())
                 .and_then(|snapshot| snapshot.selection);
+            if animate_caret_scroll
+                && let Some(before_scroll) = before_scroll.flatten()
+                && let Some(after_scroll) = self
+                    .ready_session()
+                    .and_then(|session| session.layout_viewport().ok())
+                    .map(|viewport| viewport.global_scroll_top)
+            {
+                self.focus
+                    .caret_motion
+                    .begin_scroll_transition(before_scroll, after_scroll);
+                cx.notify();
+            }
             let changed = before_revision != after_revision;
             let selection_changed = before_selection != after_selection;
             let side_effect_only = matches!(command, CditorCommand::CopySelection);

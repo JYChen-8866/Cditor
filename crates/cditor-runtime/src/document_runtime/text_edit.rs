@@ -522,6 +522,7 @@ impl DocumentRuntime {
         let selected = &self.selection.selected_block_ids;
         let mut roots = selected
             .iter()
+            .filter(|block_id| !self.is_document_title_block(**block_id))
             .filter_map(|block_id| {
                 self.document
                     .index

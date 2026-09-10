@@ -168,8 +168,15 @@ mod tests {
     fn block_drag_selection_updates_runtime_visible_selection() {
         let runtime = DocumentRuntime::demo();
         let projection = runtime.projection_for_window();
-        let first = projection.blocks[0].block_id;
-        let third = projection.blocks[2].block_id;
+        let selectable = projection
+            .blocks
+            .iter()
+            .filter(|block| !block.kind.is_document_title())
+            .take(3)
+            .map(|block| block.block_id)
+            .collect::<Vec<_>>();
+        let first = selectable[0];
+        let third = selectable[2];
         let session = EditorSession::new(runtime, false).into_handle();
         let mut controller = BlockDragSelectionController::default();
 
@@ -188,7 +195,7 @@ mod tests {
             .map(|block| block.block_id)
             .collect::<Vec<_>>();
 
-        assert_eq!(selected, vec![first, projection.blocks[1].block_id, third]);
+        assert_eq!(selected, selectable);
         assert_eq!(controller.finish(), Some((first, third)));
         assert!(!controller.is_dragging());
     }
