@@ -230,7 +230,12 @@ impl CditorV2View {
         before: ProjectionTruthSnapshot,
         cx: &mut Context<Self>,
     ) {
-        if self.overlay.block_insertion_motions.contains_key(&block_id) {
+        // A rapid sequence of structural commands must share one visual clock.
+        // Keeping multiple motions would sum their offsets in the render path,
+        // making following blocks jump backwards before every motion settles.
+        // The active motion already interpolates against the current document
+        // truth, so later inserts are absorbed by its remaining progress.
+        if !self.overlay.block_insertion_motions.is_empty() {
             return;
         }
 
@@ -264,6 +269,9 @@ impl CditorV2View {
         before: ProjectionTruthSnapshot,
         cx: &mut Context<Self>,
     ) {
+        if !self.overlay.block_insertion_motions.is_empty() {
+            return;
+        }
         let now = Instant::now();
         self.overlay.block_insertion_motions.insert(
             BLOCK_LAYOUT_MOTION_KEY,
@@ -718,6 +726,43 @@ mod tests {
             assert_eq!(
                 motion.before_top(2),
                 before_truth.block_tops.get(&2).copied()
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn rapid_enter_commands_share_one_insertion_motion(cx: &mut TestAppContext) {
+        let mut document = RichTextDocument::empty(15);
+        document.push_root_block(RichBlockRecord::paragraph(1, "body"));
+        document.push_root_block(RichBlockRecord::paragraph(2, "following"));
+        let runtime = DocumentRuntime::from_rich_text_document(document, 720.0);
+        let view = cx.new(|cx| CditorV2View::from_runtime(runtime, false, cx));
+
+        view.update(cx, |view, cx| {
+            view.dispatch_command(
+                CditorCommand::FocusBlock { block_id: 1 },
+                CommandSource::Keyboard,
+                cx,
+            )
+            .unwrap();
+            view.dispatch_command(
+                CditorCommand::InsertParagraphAfterFocused,
+                CommandSource::Keyboard,
+                cx,
+            )
+            .unwrap();
+            assert_eq!(view.overlay.block_insertion_motions.len(), 1);
+
+            view.dispatch_command(
+                CditorCommand::InsertParagraphAfterFocused,
+                CommandSource::Keyboard,
+                cx,
+            )
+            .unwrap();
+            assert_eq!(
+                view.overlay.block_insertion_motions.len(),
+                1,
+                "rapid structural inserts must not accumulate visual motion offsets"
             );
         });
     }
