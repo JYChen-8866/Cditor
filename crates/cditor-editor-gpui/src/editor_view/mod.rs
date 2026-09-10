@@ -28,8 +28,8 @@ pub(crate) use crate::app::persistence_bridge::save_status_for_mode;
 pub(crate) use crate::interaction::table_scroll::TableScrollSnapshot;
 pub(crate) use block_actions::block_focus_offset_after_missed_hit_test;
 pub(crate) use block_animation::{
-    BlockInsertionMotion, ProjectionTruthSnapshot, command_can_animate_block_layout,
-    command_can_insert_block, document_top_from_projection_slice, inserted_block_id,
+    BlockInsertionMotion, command_can_animate_block_layout, command_can_insert_block,
+    document_top_from_projection_slice, inserted_block_id, latest_block_insertion_motion,
     snapshot_projection_truth, source_animates_block_insert,
 };
 pub(crate) use formatting::{

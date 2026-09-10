@@ -177,10 +177,9 @@ impl DocumentEditorView {
             document_layout,
         );
         let mut block_y = 0.0;
-        let active_motions = block_insertion_motions
-            .values()
-            .map(|motion| (motion.progress_at(motion_now), motion))
-            .collect::<Vec<_>>();
+        let active_motion =
+            crate::editor_view::latest_block_insertion_motion(block_insertion_motions);
+        let active_progress = active_motion.map(|motion| motion.progress_at(motion_now));
         let mut table_overlay_elements = Vec::new();
         let mut motion_overlay_elements = Vec::new();
         let mut block_elements = projection
@@ -219,23 +218,23 @@ impl DocumentEditorView {
                 let mut insertion_opacity = None;
                 let mut projection_anchor_before_top = None;
                 let mut visual_offset_y = 0.0;
-                for (progress, motion) in &active_motions {
+                if let (Some(motion), Some(progress)) = (active_motion, active_progress) {
                     if motion.inserted_block_id() == Some(block.block_id) {
-                        insertion_progress = Some(*progress);
-                        insertion_opacity = Some(motion.opacity_at(*progress));
+                        insertion_progress = Some(progress);
+                        insertion_opacity = Some(motion.opacity_at(progress));
                     }
                     if let Some(offset) =
-                        motion.block_offset(block.block_id, truth_document_top, *progress)
+                        motion.block_offset(block.block_id, truth_document_top, progress)
                     {
                         projection_anchor_before_top =
                             projection_anchor_before_top.or(motion.before_top(block.block_id));
-                        visual_offset_y += offset;
+                        visual_offset_y = offset;
                     }
                 }
                 let visual_top = top + visual_offset_y;
                 let screen_top = truth_document_top + visual_offset_y - presented_scroll_top;
                 block_y += height;
-                if !active_motions.is_empty()
+                if active_motion.is_some()
                     && (insertion_progress.is_some()
                         || visual_offset_y.abs() > 0.01
                         || projection_anchor_before_top.is_some())
@@ -254,7 +253,7 @@ impl DocumentEditorView {
                             },
                             projection.before_window_height,
                             screen_top + height,
-                            active_motions.len(),
+                            usize::from(active_motion.is_some()),
                             projection.scroll.global_scroll_top,
                         ),
                     );

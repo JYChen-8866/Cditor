@@ -107,6 +107,16 @@ impl BlockInsertionMotion {
     }
 }
 
+/// Every visual projection samples one shared clock. Keeping the selection in
+/// one place also makes the render path immune to accidentally accumulated
+/// motions if a caller ever inserts one without going through the guarded
+/// start helpers below.
+pub(crate) fn latest_block_insertion_motion(
+    motions: &HashMap<BlockId, BlockInsertionMotion>,
+) -> Option<&BlockInsertionMotion> {
+    motions.values().max_by_key(|motion| motion.started())
+}
+
 pub(crate) fn projection_truth_snapshot(
     projection: &EditorViewProjection,
 ) -> ProjectionTruthSnapshot {
@@ -211,10 +221,7 @@ impl CditorV2View {
         truth_scroll_top: f64,
         now: Instant,
     ) -> f64 {
-        self.overlay
-            .block_insertion_motions
-            .values()
-            .max_by_key(|motion| motion.started())
+        latest_block_insertion_motion(&self.overlay.block_insertion_motions)
             .map(|motion| motion.scroll_top_at(truth_scroll_top, now))
             .unwrap_or(truth_scroll_top)
     }
