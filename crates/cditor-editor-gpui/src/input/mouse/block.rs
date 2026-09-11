@@ -29,6 +29,7 @@ impl CditorV2View {
         cx: &mut Context<Self>,
     ) {
         self.pause_caret_blink(cx);
+        self.input.preferred_navigation_x = None;
         window.focus(&self.focus.editor, cx);
         if self.interaction.table_interaction_mode.block_id().is_some() {
             self.interaction.table_interaction_mode = GuiTableInteractionMode::Idle;

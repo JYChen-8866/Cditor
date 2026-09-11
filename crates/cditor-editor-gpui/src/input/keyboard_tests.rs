@@ -197,6 +197,37 @@ fn keyboard_navigation_consumes_text_layout_layout_cache() {
 }
 
 #[test]
+fn affinity_only_vertical_move_does_not_consume_the_keypress() {
+    let text = "abc";
+    let mut runtime = paragraph_runtime(text);
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, text.len());
+    let mut layouts = HashMap::new();
+    let mut layout = crate::text::test_platform_layout(
+        1,
+        runtime.block_content_version(1).unwrap(),
+        text,
+        Bounds::new(point(px(0.0), px(0.0)), size(px(500.0), px(24.0))),
+        None,
+    );
+    layout.layout_version = runtime.block_layout_version(1).unwrap();
+    layouts.insert(1, layout);
+    let session = cditor_session::EditorSession::new(runtime, false).into_handle();
+
+    assert!(
+        !move_caret_with_text_layout(
+            &layouts,
+            &Default::default(),
+            &mut None,
+            &session,
+            TextLayoutMoveCommand::PreviousLine,
+            false,
+        )
+        .unwrap(),
+        "an affinity-only change at the block edge must fall back to block navigation"
+    );
+}
+
+#[test]
 fn paste_text_from_clipboard_uses_validated_rich_metadata() {
     let mut runtime = paragraph_runtime("hello ");
     let selection = ClipboardSelection::Inline {
@@ -671,4 +702,81 @@ fn paste_text_from_clipboard_treats_external_tsv_as_table_range_when_cell_is_foc
     assert_eq!(table.column_count(), 2);
     assert_eq!(table.cell_plain_text(0, 0).as_deref(), Some("a"));
     assert_eq!(table.cell_plain_text(1, 1).as_deref(), Some("d"));
+}
+
+#[test]
+fn vertical_navigation_preserves_goal_x_across_blocks() {
+    let texts = ["abcdefghij", "x", "abcdefghij"];
+    let mut runtime = DocumentRuntime::from_payloads(
+        1,
+        vec![
+            BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, texts[0]),
+            BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, texts[1]),
+            BlockPayloadRecord::rich_text(3, RichBlockKind::Paragraph, texts[2]),
+        ],
+        720.0,
+    );
+    crate::test_support::focus_block_at_offset(&mut runtime, 1, 8);
+
+    let mut layouts = HashMap::new();
+    for (index, text) in texts.into_iter().enumerate() {
+        let block_id = (index + 1) as BlockId;
+        let mut layout = crate::text::test_platform_layout(
+            block_id,
+            runtime.block_content_version(block_id).unwrap(),
+            text,
+            Bounds::new(point(px(0.0), px(0.0)), size(px(500.0), px(24.0))),
+            None,
+        );
+        layout.layout_version = runtime.block_layout_version(block_id).unwrap();
+        layouts.insert(block_id, layout);
+    }
+    let session = cditor_session::EditorSession::new(runtime, false).into_handle();
+    let projected_blocks = [1, 2, 3].map(|block_id| ProjectedBlockRect {
+        block_id,
+        visible_index: block_id as usize - 1,
+        ..ProjectedBlockRect::default()
+    });
+    let mut preferred_x = None;
+
+    assert!(
+        move_caret_vertically_with_text_layout(
+            &layouts,
+            &Default::default(),
+            &projected_blocks,
+            &mut preferred_x,
+            &session,
+            TextLayoutMoveCommand::NextLine,
+            false,
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        session.document_snapshot().unwrap().focused_block_id,
+        Some(2)
+    );
+    assert!(preferred_x.is_some());
+
+    assert!(
+        move_caret_vertically_with_text_layout(
+            &layouts,
+            &Default::default(),
+            &projected_blocks,
+            &mut preferred_x,
+            &session,
+            TextLayoutMoveCommand::NextLine,
+            false,
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        session.document_snapshot().unwrap().focused_block_id,
+        Some(3)
+    );
+    let goal_x = preferred_x.unwrap().1;
+    let target = layouts[&3].snapshot.position_for_point(goal_x, 12.0).offset;
+    assert_eq!(
+        session.text_block_context(3).unwrap().unwrap().caret,
+        Some(target)
+    );
 }

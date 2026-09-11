@@ -317,11 +317,15 @@ impl Element for RichTextGpuiElement {
                     .input_handler
                     .as_ref()
                     .map(|handler| {
-                        handler
+                        let (painted, opacity, animating) = handler
                             .view
                             .read(cx)
                             .caret_motion()
-                            .resolve_with_opacity_and_drive(bounds, window)
+                            .resolve_with_opacity_and_drive(bounds, window);
+                        if animating {
+                            cx.notify(handler.view.entity_id());
+                        }
+                        (painted, opacity)
                     })
                     .unwrap_or((bounds, 1.0));
                 let alpha = (opacity.clamp(0.0, 1.0) * 255.0).round() as u32;

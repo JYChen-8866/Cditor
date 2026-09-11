@@ -19,12 +19,16 @@ const LONG_JUMP_FADE_IN_START: Duration = Duration::from_millis(140);
 const LONG_JUMP_FADE_IN_OFFSET_PX: f32 = 6.0;
 const LONG_JUMP_SCROLL_START: Duration = Duration::from_millis(40);
 const LONG_JUMP_SCROLL_END: Duration = Duration::from_millis(180);
+const VERTICAL_MOVE_DURATION: Duration = Duration::from_millis(90);
 
 /// 超过这个横向距离视为长距离移动，而不是纯同行打字。
 const SNAP_DISTANCE_PX: f32 = 120.0;
 
 /// 纵向只要动了就当换行处理，直接跳。
 const SAME_LINE_TOLERANCE_PX: f32 = 1.0;
+
+/// 相邻行和相邻 block 的纵向移动仍做位置补间；只有超大跨度才淡出淡入。
+const MAX_VERTICAL_SLIDE_DISTANCE_PX: f32 = 96.0;
 
 fn ease_out_quint(t: f32) -> f32 {
     1.0 - (1.0 - t).powi(5)
@@ -66,7 +70,7 @@ struct ScrollMotion {
 
 fn is_long_jump(from: Point<Pixels>, to: Point<Pixels>) -> bool {
     let dy = (f32::from(to.y) - f32::from(from.y)).abs();
-    if dy > SAME_LINE_TOLERANCE_PX {
+    if dy > MAX_VERTICAL_SLIDE_DISTANCE_PX {
         return true;
     }
     let dx = (f32::from(to.x) - f32::from(from.x)).abs();
@@ -150,9 +154,16 @@ impl CaretMotion {
 
         let target_changed = self.motion.get().map(|m| m.to) != Some(target.origin);
         if target_changed {
+            let dy = (f32::from(target.origin.y) - f32::from(current.origin.y)).abs();
             let long_jump = is_long_jump(current.origin, target.origin);
+            crate::diagnostics::stderr::write(format_args!(
+                "[cditor][caret][caret_motion.start] from={:?} to={:?} dy={dy:.2} long_jump={long_jump}",
+                current.origin, target.origin
+            ));
             let duration = if long_jump {
                 LONG_JUMP_DURATION
+            } else if dy > SAME_LINE_TOLERANCE_PX {
+                VERTICAL_MOVE_DURATION
             } else {
                 DURATION
             };
@@ -189,13 +200,14 @@ impl CaretMotion {
         &self,
         target: Bounds<Pixels>,
         window: &Window,
-    ) -> (Bounds<Pixels>, f32) {
+    ) -> (Bounds<Pixels>, f32, bool) {
         let now = Instant::now();
         let sample = self.resolve_with_opacity(target, now);
-        if self.is_animating(now) {
+        let animating = self.is_animating(now);
+        if animating {
             window.request_animation_frame();
         }
-        sample
+        (sample.0, sample.1, animating)
     }
 
     /// 补间还在跑吗。用来决定要不要请求下一帧。
@@ -303,37 +315,58 @@ mod tests {
     }
 
     #[test]
-    fn line_change_fades_out_then_fades_in_at_the_target() {
+    fn short_vertical_move_slides_between_lines() {
         let motion = CaretMotion::default();
         let start = Instant::now();
         motion.resolve(bounds(80.0, 0.0), start);
-        let (next, opacity) = motion.resolve_with_opacity(bounds(4.0, 18.0), start);
+
+        let (next, opacity) = motion.resolve_with_opacity(bounds(4.0, 24.0), start);
+        assert_eq!(next.origin, bounds(80.0, 0.0).origin);
+        assert_eq!(opacity, 1.0);
+
+        let (mid, opacity) =
+            motion.resolve_with_opacity(bounds(4.0, 24.0), start + VERTICAL_MOVE_DURATION / 2);
+        assert!(f32::from(mid.origin.y) > 0.0 && f32::from(mid.origin.y) < 24.0);
+        assert_eq!(opacity, 1.0);
+        assert!(motion.is_animating(start + VERTICAL_MOVE_DURATION / 2));
+
+        let done = motion.resolve(bounds(4.0, 24.0), start + VERTICAL_MOVE_DURATION);
+        assert_eq!(done, bounds(4.0, 24.0));
+        assert!(!motion.is_animating(start + VERTICAL_MOVE_DURATION));
+    }
+
+    #[test]
+    fn distant_jump_fades_out_then_fades_in_at_the_target() {
+        let motion = CaretMotion::default();
+        let start = Instant::now();
+        motion.resolve(bounds(80.0, 0.0), start);
+        let (next, opacity) = motion.resolve_with_opacity(bounds(4.0, 180.0), start);
         assert_eq!(next.origin, bounds(80.0, 0.0).origin);
         assert_eq!(opacity, 1.0);
         assert!(motion.is_animating(start));
 
-        let (fading_out, opacity) =
-            motion.resolve_with_opacity(bounds(4.0, 18.0), start + LONG_JUMP_FADE_OUT_DURATION / 2);
+        let (fading_out, opacity) = motion
+            .resolve_with_opacity(bounds(4.0, 180.0), start + LONG_JUMP_FADE_OUT_DURATION / 2);
         assert_eq!(fading_out.origin, bounds(80.0, 0.0).origin);
         assert!(opacity > 0.0 && opacity < 1.0);
 
         let (hidden, opacity) =
-            motion.resolve_with_opacity(bounds(4.0, 18.0), start + LONG_JUMP_FADE_OUT_DURATION);
+            motion.resolve_with_opacity(bounds(4.0, 180.0), start + LONG_JUMP_FADE_OUT_DURATION);
         assert_eq!(hidden.origin, bounds(80.0, 0.0).origin);
         assert_eq!(opacity, 0.0);
 
         let (arriving, opacity) = motion.resolve_with_opacity(
-            bounds(4.0, 18.0),
+            bounds(4.0, 180.0),
             start + LONG_JUMP_FADE_IN_START + Duration::from_millis(30),
         );
-        assert_eq!(arriving.origin.x, bounds(4.0, 18.0).origin.x);
-        assert!(f32::from(arriving.origin.y) > 12.0 && f32::from(arriving.origin.y) < 18.0);
+        assert_eq!(arriving.origin.x, bounds(4.0, 180.0).origin.x);
+        assert!(f32::from(arriving.origin.y) > 174.0 && f32::from(arriving.origin.y) < 180.0);
         assert!(opacity > 0.0 && opacity < 1.0);
 
-        let done = motion.resolve(bounds(4.0, 18.0), start + LONG_JUMP_DURATION);
-        assert_eq!(done, bounds(4.0, 18.0));
+        let done = motion.resolve(bounds(4.0, 180.0), start + LONG_JUMP_DURATION);
+        assert_eq!(done, bounds(4.0, 180.0));
         let (_, opacity) =
-            motion.resolve_with_opacity(bounds(4.0, 18.0), start + LONG_JUMP_DURATION);
+            motion.resolve_with_opacity(bounds(4.0, 180.0), start + LONG_JUMP_DURATION);
         assert_eq!(opacity, 1.0);
         assert!(!motion.is_animating(start + LONG_JUMP_DURATION));
     }

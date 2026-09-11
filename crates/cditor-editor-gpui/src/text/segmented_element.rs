@@ -305,12 +305,15 @@ impl Element for SegmentedRichTextElement {
             .then_some(caret_bounds)
             .flatten()
             .map(|bounds| {
-                let (painted, opacity) = self
+                let (painted, opacity, animating) = self
                     .input_handler
                     .view
                     .read(cx)
                     .caret_motion()
                     .resolve_with_opacity_and_drive(bounds, window);
+                if animating {
+                    cx.notify(self.input_handler.view.entity_id());
+                }
                 let alpha = (opacity.clamp(0.0, 1.0) * 255.0).round() as u32;
                 fill(
                     window.pixel_snap_bounds(painted),

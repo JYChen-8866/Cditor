@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use crate::editor_view::{CditorV2View, CditorViewState};
 use crate::features::table::{TableAxis, TableAxisSelection};
 use crate::input::GuiInputCommand;
+use crate::input::trace::trace_input;
+use crate::interaction::geometry::ProjectedBlockRect;
 use crate::text::{
     RichTextPlatformLayout, TextGeometryOperation, TextLayoutMoveCommand, TextLayoutPosition,
     TextLayoutSelection, record_snapshot_geometry, record_unavailable_geometry,
@@ -276,9 +278,17 @@ impl CditorV2View {
                     );
                 }
                 GuiInputCommand::MoveCaretUp { extend_selection } => {
-                    let moved_in_block = move_caret_with_text_layout(
+                    caret_trace(
+                        "caret_nav.begin",
+                        format_args!(
+                            "direction=up extend_selection={extend_selection} {}",
+                            caret_navigation_trace_state(runtime)
+                        ),
+                    );
+                    let moved_in_block = move_caret_vertically_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
+                        &self.interaction.projected_block_rects,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         TextLayoutMoveCommand::PreviousLine,
@@ -286,17 +296,39 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved_in_block {
+                        trace_input(
+                            "caret_nav.fallback",
+                            format_args!(
+                                "direction=up route=runtime {}",
+                                caret_navigation_trace_state(runtime)
+                            ),
+                        );
                         let _ = dispatch_caret_navigation(
                             runtime,
                             CaretDirection::PreviousLine,
                             extend_selection,
                         );
                     }
+                    caret_trace(
+                        "caret_nav.result",
+                        format_args!(
+                            "direction=up moved_in_block={moved_in_block} {}",
+                            caret_navigation_trace_state(runtime)
+                        ),
+                    );
                 }
                 GuiInputCommand::MoveCaretDown { extend_selection } => {
-                    let moved_in_block = move_caret_with_text_layout(
+                    caret_trace(
+                        "caret_nav.begin",
+                        format_args!(
+                            "direction=down extend_selection={extend_selection} {}",
+                            caret_navigation_trace_state(runtime)
+                        ),
+                    );
+                    let moved_in_block = move_caret_vertically_with_text_layout(
                         &self.cache.text_layouts,
                         &self.cache.text_surface_layouts,
+                        &self.interaction.projected_block_rects,
                         &mut self.input.preferred_navigation_x,
                         runtime,
                         TextLayoutMoveCommand::NextLine,
@@ -304,12 +336,26 @@ impl CditorV2View {
                     )
                     .unwrap_or(false);
                     if !moved_in_block {
+                        trace_input(
+                            "caret_nav.fallback",
+                            format_args!(
+                                "direction=down route=runtime {}",
+                                caret_navigation_trace_state(runtime)
+                            ),
+                        );
                         let _ = dispatch_caret_navigation(
                             runtime,
                             CaretDirection::NextLine,
                             extend_selection,
                         );
                     }
+                    caret_trace(
+                        "caret_nav.result",
+                        format_args!(
+                            "direction=down moved_in_block={moved_in_block} {}",
+                            caret_navigation_trace_state(runtime)
+                        ),
+                    );
                 }
                 GuiInputCommand::MoveCaretToLineStart { extend_selection } => {
                     let moved = move_caret_with_text_layout(
@@ -431,6 +477,10 @@ fn move_caret_with_text_layout(
     };
     let Some(cache) = cache else {
         record_unavailable_geometry();
+        caret_trace(
+            "caret_geometry.miss",
+            format_args!("surface={surface_id:?} reason=no-cache"),
+        );
         return Ok(false);
     };
     let Some(current_version) = runtime
@@ -445,6 +495,18 @@ fn move_caret_with_text_layout(
         || cache.layout_version != current_version.layout_version
     {
         record_unavailable_geometry();
+        caret_trace(
+            "caret_geometry.miss",
+            format_args!(
+                "surface={surface_id:?} reason=stale cache=({:?}, {}, {}) current=({:?}, {}, {})",
+                cache.surface_id,
+                cache.content_version,
+                cache.layout_version,
+                current_version.surface_id,
+                current_version.content_version,
+                current_version.layout_version,
+            ),
+        );
         return Ok(false);
     }
     let Some(current) = runtime
@@ -492,7 +554,20 @@ fn move_caret_with_text_layout(
         current_preferred_x,
     );
     *preferred_x = next_preferred_x.map(|x| (surface_id, x));
-    if moved.focus.offset == caret_offset && moved.focus.affinity == caret_affinity {
+    let visual_position_changed = if moved.focus.offset != caret_offset {
+        true
+    } else {
+        let current_rect = layout.caret_rect(selection.focus, 1.0);
+        let moved_rect = layout.caret_rect(moved.focus, 1.0);
+        (current_rect.x - moved_rect.x).abs() > 0.01 || (current_rect.y - moved_rect.y).abs() > 0.01
+    };
+    if !visual_position_changed {
+        caret_trace(
+            "caret_geometry.no_move",
+            format_args!(
+                "surface={surface_id:?} command={command:?} offset={caret_offset} affinity={caret_affinity:?} reason=visual-position-unchanged"
+            ),
+        );
         return Ok(false);
     }
     if matches!(
@@ -542,7 +617,171 @@ fn move_caret_with_text_layout(
             ))
             .map_err(|error| error.to_string())?;
     }
+    caret_trace(
+        "caret_geometry.moved",
+        format_args!(
+            "surface={surface_id:?} command={command:?} from={caret_offset} to={} affinity={:?}",
+            moved.focus.offset, moved.focus.affinity
+        ),
+    );
     Ok(true)
+}
+
+fn caret_trace(event: &str, details: impl std::fmt::Display) {
+    crate::diagnostics::stderr::write(format_args!("[cditor][caret][{event}] {details}"));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn move_caret_vertically_with_text_layout(
+    text_layouts: &HashMap<BlockId, RichTextPlatformLayout>,
+    text_surface_layouts: &HashMap<SurfaceId, RichTextPlatformLayout>,
+    projected_blocks: &[ProjectedBlockRect],
+    preferred_x: &mut Option<(SurfaceId, f32)>,
+    runtime: &EditorSessionHandle,
+    command: TextLayoutMoveCommand,
+    extend_selection: bool,
+) -> Result<bool, String> {
+    if move_caret_with_text_layout(
+        text_layouts,
+        text_surface_layouts,
+        preferred_x,
+        runtime,
+        command,
+        extend_selection,
+    )? {
+        return Ok(true);
+    }
+    if !matches!(
+        command,
+        TextLayoutMoveCommand::PreviousLine | TextLayoutMoveCommand::NextLine
+    ) {
+        return Ok(false);
+    }
+
+    let context = runtime.input_context().map_err(|error| error.to_string())?;
+    let Some(SurfaceId::Block(block_id)) = context.target.and_then(|target| target.surface_id())
+    else {
+        return Ok(false);
+    };
+    let direction = if matches!(command, TextLayoutMoveCommand::PreviousLine) {
+        -1
+    } else {
+        1
+    };
+    let Some(target_block_id) = adjacent_projected_block_id(projected_blocks, block_id, direction)
+    else {
+        return Ok(false);
+    };
+
+    let target_surface_id = SurfaceId::Block(target_block_id);
+    let Some(target_version) = runtime
+        .surface_version(target_surface_id)
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(false);
+    };
+    let Some(target_cache) = text_layouts.get(&target_block_id) else {
+        return Ok(false);
+    };
+    if target_cache.surface_id != target_version.surface_id
+        || target_cache.content_version != target_version.content_version
+        || target_cache.layout_version != target_version.layout_version
+    {
+        return Ok(false);
+    }
+
+    let current_cache = text_layouts.get(&block_id);
+    let goal_x = preferred_x
+        .as_ref()
+        .filter(|(surface_id, _)| *surface_id == SurfaceId::Block(block_id))
+        .map(|(_, x)| *x)
+        .or_else(|| {
+            current_cache.map(|cache| {
+                let offset = context
+                    .focused_text_selection_range
+                    .map_or_else(|| cache.snapshot.text().len(), |range| range.end);
+                cache
+                    .snapshot
+                    .caret_rect(TextLayoutPosition::downstream(offset), 1.0)
+                    .x
+            })
+        })
+        .unwrap_or(0.0);
+
+    let target_basis_offset = if direction < 0 {
+        target_cache.snapshot.text().len()
+    } else {
+        0
+    };
+    let target_basis_rect = target_cache
+        .snapshot
+        .caret_rect(TextLayoutPosition::downstream(target_basis_offset), 1.0);
+    let target_position = target_cache
+        .snapshot
+        .position_for_point(goal_x, target_basis_rect.y + target_basis_rect.height * 0.5);
+
+    let focus = cditor_core::edit::TextPosition {
+        block_id: target_block_id,
+        offset: target_position.offset,
+        affinity: target_position.affinity,
+    };
+    let anchor = if extend_selection {
+        runtime
+            .document_snapshot()
+            .ok()
+            .and_then(|snapshot| snapshot.selection)
+            .map(|selection| selection.anchor)
+            .unwrap_or(focus)
+    } else {
+        focus
+    };
+    runtime
+        .dispatch(cditor_editor_protocol::command::CommandEnvelope::new(
+            cditor_editor_protocol::command::CditorCommand::SetDocumentSelection {
+                selection: cditor_core::edit::DocumentSelection { anchor, focus },
+            },
+            cditor_editor_protocol::command::CommandSource::Keyboard,
+        ))
+        .map_err(|error| error.to_string())?;
+    *preferred_x = Some((target_surface_id, goal_x));
+    caret_trace(
+        "caret_geometry.cross_block",
+        format_args!(
+            "from={block_id} to={target_block_id} direction={direction} goal_x={goal_x:.2} offset={} affinity={:?}",
+            target_position.offset, target_position.affinity
+        ),
+    );
+    Ok(true)
+}
+
+fn adjacent_projected_block_id(
+    projected_blocks: &[ProjectedBlockRect],
+    block_id: BlockId,
+    direction: i32,
+) -> Option<BlockId> {
+    let index = projected_blocks
+        .iter()
+        .position(|block| block.block_id == block_id)?;
+    let target = if direction < 0 {
+        index.checked_sub(1)?
+    } else {
+        index.checked_add(1)?
+    };
+    projected_blocks.get(target).map(|block| block.block_id)
+}
+
+fn caret_navigation_trace_state(runtime: &EditorSessionHandle) -> String {
+    match runtime.input_context() {
+        Ok(context) => format!(
+            "target={:?} focused_block={:?} selection={:?} focused_selection={:?} reversed={}",
+            context.target,
+            context.focused_block_id,
+            context.selected_range,
+            context.focused_text_selection_range,
+            context.selection_reversed
+        ),
+        Err(error) => format!("input_context_error={error}"),
+    }
 }
 
 fn dispatch_caret_navigation(
