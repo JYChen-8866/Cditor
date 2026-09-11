@@ -12,7 +12,9 @@ pub(crate) mod toast;
 #[cfg(feature = "whiteboard")]
 pub(crate) mod whiteboard_editor;
 
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, prelude::FluentBuilder};
+use gpui::AnyElement;
+
+use selection_overlay::{render_selection_overlay, selection_overlay_fragments};
 
 pub(crate) use ai_inline::{render_ai_preview_overlay, render_ai_prompt};
 pub(crate) use block_transform_menu::{
@@ -29,7 +31,6 @@ pub(crate) use floating_toolbar::{
     render_gutter_popup_menu, update_gutter_popup_menu,
 };
 pub(crate) use link_popup::render_link_edit_popup;
-use selection_overlay::{render_selection_overlay, selection_overlay_fragments};
 pub(crate) use slash_menu::{
     SlashMenuCommand, SlashMenuItem, SlashMenuState, slash_query_before_caret,
 };
@@ -45,18 +46,11 @@ use crate::document::DocumentLayoutMetrics;
 use crate::theme::GuiTheme;
 use cditor_runtime::EditorViewProjection;
 
-pub(crate) fn render_editor_overlays(
+pub(crate) fn render_selection_background(
     projection: &EditorViewProjection,
     theme: GuiTheme,
     document_layout: DocumentLayoutMetrics,
-) -> AnyElement {
-    let selection = selection_overlay_fragments(projection, document_layout);
-    div()
-        .absolute()
-        .top_0()
-        .left_0()
-        .right_0()
-        .bottom_0()
-        .child(render_selection_overlay(&selection, theme))
-        .into_any_element()
+) -> Option<AnyElement> {
+    let fragments = selection_overlay_fragments(projection, document_layout);
+    (!fragments.is_empty()).then(|| render_selection_overlay(&fragments, theme))
 }

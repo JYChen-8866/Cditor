@@ -265,6 +265,10 @@ impl KindChromeStyle {
     fn document_title(theme: GuiTheme) -> Self {
         Self {
             min_height_px: crate::features::text::heading::DOCUMENT_TITLE_LINE_HEIGHT_PX,
+            // Like headings, the document title is an unframed text surface.
+            // The inherited paragraph border can otherwise slice through the
+            // taller caret even when it uses the page background color.
+            content_border_width_px: 0.0,
             ..Self::paragraph(theme)
         }
     }
@@ -654,6 +658,12 @@ mod tests {
         assert_eq!(paragraph.content_background, theme.surface);
         assert_eq!(paragraph.content_border, theme.surface);
         assert_eq!(paragraph.text_color, theme.text);
+
+        let document_title = BlockChromeStyle::from_snapshot(
+            &block(RichBlockKind::DocumentTitle, BlockChromeSnapshot::plain()),
+            theme,
+        );
+        assert_eq!(document_title.content_border_width_px, 0.0);
 
         for level in [1, 2, 3, 4] {
             let heading = BlockChromeStyle::from_snapshot(

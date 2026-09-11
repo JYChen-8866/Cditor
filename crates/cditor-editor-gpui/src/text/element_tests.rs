@@ -11,11 +11,11 @@ use gpui::{FontWeight, px};
 use std::sync::Arc;
 
 #[test]
-fn text_selection_uses_translucent_accent_so_applied_background_remains_visible() {
+fn text_selection_uses_the_accent_soft_background() {
     let theme = GuiTheme::light();
     assert_eq!(
         text_selection_background(theme),
-        (theme.focused << 8) | 0x26
+        (crate::theme::selection_background_color(theme) << 8) | 0xff
     );
 }
 

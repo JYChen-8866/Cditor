@@ -32,7 +32,7 @@ use crate::features::whiteboard::WhiteboardThumbnailCache;
 use crate::input::CodeLanguageEditState;
 use crate::input::platform_adapter::on_text_activation;
 use crate::menu_metrics::MenuViewportBounds;
-use crate::overlays::render_editor_overlays;
+use crate::overlays::render_selection_background;
 use crate::overlays::table::{
     TableReorderOverlayViewport, render_table_horizontal_scrollbar,
     render_table_reorder_preview_overlay,
@@ -512,6 +512,11 @@ impl DocumentEditorView {
             ));
             block_y += projection.down_placer_height;
         }
+        if let Some(selection_background) =
+            render_selection_background(projection, self.theme, document_layout)
+        {
+            block_elements.insert(0, selection_background);
+        }
         block_elements.push(div().h(px(block_y as f32)).into_any_element());
 
         let overlay = div()
@@ -519,11 +524,6 @@ impl DocumentEditorView {
             .left_0()
             .right_0()
             .top_0()
-            .child(render_editor_overlays(
-                projection,
-                self.theme,
-                document_layout,
-            ))
             .children(table_overlay_elements)
             .when_some(drag_overlay, |this, overlay| {
                 this.child(render_block_drag_overlay(overlay, self.theme))

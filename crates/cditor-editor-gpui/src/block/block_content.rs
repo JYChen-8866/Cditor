@@ -210,11 +210,7 @@ pub(crate) fn render_block_content(
                     text_len,
                     |offset| input.spans.is_char_boundary(offset),
                 );
-                let selection_range = if block.selection_overlay {
-                    None
-                } else {
-                    text_selection_range(&block.selection_range, text_len)
-                };
+                let selection_range = block_text_selection_range(block, text_len);
                 let text_theme = if matches!(
                     block.kind,
                     cditor_core::rich_text::RichBlockKind::Code { .. }
@@ -375,6 +371,16 @@ fn caret_for_text_input(caret_offset: Option<usize>, suppress_text_input: bool) 
     (!suppress_text_input).then_some(caret_offset).flatten()
 }
 
+fn block_text_selection_range(
+    block: &ViewBlockSnapshot,
+    text_len: usize,
+) -> Option<std::ops::Range<usize>> {
+    if block.selected {
+        return Some(0..text_len);
+    }
+    text_selection_range(&block.selection_range, text_len)
+}
+
 fn text_selection_range(
     selection: &Option<SelectionRange>,
     text_len: usize,
@@ -436,6 +442,28 @@ mod tests {
         assert!(!text_input_active(true, true));
         assert_eq!(caret_for_text_input(Some(3), false), Some(3));
         assert_eq!(caret_for_text_input(Some(3), true), None);
+    }
+
+    #[test]
+    fn document_title_restores_text_selection_background_without_full_block_overlay() {
+        let runtime = DocumentRuntime::demo();
+        let mut title = runtime
+            .projection_for_window()
+            .blocks
+            .into_iter()
+            .find(|block| block.kind.is_document_title())
+            .expect("demo has a document title");
+        title.selection_range = Some(SelectionRange::Full);
+        assert_eq!(block_text_selection_range(&title, 10), Some(0..10));
+
+        title.selection_range = None;
+        title.selected = true;
+        assert_eq!(block_text_selection_range(&title, 10), Some(0..10));
+
+        title.selected = false;
+        title.selection_overlay = true;
+        title.selection_range = Some(SelectionRange::Full);
+        assert_eq!(block_text_selection_range(&title, 10), Some(0..10));
     }
 
     #[test]

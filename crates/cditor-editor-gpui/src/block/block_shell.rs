@@ -69,6 +69,7 @@ pub fn block_shell(
     let chrome = BlockChromeStyle::from_snapshot(block, theme);
     let horizontal = chrome.horizontal_geometry();
     let is_document_title = block.kind.is_document_title();
+    let selection_surface = block.selected || block.selection_overlay;
     let gutter_visible = !is_document_title && should_show_gutter(hovered, action.action_root);
     let outer_background = outer_background_for_action(chrome.outer_background, theme, action);
     let content_background = content_background_for_action(
@@ -108,7 +109,7 @@ pub fn block_shell(
         .border_l(px(BLOCK_SHELL_BORDER_WIDTH_PX))
         .border_r(px(BLOCK_SHELL_BORDER_WIDTH_PX))
         .border_color(rgb(shell_border))
-        .bg(rgb(outer_background))
+        .when(!selection_surface, |this| this.bg(rgb(outer_background)))
         .text_color(rgb(chrome.text_color))
         .px(px(BLOCK_SHELL_OUTER_PADDING_X_PX))
         .pt(px(chrome.outer_padding_top_px))
@@ -170,14 +171,19 @@ pub fn block_shell(
                                         this.min_h(px(height))
                                     })
                                     .rounded(px(chrome.content_radius_px))
-                                    .bg(rgb(content_background))
-                                    .when(chrome.content_border_width_px > 0.0, |this| {
-                                        this.border(px(chrome.content_border_width_px))
+                                    .when(!selection_surface, |this| {
+                                        this.bg(rgb(content_background))
                                     })
-                                    .border_color(rgb(content_border))
-                                    // Keep the historical 4px quote geometry slot so caret/hit-test
-                                    // origins stay stable, while drawing the visible Notion bar at 3px.
-                                    .border_l(px(chrome.content_border_left_px()))
+                                    .when(
+                                        !selection_surface && chrome.content_border_width_px > 0.0,
+                                        |this| {
+                                            this.border(px(chrome.content_border_width_px))
+                                                .border_color(rgb(content_border))
+                                                // Keep the historical 4px quote geometry slot so caret/hit-test
+                                                // origins stay stable, while drawing the visible Notion bar at 3px.
+                                                .border_l(px(chrome.content_border_left_px()))
+                                        },
+                                    )
                                     .pl(px(chrome.content_padding_left_px))
                                     .pr(px(chrome.content_padding_right_px))
                                     .py(px(chrome.content_padding_y_px))
@@ -216,12 +222,21 @@ pub fn block_shell(
 }
 
 fn render_document_title_footer(height_px: f32, footer: Option<gpui::AnyView>) -> AnyElement {
+    // Host-owned title chrome historically draws its own bottom border. Keep
+    // that 1px outside the reserved footer slot so page chrome and the body
+    // remain visually continuous without changing the block height contract.
     div()
         .w_full()
         .h(px(height_px))
-        .flex()
-        .items_center()
-        .when_some(footer, |this, footer| this.child(footer))
+        .overflow_hidden()
+        .child(
+            div()
+                .w_full()
+                .h(px(height_px + 1.0))
+                .flex()
+                .items_center()
+                .when_some(footer, |this, footer| this.child(footer)),
+        )
         .into_any_element()
 }
 

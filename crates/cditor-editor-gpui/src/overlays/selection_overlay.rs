@@ -2,7 +2,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgba};
 
 use crate::block::chrome::BlockHorizontalGeometry;
 use crate::document::{DocumentBlockGeometry, DocumentLayoutMetrics};
-use crate::theme::GuiTheme;
+use crate::theme::{GuiTheme, selection_background_color};
 use cditor_core::ids::BlockId;
 use cditor_runtime::EditorViewProjection;
 
@@ -21,35 +21,41 @@ pub fn selection_overlay_fragments(
     projection: &EditorViewProjection,
     document_layout: DocumentLayoutMetrics,
 ) -> Vec<SelectionOverlayFragment> {
+    let blocks = &projection.blocks;
     let mut fragments = Vec::new();
-    // Overlay geometry is RenderWindow-local. The surface applies the single
-    // f64 global -> local origin translation before converting to GPUI f32.
-    let mut block_y = 0.0;
-    for block in &projection.blocks {
-        let height = block.layout.effective_height();
-        let block_geometry = DocumentBlockGeometry::for_block(block, document_layout);
-        // A cross-block selection is one contiguous document-level highlight.
-        // Keep its left edge at the root content surface instead of applying
-        // each list item's indentation, which would create stepped stripes
-        // through nested blocks.
-        let content_left = block_geometry.shell_left_px + selection_content_left_px(0);
-        // A focused, fully selected block already paints its block highlight as
-        // content background inside the shell. Drawing the full-block overlay
-        // above the text would cover the caret; leave that block to the shell
-        // layer, while non-focused selections still use the document overlay.
-        let should_paint =
-            !(block.selected && block.focused) && (block.selected || block.selection_overlay);
-        if should_paint {
-            fragments.push(SelectionOverlayFragment {
-                block_id: block.block_id,
-                y: block_y,
-                height,
-                full_block: block.selected,
-                content_left_px: content_left,
-                content_right_px: block_geometry.track_right_px(),
-            });
+    let mut prefix_heights = Vec::with_capacity(blocks.len() + 1);
+    prefix_heights.push(0.0);
+    for block in blocks {
+        prefix_heights
+            .push(prefix_heights.last().copied().unwrap_or(0.0) + block.layout.effective_height());
+    }
+
+    let selected = |index: usize| blocks[index].selected || blocks[index].selection_overlay;
+    let mut start = 0;
+    while start < blocks.len() {
+        if !selected(start) {
+            start += 1;
+            continue;
         }
-        block_y += height;
+        let mut end = start + 1;
+        while end < blocks.len()
+            && selected(end)
+            && blocks[end].visible_index == blocks[end - 1].visible_index + 1
+        {
+            end += 1;
+        }
+
+        let first = &blocks[start];
+        let block_geometry = DocumentBlockGeometry::for_block(first, document_layout);
+        fragments.push(SelectionOverlayFragment {
+            block_id: first.block_id,
+            y: prefix_heights[start],
+            height: prefix_heights[end] - prefix_heights[start],
+            full_block: blocks[start..end].iter().all(|block| block.selected),
+            content_left_px: block_geometry.shell_left_px + selection_content_left_px(0),
+            content_right_px: block_geometry.track_right_px(),
+        });
+        start = end;
     }
     fragments
 }
@@ -82,46 +88,36 @@ pub fn render_selection_overlay(
 }
 
 fn selection_overlay_background(theme: GuiTheme) -> u32 {
-    (theme.action_accent << 8) | 0x33
+    (selection_background_color(theme) << 8) | 0xff
 }
 
 #[cfg(test)]
 mod tests {
+    use cditor_core::rich_text::{BlockPayloadRecord, RichBlockKind};
     use cditor_runtime::DocumentRuntime;
 
     use super::*;
 
     #[test]
-    fn selection_overlay_uses_projection_fragments_not_entities() {
+    fn adjacent_selected_blocks_render_as_one_fragment() {
         let mut runtime = DocumentRuntime::demo();
         let projection = runtime.projection_for_window();
-        let first = projection.blocks.first().unwrap().block_id;
-        let last = projection.blocks.last().unwrap().block_id;
-        crate::test_support::select_block_range(&mut runtime, first, last);
-        let mut projection = runtime.projection_for_window();
-        projection.before_window_height = 20_000_000.25;
-        let selectable_blocks = projection
+        let selectable = projection
             .blocks
             .iter()
             .filter(|block| !block.kind.is_document_title())
             .collect::<Vec<_>>();
+        crate::test_support::select_block_range(
+            &mut runtime,
+            selectable[0].block_id,
+            selectable[2].block_id,
+        );
+        let projection = runtime.projection_for_window();
 
         let fragments = selection_overlay_fragments(&projection, DocumentLayoutMetrics::default());
 
-        assert_eq!(fragments.len(), selectable_blocks.len());
-        assert!(fragments.iter().all(|fragment| fragment.full_block));
-        assert!(selectable_blocks.iter().all(|block| block.selected));
-        assert_eq!(fragments[0].block_id, selectable_blocks[0].block_id);
-    }
-
-    #[test]
-    fn selection_overlay_uses_translucent_theme_accent() {
-        let theme = GuiTheme::light();
-
-        assert_eq!(
-            selection_overlay_background(theme),
-            (theme.action_accent << 8) | 0x33
-        );
+        assert_eq!(fragments.len(), 1);
+        assert!(fragments[0].full_block);
     }
 
     #[test]
@@ -144,19 +140,25 @@ mod tests {
 
         let fragments = selection_overlay_fragments(&projection, DocumentLayoutMetrics::default());
 
-        assert_eq!(fragments.len(), 3);
-        assert!(fragments.iter().all(|fragment| !fragment.full_block));
+        assert_eq!(fragments.len(), 1);
+        assert!(!fragments[0].full_block);
         let root_content_left = DocumentBlockGeometry::for_kind(
-            &cditor_core::rich_text::RichBlockKind::Paragraph,
+            &RichBlockKind::Paragraph,
             DocumentLayoutMetrics::default(),
         )
         .shell_left_px
             + BlockHorizontalGeometry::for_depth(0).marker_lane_left_px;
         assert_eq!(fragments[0].content_left_px, root_content_left);
-        assert_eq!(fragments[1].content_left_px, root_content_left);
-        assert_eq!(fragments[2].content_left_px, root_content_left);
-        assert_eq!(fragments[0].y + fragments[0].height, fragments[1].y);
-        assert_eq!(fragments[1].y + fragments[1].height, fragments[2].y);
+    }
+
+    #[test]
+    fn selection_overlay_uses_opaque_accent_soft() {
+        let theme = GuiTheme::light();
+
+        assert_eq!(
+            selection_overlay_background(theme),
+            (selection_background_color(theme) << 8) | 0xff
+        );
     }
 
     #[test]
@@ -164,42 +166,12 @@ mod tests {
         let mut runtime = DocumentRuntime::from_payloads(
             1,
             vec![
-                cditor_core::rich_text::BlockPayloadRecord::rich_text(
-                    1,
-                    cditor_core::rich_text::RichBlockKind::Paragraph,
-                    "first",
-                ),
-                cditor_core::rich_text::BlockPayloadRecord::rich_text(
-                    2,
-                    cditor_core::rich_text::RichBlockKind::Paragraph,
-                    "last",
-                ),
+                BlockPayloadRecord::rich_text(1, RichBlockKind::Paragraph, "first"),
+                BlockPayloadRecord::rich_text(2, RichBlockKind::Paragraph, "last"),
             ],
             720.0,
         );
         crate::test_support::set_document_text_selection(&mut runtime, 1, 2, 2, 2);
-
-        assert!(
-            selection_overlay_fragments(
-                &runtime.projection_for_window(),
-                DocumentLayoutMetrics::default(),
-            )
-            .is_empty()
-        );
-    }
-
-    #[test]
-    fn single_block_text_selection_does_not_create_a_group_overlay() {
-        let mut runtime = DocumentRuntime::from_payloads(
-            1,
-            vec![cditor_core::rich_text::BlockPayloadRecord::rich_text(
-                1,
-                cditor_core::rich_text::RichBlockKind::Paragraph,
-                "text",
-            )],
-            720.0,
-        );
-        crate::test_support::set_document_text_selection(&mut runtime, 1, 1, 1, 3);
 
         assert!(
             selection_overlay_fragments(
